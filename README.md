@@ -107,5 +107,8 @@ not create.
 
 ## Documentation
 
+- [docs/PLAN.md](./docs/PLAN.md) — **the consolidated plan.** v2 + the v3 SaaS
+  extension + Telegram credit-card reminders, with every conflict between them
+  resolved. Read this before the source specs.
 - [PROGRESS.md](./PROGRESS.md) — milestone status, decisions, open questions
-- [hishab-agentic-build-prompt-v2_1.md](./hishab-agentic-build-prompt-v2_1.md) — the full product and technical specification
+- [hishab-agentic-build-prompt-v2_1.md](./hishab-agentic-build-prompt-v2_1.md) — the original v2 specification

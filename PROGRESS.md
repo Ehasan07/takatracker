@@ -16,7 +16,8 @@ Last updated: 2026-08-06.
 | M2      | Double-entry engine in `packages/core` + Transaction API          | done        |
 | M3      | Web: transaction list, add/edit, accounts, transfers              | done        |
 | M4      | Responsive shell + PWA                                            | done        |
-| M5      | Reports v1 + filters                                              | next        |
+| M23     | Workspaces + `workspaceId` migration                              | **next**    |
+| M5      | Reports v1 + filters                                              | after M23   |
 | M6      | Excel/CSV import with mapping UI + export                         | not started |
 | M7–M11  | Ingestion, parsing, draft inbox, dedupe, email channel            | not started |
 | M12–M14 | People/loans, savings/insurance, assets/net worth                 | not started |
@@ -128,9 +129,18 @@ defaults. Same reasoning applies on the server (4600/3600, loopback only).
 
 ---
 
+## Plan
+
+The v3 SaaS extension and the Telegram credit-card reminders are reconciled with
+v2 in [docs/PLAN.md](./docs/PLAN.md), which is now the authority on ordering and
+on the eight points where v2 and v3 disagree. The headline change: **M23
+(workspaces) runs before M5**, because M5–M11 add about ten tenant-scoped tables
+that would otherwise need migrating twice.
+
 ## Questions for the product owner (spec §11)
 
-None of these block M5, but M12–M14 cannot be built without answers:
+Superseded by §6 of [docs/PLAN.md](./docs/PLAN.md), which adds the billing,
+mailbox-credential and Telegram decisions. Kept here for reference:
 
 1. DPS profit formula, and whether tax/AIT should be modelled at all.
 2. Do loans accrue interest, and on what basis (simple, flat monthly)?
