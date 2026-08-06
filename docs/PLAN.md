@@ -27,13 +27,15 @@ from M5 onward exists yet — which changes the ordering, see §4.
 | 7   | §13: "any paid tier must use In-App Purchase"                                    | D1: sell on the web only, app never mentions purchase | **Both are true and it is a business decision.** Web-only selling avoids the commission and the IAP build; it also means the app may not link to pricing at all. Listed as a decision in §6.                                                                                                                    |
 | 8   | §4.4: "do not build Gmail API in v1"                                             | Part C: IMAP app-password now, OAuth later            | **Compatible.** v2 forbade OAuth, not IMAP. Tier 1 (forwarding alias) stays the default; Tier 2 (IMAP) is opt-in and marked "উন্নত".                                                                                                                                                                            |
 
+| 9 | — | — | **New in this plan:** credit-card due reminders over Telegram (§2), and the decision to run one official bot rather than store a bot token per user. |
+
 Nothing else conflicts. v3 Part E's freeze list — double-entry engine, integer
 minor units, draft-inbox approval, ledger visual language, offline sync,
 Bengali-first — is already how the built code works and stays untouched.
 
 ---
 
-## 2. New in this plan: Telegram credit-card due reminders (M36)
+## 2. New in this plan: credit-card due reminders over Telegram (M36)
 
 Not in either source document. Specified here in full.
 
@@ -45,29 +47,69 @@ day**, starting a configurable number of days before the due date, until the
 user stops it from inside the app. Stopping silences **that billing cycle
 only**; the next month's cycle starts reminding again on its own.
 
-### 2.2 Model
+### 2.2 Delivery: one official bot, not one bot per user
+
+**Decision: Hishab runs a single official bot and users bind their chat to it
+with one tap. Bringing your own bot stays available as an advanced option.**
+
+This reverses the original sketch, for one reason that outweighs the rest:
+
+> Asking every user for a bot token means **operating a store of thousands of
+> live credentials**. A Telegram bot token is not a chat address — it is full
+> control of that bot: read everything sent to it, send as it, reconfigure it.
+> A breach of that table hands an attacker every one of those bots. With the
+> official bot we store a `chat_id`, which is an address rather than a secret,
+> and the single token we do hold sits in KMS under our control and can be
+> rotated in one action.
+
+The rest follows from that:
+
+|                           | Official bot (default)                                                   | User's own bot (advanced)                             |
+| ------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- |
+| Setup                     | tap a link, press Start                                                  | BotFather, `/newbot`, copy token, find chat ID, paste |
+| What we store             | `chatId` — an address                                                    | a live credential, one per user                       |
+| If our database leaks     | attacker can message our users _from our bot_ — phishing, no data access | attacker controls every user's bot                    |
+| Mute from inside Telegram | yes, inline button                                                       | no — a bot has one webhook and it is theirs           |
+| Suits                     | everyone                                                                 | the privacy-conscious and self-hosters                |
+
+The honest cost of the official bot: one token that can message every customer.
+That is a phishing risk, not a data-access risk — the bot can only send, and it
+never holds ledger data. It is a smaller exposure than N user credentials, and
+it is one secret to guard instead of a table of them.
 
 ```
-TelegramConnection(id, workspaceId, userId, label,
-                   botTokenRef, chatId, botUsername?,
+TelegramConnection(id, workspaceId, userId, mode, chatId?,
+                   botTokenRef?, botUsername?,
+                   bindingTokenHash?, bindingExpiresAt?,
                    isEnabled, verifiedAt?, status,
                    failureCount, lastError?, lastSentAt?,
                    createdAt, revokedAt?)
+  mode:   SHARED_BOT | OWN_BOT
   status: PENDING | ACTIVE | AUTH_FAILED | DISABLED | REVOKED
 ```
 
 - One row per member, so each person in a shared workspace gets their own chat.
-- `botTokenRef` points at the secret store. **The bot token is a credential and
-  is handled exactly like an IMAP password (v3 §C6):** envelope-encrypted,
-  write-only through the API, masked in every response, redacted from every log,
-  error and AI prompt, with a test asserting it cannot appear in a serialised
-  error.
-- `isEnabled` is the explicit opt-in tick. It cannot be set until `verifiedAt`
-  is set, and `verifiedAt` is only set by a **successful test message** — a
-  typed chat ID that nobody checked is the easiest way to send someone else's
-  card details to a stranger.
+- `botTokenRef` is null in `SHARED_BOT` mode. In `OWN_BOT` mode it points at the
+  secret store and **the token is treated exactly like an IMAP password (v3
+  §C6):** envelope-encrypted, write-only through the API, masked in every
+  response, redacted from every log, error and AI prompt, with a test asserting
+  it cannot appear in a serialised error.
+- `isEnabled` is the explicit opt-in tick and cannot be set until `verifiedAt`
+  is. Verification is the binding handshake in shared mode, or a successful test
+  message in own-bot mode. **A chat ID nobody checked is the easiest way to send
+  someone else's card balance to a stranger.**
 
-Added to `Account` (only meaningful when `type = CREDIT_CARD`):
+**Binding handshake (shared mode).** The app opens
+`https://t.me/<HishabBot>?start=<binding-token>`. That token is opaque,
+single-use, hashed at rest and expires in fifteen minutes. Telegram delivers
+`/start <token>` to our webhook; we match it, store the `chat_id`, mark the
+connection verified and reply with a confirmation. Nothing is typed. The webhook
+is guarded by Telegram's `secret_token` header, rate-limited, and accepts
+nothing beyond `/start`, `/stop` and the mute callback.
+
+### 2.3 Card fields and cycle state
+
+Added to `Account`, meaningful only when `type = CREDIT_CARD`:
 
 ```
 statementDayOfMonth  Int?   // 1–31, when the bill is generated (optional)
@@ -75,45 +117,69 @@ dueDayOfMonth        Int?   // 1–31, when payment is due
 reminderLeadDays     Int?   // null = fall back to the workspace default
 ```
 
-Workspace default: `creditCardReminderLeadDays` (default 7, allowed 1–28).
-
-Per-cycle state, which is what makes "stop for this month" work:
+Workspace defaults: `creditCardReminderLeadDays` (7, allowed 1–28) and
+`autoMuteOnCardPayment` (**true**, see §2.5).
 
 ```
 CardReminderCycle(id, workspaceId, accountId, cycleMonth, dueDate,
-                  mutedAt?, mutedByUserId?, lastSentOn?, sentCount)
+                  windowStart, windowEnd,
+                  mutedAt?, mutedByUserId?, mutedReason?,
+                  lastSentOn?, sentCount)
+  mutedReason: MANUAL | PAID
   @@unique([accountId, cycleMonth])       // cycleMonth is 'YYYY-MM'
 ```
 
 Muting writes `mutedAt` on the current cycle row. Next month is a different
-`cycleMonth`, so a new row is created and reminders resume with no user action —
-which is exactly the requested behaviour, and it needs no scheduled un-mute.
+`cycleMonth`, so a fresh row appears and reminders resume on their own — no
+scheduled un-mute, no state to clean up.
 
-### 2.3 Due-date arithmetic
+### 2.4 Dates and the reminder window
 
 - The due date for cycle `YYYY-MM` is day `dueDayOfMonth` of that month,
   **clamped to the last day of the month**. A card due on the 31st is due on
   28 February, not 3 March.
 - All dates are computed in the workspace timezone (`Asia/Dhaka` by default),
   reusing `packages/shared/src/date.ts`. No new date logic.
-- The reminder window is `dueDate − leadDays … dueDate` inclusive. Whether it
-  continues _past_ the due date is a decision — see §6.
+- **The window runs from `dueDate − leadDays` until the next cycle's window
+  opens.** Passing the due date does not stop the reminders — an unpaid card is
+  more urgent after the deadline, not less. Coverage is therefore continuous:
+  the moment the next bill's window starts, the new cycle row takes over.
+- Only two things end a cycle early: the user muting it, or a payment being
+  recorded (§2.5).
+- The wording escalates once the date passes — `আর ৫ দিন` becomes
+  `৩ দিন পার হয়েছে`. The same message repeating unchanged for weeks is how a
+  notification turns into background noise.
 
-### 2.4 Worker
+### 2.5 Stopping: by payment, or by hand
 
-A BullMQ repeatable job, once an hour, sending to each workspace at 09:00 in its
-own timezone:
+Both, and the automatic one is on by default.
+
+**Automatically, when the bill is paid.** Money moving _into_ the card account —
+a transfer from a bank or cash account, or a balance adjustment — dated inside
+the current window mutes that cycle with `mutedReason = PAID`. This reads the
+ledger the app already keeps; it asks the user for nothing. Governed by
+`autoMuteOnCardPayment`, which can be switched off.
+
+**By hand.** A **এই মাসের রিমাইন্ডার বন্ধ করুন** action on the account screen
+sets `mutedReason = MANUAL`. In shared-bot mode the same action is an inline
+button on the Telegram message, so it takes one tap without opening the app; the
+callback is signed and scoped to that single cycle.
+
+Either way the mute is per cycle. Next month reminds again.
+
+### 2.6 Worker
+
+A BullMQ repeatable job, hourly, firing for each workspace at 09:00 in its own
+timezone:
 
 1. Load credit-card accounts that are not archived and have `dueDayOfMonth` set.
 2. Compute the current cycle and due date; upsert the `CardReminderCycle` row.
-3. Skip if muted, if `lastSentOn` is already today (this is the idempotency
-   guard — a worker restart must never double-send), or if today is outside the
-   window.
+3. Skip if muted, if `lastSentOn` is already today (the idempotency guard — a
+   worker restart must never double-send), or if today is outside the window.
 4. Skip if the member has no `ACTIVE`, enabled, verified connection.
 5. Send, then set `lastSentOn` and increment `sentCount`.
 
-Message (Bengali), carrying the numbers so the user can act without opening the
-app:
+Message, carrying the numbers so the user can act without opening anything:
 
 ```
 💳 ক্রেডিট কার্ড পেমেন্ট বাকি
@@ -122,37 +188,37 @@ app:
 বকেয়া:     ৳৪২,৩৫০.০০
 শেষ তারিখ:  ১২ আগস্ট ২০২৬ (আর ৫ দিন)
 
-অ্যাপে গিয়ে পেমেন্ট লিখলে বা এই মাসের রিমাইন্ডার বন্ধ করলে
-আর মনে করিয়ে দেওয়া হবে না।
+[ এই মাসের জন্য বন্ধ করুন ]      ← inline button, shared-bot mode
 https://takatracker.com/accounts
 ```
 
-**Failure handling.** Telegram returns `403` when the user blocks the bot and
-`400` for a bad chat ID; both set `AUTH_FAILED`, stop sending and raise an
-in-app notice. `429` is honoured via `retry_after` with backoff. Three
-consecutive failed days set `DISABLED`. Never a tight retry loop.
+**Failure handling.** `403` means the user blocked the bot, `400` a bad chat ID;
+both set `AUTH_FAILED`, stop sending and raise an in-app notice. `429` is
+honoured via `retry_after` with backoff. Three consecutive failed days set
+`DISABLED`. Never a tight retry loop — Telegram blocks the IP.
 
-### 2.5 Settings screen
+### 2.7 Settings screen
 
-Under Settings → **টেলিগ্রাম নোটিফিকেশন**, with the tutorial inline (no external
-link) because this is the step users get stuck on:
+Under Settings → **টেলিগ্রাম নোটিফিকেশন**:
 
-1. Open `@BotFather` in Telegram → `/newbot` → copy the token.
-2. Send your new bot any message (a bot cannot start a conversation).
-3. Get your chat ID — a "how" expander showing the `getUpdates` URL.
-4. Paste both, press **পরীক্ষা করুন** — a real test message is sent.
-5. Only after the test succeeds does the **নোটিফিকেশন চালু** tick become
-   available.
+- **Default path:** one button, **টেলিগ্রামে সংযুক্ত করুন**, opening the
+  official bot with the binding token. The user presses Start and is finished.
+  No tutorial, because there are no steps.
+- **Advanced expander, "নিজের বট ব্যবহার করুন":** the BotFather walkthrough —
+  `/newbot`, copy the token, message the bot once because a bot cannot open a
+  conversation, then **পরীক্ষা করুন** sends a real test message. The
+  **নোটিফিকেশন চালু** tick unlocks only once it succeeds.
+- Also here: days of notice before the due date (workspace default, overridable
+  per card), the auto-stop-on-payment toggle, connection status, when the last
+  message went out, and **সংযোগ বিচ্ছিন্ন করুন**, which revokes and deletes any
+  stored token in the same action.
 
-Also on the screen: how many days before the due date to remind (workspace
-default, overridable per card), the connection's current status, when the last
-message was sent, and **সংযোগ বিচ্ছিন্ন করুন** which revokes and deletes the
-stored token in one action.
-
-### 2.6 Where it sits in the plan
+### 2.8 Where it sits in the plan
 
 - Entitlement key `notifications.telegram` (v3 §A2), so plans can gate it.
-- Audit events for connect, test, revoke and mute (v3 §A3).
+- Audit events for bind, unbind, test, revoke and mute (v3 §A3).
+- The shared bot needs a webhook route on `takatracker.com`, its token in the
+  secret store, and a documented rotation procedure.
 - v2's M18 "notifications" stays as in-app and device push; Telegram is a
   separate channel, not a replacement.
 - **Build it after M23**, so the tables are born with `workspaceId` rather than
@@ -289,14 +355,19 @@ allowlist is enforced by our code, not by the provider, so a breach of that
 table is worse than a breach of the ledger. Restrict it to a paid tier, or
 drop Tier 2 entirely and wait for OAuth?
 
-**Blocking Telegram reminders (M36)** 5. Should reminders continue _after_ the due date if nothing is recorded, or
-stop on the due date? (Recommendation: keep going for three days, then stop —
-a missed card payment is expensive.) 6. Should recording a payment against the card auto-stop that cycle's reminders?
-You specified a manual stop; auto-stop is strictly friendlier, and the manual
-control stays either way. Default off unless you say otherwise. 7. One shared bot for all users, or each user brings their own? This plan
-assumes **their own**, as you described. A shared Hishab bot would be far
-easier for users (no BotFather steps) but puts us in the position of holding
-one token that can message every customer.
+**Telegram reminders (M36) — decided, recorded for the record**
+
+- Reminders continue past the due date until the next bill's window opens. Only
+  a mute or a recorded payment stops them.
+- Recording a payment auto-stops that cycle. On by default; the manual control
+  stays.
+- One official Hishab bot with tap-to-bind is the default; bring-your-own-bot is
+  an advanced option. Rationale in §2.2 — it removes a store of thousands of
+  live credentials.
+
+Operational consequence of the official bot: a bot registered with BotFather
+under a Hishab account, its token in KMS, a webhook endpoint on
+`takatracker.com`, and a rotation runbook.
 
 **Blocking loans and savings (M12–M14)** 8. DPS profit formula, and whether tax/AIT is modelled. 9. Do loans accrue interest, and on what basis?
 
