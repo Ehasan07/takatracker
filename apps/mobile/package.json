@@ -1,0 +1,11 @@
+{
+  "name": "@hishab/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"mobile app lands in M15\"",
+    "test": "echo \"mobile tests land in M15\"",
+    "typecheck": "echo \"no TypeScript yet\"",
+    "lint": "echo \"no source yet\""
+  }
+}

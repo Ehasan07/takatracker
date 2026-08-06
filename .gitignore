@@ -1,0 +1,33 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+.DS_Store
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# expo
+.expo/
+web-build/
+
+# generated
+apps/api/prisma/generated/
+apps/web/public/sw.js
+apps/web/public/workbox-*.js

@@ -1,0 +1,81 @@
+@import 'tailwindcss';
+@import '@hishab/ui/tokens.css';
+
+/* Dark mode follows the OS, and the .dark class wins when the user chooses. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-ink: var(--hishab-ink);
+  --color-ink-muted: var(--hishab-ink-muted);
+  --color-paper: var(--hishab-paper);
+  --color-surface: var(--hishab-surface);
+  --color-greenbar: var(--hishab-greenbar);
+  --color-rule: var(--hishab-rule);
+  --color-income: var(--hishab-income);
+  --color-expense: var(--hishab-expense);
+  --color-brass: var(--hishab-brass);
+
+  --font-sans: var(--hishab-font-sans);
+  --font-mono: var(--hishab-font-mono);
+
+  --radius-card: 12px;
+}
+
+@layer base {
+  html {
+    /* 100dvh, not 100vh — mobile browser chrome must not clip the layout. */
+    min-height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--hishab-paper);
+    color: var(--hishab-ink);
+    font-family: var(--hishab-font-sans);
+    min-height: 100dvh;
+    /* Nothing ever scrolls sideways, not even at 320px. */
+    overflow-x: hidden;
+  }
+
+  * {
+    border-color: var(--hishab-rule);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--hishab-brass);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Greenbar ledger paper: alternating row tint plus a rule down the amount column. */
+  .ledger-row:nth-child(even) {
+    background: var(--hishab-greenbar);
+  }
+
+  .amount-col {
+    border-left: 1px solid var(--hishab-rule);
+  }
+
+  .touch-target {
+    min-width: var(--hishab-touch-min);
+    min-height: var(--hishab-touch-min);
+  }
+}
+
+/* Respect the notch and the home indicator. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

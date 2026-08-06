@@ -1,0 +1,232 @@
+// Hishab — server schema.
+// Money is ALWAYS BigInt poisha (1/100 BDT). No Float or Decimal anywhere.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  name         String
+  locale       String   @default("bn")
+  baseCurrency String   @default("BDT")
+  timezone     String   @default("Asia/Dhaka")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts      Account[]
+  categories    Category[]
+  people        Person[]
+  transactions  Transaction[]
+  refreshTokens RefreshToken[]
+}
+
+/// Rotating refresh tokens. A whole family is revoked when a used token is
+/// replayed (reuse detection, spec §9).
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  familyId   String
+  tokenHash  String    @unique
+  deviceId   String?
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  usedAt     DateTime?
+  revokedAt  DateTime?
+  replacedBy String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, familyId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Accounts & categories
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  CASH
+  BANK
+  MOBILE_WALLET
+  CREDIT_CARD
+  SAVINGS
+  RECEIVABLE
+  PAYABLE
+  ASSET
+  LIABILITY
+  EQUITY
+}
+
+model Account {
+  id                  String      @id @default(cuid())
+  userId              String
+  name                String
+  type                AccountType
+  currency            String      @default("BDT")
+  openingBalance      BigInt      @default(0)
+  institution         String?
+  accountNumberMasked String?
+  matchHints          String[]    @default([])
+  isArchived          Boolean     @default(false)
+  sortOrder           Int         @default(0)
+  icon                String?
+  color               String?
+  /// Set only on the hidden nominal accounts (SYSTEM_INCOME / SYSTEM_EXPENSE /
+  /// SYSTEM_EQUITY) that make the double entry balance. Never shown in the UI.
+  systemKey           String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  deletedAt           DateTime?
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries LedgerEntry[]
+
+  @@unique([userId, systemKey])
+  @@index([userId, isArchived, sortOrder])
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  nameBn    String?
+  parentId  String?
+  kind      CategoryKind
+  icon      String?
+  color     String?
+  isSystem  Boolean      @default(false)
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime?
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[]    @relation("CategoryTree")
+  entries  LedgerEntry[]
+
+  @@index([userId, kind, sortOrder])
+}
+
+model Person {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  phone     String?
+  relation  String?
+  note      String?
+  photoUri  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Ledger
+// ---------------------------------------------------------------------------
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  LOAN_GIVEN
+  LOAN_REPAID
+  BORROWED
+  BORROW_REPAID
+  SAVINGS_DEPOSIT
+  SAVINGS_WITHDRAWAL
+  PREMIUM_PAID
+  ADJUSTMENT
+  OPENING_BALANCE
+}
+
+enum TransactionSource {
+  MANUAL
+  SMS
+  EMAIL
+  WEBHOOK
+  OCR
+  IMPORT
+  RECURRING
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  userId        String
+  date          DateTime
+  type          TransactionType
+  description   String?
+  notes         String?
+  payee         String?
+  personId      String?
+  projectTag    String?
+  attachmentIds String[]          @default([])
+  source        TransactionSource @default(MANUAL)
+  sourceDraftId String?
+  externalRef   String?
+  /// Device-generated UUID so offline rows keep identity across sync (§8).
+  clientId      String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deletedAt     DateTime?
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  person  Person?       @relation(fields: [personId], references: [id])
+  entries LedgerEntry[]
+
+  @@unique([userId, clientId])
+  @@index([userId, date(sort: Desc)])
+  @@index([userId, type])
+  @@index([userId, source])
+  @@index([userId, externalRef])
+}
+
+enum EntryDirection {
+  DEBIT
+  CREDIT
+}
+
+model LedgerEntry {
+  id            String         @id @default(cuid())
+  transactionId String
+  accountId     String
+  categoryId    String?
+  /// Always positive; `direction` carries the sign.
+  amountMinor   BigInt
+  direction     EntryDirection
+  currency      String         @default("BDT")
+  /// 1 for BDT-only v1. Kept so multi-currency is a data change, not a migration.
+  fxRate        Int            @default(1)
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account     Account     @relation(fields: [accountId], references: [id])
+  category    Category?   @relation(fields: [categoryId], references: [id])
+
+  @@index([transactionId])
+  @@index([accountId])
+  @@index([categoryId])
+}

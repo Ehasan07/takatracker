@@ -1,0 +1,60 @@
+/* Design tokens — CSS mirror of packages/ui/src/index.ts. Keep both in sync. */
+
+:root {
+  --hishab-ink: #17251e;
+  --hishab-ink-muted: #5a6b62;
+  --hishab-paper: #fafbf7;
+  --hishab-surface: #ffffff;
+  --hishab-greenbar: #f1f5ec;
+  --hishab-rule: #d6ded0;
+  --hishab-income: #1f6f4a;
+  --hishab-expense: #a8342a;
+  --hishab-brass: #8e6c18;
+
+  --hishab-radius-sm: 4px;
+  --hishab-radius-md: 8px;
+  --hishab-radius-lg: 12px;
+
+  --hishab-font-sans: 'Noto Sans Bengali', 'Hind Siliguri', ui-sans-serif, system-ui, sans-serif;
+  --hishab-font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
+
+  --hishab-touch-min: 44px;
+}
+
+/* Dark palette, applied by the .dark class or by the OS when the user has not
+   explicitly chosen light. */
+.dark,
+:root:has(> body.dark) {
+  --hishab-ink: #e8efe7;
+  --hishab-ink-muted: #9aab9f;
+  --hishab-paper: #101614;
+  --hishab-surface: #16201c;
+  --hishab-greenbar: #1a241f;
+  --hishab-rule: #2c3a33;
+  --hishab-income: #63c295;
+  --hishab-expense: #e58b80;
+  --hishab-brass: #d6ac4e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --hishab-ink: #e8efe7;
+    --hishab-ink-muted: #9aab9f;
+    --hishab-paper: #101614;
+    --hishab-surface: #16201c;
+    --hishab-greenbar: #1a241f;
+    --hishab-rule: #2c3a33;
+    --hishab-income: #63c295;
+    --hishab-expense: #e58b80;
+    --hishab-brass: #d6ac4e;
+  }
+}
+
+/* Money never reflows: tabular figures, fixed column, right aligned. */
+.money {
+  font-family: var(--hishab-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  text-align: right;
+  white-space: nowrap;
+}
