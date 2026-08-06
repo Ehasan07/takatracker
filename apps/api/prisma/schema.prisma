@@ -120,7 +120,7 @@ model Category {
   deletedAt DateTime?
 
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent   Category?     @relation("CategoryTree", fields: [parentId], references: [id])
+  parent   Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[]    @relation("CategoryTree")
   entries  LedgerEntry[]
 
@@ -195,7 +195,7 @@ model Transaction {
   deletedAt     DateTime?
 
   user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  person  Person?       @relation(fields: [personId], references: [id])
+  person  Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
   entries LedgerEntry[]
 
   @@unique([userId, clientId])
@@ -223,8 +223,11 @@ model LedgerEntry {
   fxRate        Int            @default(1)
 
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  account     Account     @relation(fields: [accountId], references: [id])
-  category    Category?   @relation(fields: [categoryId], references: [id])
+  // Cascade so deleting a user removes their whole ledger. Account deletion is
+  // never offered in the UI (accounts are archived); this exists so the
+  // "delete my account and all my data" store requirement actually works.
+  account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([transactionId])
   @@index([accountId])

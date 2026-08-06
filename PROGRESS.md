@@ -24,7 +24,7 @@ Last updated: 2026-08-06.
 
 ### Acceptance evidence
 
-- `pnpm test` — 60 passing: 16 money, 16 ledger, 7 parser, 21 API integration.
+- `pnpm test` — 61 passing: 16 money, 16 ledger, 7 parser, 22 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
@@ -73,6 +73,14 @@ intermittent failure that looked like flakiness.
 schemas from `packages/shared` that the client uses, through a small
 `ZodValidationPipe`. Nest's `ValidationPipe` was removed; it pulls in
 `class-validator` and would have meant two sources of truth for the contract.
+
+**Cascading deletes.** `LedgerEntry.account` originally had no `onDelete`, so
+Postgres refused to delete a `User` — the cascade stopped at the ledger. Spec §9
+requires full account deletion to work, and both app stores demand it, so
+`LedgerEntry.account` now cascades and `category`/`person`/`parent` set null.
+Found by trying to delete the post-deploy smoke user on the live box, not in
+review. A test now creates a user with a full ledger, deletes the row and
+asserts every table is empty.
 
 **Non-default local ports.** Postgres on 5433 and Redis on 6380, because the
 developer machine already runs another project's Postgres and Redis on the
@@ -185,5 +193,5 @@ Releases are timestamped under `/opt/hishab/releases/` with `current` as a
 symlink; the last five are kept. Rolling back is repointing the symlink and
 restarting the two units.
 
-A smoke user (`smoke-*@takatracker.com`) exists in production from the
-post-deploy check — delete it whenever you like.
+The production database is empty: the post-deploy smoke user was removed after
+the checks, which is also how the cascade fix was verified live.

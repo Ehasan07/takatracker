@@ -331,3 +331,57 @@ describe('tenant isolation', () => {
     expect(bobList.body.items).toHaveLength(0);
   });
 });
+
+describe('account deletion', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  /* Spec §9: "Full data export and full account deletion must work" — both
+   * stores require it. Deleting the User row must take the whole ledger with
+   * it, which only happens if every foreign key cascades. */
+  it('deleting a user removes their accounts, categories, transactions and entries', async () => {
+    const user = await signup(ctx);
+
+    const account = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নগদ', type: 'CASH' })
+      .expect(201);
+
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 1234,
+        accountId: account.body.id,
+        categoryId: cats.body.find((c: { kind: string }) => c.kind === 'EXPENSE').id,
+      })
+      .expect(201);
+
+    await expect(ctx.prisma.user.delete({ where: { id: user.id } })).resolves.toBeTruthy();
+
+    for (const count of [
+      ctx.prisma.account.count({ where: { userId: user.id } }),
+      ctx.prisma.category.count({ where: { userId: user.id } }),
+      ctx.prisma.transaction.count({ where: { userId: user.id } }),
+      ctx.prisma.refreshToken.count({ where: { userId: user.id } }),
+    ]) {
+      expect(await count).toBe(0);
+    }
+    expect(await ctx.prisma.ledgerEntry.count()).toBe(0);
+  });
+});
