@@ -7,7 +7,7 @@ liabilities — with AI-written monthly analytics in Bengali and English.
 Ships as a responsive installable PWA (this repo), with iOS and Android to
 follow from the same business-logic packages.
 
-Production: **https://takatracker.com**
+Production: **https://takatracker.com** — live, M0–M4 deployed.
 
 ---
 

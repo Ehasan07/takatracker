@@ -1,5 +1,9 @@
 # Deploying Hishab to takatracker.com
 
+**Live at https://takatracker.com** on `SERVER_IP` (Ubuntu 24.04), a
+shared box that also runs n8n, an x-ui/xray VPN panel and a pm2 app. See
+[../../PROGRESS.md](../../PROGRESS.md) for the deployed topology.
+
 The target server already runs other projects. Everything here is written to be
 **additive and isolated** — nothing touches an existing site, service, database
 or nginx config.
@@ -12,6 +16,7 @@ or nginx config.
 | Directory          | `/opt/hishab`                                                                   | new                                                                                    |
 | Postgres role + DB | `hishab` / `hishab`                                                             | new role and database inside the existing cluster; other databases untouched           |
 | Redis              | logical DB `9` on the existing Redis, or a private instance on `127.0.0.1:6390` | see `redis` note below                                                                 |
+| Node runtime       | private Node 22 at `/opt/hishab/node` — the system Node is never touched        |
 | API port           | `127.0.0.1:4600`                                                                | loopback only, non-standard                                                            |
 | Web port           | `127.0.0.1:3600`                                                                | loopback only, non-standard                                                            |
 | systemd units      | `hishab-api.service`, `hishab-web.service`                                      | new unit names                                                                         |
@@ -26,6 +31,8 @@ server block only for the two hostnames above.
 ```bash
 # 0. from your laptop — read the server first, change nothing
 ssh root@SERVER 'bash -s' < infra/deploy/00-inspect.sh
+
+# password auth instead of a key? prefix every command with SSHPASS=...
 
 # 1. one-time provisioning (idempotent; refuses to overwrite anything existing)
 ssh root@SERVER 'bash -s' < infra/deploy/10-provision.sh

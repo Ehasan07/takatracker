@@ -113,23 +113,77 @@ None of these block M5, but M12–M14 cannot be built without answers:
 
 ---
 
-## Deployment state
+## Deployment state — LIVE
 
-Target: **takatracker.com → OLD_SERVER_IP** (Cloudflare DNS, A record already
-pointing there; the box currently serves the default nginx page).
+**https://takatracker.com** — Ubuntu 24.04 at `SERVER_IP`, certificate
+valid to 2026-11-04, HTTP redirects to HTTPS, HSTS on.
 
-The server runs other projects, so `infra/deploy/` is written to be additive
-only — new user, new directory, new database, new units, one new vhost, one new
-certificate. `00-inspect.sh` reads the box and changes nothing; run it first.
+An earlier target (`OLD_SERVER_IP`) was abandoned: its sshd accepts publickey
+only and no usable key was available.
 
-**Blocked:** the server accepts neither the supplied root password
-(`PasswordAuthentication` is off) nor either existing key. Install this deploy
-key and the release can proceed:
+### What else lives on this box
 
+The server is shared, so every choice below exists to keep these untouched:
+
+| Neighbour                           | Where                                     |
+| ----------------------------------- | ----------------------------------------- |
+| n8n (Docker, compose project `n8n`) | `127.0.0.1:5678` → `automation.example.com` |
+| x-ui / xray VPN panel               | its own ports → `vpn.example.com`  |
+| `other-bot` (pm2, `/root/other-bot`) | `0.0.0.0:3000`                            |
+
+Verified after the release: system Node still v20.20.2, `other-bot` online
+with **0 restarts**, the n8n container never restarted, x-ui active with all
+three ports listening, all three nginx vhosts present, and the neighbours'
+certificates untouched.
+
+### What Hishab added, and nothing else
+
+| Resource              | Value                                                                |
+| --------------------- | -------------------------------------------------------------------- |
+| Unix user / directory | `hishab` / `/opt/hishab`                                             |
+| Node runtime          | **private** Node 22.17.0 at `/opt/hishab/node`                       |
+| Postgres 16 + Redis 7 | Docker compose project `hishab`, `127.0.0.1:5433` / `127.0.0.1:6380` |
+| API / web             | `127.0.0.1:4600` / `127.0.0.1:3600`, loopback only                   |
+| systemd               | `hishab-api.service`, `hishab-web.service`                           |
+| nginx                 | `/etc/nginx/sites-available/takatracker.com`                         |
+| TLS                   | `certbot --cert-name takatracker.com`                                |
+
+Two decisions were forced by what was already running:
+
+**Private Node.** The box runs Node v20.20.2 system-wide and the pm2 app
+`other-bot` depends on it. Installing Node 22 from NodeSource would have
+replaced it and could have taken that app down, so Hishab unpacks its own Node
+under `/opt/hishab/node` (checksum-verified official tarball) and the systemd
+units point at it. `/usr/bin/node` is never touched.
+
+**Dockerised database.** No Postgres or Redis existed on the host. Rather than
+add two more system services, Hishab runs them as its own compose project with
+its own named volumes, bound to loopback on non-default ports. `docker compose
+-f /opt/hishab/stack/docker-compose.yml down -v` removes them completely and
+cannot affect the n8n project.
+
+`www.takatracker.com` has no DNS record, so the certificate covers the apex
+only. Add the A record and re-run `30-tls.sh` to include it.
+
+### Pre-deploy backup
+
+`/root/backups-before-hishab/` on the server holds the nginx tree, the systemd
+directory, the docker process list and the pm2 dump taken immediately before
+provisioning.
+
+### Operating it
+
+```bash
+systemctl status hishab-api hishab-web
+journalctl -u hishab-api -f
+docker compose -f /opt/hishab/stack/docker-compose.yml ps
+
+./infra/deploy/20-release.sh root@SERVER_IP   # ship a new version
 ```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHSiVwJtz+h3D75+tAscTBAgu5p4ufSRplUdIzKBTxni takatracker-deploy
-```
 
-Add it to `/root/.ssh/authorized_keys` via the hosting console, or re-enable
-password login with
-`sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && systemctl reload ssh`.
+Releases are timestamped under `/opt/hishab/releases/` with `current` as a
+symlink; the last five are kept. Rolling back is repointing the symlink and
+restarting the two units.
+
+A smoke user (`smoke-*@takatracker.com`) exists in production from the
+post-deploy check — delete it whenever you like.
