@@ -24,7 +24,7 @@ Last updated: 2026-08-06.
 
 ### Acceptance evidence
 
-- `pnpm test` — 61 passing: 16 money, 16 ledger, 7 parser, 22 API integration.
+- `pnpm test` — 62 passing: 16 money, 16 ledger, 7 parser, 23 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
@@ -81,6 +81,30 @@ requires full account deletion to work, and both app stores demand it, so
 Found by trying to delete the post-deploy smoke user on the live box, not in
 review. A test now creates a user with a full ledger, deletes the row and
 asserts every table is empty.
+
+**A fixed shell, not a scrolling page.** The document is `overflow: hidden`
+and a single `<main>` owns scrolling. The title bar and tab bar therefore never
+move, the way a native navigation bar and tab bar do not. Browser
+pull-to-refresh is off (`overscroll-behavior: none`) because in a standalone
+PWA it reloads the shell, which reads as a crash; a rubber-band gesture of our
+own replaces it. Everything outside the shell — login, signup, offline — needs
+its own `app-scroll` container as a result.
+
+**Keypad instead of the OS keyboard for amounts.** On a coarse pointer the
+amount field is `inputMode="none"` and a large keypad renders below it. The
+field stays a real labelled input, so assistive technology and tests are
+unaffected, but the sheet never gets shoved off-screen mid-entry.
+
+**Undo rather than confirm.** Swipe-left deletes with no dialog, backed by
+`POST /v1/transactions/:id/restore` and an eight-second snackbar. A
+confirmation would tax every deliberate delete to guard against the rare
+accident; an undo does the opposite.
+
+**Tailwind v4 centres with the CSS `translate` property.** It composes with
+`transform` instead of replacing it, so a keyframe that also translated -50%
+pushed the desktop dialog a full width and height off-screen. Keyframes that
+run on positioned elements must animate `transform` only for scale and opacity.
+Caught by the e2e suite; the dialog was genuinely unreachable in a real browser.
 
 **Non-default local ports.** Postgres on 5433 and Redis on 6380, because the
 developer machine already runs another project's Postgres and Redis on the
