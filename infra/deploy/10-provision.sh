@@ -185,6 +185,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/current/apps/api
 EnvironmentFile=/etc/hishab/hishab.env
+Environment=HOME=${APP_DIR}
 ExecStart=/usr/bin/node dist/main.js
 Restart=always
 RestartSec=3
@@ -215,7 +216,9 @@ Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/current/apps/web
 EnvironmentFile=/etc/hishab/hishab.env
 Environment=PORT=${WEB_PORT}
-ExecStart=/usr/bin/npx --no-install next start -p ${WEB_PORT}
+Environment=HOME=${APP_DIR}
+# Call the binary directly: npx would want a writable HOME under ProtectSystem=strict.
+ExecStart=${APP_DIR}/current/apps/web/node_modules/.bin/next start -p ${WEB_PORT}
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
