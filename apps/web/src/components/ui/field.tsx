@@ -3,8 +3,11 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
+/* 44px tall on touch, tighter on a mouse — a desktop form full of phone-sized
+   controls reads as a mobile site blown up. `md:` is the pointer proxy that
+   Tailwind can express statically. */
 const controlClasses =
-  'min-h-11 w-full rounded-md border border-rule bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 disabled:opacity-50';
+  'min-h-11 md:min-h-9 w-full rounded-md border border-rule bg-surface px-3 py-2 md:py-1.5 text-base md:text-sm text-ink placeholder:text-ink-muted transition-colors hover:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 disabled:opacity-50';
 
 export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
   ({ className, ...props }, ref) => (
@@ -15,7 +18,7 @@ Input.displayName = 'Input';
 
 export const Select = React.forwardRef<HTMLSelectElement, React.ComponentProps<'select'>>(
   ({ className, ...props }, ref) => (
-    <select ref={ref} className={cn(controlClasses, 'appearance-none', className)} {...props} />
+    <select ref={ref} className={cn(controlClasses, 'cursor-pointer', className)} {...props} />
   ),
 );
 Select.displayName = 'Select';

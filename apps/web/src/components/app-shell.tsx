@@ -1,17 +1,25 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { Inbox, LayoutDashboard, Plus, Settings, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
+import { useIsDesktop } from '@/hooks/use-device';
+import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { OfflineBar } from './offline-bar';
+import { PageTransition } from './page-transition';
+import { PullToRefresh } from './pull-to-refresh';
 import { QuickAddSheet } from './quick-add-sheet';
 
 /**
  * One information architecture, two presentations (spec §5):
- *   ≤767px  bottom tab bar, matching the native app
- *   ≥768px  left sidebar
+ *   ≤767px  fixed title bar + bottom tab bar, exactly like the native app
+ *   ≥768px  left sidebar, desktop density
+ *
+ * The chrome never scrolls. Only `<main>` does. That single structural choice
+ * is most of what separates "an app" from "a website" on a phone.
  */
 const NAV = [
   { href: '/', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
@@ -20,21 +28,63 @@ const NAV = [
   { href: '/settings', label: 'সেটিংস', icon: Settings },
 ] as const;
 
+const TITLES: Record<string, string> = {
+  '/': 'ড্যাশবোর্ড',
+  '/transactions': 'খাতা',
+  '/accounts': 'অ্যাকাউন্ট',
+  '/settings': 'সেটিংস',
+};
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isDesktop = useIsDesktop();
+  const queryClient = useQueryClient();
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
+  const scrollRef = React.useRef<HTMLElement | null>(null);
 
   const isActive = (href: string): boolean =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
 
+  // Every route change starts at the top, as a pushed screen would.
+  React.useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
+
+  // Desktop accelerators. "n" for a new transaction, Escape to close.
+  React.useEffect(() => {
+    if (!isDesktop) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable;
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setQuickAddOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isDesktop]);
+
+  const refresh = React.useCallback(() => queryClient.invalidateQueries(), [queryClient]);
+
+  const openQuickAdd = (): void => {
+    haptic('select');
+    setQuickAddOpen(true);
+  };
+
   return (
-    <div className="flex min-h-dvh flex-col md:flex-row">
+    <div className="flex h-dvh overflow-hidden">
       {/* Sidebar — 768px and up */}
       <aside
         data-testid="sidebar"
-        className="border-rule bg-surface hidden w-56 shrink-0 border-r md:flex md:flex-col lg:w-64"
+        className="border-rule bg-surface safe-top hidden w-56 shrink-0 flex-col border-r md:flex lg:w-64"
       >
-        <div className="safe-top px-4 py-5">
+        <div className="px-4 py-5">
           <Link href="/" className="text-ink text-xl font-semibold">
             হিসাব
           </Link>
@@ -45,9 +95,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
+              prefetch
               aria-current={isActive(item.href) ? 'page' : undefined}
               className={cn(
-                'flex min-h-11 items-center gap-3 rounded-md px-3 text-sm',
+                'press flex min-h-11 items-center gap-3 rounded-md px-3 text-sm',
                 isActive(item.href)
                   ? 'bg-greenbar text-income font-semibold'
                   : 'text-ink hover:bg-greenbar',
@@ -61,8 +112,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="p-3">
           <button
             type="button"
-            onClick={() => setQuickAddOpen(true)}
-            className="bg-income flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-white"
+            onClick={openQuickAdd}
+            title="নতুন লেনদেন (N)"
+            className="press bg-income flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-white"
           >
             <Plus className="h-4 w-4" aria-hidden />
             নতুন লেনদেন
@@ -70,44 +122,69 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {/* Fixed title bar — phones only. Mirrors a native navigation bar. */}
+        <header className="chrome-blur border-rule safe-top safe-x z-30 shrink-0 border-b md:hidden">
+          <div className="flex h-12 items-center justify-center px-3">
+            <h1 className="text-ink truncate text-base font-semibold">
+              {TITLES[pathname] ?? 'হিসাব'}
+            </h1>
+          </div>
+        </header>
+
         <OfflineBar />
-        {/* pb-24 keeps the last row clear of the bottom bar and the FAB */}
-        <main className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:px-4 md:px-6 md:pb-8">{children}</main>
+
+        <main
+          ref={scrollRef}
+          className="app-scroll safe-x relative min-w-0 flex-1"
+          data-testid="app-scroll"
+        >
+          <PullToRefresh scrollRef={scrollRef} onRefresh={refresh}>
+            {/* Bottom padding clears the tab bar and the floating button. */}
+            <div className="px-3 pb-28 pt-4 sm:px-4 md:px-6 md:pb-10 md:pt-6">
+              <PageTransition>{children}</PageTransition>
+            </div>
+          </PullToRefresh>
+        </main>
+
+        {/* Floating quick add — under five seconds to a saved transaction. */}
+        <button
+          type="button"
+          aria-label="নতুন লেনদেন"
+          onClick={openQuickAdd}
+          className="press bg-income fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg md:hidden"
+          style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
+        >
+          <Plus className="h-6 w-6" aria-hidden />
+        </button>
+
+        {/* Bottom tab bar — up to 767px */}
+        <nav
+          data-testid="bottom-nav"
+          aria-label="প্রধান মেনু"
+          className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-4 border-t md:hidden"
+        >
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch
+              onClick={() => haptic('tap')}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              className={cn(
+                'press touch-target flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]',
+                isActive(item.href) ? 'text-income font-semibold' : 'text-ink-muted',
+              )}
+            >
+              <item.icon
+                className={cn('h-5 w-5 transition-transform', isActive(item.href) && 'scale-110')}
+                aria-hidden
+              />
+              <span className="truncate px-0.5">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
       </div>
-
-      {/* Floating quick-add on phones — target under 5 seconds */}
-      <button
-        type="button"
-        aria-label="নতুন লেনদেন"
-        onClick={() => setQuickAddOpen(true)}
-        className="bg-income fixed bottom-20 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg md:hidden"
-        style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }}
-      >
-        <Plus className="h-6 w-6" aria-hidden />
-      </button>
-
-      {/* Bottom tab bar — up to 767px */}
-      <nav
-        data-testid="bottom-nav"
-        aria-label="প্রধান মেনু"
-        className="safe-bottom border-rule bg-surface fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t md:hidden"
-      >
-        {NAV.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={isActive(item.href) ? 'page' : undefined}
-            className={cn(
-              'touch-target flex flex-col items-center justify-center gap-0.5 py-2 text-[11px]',
-              isActive(item.href) ? 'text-income font-semibold' : 'text-ink-muted',
-            )}
-          >
-            <item.icon className="h-5 w-5" aria-hidden />
-            <span className="truncate px-0.5">{item.label}</span>
-          </Link>
-        ))}
-      </nav>
 
       <QuickAddSheet open={quickAddOpen} onOpenChange={setQuickAddOpen} />
     </div>

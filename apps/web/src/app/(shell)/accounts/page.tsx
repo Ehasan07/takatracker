@@ -8,6 +8,7 @@ import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
+import { SkeletonRows } from '@/components/skeleton';
 import { api, endpoints, type AccountDto } from '@/lib/api';
 
 const ACCOUNT_TYPES: { value: string; label: string }[] = [
@@ -29,7 +30,7 @@ export default function AccountsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">অ্যাকাউন্ট</h1>
+        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">অ্যাকাউন্ট</h1>
         <Button onClick={() => setAddOpen(true)} size="sm">
           <Plus className="h-4 w-4" aria-hidden />
           নতুন
@@ -41,7 +42,11 @@ export default function AccountsPage() {
         <Money minor={total} className="text-2xl font-semibold" />
       </section>
 
-      {accounts.data?.length === 0 ? (
+      {accounts.isLoading ? (
+        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+          <SkeletonRows rows={3} />
+        </div>
+      ) : accounts.data?.length === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
           <p className="text-ink">এখনও কোনো অ্যাকাউন্ট নেই।</p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
@@ -67,7 +72,7 @@ export default function AccountsPage() {
                 type="button"
                 aria-label={`${account.name} মেলান`}
                 onClick={() => setReconciling(account)}
-                className="touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
               >
                 <Scale className="h-4 w-4" aria-hidden />
               </button>

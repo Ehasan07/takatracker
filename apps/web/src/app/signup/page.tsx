@@ -35,7 +35,7 @@ export default function SignupPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
+    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
       <header className="text-center">
         <h1 className="text-ink text-3xl font-semibold">নতুন অ্যাকাউন্ট</h1>
         <p className="text-ink-muted text-sm">এক মিনিটেই শুরু করুন</p>

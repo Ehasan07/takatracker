@@ -4,7 +4,7 @@ export const metadata = { title: 'অফলাইন — হিসাব' };
 
 export default function OfflinePage() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
+    <main className="app-scroll safe-x mx-auto flex h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
       <h1 className="text-ink text-2xl font-semibold">এখন অফলাইন</h1>
       <p className="text-ink-muted">
         ইন্টারনেট সংযোগ নেই। আগে দেখা পাতাগুলো এখনও খোলা যাবে, আর নতুন লেনদেন সংরক্ষিত থাকবে — সংযোগ

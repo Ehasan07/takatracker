@@ -81,8 +81,9 @@ test.describe('bookkeeping', () => {
 
     // The ledger lists all three
     await page.goto('/transactions');
-    await expect(page.getByText('মাসের বেতন')).toBeVisible();
-    await expect(page.getByText('বাজার', { exact: true })).toBeVisible();
+    const ledger = page.getByTestId('ledger-list');
+    await expect(ledger.getByText('মাসের বেতন')).toBeVisible();
+    await expect(ledger.getByText('বাজার', { exact: true })).toBeVisible();
   });
 
   test('edits and deletes a transaction, and the balance follows', async ({ page }) => {
@@ -106,7 +107,7 @@ test.describe('bookkeeping', () => {
 
     await page.goto('/transactions');
     await page.getByRole('button', { name: 'মুছুন' }).first().click();
-    await expect(page.getByText('রিকশা')).toBeHidden();
+    await expect(page.getByTestId('ledger-list')).toBeHidden();
 
     await page.goto('/accounts');
     await expect(page.getByText('৳0.00').first()).toBeVisible();

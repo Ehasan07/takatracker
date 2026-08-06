@@ -235,6 +235,47 @@ describe('ledger', () => {
     expect(after.body.balanceMinor).toBe(before.body.balanceMinor);
   });
 
+  it('restores a deleted transaction and its effect on the balance', async () => {
+    const before = await ctx.http().get(`/v1/accounts/${cashId}`).set(auth(user)).expect(200);
+
+    const created = await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 4200,
+        accountId: cashId,
+        categoryId: foodCategoryId,
+      })
+      .expect(201);
+
+    await ctx.http().delete(`/v1/transactions/${created.body.id}`).set(auth(user)).expect(200);
+    const deleted = await ctx.http().get(`/v1/accounts/${cashId}`).set(auth(user)).expect(200);
+    expect(deleted.body.balanceMinor).toBe(before.body.balanceMinor);
+
+    // Undo — the swipe gesture on a phone is easy to trigger by accident.
+    await ctx
+      .http()
+      .post(`/v1/transactions/${created.body.id}/restore`)
+      .set(auth(user))
+      .expect(201);
+
+    const restored = await ctx.http().get(`/v1/accounts/${cashId}`).set(auth(user)).expect(200);
+    expect(restored.body.balanceMinor).toBe(before.body.balanceMinor - 4200);
+
+    // Restoring twice is a 404, not a duplicate.
+    await ctx
+      .http()
+      .post(`/v1/transactions/${created.body.id}/restore`)
+      .set(auth(user))
+      .expect(404);
+
+    // Leave the ledger as the later tests expect it.
+    await ctx.http().delete(`/v1/transactions/${created.body.id}`).set(auth(user)).expect(200);
+  });
+
   it('reports a running balance when the list is filtered to one account', async () => {
     const res = await ctx
       .http()

@@ -37,7 +37,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <h1 className="text-ink text-xl font-semibold sm:text-2xl">সেটিংস</h1>
+      <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">সেটিংস</h1>
 
       <section className="rounded-card border-rule bg-surface border p-4">
         <h2 className="text-ink-muted text-sm font-medium">অ্যাকাউন্ট</h2>

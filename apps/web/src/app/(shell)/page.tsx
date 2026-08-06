@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { formatLedgerDate } from '@hishab/shared';
 import { Money } from '@/components/money';
+import { SkeletonCard } from '@/components/skeleton';
 import { endpoints } from '@/lib/api';
 
 export default function DashboardPage() {
@@ -18,10 +19,22 @@ export default function DashboardPage() {
   const topCategories = (summary.data?.expenseByCategory ?? []).slice(0, 5);
   const largest = topCategories[0]?.totalMinor ?? 0;
 
+  if (summary.isLoading && accounts.isLoading) {
+    return (
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-3 md:grid-cols-2 xl:max-w-6xl">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
+      {/* On a phone the shell's navigation bar already names the screen. */}
       <header className="flex items-baseline justify-between gap-2">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">ড্যাশবোর্ড</h1>
+        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">ড্যাশবোর্ড</h1>
         <p className="text-ink-muted text-sm">{formatLedgerDate(new Date())}</p>
       </header>
 

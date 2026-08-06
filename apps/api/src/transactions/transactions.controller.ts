@@ -81,4 +81,10 @@ export class TransactionsController {
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.transactions.remove(user.id, id);
   }
+
+  /** Undo a delete within the window the client offers. */
+  @Post(':id/restore')
+  restore(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.transactions.restore(user.id, id);
+  }
 }

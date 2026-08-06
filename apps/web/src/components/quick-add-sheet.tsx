@@ -1,9 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { useCoarsePointer } from '@/hooks/use-device';
+import { haptic } from '@/lib/haptics';
 import { api, endpoints, QueuedOfflineError, type TransactionDto } from '@/lib/api';
+import { NumericKeypad } from './numeric-keypad';
 import { Button } from './ui/button';
 import { Field, Input, Select, Textarea } from './ui/field';
 import { Sheet } from './ui/sheet';
@@ -25,10 +29,16 @@ export interface QuickAddSheetProps {
 
 export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProps) {
   const queryClient = useQueryClient();
+  const coarse = useCoarsePointer();
   const today = toLocalDateString(new Date());
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
+  const recent = useQuery({
+    queryKey: ['transactions', { limit: 5 }],
+    queryFn: () => endpoints.transactions({ limit: 5 }),
+    enabled: open,
+  });
 
   const [kind, setKind] = React.useState<Kind>('EXPENSE');
   const [amount, setAmount] = React.useState('');
@@ -80,6 +90,39 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
     kind === 'INCOME' ? c.kind === 'INCOME' : c.kind === 'EXPENSE',
   );
 
+  /* Categories the user actually reaches for, most recent first. The full list
+   * stays in the picker below; these chips are the accelerator. */
+  const recentCategoryIds = React.useMemo(() => {
+    const seen: string[] = [];
+    for (const txn of recent.data?.items ?? []) {
+      if (txn.categoryId && !seen.includes(txn.categoryId)) seen.push(txn.categoryId);
+    }
+    return seen.slice(0, 6);
+  }, [recent.data]);
+
+  const chipCategories = React.useMemo(() => {
+    const byId = new Map(relevantCategories.map((c) => [c.id, c]));
+    const picked = recentCategoryIds
+      .map((id) => byId.get(id))
+      .filter((c): c is (typeof relevantCategories)[number] => c !== undefined);
+    const rest = relevantCategories.filter((c) => !recentCategoryIds.includes(c.id));
+    return [...picked, ...rest].slice(0, 8);
+  }, [relevantCategories, recentCategoryIds]);
+
+  const repeatable = (recent.data?.items ?? [])
+    .filter((t) => t.type === 'EXPENSE' || t.type === 'INCOME')
+    .slice(0, 3);
+
+  const applyRepeat = (txn: TransactionDto): void => {
+    haptic('select');
+    setKind(txn.type === 'INCOME' ? 'INCOME' : 'EXPENSE');
+    setAmount(formatMinor(Math.abs(txn.amountMinor), { symbol: false }));
+    if (txn.accountId) setAccountId(txn.accountId);
+    if (txn.categoryId) setCategoryId(txn.categoryId);
+    setDescription(txn.description ?? '');
+    setDate(today);
+  };
+
   const save = useMutation({
     mutationFn: async () => {
       const amountMinor = parseMoneyToMinor(amount);
@@ -104,6 +147,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       });
     },
     onSuccess: async () => {
+      haptic('success');
       await queryClient.invalidateQueries();
       onOpenChange(false);
     },
@@ -114,9 +158,18 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         onOpenChange(false);
         return;
       }
+      haptic('warn');
       setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি');
     },
   });
+
+  const previewMinor = (() => {
+    try {
+      return amount ? parseMoneyToMinor(amount) : 0;
+    } catch {
+      return 0;
+    }
+  })();
 
   return (
     <Sheet
@@ -135,7 +188,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         <div
           role="tablist"
           aria-label="ধরন"
-          className="bg-greenbar grid grid-cols-3 gap-1 rounded-md p-1"
+          className="bg-greenbar grid grid-cols-3 gap-1 rounded-lg p-1"
         >
           {TABS.map((tab) => (
             <button
@@ -143,17 +196,42 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
               type="button"
               role="tab"
               aria-selected={kind === tab.kind}
-              onClick={() => setKind(tab.kind)}
+              onClick={() => {
+                haptic('tap');
+                setKind(tab.kind);
+              }}
               className={
                 kind === tab.kind
-                  ? 'bg-surface text-ink min-h-11 rounded-md text-sm font-semibold shadow-sm'
-                  : 'text-ink-muted min-h-11 rounded-md text-sm'
+                  ? 'press bg-surface text-ink min-h-10 rounded-md text-sm font-semibold shadow-sm'
+                  : 'press text-ink-muted min-h-10 rounded-md text-sm'
               }
             >
               {tab.label}
             </button>
           ))}
         </div>
+
+        {/* One-tap repeat of something recent (spec §6.4). */}
+        {!editing && repeatable.length > 0 ? (
+          <div className="chip-strip" aria-label="আবার যোগ করুন">
+            {repeatable.map((txn) => (
+              <button
+                key={txn.id}
+                type="button"
+                onClick={() => applyRepeat(txn)}
+                className="press border-rule text-ink flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-xs"
+              >
+                <RotateCcw className="h-3 w-3 shrink-0" aria-hidden />
+                <span className="max-w-28 truncate">
+                  {txn.description || txn.categoryName || 'লেনদেন'}
+                </span>
+                <span className="money text-ink-muted">
+                  {formatMinor(Math.abs(txn.amountMinor), { decimals: false })}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <Field label="পরিমাণ (৳)" htmlFor="qa-amount">
           <Input
@@ -162,13 +240,40 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             required
-            autoFocus
-            inputMode="decimal"
+            autoFocus={!coarse}
+            /* On a phone the keypad below replaces the OS keyboard, so the sheet
+               never gets shoved off-screen halfway through typing. */
+            inputMode={coarse ? 'none' : 'decimal'}
             enterKeyHint="done"
             placeholder="০.০০"
-            className="money text-2xl"
+            className="money h-14 !text-3xl font-semibold"
           />
         </Field>
+
+        {coarse ? <NumericKeypad value={amount} onChange={setAmount} /> : null}
+
+        {kind !== 'TRANSFER' && chipCategories.length > 0 ? (
+          <div className="chip-strip" aria-label="দ্রুত বাছাই">
+            {chipCategories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  haptic('tap');
+                  setCategoryId(c.id);
+                }}
+                aria-pressed={categoryId === c.id}
+                className={
+                  categoryId === c.id
+                    ? 'press bg-income min-h-9 rounded-full px-3 text-xs font-medium text-white'
+                    : 'press border-rule text-ink min-h-9 rounded-full border px-3 text-xs'
+                }
+              >
+                {c.nameBn ?? c.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <Field label="তারিখ" htmlFor="qa-date">
           <Input
@@ -263,8 +368,12 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           </p>
         ) : null}
 
-        <Button type="submit" size="block" disabled={save.isPending}>
-          {save.isPending ? 'সংরক্ষণ হচ্ছে…' : 'সংরক্ষণ করুন'}
+        <Button type="submit" size="block" disabled={save.isPending} className="press">
+          {save.isPending
+            ? 'সংরক্ষণ হচ্ছে…'
+            : previewMinor > 0
+              ? `${formatMinor(previewMinor)} সংরক্ষণ করুন`
+              : 'সংরক্ষণ করুন'}
         </Button>
       </form>
     </Sheet>

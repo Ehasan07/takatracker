@@ -189,6 +189,20 @@ export class TransactionsService {
     return { id };
   }
 
+  /**
+   * Undo a delete. Deletion is soft precisely so this is possible: the swipe
+   * gesture on a phone is easy to trigger by accident, and an accounting app
+   * must never lose an entry to a slip of the thumb.
+   */
+  async restore(userId: string, id: string): Promise<TransactionView> {
+    const existing = await this.prisma.transaction.findFirst({
+      where: { id, userId, deletedAt: { not: null } },
+    });
+    if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
+    await this.prisma.transaction.update({ where: { id }, data: { deletedAt: null } });
+    return this.findOne(userId, id);
+  }
+
   async findOne(userId: string, id: string): Promise<TransactionView> {
     const tx = await this.prisma.transaction.findFirst({
       where: { id, userId, deletedAt: null },

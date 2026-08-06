@@ -23,18 +23,23 @@
 
 @layer base {
   html {
-    /* 100dvh, not 100vh — mobile browser chrome must not clip the layout. */
-    min-height: 100dvh;
+    height: 100%;
     -webkit-text-size-adjust: 100%;
+    /* Kills the 300ms tap delay and double-tap zoom without disabling
+       pinch-to-zoom, which would be an accessibility failure. */
+    touch-action: manipulation;
   }
 
   body {
     background: var(--hishab-paper);
     color: var(--hishab-ink);
     font-family: var(--hishab-font-sans);
-    min-height: 100dvh;
-    /* Nothing ever scrolls sideways, not even at 320px. */
-    overflow-x: hidden;
+    height: 100%;
+    /* The shell owns scrolling, not the document. Fixed chrome + an inner
+       scroll area is what separates an app from a web page. */
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   * {
@@ -46,12 +51,37 @@
     outline-offset: 2px;
   }
 
+  /* Chrome is not selectable; content is. Long-pressing a nav item and getting
+     a text selection is the clearest tell that something is "just a website". */
+  nav,
+  aside,
+  button,
+  [role='tab'],
+  [role='tablist'],
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* 16px minimum on touch, or iOS Safari zooms the page when a field takes
+     focus. Desktop is free to be denser. */
+  @media (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: max(16px, 1rem);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }
@@ -70,12 +100,154 @@
     min-width: var(--hishab-touch-min);
     min-height: var(--hishab-touch-min);
   }
+
+  /* The physical "give" a native control has when pressed. Pointer-coarse only:
+     on a mouse this reads as jitter, on a finger it reads as a button. */
+  .press {
+    transition:
+      transform 120ms cubic-bezier(0.2, 0, 0, 1),
+      background-color 120ms ease,
+      opacity 120ms ease;
+  }
+  @media (pointer: coarse) {
+    .press:active {
+      transform: scale(0.965);
+    }
+  }
+  @media (pointer: fine) {
+    .press:active {
+      transform: scale(0.99);
+    }
+  }
+
+  /* The app's single scroll container. */
+  .app-scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  /* Frosted bars, the way a native tab bar sits over content. */
+  .chrome-blur {
+    background: color-mix(in srgb, var(--hishab-surface) 82%, transparent);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+  }
+  @supports not (backdrop-filter: blur(1px)) {
+    .chrome-blur {
+      background: var(--hishab-surface);
+    }
+  }
+
+  /* Horizontal chip strips scroll like a native carousel: snappy, no bar. */
+  .chip-strip {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .chip-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .chip-strip > * {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
 }
 
-/* Respect the notch and the home indicator. */
+/* Safe areas — content reaches the edges, controls never hide under the notch
+   or the home indicator. */
 .safe-top {
   padding-top: env(safe-area-inset-top);
 }
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* --- motion ---------------------------------------------------------------- */
+
+@keyframes hishab-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: hishab-page-in 180ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@keyframes hishab-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes hishab-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Scale only. Tailwind centres the dialog with the CSS `translate` property,
+   which composes with `transform` rather than replacing it — repeating the
+   -50% here would shift the dialog a full width and height off-centre. */
+@keyframes hishab-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.sheet-overlay[data-state='open'] {
+  animation: hishab-fade-in 200ms ease both;
+}
+
+.sheet-panel[data-state='open'] {
+  animation: hishab-sheet-up 260ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@media (min-width: 768px) {
+  .sheet-panel[data-state='open'] {
+    animation: hishab-scale-in 160ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+}
+
+/* Toast / undo snackbar */
+@keyframes hishab-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.toast-enter {
+  animation: hishab-toast-in 200ms cubic-bezier(0.2, 0, 0, 1) both;
 }
