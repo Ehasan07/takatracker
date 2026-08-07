@@ -1,9 +1,9 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Scale } from 'lucide-react';
+import { BellOff, Plus, Scale } from 'lucide-react';
 import * as React from 'react';
-import { parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
@@ -26,6 +26,15 @@ export default function AccountsPage() {
   const entitlements = useQuery({ queryKey: ['entitlements'], queryFn: endpoints.entitlements });
   const [addOpen, setAddOpen] = React.useState(false);
   const [reconciling, setReconciling] = React.useState<AccountDto | null>(null);
+
+  const muteReminders = useMutation({
+    mutationFn: (accountId: string) =>
+      api<{ cycleMonth: string }>(`/cards/${accountId}/mute-reminders`, {
+        method: 'POST',
+        body: {},
+      }),
+    onSuccess: () => void queryClient.invalidateQueries(),
+  });
 
   const total = (accounts.data ?? []).reduce((sum, a) => sum + a.balanceMinor, 0);
 
@@ -82,9 +91,23 @@ export default function AccountsPage() {
                 <p className="text-ink-muted truncate text-xs">
                   {ACCOUNT_TYPES.find((t) => t.value === account.type)?.label ?? account.type}
                   {account.accountNumberMasked ? ` · ${account.accountNumberMasked}` : ''}
+                  {account.dueDayOfMonth
+                    ? ` · প্রতি মাসের ${toBengaliDigits(String(account.dueDayOfMonth))} তারিখে পেমেন্ট`
+                    : ''}
                 </p>
               </div>
               <Money minor={account.balanceMinor} className="amount-col shrink-0 pl-3 text-sm" />
+              {account.dueDayOfMonth ? (
+                <button
+                  type="button"
+                  aria-label={`${account.name} — এই মাসের রিমাইন্ডার বন্ধ করুন`}
+                  title="এই মাসের রিমাইন্ডার বন্ধ করুন"
+                  onClick={() => muteReminders.mutate(account.id)}
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                >
+                  <BellOff className="h-4 w-4" aria-hidden />
+                </button>
+              ) : null}
               <button
                 type="button"
                 aria-label={`${account.name} মেলান`}
@@ -124,6 +147,7 @@ function AddAccountSheet({
   const [name, setName] = React.useState('');
   const [type, setType] = React.useState('CASH');
   const [openingBalance, setOpeningBalance] = React.useState('');
+  const [dueDay, setDueDay] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   const save = useMutation({
@@ -134,11 +158,14 @@ function AddAccountSheet({
           name,
           type,
           openingBalance: openingBalance ? parseMoneyToMinor(openingBalance) : 0,
+          // Only a card has a payment due day; sending it for cash would be noise.
+          dueDayOfMonth: type === 'CREDIT_CARD' && dueDay ? Number(dueDay) : undefined,
         },
       }),
     onSuccess: () => {
       setName('');
       setOpeningBalance('');
+      setDueDay('');
       onSaved();
       onOpenChange(false);
     },
@@ -180,6 +207,21 @@ function AddAccountSheet({
             ))}
           </Select>
         </Field>
+        {type === 'CREDIT_CARD' ? (
+          <Field label="পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)" htmlFor="acc-due-day">
+            <Input
+              id="acc-due-day"
+              type="number"
+              min={1}
+              max={31}
+              inputMode="numeric"
+              value={dueDay}
+              onChange={(e) => setDueDay(e.target.value)}
+              placeholder="যেমন: ১২"
+            />
+          </Field>
+        ) : null}
+
         <Field label="প্রারম্ভিক জের (৳)" htmlFor="acc-opening">
           <Input
             id="acc-opening"

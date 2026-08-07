@@ -20,6 +20,9 @@ export interface AccountWithBalance {
   sortOrder: number;
   icon: string | null;
   color: string | null;
+  statementDayOfMonth: number | null;
+  dueDayOfMonth: number | null;
+  reminderLeadDays: number | null;
 }
 
 @Injectable()
@@ -103,6 +106,9 @@ export class AccountsService {
       sortOrder: a.sortOrder,
       icon: a.icon,
       color: a.color,
+      statementDayOfMonth: a.statementDayOfMonth,
+      dueDayOfMonth: a.dueDayOfMonth,
+      reminderLeadDays: a.reminderLeadDays,
     };
   }
 
@@ -137,6 +143,9 @@ export class AccountsService {
         icon: input.icon,
         color: input.color,
         sortOrder: input.sortOrder,
+        statementDayOfMonth: input.statementDayOfMonth ?? null,
+        dueDayOfMonth: input.dueDayOfMonth ?? null,
+        reminderLeadDays: input.reminderLeadDays ?? null,
       },
     });
     return AccountsService.present(account, input.openingBalance);
@@ -169,6 +178,9 @@ export class AccountsService {
         color: input.color,
         sortOrder: input.sortOrder,
         isArchived: input.isArchived,
+        statementDayOfMonth: input.statementDayOfMonth,
+        dueDayOfMonth: input.dueDayOfMonth,
+        reminderLeadDays: input.reminderLeadDays,
       },
     });
     return this.findOne(workspaceId, id);

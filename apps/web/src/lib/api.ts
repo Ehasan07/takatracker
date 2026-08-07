@@ -166,6 +166,9 @@ export interface AccountDto {
   sortOrder: number;
   icon: string | null;
   color: string | null;
+  statementDayOfMonth: number | null;
+  dueDayOfMonth: number | null;
+  reminderLeadDays: number | null;
 }
 
 export interface CategoryDto {

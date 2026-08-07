@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { api, endpoints } from '@/lib/api';
 import { UsageMeter } from '@/components/usage-meter';
+import { TelegramSettings } from '@/components/telegram-settings';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 
@@ -80,6 +81,8 @@ export default function SettingsPage() {
           />
         </div>
       </section>
+
+      <TelegramSettings />
 
       <section className="rounded-card border-rule bg-surface border p-4">
         <h2 className="text-ink-muted text-sm font-medium">থিম</h2>

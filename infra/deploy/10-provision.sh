@@ -215,6 +215,14 @@ JWT_ACCESS_TTL=15m
 JWT_REFRESH_TTL=30d
 
 INGEST_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')
+
+# Telegram credit-card reminders. The bot token is set separately, out of band —
+# it is never in the repository. TELEGRAM_WEBHOOK_SECRET is generated here.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_USERNAME=
+TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)
+APP_URL=https://${DOMAIN}
+
 ANTHROPIC_API_KEY=
 ENV
 fi

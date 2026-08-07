@@ -296,21 +296,21 @@ dominates everything else:
 > isolation test gets rewritten twice. Done now — with one user and no
 > transactions in production — the migration is nearly free.
 
-| Phase    | Milestones                 | Rationale                                                                                                                                           |
-| -------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Done** | M0–M4, M23, M24            | Live. Workspaces 2026-08-07, entitlements 2026-08-08.                                                                                               |
-| **Next** | **M25**                    | Audit log — every later feature registers against it.                                                                                               |
-| A        | —                          | (M24 done; M25 is now the Next row.)                                                                                                                |
-| B        | M5, M6                     | Reports and Excel import: the two things that make the app useful enough to charge for.                                                             |
-| C        | M30                        | Signup, verification, password reset, sessions, onboarding.                                                                                         |
-| D        | **M36**                    | Telegram + credit-card reminders. Small, self-contained, visibly valuable, and it exercises the worker before the ingestion pipeline depends on it. |
-| E        | M7–M9                      | Ingestion core, parser, draft inbox — the highest-value feature in the product.                                                                     |
-| F        | M26, M27                   | SMS build split and the automation replacements. Pairs naturally with ingestion.                                                                    |
-| G        | M31, M33, M34              | Billing, observability, legal and backups. Sellable from here.                                                                                      |
-| H        | M10, M11                   | Dedupe/LLM fallback, email alias channel.                                                                                                           |
-| I        | M15, M16                   | Mobile app and sync.                                                                                                                                |
-| J        | M28, M29                   | IMAP mailbox connector — deliberately last of the ingestion work, see §6.                                                                           |
-| K        | M12–M14, M17–M22, M32, M35 | Loans, savings, net worth, AI, polish, store prep, admin, launch.                                                                                   |
+| Phase    | Milestones                 | Rationale                                                                               |
+| -------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| **Done** | M0–M4, M23, M24, M36       | Live. Workspaces 07-08, entitlements + Telegram reminders 08-08.                        |
+| **Next** | **M25**                    | Audit log — every later feature registers against it.                                   |
+| A        | —                          | (M24 done; M25 is now the Next row.)                                                    |
+| B        | M5, M6                     | Reports and Excel import: the two things that make the app useful enough to charge for. |
+| C        | M30                        | Signup, verification, password reset, sessions, onboarding.                             |
+| D        | —                          | (M36 done, brought forward: the owner supplied a bot.)                                  |
+| E        | M7–M9                      | Ingestion core, parser, draft inbox — the highest-value feature in the product.         |
+| F        | M26, M27                   | SMS build split and the automation replacements. Pairs naturally with ingestion.        |
+| G        | M31, M33, M34              | Billing, observability, legal and backups. Sellable from here.                          |
+| H        | M10, M11                   | Dedupe/LLM fallback, email alias channel.                                               |
+| I        | M15, M16                   | Mobile app and sync.                                                                    |
+| J        | M28, M29                   | IMAP mailbox connector — deliberately last of the ingestion work, see §6.               |
+| K        | M12–M14, M17–M22, M32, M35 | Loans, savings, net worth, AI, polish, store prep, admin, launch.                       |
 
 M19 is deleted; M26 and M27 replace it.
 
@@ -340,14 +340,27 @@ and the native mobile behaviour are all untouched by M23.
 Carried over from v2 §11, plus new ones from v3 and the Telegram feature.
 None block M23.
 
-**Blocking billing (M31)**
+**Billing (M31) — decided 2026-08-08, defaults chosen on the owner's "go ahead"**
 
-1. Sell on the web only, or build iOS In-App Purchase? Web-only is cheaper and
-   avoids the commission, but the app may then not mention prices at all.
-2. Payment provider: SSLCommerz, bKash Merchant, ShurjoPay for BDT — and Paddle
-   or Stripe for international? A Bangladeshi entity usually cannot hold a
-   direct Stripe account; confirm before designing around it.
-3. Plan tiers and prices, and which feature keys each tier unlocks.
+1. **Web-only selling.** The mobile apps sign in to an existing account and
+   never mention price, purchase or upgrade — that is what keeps them outside
+   Apple's In-App Purchase rule and its commission. A 402 in the app says the
+   plan is exhausted and stops there; it does not link to a checkout. If in-app
+   upgrade is ever wanted, it means StoreKit plus server-side receipt
+   reconciliation, and it is a separate decision.
+2. **SSLCommerz first for BDT**, because it settles to a Bangladeshi bank
+   account and supports cards, bKash, Nagad and Rocket through one integration.
+   International sale is deferred: a Bangladeshi entity generally cannot hold a
+   direct Stripe account, and Paddle as merchant-of-record is the fallback when
+   there is demand — it also absorbs VAT, which we otherwise would not want to
+   compute per country.
+3. **Two public tiers, FREE and PRO**, already live in
+   `packages/core/entitlements.ts`. PRO is priced at ৳499/month as a
+   placeholder. Prices are a data change, not a code change, so this can move
+   without a migration.
+
+Still genuinely open, and only when billing is actually built: annual pricing,
+trial length, and whether a lapsed subscription drops to FREE or to read-only.
 
 **Blocking the mailbox connector (M28–M29)** 4. v3's own warning, repeated because it is the sharpest risk in the system: an
 app password grants access to the **entire mailbox**, not just bank mail. The
@@ -369,11 +382,30 @@ Operational consequence of the official bot: a bot registered with BotFather
 under a Hishab account, its token in KMS, a webhook endpoint on
 `takatracker.com`, and a rotation runbook.
 
-**Blocking loans and savings (M12–M14)** 8. DPS profit formula, and whether tax/AIT is modelled. 9. Do loans accrue interest, and on what basis?
+**Loans and savings (M12–M14) — decided 2026-08-08**
 
-**Blocking the parser seed rules (M8)** 10. 5–10 real, redacted SMS and email samples per provider — bKash, Nagad,
-Rocket, and the banks you actually use. Nothing useful can be written
-without them.
+Follow standard Bangladeshi and international practice, and **let the user enter
+the rate** rather than hardcoding one:
+
+- **DPS / recurring deposits:** monthly instalments compounded, with the
+  frequency chosen per plan — `profitCalc` already models SIMPLE,
+  COMPOUND_MONTHLY, COMPOUND_QUARTERLY and COMPOUND_YEARLY. The user types the
+  advertised rate; we never infer it. Every projection shows its formula in a
+  tooltip so the number can be checked against the bank's own statement.
+- **Loans between people:** interest is optional and **off by default**, because
+  most household lending in Bangladesh carries none. When it is on, the user
+  picks `NONE`, `SIMPLE` or `FLAT_MONTHLY` and types the rate.
+- **Tax and AIT are not modelled.** Excise duty and AIT on profit vary by
+  balance band and by year, and quietly applying the wrong deduction is worse
+  than showing the gross figure. Projections are labelled as before tax, with a
+  field for the user to record what their bank actually deducted.
+
+**Still blocking the parser seed rules (M8) — deferred by the owner**
+
+5–10 real, redacted SMS and email samples per provider: bKash, Nagad, Rocket and
+the banks actually in use. Nothing useful can be written without them, so M8
+waits. M7 — the ingestion core and the webhook endpoint — does not depend on
+them and can proceed.
 
 ---
 

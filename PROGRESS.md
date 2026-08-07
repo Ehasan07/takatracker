@@ -18,6 +18,7 @@ Last updated: 2026-08-08.
 | M4      | Responsive shell + PWA                                            | done        |
 | M23     | Workspaces + `workspaceId` migration                              | done        |
 | M24     | Entitlements engine + 402 limit responses                         | done        |
+| M36     | Telegram credit-card due reminders                                | done        |
 | M25     | Audit log + admin-visible timeline                                | **next**    |
 | M5      | Reports v1 + filters                                              | after M25   |
 | M6      | Excel/CSV import with mapping UI + export                         | not started |
@@ -27,7 +28,7 @@ Last updated: 2026-08-08.
 
 ### Acceptance evidence
 
-- `pnpm test` — 93 passing: 16 money, 16 ledger, 18 entitlements, 7 parser, 36 API integration.
+- `pnpm test` — 128 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 7 parser, 46 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
@@ -117,6 +118,26 @@ accounts screen disables its button before the user can hit a refusal.
 available at the ceiling. Locking someone out of correcting their own books is a
 worse outcome than letting a count drift, and archiving an account returns its
 slot so the way out of the limit is never "delete your history".
+
+**One official Telegram bot, not a token per user.** A bot token is full control
+of that bot, so collecting one per customer would mean operating a store of
+thousands of live credentials. Binding stores a `chat_id` — an address, not a
+secret — and the single token sits in the server's secret file, out of the
+repository. It also makes muting a one-tap inline button inside Telegram, which
+a per-user bot cannot offer: a bot has one webhook, and in that design it
+belongs to the user.
+
+**Reminders do not stop at the due date.** A cycle's window runs until the next
+bill's window opens, so an unpaid card keeps nagging — it is more urgent late,
+not less. Coverage is continuous, and only a mute or a recorded payment ends a
+cycle. A card added today does not inherit last month's cycle, though: without
+that guard the back-to-back windows would invent a debt the card never had.
+
+**An hourly sweep, not a queue.** The job is idempotent by the day
+(`CardReminderCycle.lastSentOn`), so a restart, an overlap or a second instance
+cannot double-send. BullMQ and a separate worker process would buy scheduling
+guarantees this job does not need. Each workspace is served at 09:00 in its own
+timezone.
 
 **Cascading deletes.** `LedgerEntry.account` originally had no `onDelete`, so
 Postgres refused to delete a `User` — the cascade stopped at the ledger. Spec §9

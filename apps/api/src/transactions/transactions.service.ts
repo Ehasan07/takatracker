@@ -18,6 +18,7 @@ import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
+import { CardRemindersService } from '../notifications/card-reminders.service';
 
 /**
  * Who is asking, and on whose behalf. `workspaceId` is the tenant guard;
@@ -68,6 +69,7 @@ export class TransactionsService {
     private readonly prisma: PrismaService,
     private readonly accounts: AccountsService,
     private readonly entitlements: EntitlementsService,
+    private readonly cardReminders: CardRemindersService,
   ) {}
 
   /** Guard every referenced row belongs to the caller (spec §9). */
@@ -135,6 +137,14 @@ export class TransactionsService {
       },
       include: txInclude,
     });
+
+    /* Recording money into a credit card ends that cycle's reminders. Fired
+     * after the write and deliberately not awaited into the response path —
+     * a notification concern must never fail a ledger write. */
+    void this.cardReminders.autoMuteOnPayment(
+      ctx.workspaceId,
+      entries.map((e) => e.accountId),
+    );
 
     return this.present(created, tz);
   }

@@ -53,6 +53,11 @@ export const createAccountSchema = z.object({
   icon: z.string().max(40).optional(),
   color: z.string().max(20).optional(),
   sortOrder: z.number().int().default(0),
+  /* Credit cards only. A due day past the end of a short month is clamped, so
+   * 31 means "the 28th" in February rather than spilling into March. */
+  statementDayOfMonth: z.number().int().min(1).max(31).nullish(),
+  dueDayOfMonth: z.number().int().min(1).max(31).nullish(),
+  reminderLeadDays: z.number().int().min(1).max(28).nullish(),
 });
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 

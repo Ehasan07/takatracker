@@ -38,6 +38,7 @@ model User {
   createdTxns      Transaction[]  @relation("TransactionAuthor")
   refreshTokens    RefreshToken[]
   sentInvitations  Invitation[]   @relation("InvitationSender")
+  telegram         TelegramConnection[]
 }
 
 /// Rotating refresh tokens. A whole family is revoked when a used token is
@@ -146,6 +147,11 @@ model Workspace {
   /// Defines the ledger day. All date arithmetic resolves against this.
   timezone     String          @default("Asia/Dhaka")
   trialEndsAt  DateTime?
+  /// Days of notice before a credit-card due date, unless a card overrides it.
+  creditCardReminderLeadDays Int     @default(7)
+  /// Recording money into a card mutes that cycle. On by default; the manual
+  /// control stays either way.
+  autoMuteOnCardPayment      Boolean @default(true)
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   deletedAt    DateTime?
@@ -155,6 +161,8 @@ model Workspace {
   overrides    WorkspaceFeatureOverride[]
   memberships  Membership[]
   invitations  Invitation[]
+  telegram     TelegramConnection[]
+  cardCycles   CardReminderCycle[]
   accounts     Account[]
   categories   Category[]
   people       Person[]
@@ -246,12 +254,19 @@ model Account {
   /// Set only on the hidden nominal accounts (SYSTEM_INCOME / SYSTEM_EXPENSE /
   /// SYSTEM_EQUITY) that make the double entry balance. Never shown in the UI.
   systemKey           String?
+  /// Credit cards only. 1–31; a due day past the end of a short month is
+  /// clamped to its last day, so the 31st is the 28th in February.
+  statementDayOfMonth Int?
+  dueDayOfMonth       Int?
+  /// null falls back to the workspace default.
+  reminderLeadDays    Int?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
   deletedAt           DateTime?
 
-  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  entries   LedgerEntry[]
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entries        LedgerEntry[]
+  reminderCycles CardReminderCycle[]
 
   @@unique([workspaceId, systemKey])
   @@index([workspaceId, isArchived, sortOrder])
@@ -301,6 +316,92 @@ model Person {
   transactions Transaction[]
 
   @@index([workspaceId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+enum TelegramMode {
+  /// The official Hishab bot. We store a chat id, which is an address, not a
+  /// secret — no per-user credential to guard.
+  SHARED_BOT
+  /// The member brought their own bot. Its token is a credential and is
+  /// handled exactly like an IMAP password (v3 §C6).
+  OWN_BOT
+}
+
+enum TelegramStatus {
+  PENDING
+  ACTIVE
+  AUTH_FAILED
+  DISABLED
+  REVOKED
+}
+
+model TelegramConnection {
+  id          String         @id @default(cuid())
+  workspaceId String
+  userId      String
+  mode        TelegramMode   @default(SHARED_BOT)
+  /// Null until the binding handshake completes.
+  chatId      String?
+  /// Only ever set in OWN_BOT mode. Points at the secret store; the token
+  /// itself is never in this table and never in an API response.
+  botTokenRef String?
+  botUsername String?
+  /// Single-use, hashed, short-lived. Matched when Telegram delivers /start.
+  bindingTokenHash String?
+  bindingExpiresAt DateTime?
+  isEnabled   Boolean        @default(false)
+  verifiedAt  DateTime?
+  status      TelegramStatus @default(PENDING)
+  failureCount Int           @default(0)
+  lastError   String?
+  lastSentAt  DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  revokedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@unique([bindingTokenHash])
+  @@index([status])
+}
+
+enum CardMuteReason {
+  MANUAL
+  PAID
+}
+
+/// One row per card per billing cycle. Muting writes to the current row, so the
+/// next month is a fresh row and reminders resume with no un-mute job.
+model CardReminderCycle {
+  id            String          @id @default(cuid())
+  workspaceId   String
+  accountId     String
+  /// `YYYY-MM`
+  cycleMonth    String
+  dueDate       DateTime
+  windowStart   DateTime
+  windowEnd     DateTime
+  mutedAt       DateTime?
+  mutedByUserId String?
+  mutedReason   CardMuteReason?
+  /// `YYYY-MM-DD` in the workspace timezone. The idempotency guard: a worker
+  /// restart must never send twice in one day.
+  lastSentOn    String?
+  sentCount     Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, cycleMonth])
+  @@index([workspaceId, cycleMonth])
 }
 
 // ---------------------------------------------------------------------------
