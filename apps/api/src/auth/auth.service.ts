@@ -13,7 +13,8 @@ export interface TokenPair {
 }
 
 export interface AuthResult extends TokenPair {
-  user: { id: string; email: string; name: string; locale: string; timezone: string };
+  user: { id: string; email: string; name: string; locale: string };
+  workspace: { id: string; name: string; currency: string; timezone: string };
 }
 
 const REFRESH_TTL_DAYS = 30;
@@ -47,7 +48,7 @@ export class AuthService {
 
     const passwordHash = await argon2.hash(input.password, ARGON_OPTIONS);
 
-    const user = await this.prisma.$transaction(async (tx) => {
+    const { user, workspace } = await this.prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
           email,
@@ -55,14 +56,25 @@ export class AuthService {
           phone: input.phone,
           passwordHash,
           locale: input.locale,
+          notifyTimezone: input.timezone,
+        },
+      });
+
+      // Every account gets a workspace of its own. Sharing is a later feature
+      // flag, not a later migration.
+      const space = await tx.workspace.create({
+        data: {
+          name: input.name,
+          ownerUserId: created.id,
           timezone: input.timezone,
+          memberships: { create: { userId: created.id, role: 'OWNER' } },
         },
       });
 
       // Hidden nominal accounts that make the double entry balance.
       await tx.account.createMany({
         data: SYSTEM_ACCOUNT_SEED.map((a, i) => ({
-          userId: created.id,
+          workspaceId: space.id,
           name: a.name,
           type: a.type,
           systemKey: a.systemKey,
@@ -73,7 +85,7 @@ export class AuthService {
       // Bangladesh-appropriate default category tree.
       await tx.category.createMany({
         data: DEFAULT_CATEGORIES.map((c) => ({
-          userId: created.id,
+          workspaceId: space.id,
           name: c.name,
           nameBn: c.nameBn,
           kind: c.kind,
@@ -83,11 +95,11 @@ export class AuthService {
         })),
       });
 
-      return created;
+      return { user: created, workspace: space };
     });
 
-    this.logger.log(`New user ${user.id}`);
-    return this.issue(user.id, user.email, user.name, user.locale, user.timezone);
+    this.logger.log(`New user ${user.id} with workspace ${workspace.id}`);
+    return this.issue(user, workspace);
   }
 
   async login(input: LoginInput, deviceId?: string, userAgent?: string): Promise<AuthResult> {
@@ -100,10 +112,8 @@ export class AuthService {
 
     if (!user || !ok) throw new UnauthorizedException('ইমেইল বা পাসওয়ার্ড ভুল');
 
-    return this.issue(user.id, user.email, user.name, user.locale, user.timezone, {
-      deviceId,
-      userAgent,
-    });
+    const workspace = await this.defaultWorkspace(user.id);
+    return this.issue(user, workspace, { deviceId, userAgent });
   }
 
   private static dummyHashCache: string | null = null;
@@ -112,16 +122,24 @@ export class AuthService {
     return AuthService.dummyHashCache;
   }
 
+  /** The workspace a session lands in: the one they own, else the oldest they belong to. */
+  private async defaultWorkspace(userId: string) {
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId, status: 'ACTIVE', workspace: { deletedAt: null } },
+      orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
+      include: { workspace: true },
+    });
+    if (!membership) throw new UnauthorizedException('কোনো ওয়ার্কস্পেস পাওয়া যায়নি');
+    return membership.workspace;
+  }
+
   private async issue(
-    userId: string,
-    email: string,
-    name: string,
-    locale: string,
-    timezone: string,
+    user: { id: string; email: string; name: string; locale: string },
+    workspace: { id: string; name: string; currency: string; timezone: string },
     meta: { deviceId?: string; userAgent?: string; familyId?: string } = {},
   ): Promise<AuthResult> {
     const accessToken = await this.jwt.signAsync(
-      { sub: userId, email },
+      { sub: user.id, email: user.email, ws: workspace.id },
       { secret: process.env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL },
     );
 
@@ -130,7 +148,7 @@ export class AuthService {
 
     await this.prisma.refreshToken.create({
       data: {
-        userId,
+        userId: user.id,
         familyId: meta.familyId ?? randomBytes(16).toString('hex'),
         tokenHash: AuthService.hashToken(refreshToken),
         deviceId: meta.deviceId,
@@ -143,7 +161,13 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn: 15 * 60,
-      user: { id: userId, email, name, locale, timezone },
+      user: { id: user.id, email: user.email, name: user.name, locale: user.locale },
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
+        currency: workspace.currency,
+        timezone: workspace.timezone,
+      },
     };
   }
 
@@ -173,14 +197,12 @@ export class AuthService {
       throw new UnauthorizedException('সেশন মেয়াদোত্তীর্ণ');
     }
 
-    const next = await this.issue(
-      stored.userId,
-      stored.user.email,
-      stored.user.name,
-      stored.user.locale,
-      stored.user.timezone,
-      { deviceId, userAgent, familyId: stored.familyId },
-    );
+    const workspace = await this.defaultWorkspace(stored.userId);
+    const next = await this.issue(stored.user, workspace, {
+      deviceId,
+      userAgent,
+      familyId: stored.familyId,
+    });
 
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
@@ -202,7 +224,7 @@ export class AuthService {
     });
   }
 
-  async me(userId: string) {
+  async me(userId: string, workspaceId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: {
@@ -211,11 +233,20 @@ export class AuthService {
         name: true,
         phone: true,
         locale: true,
-        baseCurrency: true,
-        timezone: true,
+        notifyTimezone: true,
         createdAt: true,
       },
     });
-    return user;
+
+    const membership = await this.prisma.membership.findUniqueOrThrow({
+      where: { workspaceId_userId: { workspaceId, userId } },
+      include: {
+        workspace: {
+          select: { id: true, name: true, currency: true, timezone: true, status: true },
+        },
+      },
+    });
+
+    return { ...user, role: membership.role, workspace: membership.workspace };
   }
 }

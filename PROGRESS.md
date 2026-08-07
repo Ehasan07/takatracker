@@ -3,7 +3,7 @@
 Handoff notes for Hishab. Keep this current — it is the first thing to read
 when picking the project back up.
 
-Last updated: 2026-08-06.
+Last updated: 2026-08-07.
 
 ---
 
@@ -16,8 +16,9 @@ Last updated: 2026-08-06.
 | M2      | Double-entry engine in `packages/core` + Transaction API          | done        |
 | M3      | Web: transaction list, add/edit, accounts, transfers              | done        |
 | M4      | Responsive shell + PWA                                            | done        |
-| M23     | Workspaces + `workspaceId` migration                              | **next**    |
-| M5      | Reports v1 + filters                                              | after M23   |
+| M23     | Workspaces + `workspaceId` migration                              | done        |
+| M24     | Entitlements engine + 402 limit responses                         | **next**    |
+| M5      | Reports v1 + filters                                              | after M24   |
 | M6      | Excel/CSV import with mapping UI + export                         | not started |
 | M7–M11  | Ingestion, parsing, draft inbox, dedupe, email channel            | not started |
 | M12–M14 | People/loans, savings/insurance, assets/net worth                 | not started |
@@ -25,12 +26,18 @@ Last updated: 2026-08-06.
 
 ### Acceptance evidence
 
-- `pnpm test` — 62 passing: 16 money, 16 ledger, 7 parser, 23 API integration.
+- `pnpm test` — 66 passing: 16 money, 16 ledger, 7 parser, 27 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
-- User A cannot read, edit or delete user B's rows by ID (test asserts 404 on
-  accounts, transactions, PATCH and cross-account transfer).
+- Workspace isolation holds on every surface that exists: read by ID, write by
+  ID, delete, restore, reconcile, both lists, text search, filtering by another
+  tenant's account ID, the summary aggregate, categories, and a cross-tenant
+  transfer. Each new surface gets a case as it lands.
+- A ledger entry whose workspace differs from its transaction's is rejected by
+  the database, proven by a test that bypasses the service layer.
+- A suspended membership or workspace invalidates an already-issued token on the
+  very next request.
 - Web bundle: 102 kB shared first-load JS, heaviest route 155 kB — inside the
   250 kB budget.
 
@@ -74,6 +81,23 @@ intermittent failure that looked like flakiness.
 schemas from `packages/shared` that the client uses, through a small
 `ZodValidationPipe`. Nest's `ValidationPipe` was removed; it pulls in
 `class-validator` and would have meant two sources of truth for the contract.
+
+**The tenant guard is `workspaceId`, and the JWT carries it.** `activeWorkspaceId`
+rides in the access token, and `JwtStrategy` re-reads the membership on every
+request rather than trusting the signature — so suspending a member or a
+workspace locks the session out immediately instead of fifteen minutes later
+when the token would have expired. Two tests cover exactly that.
+
+**`LedgerEntry` carries a denormalised `workspaceId`.** It removes a join from
+every balance aggregate, and it is only safe because a trigger refuses any entry
+whose workspace differs from its transaction's — the same belt-and-braces
+reasoning as the balance invariant. Both are covered by tests that bypass the
+service layer.
+
+**Tenant context instead of a user id.** Services take
+`{ id, workspaceId, timezone }`, which `AuthUser` satisfies structurally. The
+timezone is already loaded to validate the membership, so this also deleted a
+per-request `SELECT` on the user table.
 
 **Cascading deletes.** `LedgerEntry.account` originally had no `onDelete`, so
 Postgres refused to delete a `User` — the cascade stopped at the ledger. Spec §9

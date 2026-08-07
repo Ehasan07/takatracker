@@ -13,7 +13,7 @@ export class CategoriesController {
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('kind') kind?: 'INCOME' | 'EXPENSE') {
     return this.prisma.category.findMany({
-      where: { userId: user.id, deletedAt: null, ...(kind ? { kind } : {}) },
+      where: { workspaceId: user.workspaceId, deletedAt: null, ...(kind ? { kind } : {}) },
       orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
       select: {
         id: true,
@@ -35,7 +35,7 @@ export class CategoriesController {
   ) {
     return this.prisma.category.create({
       data: {
-        userId: user.id,
+        workspaceId: user.workspaceId,
         name: body.name,
         nameBn: body.nameBn ?? body.name,
         kind: body.kind,

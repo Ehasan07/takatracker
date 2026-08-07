@@ -32,7 +32,7 @@ export async function createTestApp(): Promise<TestContext> {
 /** Wipe every table between suites. Order matters only for readability — CASCADE does the work. */
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "LedgerEntry", "Transaction", "Category", "Account", "Person", "RefreshToken", "User" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "LedgerEntry", "Transaction", "Category", "Account", "Person", "Invitation", "Membership", "Workspace", "RefreshToken", "User" RESTART IDENTITY CASCADE',
   );
 }
 
@@ -45,6 +45,7 @@ export function uniqueEmail(prefix = 'user'): string {
 export interface SignedUpUser {
   id: string;
   email: string;
+  workspaceId: string;
   accessToken: string;
   refreshToken: string;
 }
@@ -59,6 +60,7 @@ export async function signup(ctx: TestContext, email = uniqueEmail()): Promise<S
   return {
     id: res.body.user.id as string,
     email,
+    workspaceId: res.body.workspace.id as string,
     accessToken: res.body.accessToken as string,
     refreshToken: res.body.refreshToken as string,
   };

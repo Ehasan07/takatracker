@@ -33,9 +33,17 @@ async function main(): Promise<void> {
     },
   });
 
+  const workspace = await prisma.workspace.create({
+    data: {
+      name: 'ডেমো',
+      ownerUserId: user.id,
+      memberships: { create: { userId: user.id, role: 'OWNER' } },
+    },
+  });
+
   await prisma.account.createMany({
     data: SYSTEM_ACCOUNT_SEED.map((a, i) => ({
-      userId: user.id,
+      workspaceId: workspace.id,
       name: a.name,
       type: a.type,
       systemKey: a.systemKey,
@@ -45,7 +53,7 @@ async function main(): Promise<void> {
 
   await prisma.category.createMany({
     data: DEFAULT_CATEGORIES.map((c) => ({
-      userId: user.id,
+      workspaceId: workspace.id,
       name: c.name,
       nameBn: c.nameBn,
       kind: c.kind,
@@ -56,11 +64,11 @@ async function main(): Promise<void> {
   });
 
   const cash = await prisma.account.create({
-    data: { userId: user.id, name: 'নগদ টাকা', type: 'CASH', sortOrder: 1 },
+    data: { workspaceId: workspace.id, name: 'নগদ টাকা', type: 'CASH', sortOrder: 1 },
   });
   const bank = await prisma.account.create({
     data: {
-      userId: user.id,
+      workspaceId: workspace.id,
       name: 'ব্র্যাক ব্যাংক',
       type: 'BANK',
       institution: 'BRAC Bank',
@@ -71,7 +79,7 @@ async function main(): Promise<void> {
   });
   const bkash = await prisma.account.create({
     data: {
-      userId: user.id,
+      workspaceId: workspace.id,
       name: 'বিকাশ',
       type: 'MOBILE_WALLET',
       institution: 'bKash',
@@ -82,12 +90,12 @@ async function main(): Promise<void> {
   });
 
   const system = {
-    incomeAccountId: (await findSystem(user.id, 'SYSTEM_INCOME')).id,
-    expenseAccountId: (await findSystem(user.id, 'SYSTEM_EXPENSE')).id,
-    equityAccountId: (await findSystem(user.id, 'SYSTEM_EQUITY')).id,
+    incomeAccountId: (await findSystem(workspace.id, 'SYSTEM_INCOME')).id,
+    expenseAccountId: (await findSystem(workspace.id, 'SYSTEM_EXPENSE')).id,
+    equityAccountId: (await findSystem(workspace.id, 'SYSTEM_EQUITY')).id,
   };
 
-  const categories = await prisma.category.findMany({ where: { userId: user.id } });
+  const categories = await prisma.category.findMany({ where: { workspaceId: workspace.id } });
   const cat = (nameBn: string): string => {
     const found = categories.find((c) => c.nameBn === nameBn);
     if (!found) throw new Error(`Seed category missing: ${nameBn}`);
@@ -175,13 +183,15 @@ async function main(): Promise<void> {
     );
     await prisma.transaction.create({
       data: {
-        userId: user.id,
+        workspaceId: workspace.id,
+        createdByUserId: user.id,
         date: fromLocalDateString(`${month}-${row.d}`),
         type: row.t,
         description: row.desc,
         source: 'MANUAL',
         entries: {
           create: entries.map((e) => ({
+            workspaceId: workspace.id,
             accountId: e.accountId,
             categoryId: e.categoryId ?? null,
             amountMinor: BigInt(e.amountMinor),
@@ -197,8 +207,8 @@ async function main(): Promise<void> {
   console.log(`Seeded ${DEMO_EMAIL} / ${DEMO_PASSWORD} with ${rows.length} transactions.`);
 }
 
-async function findSystem(userId: string, systemKey: string) {
-  return prisma.account.findFirstOrThrow({ where: { userId, systemKey } });
+async function findSystem(workspaceId: string, systemKey: string) {
+  return prisma.account.findFirstOrThrow({ where: { workspaceId, systemKey } });
 }
 
 main()

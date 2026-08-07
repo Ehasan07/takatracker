@@ -18,6 +18,18 @@ import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 
+/**
+ * Who is asking, and on whose behalf. `workspaceId` is the tenant guard;
+ * `id` only records authorship. The timezone rides along because the JWT
+ * strategy has already loaded it to validate the membership, so every ledger
+ * query gets it for free instead of re-reading the user row.
+ */
+export interface TenantContext {
+  id: string;
+  workspaceId: string;
+  timezone: string;
+}
+
 export interface TransactionView {
   id: string;
   date: string;
@@ -56,40 +68,32 @@ export class TransactionsService {
     private readonly accounts: AccountsService,
   ) {}
 
-  private async timezone(userId: string): Promise<string> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { timezone: true },
-    });
-    return user.timezone;
-  }
-
   /** Guard every referenced row belongs to the caller (spec §9). */
   private async assertOwnership(
-    userId: string,
+    workspaceId: string,
     input: { accountId: string; counterAccountId?: string | null; categoryId?: string | null },
   ): Promise<void> {
     const accountIds = [input.accountId, input.counterAccountId].filter(
       (v): v is string => typeof v === 'string',
     );
     const found = await this.prisma.account.count({
-      where: { id: { in: accountIds }, userId, deletedAt: null, systemKey: null },
+      where: { id: { in: accountIds }, workspaceId, deletedAt: null, systemKey: null },
     });
     if (found !== new Set(accountIds).size) {
       throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     }
     if (input.categoryId) {
       const cat = await this.prisma.category.count({
-        where: { id: input.categoryId, userId, deletedAt: null },
+        where: { id: input.categoryId, workspaceId, deletedAt: null },
       });
       if (cat !== 1) throw new NotFoundException('ক্যাটাগরি পাওয়া যায়নি');
     }
   }
 
-  async create(userId: string, input: SimpleTransactionInput): Promise<TransactionView> {
-    await this.assertOwnership(userId, input);
-    const system = await this.accounts.systemAccounts(userId);
-    const tz = await this.timezone(userId);
+  async create(ctx: TenantContext, input: SimpleTransactionInput): Promise<TransactionView> {
+    await this.assertOwnership(ctx.workspaceId, input);
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const tz = ctx.timezone;
 
     const entries = expandSimpleTransaction(
       {
@@ -106,7 +110,8 @@ export class TransactionsService {
 
     const created = await this.prisma.transaction.create({
       data: {
-        userId,
+        workspaceId: ctx.workspaceId,
+        createdByUserId: ctx.id,
         date: fromLocalDateString(input.date, tz),
         type: input.type,
         description: input.description,
@@ -114,7 +119,9 @@ export class TransactionsService {
         payee: input.payee,
         externalRef: input.externalRef,
         source: input.source,
-        entries: { create: entries.map(TransactionsService.toEntryData) },
+        entries: {
+          create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
+        },
       },
       include: txInclude,
     });
@@ -122,8 +129,12 @@ export class TransactionsService {
     return this.present(created, tz);
   }
 
-  private static toEntryData(e: EntryDraft): Prisma.LedgerEntryCreateWithoutTransactionInput {
+  private static toEntryData(
+    e: EntryDraft,
+    workspaceId: string,
+  ): Prisma.LedgerEntryCreateWithoutTransactionInput {
     return {
+      workspace: { connect: { id: workspaceId } },
       account: { connect: { id: e.accountId } },
       category: e.categoryId ? { connect: { id: e.categoryId } } : undefined,
       amountMinor: BigInt(e.amountMinor),
@@ -134,18 +145,18 @@ export class TransactionsService {
   }
 
   async update(
-    userId: string,
+    ctx: TenantContext,
     id: string,
     input: SimpleTransactionInput,
   ): Promise<TransactionView> {
     const existing = await this.prisma.transaction.findFirst({
-      where: { id, userId, deletedAt: null },
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
 
-    await this.assertOwnership(userId, input);
-    const system = await this.accounts.systemAccounts(userId);
-    const tz = await this.timezone(userId);
+    await this.assertOwnership(ctx.workspaceId, input);
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const tz = ctx.timezone;
 
     const entries = expandSimpleTransaction(
       {
@@ -170,7 +181,9 @@ export class TransactionsService {
           notes: input.notes,
           payee: input.payee,
           externalRef: input.externalRef,
-          entries: { create: entries.map(TransactionsService.toEntryData) },
+          entries: {
+            create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
+          },
         },
         include: txInclude,
       });
@@ -179,9 +192,9 @@ export class TransactionsService {
     return this.present(updated, tz);
   }
 
-  async remove(userId: string, id: string): Promise<{ id: string }> {
+  async remove(ctx: TenantContext, id: string): Promise<{ id: string }> {
     const existing = await this.prisma.transaction.findFirst({
-      where: { id, userId, deletedAt: null },
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
     // Soft delete keeps the row for sync; the balance query filters it out.
@@ -194,32 +207,32 @@ export class TransactionsService {
    * gesture on a phone is easy to trigger by accident, and an accounting app
    * must never lose an entry to a slip of the thumb.
    */
-  async restore(userId: string, id: string): Promise<TransactionView> {
+  async restore(ctx: TenantContext, id: string): Promise<TransactionView> {
     const existing = await this.prisma.transaction.findFirst({
-      where: { id, userId, deletedAt: { not: null } },
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: { not: null } },
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: null } });
-    return this.findOne(userId, id);
+    return this.findOne(ctx, id);
   }
 
-  async findOne(userId: string, id: string): Promise<TransactionView> {
+  async findOne(ctx: TenantContext, id: string): Promise<TransactionView> {
     const tx = await this.prisma.transaction.findFirst({
-      where: { id, userId, deletedAt: null },
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
       include: txInclude,
     });
     if (!tx) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
-    return this.present(tx, await this.timezone(userId));
+    return this.present(tx, ctx.timezone);
   }
 
   async list(
-    userId: string,
+    ctx: TenantContext,
     query: TransactionQuery,
   ): Promise<{ items: TransactionView[]; nextCursor: string | null }> {
-    const tz = await this.timezone(userId);
+    const tz = ctx.timezone;
 
     const where: Prisma.TransactionWhereInput = {
-      userId,
+      workspaceId: ctx.workspaceId,
       deletedAt: null,
       ...(query.type ? { type: query.type } : {}),
       ...(query.source ? { source: query.source } : {}),
@@ -274,7 +287,9 @@ export class TransactionsService {
     const page = hasMore ? rows.slice(0, query.limit) : rows;
     const items = page.map((row) => this.present(row, tz, query.accountId));
 
-    if (query.accountId) await this.attachRunningBalance(userId, query.accountId, items, page);
+    if (query.accountId) {
+      await this.attachRunningBalance(ctx.workspaceId, query.accountId, items, page);
+    }
 
     return { items, nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
   }
@@ -284,7 +299,7 @@ export class TransactionsService {
    * newer than the top row, then walk the page downwards.
    */
   private async attachRunningBalance(
-    userId: string,
+    workspaceId: string,
     accountId: string,
     items: TransactionView[],
     rows: TxWithEntries[],
@@ -293,7 +308,7 @@ export class TransactionsService {
     if (!first) return;
 
     const account = await this.prisma.account.findFirst({
-      where: { id: accountId, userId },
+      where: { id: accountId, workspaceId },
       select: { type: true },
     });
     if (!account) return;
@@ -306,7 +321,7 @@ export class TransactionsService {
       FROM "LedgerEntry" e
       JOIN "Transaction" t ON t."id" = e."transactionId"
       WHERE e."accountId" = ${accountId}
-        AND t."userId" = ${userId}
+        AND t."workspaceId" = ${workspaceId}
         AND t."deletedAt" IS NULL
         AND (t."date", t."createdAt", t."id") > (${first.date}, ${first.createdAt}, ${first.id})
       GROUP BY e."direction"
@@ -317,7 +332,7 @@ export class TransactionsService {
       0,
     );
 
-    const currentBalance = (await this.accounts.balances(userId)).get(accountId) ?? 0;
+    const currentBalance = (await this.accounts.balances(workspaceId)).get(accountId) ?? 0;
     // Balance right after the newest row on this page.
     let running = currentBalance - newerEffect;
 
@@ -333,21 +348,21 @@ export class TransactionsService {
 
   /** Reconcile: user enters the real balance, we book the difference. */
   async reconcile(
-    userId: string,
+    ctx: TenantContext,
     accountId: string,
     input: ReconcileInput,
   ): Promise<{ delta: number; transaction: TransactionView | null }> {
     const account = await this.prisma.account.findFirst({
-      where: { id: accountId, userId, deletedAt: null, systemKey: null },
+      where: { id: accountId, workspaceId: ctx.workspaceId, deletedAt: null, systemKey: null },
     });
     if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
 
-    const balances = await this.accounts.balances(userId);
+    const balances = await this.accounts.balances(ctx.workspaceId);
     const delta = reconciliationDelta(balances.get(accountId) ?? 0, input.actualBalanceMinor);
     if (delta === 0) return { delta: 0, transaction: null };
 
-    const system = await this.accounts.systemAccounts(userId);
-    const tz = await this.timezone(userId);
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const tz = ctx.timezone;
     const entries = expandSimpleTransaction(
       { type: 'ADJUSTMENT', amountMinor: delta, accountId },
       system,
@@ -356,12 +371,15 @@ export class TransactionsService {
 
     const created = await this.prisma.transaction.create({
       data: {
-        userId,
+        workspaceId: ctx.workspaceId,
+        createdByUserId: ctx.id,
         date: fromLocalDateString(input.date, tz),
         type: 'ADJUSTMENT',
         description: input.note ?? 'ব্যালেন্স সমন্বয়',
         source: 'MANUAL',
-        entries: { create: entries.map(TransactionsService.toEntryData) },
+        entries: {
+          create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
+        },
       },
       include: txInclude,
     });
@@ -371,16 +389,17 @@ export class TransactionsService {
 
   /** Month totals for the dashboard. */
   async summary(
-    userId: string,
+    ctx: TenantContext,
     from: Date,
     to: Date,
   ): Promise<{ incomeMinor: number; expenseMinor: number; netMinor: number }> {
-    const system = await this.accounts.systemAccounts(userId);
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
     const grouped = await this.prisma.ledgerEntry.groupBy({
       by: ['accountId'],
       where: {
+        workspaceId: ctx.workspaceId,
         accountId: { in: [system.incomeAccountId, system.expenseAccountId] },
-        transaction: { userId, deletedAt: null, date: { gte: from, lt: to } },
+        transaction: { deletedAt: null, date: { gte: from, lt: to } },
       },
       _sum: { amountMinor: true },
     });
@@ -395,26 +414,27 @@ export class TransactionsService {
 
   /** Expense (or income) split by category for the dashboard and reports. */
   async byCategory(
-    userId: string,
+    ctx: TenantContext,
     kind: 'INCOME' | 'EXPENSE',
     from: Date,
     to: Date,
   ): Promise<{ categoryId: string | null; name: string; totalMinor: number }[]> {
-    const system = await this.accounts.systemAccounts(userId);
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
     const nominalId = kind === 'INCOME' ? system.incomeAccountId : system.expenseAccountId;
 
     const grouped = await this.prisma.ledgerEntry.groupBy({
       by: ['categoryId'],
       where: {
+        workspaceId: ctx.workspaceId,
         accountId: nominalId,
-        transaction: { userId, deletedAt: null, date: { gte: from, lt: to } },
+        transaction: { deletedAt: null, date: { gte: from, lt: to } },
       },
       _sum: { amountMinor: true },
     });
 
     const ids = grouped.map((g) => g.categoryId).filter((v): v is string => Boolean(v));
     const cats = await this.prisma.category.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, workspaceId: ctx.workspaceId },
       select: { id: true, name: true, nameBn: true },
     });
     const nameById = new Map(cats.map((c) => [c.id, c.nameBn ?? c.name]));

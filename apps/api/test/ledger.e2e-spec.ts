@@ -163,19 +163,29 @@ describe('ledger', () => {
   it('rejects an unbalanced transaction at the database level', async () => {
     // Bypass the service entirely: this is the DB trigger's job.
     const system = await ctx.prisma.account.findFirstOrThrow({
-      where: { userId: user.id, systemKey: 'SYSTEM_EXPENSE' },
+      where: { workspaceId: user.workspaceId, systemKey: 'SYSTEM_EXPENSE' },
     });
 
     await expect(
       ctx.prisma.transaction.create({
         data: {
-          userId: user.id,
+          workspaceId: user.workspaceId,
           date: new Date(),
           type: 'EXPENSE',
           entries: {
             create: [
-              { accountId: system.id, amountMinor: 5000n, direction: 'DEBIT' },
-              { accountId: cashId, amountMinor: 4999n, direction: 'CREDIT' },
+              {
+                workspaceId: user.workspaceId,
+                accountId: system.id,
+                amountMinor: 5000n,
+                direction: 'DEBIT',
+              },
+              {
+                workspaceId: user.workspaceId,
+                accountId: cashId,
+                amountMinor: 4999n,
+                direction: 'CREDIT',
+              },
             ],
           },
         },
@@ -187,10 +197,19 @@ describe('ledger', () => {
     await expect(
       ctx.prisma.transaction.create({
         data: {
-          userId: user.id,
+          workspaceId: user.workspaceId,
           date: new Date(),
           type: 'EXPENSE',
-          entries: { create: [{ accountId: cashId, amountMinor: 5000n, direction: 'DEBIT' }] },
+          entries: {
+            create: [
+              {
+                workspaceId: user.workspaceId,
+                accountId: cashId,
+                amountMinor: 5000n,
+                direction: 'DEBIT',
+              },
+            ],
+          },
         },
       }),
     ).rejects.toThrow(/at least two/);
@@ -298,7 +317,7 @@ describe('ledger', () => {
   });
 });
 
-describe('tenant isolation', () => {
+describe('workspace isolation', () => {
   let ctx: TestContext;
 
   beforeAll(async () => {
@@ -310,9 +329,16 @@ describe('tenant isolation', () => {
     await ctx.app.close();
   });
 
-  it('user A cannot read, edit or delete user B rows by ID', async () => {
+  /**
+   * Spec §9 / v3 §A1. The guard is `workspaceId`, and it has to hold on every
+   * surface that returns data — not just a fetch by ID. Each new surface
+   * (export, AI query, sync pull, webhook ingest) gets a case here as it lands.
+   */
+  it('a member of one workspace cannot reach another by ID, list, search or write', async () => {
     const alice = await signup(ctx);
     const bob = await signup(ctx);
+
+    expect(alice.workspaceId).not.toBe(bob.workspaceId);
 
     const account = await ctx
       .http()
@@ -321,8 +347,8 @@ describe('tenant isolation', () => {
       .send({ name: 'অ্যালিসের নগদ', type: 'CASH' })
       .expect(201);
 
-    const cats = await ctx.http().get('/v1/categories').set(auth(alice)).expect(200);
-    const categoryId = cats.body[0].id;
+    const aliceCats = await ctx.http().get('/v1/categories').set(auth(alice)).expect(200);
+    const categoryId = aliceCats.body.find((c: { kind: string }) => c.kind === 'EXPENSE').id;
 
     const txn = await ctx
       .http()
@@ -334,20 +360,68 @@ describe('tenant isolation', () => {
         amountMinor: 1000,
         accountId: account.body.id,
         categoryId,
+        description: 'গোপন লেনদেন',
       })
       .expect(201);
 
+    // --- read by ID
     await ctx.http().get(`/v1/accounts/${account.body.id}`).set(auth(bob)).expect(404);
     await ctx.http().get(`/v1/transactions/${txn.body.id}`).set(auth(bob)).expect(404);
+
+    // --- write and delete by ID
     await ctx.http().delete(`/v1/transactions/${txn.body.id}`).set(auth(bob)).expect(404);
+    await ctx.http().post(`/v1/transactions/${txn.body.id}/restore`).set(auth(bob)).expect(404);
     await ctx
       .http()
       .patch(`/v1/accounts/${account.body.id}`)
       .set(auth(bob))
       .send({ name: 'hijacked' })
       .expect(404);
+    await ctx.http().delete(`/v1/accounts/${account.body.id}`).set(auth(bob)).expect(404);
 
-    // Bob cannot post a transaction into Alice's account either.
+    // --- reconcile
+    await ctx
+      .http()
+      .post(`/v1/accounts/${account.body.id}/reconcile`)
+      .set(auth(bob))
+      .send({ date: today, actualBalanceMinor: 999999 })
+      .expect(404);
+
+    // --- lists
+    const bobAccounts = await ctx.http().get('/v1/accounts').set(auth(bob)).expect(200);
+    expect(bobAccounts.body).toHaveLength(0);
+
+    const bobList = await ctx.http().get('/v1/transactions').set(auth(bob)).expect(200);
+    expect(bobList.body.items).toHaveLength(0);
+
+    // --- search: the filter must not become a way around the guard
+    const bobSearch = await ctx
+      .http()
+      .get('/v1/transactions')
+      .query({ q: 'গোপন' })
+      .set(auth(bob))
+      .expect(200);
+    expect(bobSearch.body.items).toHaveLength(0);
+
+    // --- filtering by another workspace's account id returns nothing
+    const bobFiltered = await ctx
+      .http()
+      .get('/v1/transactions')
+      .query({ accountId: account.body.id })
+      .set(auth(bob))
+      .expect(200);
+    expect(bobFiltered.body.items).toHaveLength(0);
+
+    // --- aggregates must not leak totals
+    const bobSummary = await ctx.http().get('/v1/transactions/summary').set(auth(bob)).expect(200);
+    expect(bobSummary.body.expenseMinor).toBe(0);
+    expect(bobSummary.body.incomeMinor).toBe(0);
+    expect(bobSummary.body.expenseByCategory).toHaveLength(0);
+
+    // --- categories are per workspace, and Alice's ID is not usable by Bob
+    const bobCats = await ctx.http().get('/v1/categories').set(auth(bob)).expect(200);
+    expect(bobCats.body.some((c: { id: string }) => c.id === categoryId)).toBe(false);
+
     const bobAccount = await ctx
       .http()
       .post('/v1/accounts')
@@ -361,6 +435,20 @@ describe('tenant isolation', () => {
       .set(auth(bob))
       .send({
         date: today,
+        type: 'EXPENSE',
+        amountMinor: 500,
+        accountId: bobAccount.body.id,
+        categoryId,
+      })
+      .expect(404);
+
+    // --- a transfer is the sneakiest path into another tenant's account
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(bob))
+      .send({
+        date: today,
         type: 'TRANSFER',
         amountMinor: 500,
         accountId: bobAccount.body.id,
@@ -368,8 +456,54 @@ describe('tenant isolation', () => {
       })
       .expect(404);
 
-    const bobList = await ctx.http().get('/v1/transactions').set(auth(bob)).expect(200);
-    expect(bobList.body.items).toHaveLength(0);
+    // Alice still has exactly what she started with.
+    const aliceList = await ctx.http().get('/v1/transactions').set(auth(alice)).expect(200);
+    expect(aliceList.body.items).toHaveLength(1);
+  });
+
+  /* The denormalised LedgerEntry.workspaceId is only safe because the database
+   * refuses to let it disagree with its transaction. */
+  it('the database rejects a ledger entry whose workspace differs from its transaction', async () => {
+    const alice = await signup(ctx);
+    const bob = await signup(ctx);
+
+    const account = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(alice))
+      .send({ name: 'নগদ', type: 'CASH' })
+      .expect(201);
+
+    const system = await ctx.prisma.account.findFirstOrThrow({
+      where: { workspaceId: alice.workspaceId, systemKey: 'SYSTEM_EXPENSE' },
+    });
+
+    await expect(
+      ctx.prisma.transaction.create({
+        data: {
+          workspaceId: alice.workspaceId,
+          date: new Date(),
+          type: 'EXPENSE',
+          entries: {
+            create: [
+              {
+                workspaceId: alice.workspaceId,
+                accountId: system.id,
+                amountMinor: 100n,
+                direction: 'DEBIT',
+              },
+              {
+                // Wrong tenant on one line only.
+                workspaceId: bob.workspaceId,
+                accountId: account.body.id,
+                amountMinor: 100n,
+                direction: 'CREDIT',
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toThrow(/does not match its transaction workspace/);
   });
 });
 
@@ -388,7 +522,7 @@ describe('account deletion', () => {
   /* Spec §9: "Full data export and full account deletion must work" — both
    * stores require it. Deleting the User row must take the whole ledger with
    * it, which only happens if every foreign key cascades. */
-  it('deleting a user removes their accounts, categories, transactions and entries', async () => {
+  it('deleting a workspace removes its accounts, categories, transactions and entries', async () => {
     const user = await signup(ctx);
 
     const account = await ctx
@@ -413,12 +547,15 @@ describe('account deletion', () => {
       })
       .expect(201);
 
+    // Deleting the person takes the workspace they own, and everything in it.
     await expect(ctx.prisma.user.delete({ where: { id: user.id } })).resolves.toBeTruthy();
 
     for (const count of [
-      ctx.prisma.account.count({ where: { userId: user.id } }),
-      ctx.prisma.category.count({ where: { userId: user.id } }),
-      ctx.prisma.transaction.count({ where: { userId: user.id } }),
+      ctx.prisma.workspace.count({ where: { id: user.workspaceId } }),
+      ctx.prisma.membership.count({ where: { userId: user.id } }),
+      ctx.prisma.account.count({ where: { workspaceId: user.workspaceId } }),
+      ctx.prisma.category.count({ where: { workspaceId: user.workspaceId } }),
+      ctx.prisma.transaction.count({ where: { workspaceId: user.workspaceId } }),
       ctx.prisma.refreshToken.count({ where: { userId: user.id } }),
     ]) {
       expect(await count).toBe(0);

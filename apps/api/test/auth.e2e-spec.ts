@@ -25,12 +25,23 @@ describe('auth', () => {
     expect(res.body.refreshToken).toBeTruthy();
     expect(res.body.user.email).toBe(email);
 
+    // Signup creates the tenant, not just the person.
+    const workspaceId = res.body.workspace.id as string;
     const userId = res.body.user.id as string;
-    const categories = await ctx.prisma.category.count({ where: { userId } });
+    expect(workspaceId).toBeTruthy();
+    expect(res.body.workspace.currency).toBe('BDT');
+
+    const membership = await ctx.prisma.membership.findUniqueOrThrow({
+      where: { workspaceId_userId: { workspaceId, userId } },
+    });
+    expect(membership.role).toBe('OWNER');
+    expect(membership.status).toBe('ACTIVE');
+
+    const categories = await ctx.prisma.category.count({ where: { workspaceId } });
     expect(categories).toBeGreaterThanOrEqual(20);
 
     const systemAccounts = await ctx.prisma.account.count({
-      where: { userId, systemKey: { not: null } },
+      where: { workspaceId, systemKey: { not: null } },
     });
     expect(systemAccounts).toBe(3);
   });
@@ -100,5 +111,51 @@ describe('auth', () => {
 
   it('refuses unauthenticated access to /me', async () => {
     await ctx.http().get('/v1/auth/me').expect(401);
+  });
+
+  it('returns the active workspace and role from /me', async () => {
+    const user = await signup(ctx);
+    const res = await ctx
+      .http()
+      .get('/v1/auth/me')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .expect(200);
+    expect(res.body.workspace.id).toBe(user.workspaceId);
+    expect(res.body.role).toBe('OWNER');
+  });
+
+  /* A signed token is not enough. Suspending a membership must lock the session
+   * out on the next request, not fifteen minutes later when the token expires. */
+  it('rejects a valid token once the membership is suspended', async () => {
+    const user = await signup(ctx);
+    await ctx
+      .http()
+      .get('/v1/accounts')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .expect(200);
+
+    await ctx.prisma.membership.update({
+      where: { workspaceId_userId: { workspaceId: user.workspaceId, userId: user.id } },
+      data: { status: 'SUSPENDED' },
+    });
+
+    await ctx
+      .http()
+      .get('/v1/accounts')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .expect(401);
+  });
+
+  it('rejects a valid token once the workspace is suspended', async () => {
+    const user = await signup(ctx);
+    await ctx.prisma.workspace.update({
+      where: { id: user.workspaceId },
+      data: { status: 'SUSPENDED' },
+    });
+    await ctx
+      .http()
+      .get('/v1/accounts')
+      .set('Authorization', `Bearer ${user.accessToken}`)
+      .expect(401);
   });
 });

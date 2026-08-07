@@ -29,5 +29,14 @@ web-build/
 
 # generated
 apps/api/prisma/generated/
-apps/web/public/sw.js
+# NOTE: apps/web/public/sw.js is hand-written and IS tracked. Only a generated
+# workbox bundle would belong here.
 apps/web/public/workbox-*.js
+
+# per-IDE agent rules, dropped in by the caveman plugin
+.clinerules/
+.cursor/
+.opencode/
+.windsurf/
+.github/copilot-instructions.md
+AGENTS.md

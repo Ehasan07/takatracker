@@ -26,12 +26,12 @@ export class AccountsController {
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('includeArchived') includeArchived?: string) {
-    return this.accounts.list(user.id, includeArchived === 'true');
+    return this.accounts.list(user.workspaceId, includeArchived === 'true');
   }
 
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.accounts.findOne(user.id, id);
+    return this.accounts.findOne(user.workspaceId, id);
   }
 
   @Post()
@@ -39,7 +39,7 @@ export class AccountsController {
     @CurrentUser() user: AuthUser,
     @Body(zodPipe(createAccountSchema)) body: ReturnType<typeof createAccountSchema.parse>,
   ) {
-    return this.accounts.create(user.id, body);
+    return this.accounts.create(user.workspaceId, body);
   }
 
   @Patch(':id')
@@ -48,12 +48,12 @@ export class AccountsController {
     @Param('id') id: string,
     @Body(zodPipe(updateAccountSchema)) body: ReturnType<typeof updateAccountSchema.parse>,
   ) {
-    return this.accounts.update(user.id, id, body);
+    return this.accounts.update(user.workspaceId, id, body);
   }
 
   @Delete(':id')
   archive(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.accounts.archive(user.id, id);
+    return this.accounts.archive(user.workspaceId, id);
   }
 
   /** Enter the real balance; the server books the difference as an ADJUSTMENT. */
@@ -63,6 +63,6 @@ export class AccountsController {
     @Param('id') id: string,
     @Body(zodPipe(reconcileSchema)) body: ReturnType<typeof reconcileSchema.parse>,
   ) {
-    return this.transactions.reconcile(user.id, id, body);
+    return this.transactions.reconcile(user, id, body);
   }
 }

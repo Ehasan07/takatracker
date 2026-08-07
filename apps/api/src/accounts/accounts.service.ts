@@ -26,9 +26,9 @@ export class AccountsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** The three hidden nominal accounts, created at signup. */
-  async systemAccounts(userId: string): Promise<SystemAccounts> {
+  async systemAccounts(workspaceId: string): Promise<SystemAccounts> {
     const rows = await this.prisma.account.findMany({
-      where: { userId, systemKey: { not: null } },
+      where: { workspaceId, systemKey: { not: null } },
       select: { id: true, systemKey: true },
     });
     const byKey = new Map(rows.map((r) => [r.systemKey, r.id]));
@@ -36,21 +36,21 @@ export class AccountsService {
     const expense = byKey.get(SYSTEM_ACCOUNT_KEYS.expense);
     const equity = byKey.get(SYSTEM_ACCOUNT_KEYS.equity);
     if (!income || !expense || !equity) {
-      throw new NotFoundException('System accounts missing for this user');
+      throw new NotFoundException('System accounts missing for this workspace');
     }
     return { incomeAccountId: income, expenseAccountId: expense, equityAccountId: equity };
   }
 
   /** Signed balance per account: opening balance plus every live ledger entry. */
-  async balances(userId: string): Promise<Map<string, number>> {
+  async balances(workspaceId: string): Promise<Map<string, number>> {
     const grouped = await this.prisma.ledgerEntry.groupBy({
       by: ['accountId', 'direction'],
-      where: { transaction: { userId, deletedAt: null } },
+      where: { workspaceId, transaction: { deletedAt: null } },
       _sum: { amountMinor: true },
     });
 
     const accounts = await this.prisma.account.findMany({
-      where: { userId },
+      where: { workspaceId },
       select: { id: true, type: true, openingBalance: true },
     });
 
@@ -70,17 +70,17 @@ export class AccountsService {
     return out;
   }
 
-  async list(userId: string, includeArchived = false): Promise<AccountWithBalance[]> {
+  async list(workspaceId: string, includeArchived = false): Promise<AccountWithBalance[]> {
     const accounts = await this.prisma.account.findMany({
       where: {
-        userId,
+        workspaceId,
         systemKey: null,
         deletedAt: null,
         ...(includeArchived ? {} : { isArchived: false }),
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
-    const balances = await this.balances(userId);
+    const balances = await this.balances(workspaceId);
     return accounts.map((a) => AccountsService.present(a, balances.get(a.id) ?? 0));
   }
 
@@ -102,19 +102,19 @@ export class AccountsService {
     };
   }
 
-  async findOne(userId: string, id: string): Promise<AccountWithBalance> {
+  async findOne(workspaceId: string, id: string): Promise<AccountWithBalance> {
     const account = await this.prisma.account.findFirst({
-      where: { id, userId, deletedAt: null },
+      where: { id, workspaceId, deletedAt: null },
     });
     if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
-    const balances = await this.balances(userId);
+    const balances = await this.balances(workspaceId);
     return AccountsService.present(account, balances.get(account.id) ?? 0);
   }
 
-  async create(userId: string, input: CreateAccountInput): Promise<AccountWithBalance> {
+  async create(workspaceId: string, input: CreateAccountInput): Promise<AccountWithBalance> {
     const account = await this.prisma.account.create({
       data: {
-        userId,
+        workspaceId,
         name: input.name,
         type: input.type,
         currency: input.currency,
@@ -130,9 +130,13 @@ export class AccountsService {
     return AccountsService.present(account, input.openingBalance);
   }
 
-  async update(userId: string, id: string, input: UpdateAccountInput): Promise<AccountWithBalance> {
+  async update(
+    workspaceId: string,
+    id: string,
+    input: UpdateAccountInput,
+  ): Promise<AccountWithBalance> {
     const existing = await this.prisma.account.findFirst({
-      where: { id, userId, deletedAt: null },
+      where: { id, workspaceId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     if (existing.systemKey)
@@ -155,12 +159,12 @@ export class AccountsService {
         isArchived: input.isArchived,
       },
     });
-    return this.findOne(userId, id);
+    return this.findOne(workspaceId, id);
   }
 
   /** Archive rather than delete — history must stay intact. */
-  async archive(userId: string, id: string): Promise<{ id: string; isArchived: boolean }> {
-    const existing = await this.prisma.account.findFirst({ where: { id, userId } });
+  async archive(workspaceId: string, id: string): Promise<{ id: string; isArchived: boolean }> {
+    const existing = await this.prisma.account.findFirst({ where: { id, workspaceId } });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     if (existing.systemKey) throw new BadRequestException('সিস্টেম অ্যাকাউন্ট আর্কাইভ করা যায় না');
     await this.prisma.account.update({ where: { id }, data: { isArchived: true } });

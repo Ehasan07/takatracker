@@ -100,6 +100,6 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: AuthUser) {
-    return this.auth.me(user.id);
+    return this.auth.me(user.id, user.workspaceId);
   }
 }

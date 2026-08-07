@@ -3,10 +3,13 @@ import { PassportStrategy } from '@nestjs/passport';
 import type { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import type { AuthUser } from './current-user.decorator';
 
 export interface JwtPayload {
   sub: string;
   email: string;
+  /** Active workspace. Every tenant-scoped query filters on this. */
+  ws: string;
 }
 
 export const ACCESS_COOKIE = 'hishab_at';
@@ -31,12 +34,38 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<{ id: string; email: string }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { id: true, email: true },
+  /**
+   * A valid signature is not enough: the membership is re-checked on every
+   * request, so revoking someone's access takes effect immediately rather than
+   * when their 15-minute token happens to expire.
+   */
+  async validate(payload: JwtPayload): Promise<AuthUser> {
+    if (!payload.ws) throw new UnauthorizedException();
+
+    const membership = await this.prisma.membership.findUnique({
+      where: { workspaceId_userId: { workspaceId: payload.ws, userId: payload.sub } },
+      include: {
+        user: { select: { id: true, email: true } },
+        workspace: { select: { id: true, status: true, deletedAt: true, timezone: true } },
+      },
     });
-    if (!user) throw new UnauthorizedException();
-    return user;
+
+    if (
+      !membership ||
+      membership.status !== 'ACTIVE' ||
+      membership.workspace.deletedAt !== null ||
+      membership.workspace.status === 'SUSPENDED' ||
+      membership.workspace.status === 'CANCELLED'
+    ) {
+      throw new UnauthorizedException();
+    }
+
+    return {
+      id: membership.user.id,
+      email: membership.user.email,
+      workspaceId: membership.workspace.id,
+      role: membership.role,
+      timezone: membership.workspace.timezone,
+    };
   }
 }

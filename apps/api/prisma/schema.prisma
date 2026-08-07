@@ -1,5 +1,10 @@
 // Hishab — server schema.
+//
 // Money is ALWAYS BigInt poisha (1/100 BDT). No Float or Decimal anywhere.
+//
+// Tenancy: every row that belongs to a customer carries `workspaceId`, and that
+// column — never `userId` — is what the repository layer filters on. `userId`
+// survives only where it records *who did something*. See docs/PLAN.md §3.
 
 generator client {
   provider = "prisma-client-js"
@@ -20,21 +25,24 @@ model User {
   phone        String?
   passwordHash String
   name         String
+  /// Display language. Currency and the ledger day belong to the workspace.
   locale       String   @default("bn")
-  baseCurrency String   @default("BDT")
-  timezone     String   @default("Asia/Dhaka")
+  /// When to deliver reminders to this person, which need not match the
+  /// workspace's accounting timezone.
+  notifyTimezone String @default("Asia/Dhaka")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  accounts      Account[]
-  categories    Category[]
-  people        Person[]
-  transactions  Transaction[]
-  refreshTokens RefreshToken[]
+  memberships      Membership[]
+  ownedWorkspaces  Workspace[]    @relation("WorkspaceOwner")
+  createdTxns      Transaction[]  @relation("TransactionAuthor")
+  refreshTokens    RefreshToken[]
+  sentInvitations  Invitation[]   @relation("InvitationSender")
 }
 
 /// Rotating refresh tokens. A whole family is revoked when a used token is
-/// replayed (reuse detection, spec §9).
+/// replayed (reuse detection, spec §9). A session belongs to a person, not to
+/// a tenant, so this table has no `workspaceId`.
 model RefreshToken {
   id         String    @id @default(cuid())
   userId     String
@@ -51,6 +59,95 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, familyId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+enum WorkspaceStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+/// The tenant. One per account today; the model exists so household and team
+/// sharing is a feature flag later rather than a migration.
+model Workspace {
+  id           String          @id @default(cuid())
+  name         String
+  ownerUserId  String
+  /// Set once plans exist (M24). No foreign key until then.
+  planId       String?
+  status       WorkspaceStatus @default(ACTIVE)
+  /// Base currency for every amount in this workspace.
+  currency     String          @default("BDT")
+  /// Defines the ledger day. All date arithmetic resolves against this.
+  timezone     String          @default("Asia/Dhaka")
+  trialEndsAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+
+  owner        User          @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+  invitations  Invitation[]
+  accounts     Account[]
+  categories   Category[]
+  people       Person[]
+  transactions Transaction[]
+  entries      LedgerEntry[]
+
+  @@index([ownerUserId])
+  @@index([status])
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Membership {
+  id          String           @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        MembershipRole   @default(OWNER)
+  invitedBy   String?
+  status      MembershipStatus @default(ACTIVE)
+  joinedAt    DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId, status])
+}
+
+model Invitation {
+  id          String         @id @default(cuid())
+  workspaceId String
+  email       String
+  role        MembershipRole @default(MEMBER)
+  tokenHash   String         @unique
+  invitedBy   String?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sender    User?     @relation("InvitationSender", fields: [invitedBy], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, email])
   @@index([expiresAt])
 }
 
@@ -73,7 +170,7 @@ enum AccountType {
 
 model Account {
   id                  String      @id @default(cuid())
-  userId              String
+  workspaceId         String
   name                String
   type                AccountType
   currency            String      @default("BDT")
@@ -92,11 +189,11 @@ model Account {
   updatedAt           DateTime    @updatedAt
   deletedAt           DateTime?
 
-  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entries LedgerEntry[]
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entries   LedgerEntry[]
 
-  @@unique([userId, systemKey])
-  @@index([userId, isArchived, sortOrder])
+  @@unique([workspaceId, systemKey])
+  @@index([workspaceId, isArchived, sortOrder])
 }
 
 enum CategoryKind {
@@ -105,44 +202,44 @@ enum CategoryKind {
 }
 
 model Category {
-  id        String       @id @default(cuid())
-  userId    String
-  name      String
-  nameBn    String?
-  parentId  String?
-  kind      CategoryKind
-  icon      String?
-  color     String?
-  isSystem  Boolean      @default(false)
-  sortOrder Int          @default(0)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  deletedAt DateTime?
+  id          String       @id @default(cuid())
+  workspaceId String
+  name        String
+  nameBn      String?
+  parentId    String?
+  kind        CategoryKind
+  icon        String?
+  color       String?
+  isSystem    Boolean      @default(false)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent   Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children Category[]    @relation("CategoryTree")
-  entries  LedgerEntry[]
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent    Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[]    @relation("CategoryTree")
+  entries   LedgerEntry[]
 
-  @@index([userId, kind, sortOrder])
+  @@index([workspaceId, kind, sortOrder])
 }
 
 model Person {
-  id        String    @id @default(cuid())
-  userId    String
-  name      String
-  phone     String?
-  relation  String?
-  note      String?
-  photoUri  String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  phone       String?
+  relation    String?
+  note        String?
+  photoUri    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
-  @@index([userId])
+  @@index([workspaceId])
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +273,9 @@ enum TransactionSource {
 
 model Transaction {
   id            String            @id @default(cuid())
-  userId        String
+  workspaceId   String
+  /// Who entered it. Matters once a workspace has more than one member.
+  createdByUserId String?
   date          DateTime
   type          TransactionType
   description   String?
@@ -194,15 +293,16 @@ model Transaction {
   updatedAt     DateTime          @updatedAt
   deletedAt     DateTime?
 
-  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  person  Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
-  entries LedgerEntry[]
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User?         @relation("TransactionAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  person    Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
+  entries   LedgerEntry[]
 
-  @@unique([userId, clientId])
-  @@index([userId, date(sort: Desc)])
-  @@index([userId, type])
-  @@index([userId, source])
-  @@index([userId, externalRef])
+  @@unique([workspaceId, clientId])
+  @@index([workspaceId, date(sort: Desc)])
+  @@index([workspaceId, type])
+  @@index([workspaceId, source])
+  @@index([workspaceId, externalRef])
 }
 
 enum EntryDirection {
@@ -212,6 +312,9 @@ enum EntryDirection {
 
 model LedgerEntry {
   id            String         @id @default(cuid())
+  /// Denormalised from the transaction so balance aggregation does not need a
+  /// join. A database trigger keeps the two in step — see the migration.
+  workspaceId   String
   transactionId String
   accountId     String
   categoryId    String?
@@ -222,14 +325,15 @@ model LedgerEntry {
   /// 1 for BDT-only v1. Kept so multi-currency is a data change, not a migration.
   fxRate        Int            @default(1)
 
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  // Cascade so deleting a user removes their whole ledger. Account deletion is
-  // never offered in the UI (accounts are archived); this exists so the
+  // Cascade so deleting a workspace removes its whole ledger. Account deletion
+  // is never offered in the UI (accounts are archived); this exists so the
   // "delete my account and all my data" store requirement actually works.
   account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([transactionId])
-  @@index([accountId])
-  @@index([categoryId])
+  @@index([workspaceId, accountId])
+  @@index([workspaceId, categoryId])
 }
