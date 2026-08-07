@@ -39,7 +39,7 @@ export class AccountsController {
     @CurrentUser() user: AuthUser,
     @Body(zodPipe(createAccountSchema)) body: ReturnType<typeof createAccountSchema.parse>,
   ) {
-    return this.accounts.create(user.workspaceId, body);
+    return this.accounts.create(user.workspaceId, body, user.timezone);
   }
 
   @Patch(':id')

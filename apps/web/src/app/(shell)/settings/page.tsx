@@ -4,11 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { api, endpoints } from '@/lib/api';
+import { UsageMeter } from '@/components/usage-meter';
+import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
   const router = useRouter();
   const me = useQuery({ queryKey: ['me'], queryFn: endpoints.me });
+  const entitlements = useQuery({ queryKey: ['entitlements'], queryFn: endpoints.entitlements });
   const [theme, setTheme] = React.useState<'system' | 'light' | 'dark'>('system');
 
   React.useEffect(() => {
@@ -43,6 +46,39 @@ export default function SettingsPage() {
         <h2 className="text-ink-muted text-sm font-medium">অ্যাকাউন্ট</h2>
         <p className="text-ink mt-1">{me.data?.name}</p>
         <p className="text-ink-muted text-sm">{me.data?.email}</p>
+      </section>
+
+      <section className="rounded-card border-rule bg-surface border p-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-ink-muted text-sm font-medium">প্ল্যান</h2>
+          <span className="text-ink text-sm font-semibold">
+            {entitlements.data?.plan?.name ?? '—'}
+          </span>
+        </div>
+        {entitlements.data?.plan && entitlements.data.plan.priceMinor > 0 ? (
+          <p className="text-ink-muted mt-1 text-xs">
+            <Money minor={entitlements.data.plan.priceMinor} className="inline" decimals={false} />{' '}
+            / মাস
+          </p>
+        ) : null}
+
+        <div className="mt-3 flex flex-col gap-3">
+          <UsageMeter
+            label="অ্যাকাউন্ট"
+            used={entitlements.data?.usage['accounts.max'] ?? 0}
+            limit={entitlements.data?.entitlements['accounts.max'] ?? null}
+          />
+          <UsageMeter
+            label="এই মাসের লেনদেন"
+            used={entitlements.data?.usage['transactions.monthly.max'] ?? 0}
+            limit={entitlements.data?.entitlements['transactions.monthly.max'] ?? null}
+          />
+          <UsageMeter
+            label="সদস্য"
+            used={entitlements.data?.usage['members.max'] ?? 0}
+            limit={entitlements.data?.entitlements['members.max'] ?? null}
+          />
+        </div>
       </section>
 
       <section className="rounded-card border-rule bg-surface border p-4">

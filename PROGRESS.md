@@ -3,7 +3,7 @@
 Handoff notes for Hishab. Keep this current — it is the first thing to read
 when picking the project back up.
 
-Last updated: 2026-08-07.
+Last updated: 2026-08-08.
 
 ---
 
@@ -17,8 +17,9 @@ Last updated: 2026-08-07.
 | M3      | Web: transaction list, add/edit, accounts, transfers              | done        |
 | M4      | Responsive shell + PWA                                            | done        |
 | M23     | Workspaces + `workspaceId` migration                              | done        |
-| M24     | Entitlements engine + 402 limit responses                         | **next**    |
-| M5      | Reports v1 + filters                                              | after M24   |
+| M24     | Entitlements engine + 402 limit responses                         | done        |
+| M25     | Audit log + admin-visible timeline                                | **next**    |
+| M5      | Reports v1 + filters                                              | after M25   |
 | M6      | Excel/CSV import with mapping UI + export                         | not started |
 | M7–M11  | Ingestion, parsing, draft inbox, dedupe, email channel            | not started |
 | M12–M14 | People/loans, savings/insurance, assets/net worth                 | not started |
@@ -26,7 +27,7 @@ Last updated: 2026-08-07.
 
 ### Acceptance evidence
 
-- `pnpm test` — 66 passing: 16 money, 16 ledger, 7 parser, 27 API integration.
+- `pnpm test` — 93 passing: 16 money, 16 ledger, 18 entitlements, 7 parser, 36 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
@@ -98,6 +99,24 @@ service layer.
 `{ id, workspaceId, timezone }`, which `AuthUser` satisfies structurally. The
 timezone is already loaded to validate the membership, so this also deleted a
 per-request `SELECT` on the user table.
+
+**Plans live in code, not in a migration.** `packages/core/entitlements.ts` is
+the catalogue, and the API upserts it at boot. Changing what a tier includes is
+then a pull request that every environment converges on, rather than a data
+migration that production and development can disagree about. A key removed
+from the definition is deleted from the database too, so a retired limit stops
+being enforced.
+
+**One entitlement engine, called by both sides.** The API enforces limits with
+it and the UI renders quotas with it. A client-side copy of a paywall is how a
+paywall drifts out of step with the server that actually charges people, so
+`GET /v1/entitlements` returns limits, usage and headroom together and the
+accounts screen disables its button before the user can hit a refusal.
+
+**Only creation is metered.** Editing, deleting and restoring a transaction stay
+available at the ceiling. Locking someone out of correcting their own books is a
+worse outcome than letting a count drift, and archiving an account returns its
+slot so the way out of the limit is never "delete your history".
 
 **Cascading deletes.** `LedgerEntry.account` originally had no `onDelete`, so
 Postgres refused to delete a `User` — the cascade stopped at the ledger. Spec §9

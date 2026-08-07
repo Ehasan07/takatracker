@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { SYSTEM_ACCOUNT_KEYS, type SystemAccounts } from '@hishab/core';
 import { isDebitNormal, type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
 import type { Account, AccountType } from '@prisma/client';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { minorToNumber } from '../common/bigint-json';
 
@@ -23,7 +24,10 @@ export interface AccountWithBalance {
 
 @Injectable()
 export class AccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlements: EntitlementsService,
+  ) {}
 
   /** The three hidden nominal accounts, created at signup. */
   async systemAccounts(workspaceId: string): Promise<SystemAccounts> {
@@ -111,7 +115,15 @@ export class AccountsService {
     return AccountsService.present(account, balances.get(account.id) ?? 0);
   }
 
-  async create(workspaceId: string, input: CreateAccountInput): Promise<AccountWithBalance> {
+  async create(
+    workspaceId: string,
+    input: CreateAccountInput,
+    timezone = 'Asia/Dhaka',
+  ): Promise<AccountWithBalance> {
+    // Archived accounts do not count, so hitting the ceiling has a way out that
+    // is not "delete your history".
+    await this.entitlements.assertWithinLimit(workspaceId, 'accounts.max', timezone);
+
     const account = await this.prisma.account.create({
       data: {
         workspaceId,

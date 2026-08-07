@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AccountsModule } from './accounts/accounts.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
+import { EntitlementsModule } from './entitlements/entitlements.module';
 import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -24,6 +25,7 @@ import { TransactionsModule } from './transactions/transactions.module';
       },
     ]),
     PrismaModule,
+    EntitlementsModule,
     AuthModule,
     AccountsModule,
     CategoriesModule,

@@ -63,6 +63,65 @@ model RefreshToken {
 }
 
 // ---------------------------------------------------------------------------
+// Plans & entitlements
+//
+// What each plan includes lives in `packages/core/entitlements.ts`, not here.
+// The API upserts these rows from that definition at boot, so changing a tier
+// is a pull request rather than a schema change.
+// ---------------------------------------------------------------------------
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+model Plan {
+  id         String          @id @default(cuid())
+  code       String          @unique
+  name       String
+  /// Integer poisha, like every other amount in the system.
+  priceMinor BigInt          @default(0)
+  currency   String          @default("BDT")
+  interval   BillingInterval @default(MONTHLY)
+  isPublic   Boolean         @default(true)
+  sortOrder  Int             @default(0)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  features   PlanFeature[]
+  workspaces Workspace[]
+}
+
+model PlanFeature {
+  id         String @id @default(cuid())
+  planId     String
+  featureKey String
+  /// null = unlimited. For a flag, 0 is off.
+  limitValue Int?
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+}
+
+/// A per-workspace grant or restriction that beats the plan. Support uses this
+/// to hand out an owner-only feature, or to widen a limit temporarily.
+model WorkspaceFeatureOverride {
+  id          String    @id @default(cuid())
+  workspaceId String
+  featureKey  String
+  limitValue  Int?
+  expiresAt   DateTime?
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, featureKey])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
 // Tenancy
 // ---------------------------------------------------------------------------
 
@@ -80,7 +139,6 @@ model Workspace {
   id           String          @id @default(cuid())
   name         String
   ownerUserId  String
-  /// Set once plans exist (M24). No foreign key until then.
   planId       String?
   status       WorkspaceStatus @default(ACTIVE)
   /// Base currency for every amount in this workspace.
@@ -93,6 +151,8 @@ model Workspace {
   deletedAt    DateTime?
 
   owner        User          @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  plan         Plan?         @relation(fields: [planId], references: [id], onDelete: SetNull)
+  overrides    WorkspaceFeatureOverride[]
   memberships  Membership[]
   invitations  Invitation[]
   accounts     Account[]
@@ -103,6 +163,7 @@ model Workspace {
 
   @@index([ownerUserId])
   @@index([status])
+  @@index([planId])
 }
 
 enum MembershipRole {

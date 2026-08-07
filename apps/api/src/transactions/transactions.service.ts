@@ -17,6 +17,7 @@ import type { Prisma, TransactionType } from '@prisma/client';
 import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 
 /**
  * Who is asking, and on whose behalf. `workspaceId` is the tenant guard;
@@ -66,6 +67,7 @@ export class TransactionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounts: AccountsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /** Guard every referenced row belongs to the caller (spec §9). */
@@ -91,6 +93,14 @@ export class TransactionsService {
   }
 
   async create(ctx: TenantContext, input: SimpleTransactionInput): Promise<TransactionView> {
+    /* Only creation is metered. Editing, deleting and restoring stay available
+     * at the ceiling, because locking someone out of correcting their own books
+     * is a worse outcome than letting the count drift. */
+    await this.entitlements.assertWithinLimit(
+      ctx.workspaceId,
+      'transactions.monthly.max',
+      ctx.timezone,
+    );
     await this.assertOwnership(ctx.workspaceId, input);
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
     const tz = ctx.timezone;

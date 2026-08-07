@@ -19,6 +19,23 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A 402 from the entitlement layer. Carries what the plan allows and what has
+ * been used, so the UI can say something true rather than "request failed".
+ */
+export class FeatureLimitError extends ApiError {
+  constructor(
+    message: string,
+    readonly featureKey: string,
+    readonly limit: number,
+    readonly used: number,
+    readonly upgradeUrl: string,
+  ) {
+    super(402, message);
+    this.name = 'FeatureLimitError';
+  }
+}
+
 /** Thrown when a mutation was parked in the offline queue instead of being sent. */
 export class QueuedOfflineError extends Error {
   constructor() {
@@ -104,7 +121,25 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const payload: unknown = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const detail = payload as { message?: string; issues?: { path: string; message: string }[] };
+    const detail = payload as {
+      message?: string;
+      issues?: { path: string; message: string }[];
+      featureKey?: string;
+      limit?: number;
+      used?: number;
+      upgradeUrl?: string;
+    };
+
+    if (res.status === 402 && detail?.featureKey) {
+      throw new FeatureLimitError(
+        detail.message ?? 'প্ল্যানের সীমা শেষ',
+        detail.featureKey,
+        detail.limit ?? 0,
+        detail.used ?? 0,
+        detail.upgradeUrl ?? '/settings',
+      );
+    }
+
     throw new ApiError(
       res.status,
       detail?.message ?? `অনুরোধ ব্যর্থ (${res.status})`,
@@ -171,7 +206,15 @@ export interface SummaryDto {
   expenseByCategory: { categoryId: string | null; name: string; totalMinor: number }[];
 }
 
+export interface EntitlementsDto {
+  entitlements: Record<string, number | null>;
+  usage: Record<string, number>;
+  remaining: Record<string, number | null>;
+  plan: { code: string; name: string; priceMinor: number } | null;
+}
+
 export const endpoints = {
+  entitlements: () => api<EntitlementsDto>('/entitlements'),
   me: () => api<{ id: string; email: string; name: string; locale: string }>('/auth/me'),
   accounts: () => api<AccountDto[]>('/accounts'),
   categories: () => api<CategoryDto[]>('/categories'),

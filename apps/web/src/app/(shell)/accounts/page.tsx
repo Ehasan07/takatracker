@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
-import { api, endpoints, type AccountDto } from '@/lib/api';
+import { api, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
+import { UsageMeter } from '@/components/usage-meter';
 
 const ACCOUNT_TYPES: { value: string; label: string }[] = [
   { value: 'CASH', label: 'নগদ' },
@@ -22,16 +23,26 @@ const ACCOUNT_TYPES: { value: string; label: string }[] = [
 export default function AccountsPage() {
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+  const entitlements = useQuery({ queryKey: ['entitlements'], queryFn: endpoints.entitlements });
   const [addOpen, setAddOpen] = React.useState(false);
   const [reconciling, setReconciling] = React.useState<AccountDto | null>(null);
 
   const total = (accounts.data ?? []).reduce((sum, a) => sum + a.balanceMinor, 0);
 
+  const accountLimit = entitlements.data?.entitlements['accounts.max'] ?? null;
+  const accountsUsed = entitlements.data?.usage['accounts.max'] ?? 0;
+  const atLimit = accountLimit !== null && accountsUsed >= accountLimit;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
         <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">অ্যাকাউন্ট</h1>
-        <Button onClick={() => setAddOpen(true)} size="sm">
+        <Button
+          onClick={() => setAddOpen(true)}
+          size="sm"
+          disabled={atLimit}
+          title={atLimit ? 'প্ল্যানের সীমা শেষ' : undefined}
+        >
           <Plus className="h-4 w-4" aria-hidden />
           নতুন
         </Button>
@@ -40,6 +51,12 @@ export default function AccountsPage() {
       <section className="rounded-card border-rule bg-surface border p-4">
         <p className="text-ink-muted text-sm">মোট</p>
         <Money minor={total} className="text-2xl font-semibold" />
+        <UsageMeter className="mt-3" label="অ্যাকাউন্ট" used={accountsUsed} limit={accountLimit} />
+        {atLimit ? (
+          <p className="text-brass mt-2 text-xs">
+            প্ল্যানের সীমা শেষ। পুরনো অ্যাকাউন্ট আর্কাইভ করুন, অথবা প্ল্যান আপগ্রেড করুন।
+          </p>
+        ) : null}
       </section>
 
       {accounts.isLoading ? (
@@ -125,7 +142,14 @@ function AddAccountSheet({
       onSaved();
       onOpenChange(false);
     },
-    onError: (err) => setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি'),
+    onError: (err) =>
+      setError(
+        err instanceof FeatureLimitError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'সংরক্ষণ করা যায়নি',
+      ),
   });
 
   return (

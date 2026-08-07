@@ -6,7 +6,13 @@ import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
-import { api, endpoints, QueuedOfflineError, type TransactionDto } from '@/lib/api';
+import {
+  api,
+  endpoints,
+  FeatureLimitError,
+  QueuedOfflineError,
+  type TransactionDto,
+} from '@/lib/api';
 import { NumericKeypad } from './numeric-keypad';
 import { Button } from './ui/button';
 import { Field, Input, Select, Textarea } from './ui/field';
@@ -159,6 +165,11 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         return;
       }
       haptic('warn');
+      // A 402 already carries a sentence worth showing; anything else falls back.
+      if (err instanceof FeatureLimitError) {
+        setError(err.message);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি');
     },
   });

@@ -2,7 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { DEFAULT_CATEGORIES, SYSTEM_ACCOUNT_SEED } from '@hishab/core';
+import { DEFAULT_CATEGORIES, DEFAULT_PLAN_CODE, SYSTEM_ACCOUNT_SEED } from '@hishab/core';
 import type { LoginInput, SignupInput } from '@hishab/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -62,11 +62,13 @@ export class AuthService {
 
       // Every account gets a workspace of its own. Sharing is a later feature
       // flag, not a later migration.
+      const freePlan = await tx.plan.findUnique({ where: { code: DEFAULT_PLAN_CODE } });
       const space = await tx.workspace.create({
         data: {
           name: input.name,
           ownerUserId: created.id,
           timezone: input.timezone,
+          planId: freePlan?.id ?? null,
           memberships: { create: { userId: created.id, role: 'OWNER' } },
         },
       });
