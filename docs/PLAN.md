@@ -298,9 +298,9 @@ dominates everything else:
 
 | Phase    | Milestones                 | Rationale                                                                                                                                           |
 | -------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Done** | M0–M4                      | Live.                                                                                                                                               |
-| **Next** | **M23**                    | Workspaces, before anything else adds tables.                                                                                                       |
-| A        | M24, M25                   | Entitlements and audit — every later feature registers against them.                                                                                |
+| **Done** | M0–M4, M23, M24            | Live. Workspaces 2026-08-07, entitlements 2026-08-08.                                                                                               |
+| **Next** | **M25**                    | Audit log — every later feature registers against it.                                                                                               |
+| A        | —                          | (M24 done; M25 is now the Next row.)                                                                                                                |
 | B        | M5, M6                     | Reports and Excel import: the two things that make the app useful enough to charge for.                                                             |
 | C        | M30                        | Signup, verification, password reset, sessions, onboarding.                                                                                         |
 | D        | **M36**                    | Telegram + credit-card reminders. Small, self-contained, visibly valuable, and it exercises the worker before the ingestion pipeline depends on it. |
