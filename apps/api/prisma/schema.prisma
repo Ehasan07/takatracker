@@ -39,6 +39,7 @@ model User {
   refreshTokens    RefreshToken[]
   sentInvitations  Invitation[]   @relation("InvitationSender")
   telegram         TelegramConnection[]
+  auditEvents      AuditEvent[]         @relation("AuditActor")
 }
 
 /// Rotating refresh tokens. A whole family is revoked when a used token is
@@ -163,6 +164,7 @@ model Workspace {
   invitations  Invitation[]
   telegram     TelegramConnection[]
   cardCycles   CardReminderCycle[]
+  auditEvents  AuditEvent[]
   accounts     Account[]
   categories   Category[]
   people       Person[]
@@ -316,6 +318,42 @@ model Person {
   transactions Transaction[]
 
   @@index([workspaceId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+enum AuditActorType {
+  USER
+  SYSTEM
+  SUPPORT
+  INTEGRATION
+}
+
+/// Append-only. Nothing in the application updates or deletes a row here, and
+/// no query ever crosses a workspace boundary (v3 §A3). Bodies of inbound
+/// messages are never recorded — only that something happened, to what.
+model AuditEvent {
+  id           String         @id @default(cuid())
+  workspaceId  String
+  actorUserId  String?
+  actorType    AuditActorType @default(USER)
+  action       String
+  entity       String?
+  entityId     String?
+  before       Json?
+  after        Json?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, action])
+  @@index([workspaceId, entity, entityId])
 }
 
 // ---------------------------------------------------------------------------

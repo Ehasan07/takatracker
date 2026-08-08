@@ -18,6 +18,7 @@ import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
+import { AuditService } from '../audit/audit.service';
 import { CardRemindersService } from '../notifications/card-reminders.service';
 
 /**
@@ -70,6 +71,7 @@ export class TransactionsService {
     private readonly accounts: AccountsService,
     private readonly entitlements: EntitlementsService,
     private readonly cardReminders: CardRemindersService,
+    private readonly audit: AuditService,
   ) {}
 
   /** Guard every referenced row belongs to the caller (spec §9). */
@@ -146,6 +148,15 @@ export class TransactionsService {
       entries.map((e) => e.accountId),
     );
 
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'transaction.created',
+      entity: 'Transaction',
+      entityId: created.id,
+      after: { type: input.type, amountMinor: input.amountMinor, date: input.date },
+    });
+
     return this.present(created, tz);
   }
 
@@ -209,6 +220,15 @@ export class TransactionsService {
       });
     });
 
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'transaction.updated',
+      entity: 'Transaction',
+      entityId: id,
+      after: { type: input.type, amountMinor: input.amountMinor, date: input.date },
+    });
+
     return this.present(updated, tz);
   }
 
@@ -219,6 +239,13 @@ export class TransactionsService {
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
     // Soft delete keeps the row for sync; the balance query filters it out.
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'transaction.deleted',
+      entity: 'Transaction',
+      entityId: id,
+    });
     return { id };
   }
 
@@ -233,6 +260,13 @@ export class TransactionsService {
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: null } });
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'transaction.restored',
+      entity: 'Transaction',
+      entityId: id,
+    });
     return this.findOne(ctx, id);
   }
 
@@ -402,6 +436,15 @@ export class TransactionsService {
         },
       },
       include: txInclude,
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'transaction.reconciled',
+      entity: 'Account',
+      entityId: accountId,
+      after: { deltaMinor: delta, actualBalanceMinor: input.actualBalanceMinor },
     });
 
     return { delta, transaction: this.present(created, tz) };

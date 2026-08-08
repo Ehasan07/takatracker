@@ -11,6 +11,7 @@ import {
 import { formatLedgerDate, formatMinor, isDebitNormal, toLocalDateString } from '@hishab/shared';
 import type { Account, Workspace } from '@prisma/client';
 import { minorToNumber } from '../common/bigint-json';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramClient } from './telegram.client';
 
@@ -27,6 +28,7 @@ export class CardRemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramClient,
+    private readonly audit: AuditService,
   ) {}
 
   // --- connection ----------------------------------------------------------
@@ -68,6 +70,12 @@ export class CardRemindersService {
       },
     });
 
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'notifications.telegram_bound',
+      entity: 'TelegramConnection',
+    });
     return { url: `https://t.me/${username}?start=${token}`, expiresAt };
   }
 
@@ -146,6 +154,12 @@ export class CardRemindersService {
     await this.prisma.telegramConnection.deleteMany({
       where: { workspaceId, userId },
     });
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'notifications.telegram_revoked',
+      entity: 'TelegramConnection',
+    });
   }
 
   async sendTest(workspaceId: string, userId: string): Promise<{ ok: boolean; message: string }> {
@@ -164,6 +178,13 @@ export class CardRemindersService {
     );
 
     await this.recordOutcome(connection.id, result.ok, result.failure);
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'notifications.telegram_tested',
+      entity: 'TelegramConnection',
+      after: { ok: result.ok },
+    });
     return {
       ok: result.ok,
       message: result.ok ? 'বার্তা পাঠানো হয়েছে' : 'পাঠানো যায়নি — সংযোগ আবার দেখুন',
@@ -189,6 +210,13 @@ export class CardRemindersService {
           input.leadDays === undefined ? undefined : clampLeadDays(input.leadDays),
         autoMuteOnCardPayment: input.autoMuteOnPayment,
       },
+    });
+    this.audit.emit({
+      workspaceId,
+      action: 'notifications.settings_changed',
+      entity: 'Workspace',
+      entityId: workspaceId,
+      after: { ...input },
     });
   }
 
@@ -242,6 +270,14 @@ export class CardRemindersService {
     await this.prisma.cardReminderCycle.update({
       where: { id: row.id },
       data: { mutedAt: new Date(), mutedByUserId: userId, mutedReason: reason },
+    });
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'card.reminders_muted',
+      entity: 'Account',
+      entityId: accountId,
+      after: { cycleMonth: row.cycleMonth, reason },
     });
     return { cycleMonth: row.cycleMonth };
   }

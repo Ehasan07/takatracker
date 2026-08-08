@@ -42,9 +42,13 @@ export class AuthController {
   @Throttle(rate(5))
   async signup(
     @Body(zodPipe(signupSchema)) body: ReturnType<typeof signupSchema.parse>,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.signup(body);
+    const result = await this.auth.signup(body, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
     this.setCookies(res, result);
     return result;
   }
@@ -57,11 +61,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.login(
-      body,
-      req.header('x-device-id') ?? undefined,
-      req.header('user-agent') ?? undefined,
-    );
+    const result = await this.auth.login(body, {
+      deviceId: req.header('x-device-id') ?? undefined,
+      userAgent: req.header('user-agent') ?? undefined,
+      ip: req.ip,
+    });
     this.setCookies(res, result);
     return result;
   }

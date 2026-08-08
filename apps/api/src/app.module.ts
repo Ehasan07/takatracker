@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AccountsModule } from './accounts/accounts.module';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
@@ -26,6 +27,7 @@ import { TransactionsModule } from './transactions/transactions.module';
       },
     ]),
     PrismaModule,
+    AuditModule,
     EntitlementsModule,
     AuthModule,
     AccountsModule,

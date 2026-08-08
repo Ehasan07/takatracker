@@ -4,12 +4,19 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { DEFAULT_CATEGORIES, DEFAULT_PLAN_CODE, SYSTEM_ACCOUNT_SEED } from '@hishab/core';
 import type { LoginInput, SignupInput } from '@hishab/shared';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+}
+
+export interface AuthMeta {
+  deviceId?: string;
+  userAgent?: string;
+  ip?: string;
 }
 
 export interface AuthResult extends TokenPair {
@@ -35,13 +42,14 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly audit: AuditService,
   ) {}
 
   private static hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async signup(input: SignupInput): Promise<AuthResult> {
+  async signup(input: SignupInput, meta: AuthMeta = {}): Promise<AuthResult> {
     const email = input.email.toLowerCase().trim();
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('এই ইমেইলে ইতিমধ্যে অ্যাকাউন্ট আছে');
@@ -101,10 +109,20 @@ export class AuthService {
     });
 
     this.logger.log(`New user ${user.id} with workspace ${workspace.id}`);
+    this.audit.emit({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      action: 'auth.signup',
+      entity: 'User',
+      entityId: user.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
     return this.issue(user, workspace);
   }
 
-  async login(input: LoginInput, deviceId?: string, userAgent?: string): Promise<AuthResult> {
+  async login(input: LoginInput, meta: AuthMeta = {}): Promise<AuthResult> {
+    const { deviceId, userAgent } = meta;
     const email = input.email.toLowerCase().trim();
     const user = await this.prisma.user.findUnique({ where: { email } });
 
@@ -112,9 +130,38 @@ export class AuthService {
     const hash = user?.passwordHash ?? (await AuthService.dummyHash());
     const ok = await argon2.verify(hash, input.password).catch(() => false);
 
-    if (!user || !ok) throw new UnauthorizedException('ইমেইল বা পাসওয়ার্ড ভুল');
+    if (!user || !ok) {
+      /* Recorded against the workspace they would have reached, so a brute
+       * force attempt is visible on the timeline the owner actually reads.
+       * Nothing is recorded when the email is unknown — there is no tenant to
+       * attribute it to, and inventing one would leak that the email exists. */
+      if (user) {
+        const workspace = await this.defaultWorkspace(user.id).catch(() => null);
+        if (workspace) {
+          this.audit.emit({
+            workspaceId: workspace.id,
+            actorUserId: user.id,
+            action: 'auth.login_failed',
+            entity: 'User',
+            entityId: user.id,
+            ip: meta.ip,
+            userAgent,
+          });
+        }
+      }
+      throw new UnauthorizedException('ইমেইল বা পাসওয়ার্ড ভুল');
+    }
 
     const workspace = await this.defaultWorkspace(user.id);
+    this.audit.emit({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      action: 'auth.login',
+      entity: 'User',
+      entityId: user.id,
+      ip: meta.ip,
+      userAgent,
+    });
     return this.issue(user, workspace, { deviceId, userAgent });
   }
 
@@ -192,6 +239,17 @@ export class AuthService {
         data: { revokedAt: new Date() },
       });
       this.logger.warn(`Refresh token reuse detected for user ${stored.userId}; family revoked`);
+      const workspace = await this.defaultWorkspace(stored.userId).catch(() => null);
+      if (workspace) {
+        this.audit.emit({
+          workspaceId: workspace.id,
+          actorUserId: stored.userId,
+          actorType: 'SYSTEM',
+          action: 'auth.refresh_reuse_detected',
+          entity: 'RefreshToken',
+          entityId: stored.id,
+        });
+      }
       throw new UnauthorizedException('সেশন বাতিল করা হয়েছে, আবার লগইন করুন');
     }
 

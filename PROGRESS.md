@@ -19,8 +19,8 @@ Last updated: 2026-08-08.
 | M23     | Workspaces + `workspaceId` migration                              | done        |
 | M24     | Entitlements engine + 402 limit responses                         | done        |
 | M36     | Telegram credit-card due reminders                                | done        |
-| M25     | Audit log + admin-visible timeline                                | **next**    |
-| M5      | Reports v1 + filters                                              | after M25   |
+| M25     | Audit log + timeline                                              | done        |
+| M5      | Reports v1 + filters                                              | **next**    |
 | M6      | Excel/CSV import with mapping UI + export                         | not started |
 | M7–M11  | Ingestion, parsing, draft inbox, dedupe, email channel            | not started |
 | M12–M14 | People/loans, savings/insurance, assets/net worth                 | not started |
@@ -28,7 +28,7 @@ Last updated: 2026-08-08.
 
 ### Acceptance evidence
 
-- `pnpm test` — 128 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 7 parser, 46 API integration.
+- `pnpm test` — 135 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 7 parser, 54 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
@@ -190,6 +190,10 @@ defaults. Same reasoning applies on the server (4600/3600, loopback only).
 - The offline queue replays mutations in order and drops any the server rejects
   with a 4xx. Conflict handling proper is M16.
 - CI installs Playwright's Chromium on every run; consider caching the browser.
+- Audit writes are fire-and-forget, so one can be in flight when a workspace is
+  deleted, and Postgres then refuses the delete. Harmless today (deletion is not
+  exposed), but M34's deletion pipeline must clear `AuditEvent` inside the same
+  transaction rather than racing it.
 
 ---
 

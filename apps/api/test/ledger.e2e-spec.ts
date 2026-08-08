@@ -547,6 +547,12 @@ describe('account deletion', () => {
       })
       .expect(201);
 
+    /* Audit writes are fire-and-forget, so one can still be in flight here. An
+     * insert landing mid-delete makes Postgres refuse the delete — rare in
+     * practice, but M34's deletion pipeline must clear the audit rows inside
+     * the same transaction rather than racing them. */
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     // Deleting the person takes the workspace they own, and everything in it.
     await expect(ctx.prisma.user.delete({ where: { id: user.id } })).resolves.toBeTruthy();
 

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { SYSTEM_ACCOUNT_KEYS, type SystemAccounts } from '@hishab/core';
 import { isDebitNormal, type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
 import type { Account, AccountType } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { minorToNumber } from '../common/bigint-json';
@@ -30,6 +31,7 @@ export class AccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementsService,
+    private readonly audit: AuditService,
   ) {}
 
   /** The three hidden nominal accounts, created at signup. */
@@ -148,6 +150,13 @@ export class AccountsService {
         reminderLeadDays: input.reminderLeadDays ?? null,
       },
     });
+    this.audit.emit({
+      workspaceId,
+      action: 'account.created',
+      entity: 'Account',
+      entityId: account.id,
+      after: { name: account.name, type: account.type },
+    });
     return AccountsService.present(account, input.openingBalance);
   }
 
@@ -183,6 +192,17 @@ export class AccountsService {
         reminderLeadDays: input.reminderLeadDays,
       },
     });
+    this.audit.emit({
+      workspaceId,
+      action: 'account.updated',
+      entity: 'Account',
+      entityId: id,
+      before: { name: existing.name, type: existing.type, isArchived: existing.isArchived },
+      after: {
+        name: input.name ?? existing.name,
+        isArchived: input.isArchived ?? existing.isArchived,
+      },
+    });
     return this.findOne(workspaceId, id);
   }
 
@@ -192,6 +212,13 @@ export class AccountsService {
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     if (existing.systemKey) throw new BadRequestException('সিস্টেম অ্যাকাউন্ট আর্কাইভ করা যায় না');
     await this.prisma.account.update({ where: { id }, data: { isArchived: true } });
+    this.audit.emit({
+      workspaceId,
+      action: 'account.archived',
+      entity: 'Account',
+      entityId: id,
+      after: { name: existing.name },
+    });
     return { id, isArchived: true };
   }
 }
