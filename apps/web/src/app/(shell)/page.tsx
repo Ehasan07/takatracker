@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { formatLedgerDate } from '@hishab/shared';
 import { Money } from '@/components/money';
@@ -79,7 +80,13 @@ export default function DashboardPage() {
         </section>
 
         <section className="rounded-card border-rule bg-surface border p-4">
-          <h2 className="text-ink-muted text-sm font-medium">মোট ব্যালেন্স</h2>
+          <Link
+            href="/accounts"
+            className="press text-ink-muted hover:text-ink flex items-center gap-1 text-sm font-medium"
+          >
+            মোট ব্যালেন্স
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </Link>
           <p className="mt-1">
             <Money minor={totalBalance} className="text-2xl font-semibold" />
           </p>

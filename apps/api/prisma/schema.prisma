@@ -165,6 +165,12 @@ model Workspace {
   telegram     TelegramConnection[]
   cardCycles   CardReminderCycle[]
   auditEvents  AuditEvent[]
+  loans        Loan[]
+  loanPayments LoanPayment[]
+  savingsPlans SavingsPlan[]
+  savingsInstallments SavingsInstallment[]
+  policies     InsurancePolicy[]
+  premiums     PremiumPayment[]
   accounts     Account[]
   categories   Category[]
   people       Person[]
@@ -269,6 +275,9 @@ model Account {
   workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   entries        LedgerEntry[]
   reminderCycles CardReminderCycle[]
+  loansFunded    Loan[]              @relation("LoanCashAccount")
+  loanControl    Loan?               @relation("LoanControlAccount")
+  loanPayments   LoanPayment[]
 
   @@unique([workspaceId, systemKey])
   @@index([workspaceId, isArchived, sortOrder])
@@ -316,6 +325,7 @@ model Person {
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  loans        Loan[]
 
   @@index([workspaceId])
 }
@@ -440,6 +450,260 @@ model CardReminderCycle {
 
   @@unique([accountId, cycleMonth])
   @@index([workspaceId, cycleMonth])
+}
+
+// ---------------------------------------------------------------------------
+// People & lending
+// ---------------------------------------------------------------------------
+
+enum LoanDirection {
+  LENT
+  BORROWED
+}
+
+enum LoanInterestType {
+  NONE
+  FIXED
+  PERCENT
+}
+
+enum LoanStatus {
+  ACTIVE
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK
+  MOBILE_WALLET
+  CHEQUE
+  CARD
+  OTHER
+}
+
+/// A loan given or taken.
+///
+/// The money itself lives in the ordinary double-entry ledger, exactly as it
+/// would in QuickBooks: every loan owns a control account (RECEIVABLE when we
+/// lent, PAYABLE when we borrowed) and disbursement and repayment are plain
+/// transfers between that control account and a cash or bank account. So the
+/// balance sheet, the cash flow statement and the running balance on the
+/// account statement all pick loans up with no special-casing, and no loan
+/// movement is ever counted as income or expense.
+///
+/// This table therefore holds only what the ledger cannot: the loan number, the
+/// counterparty, the agreed terms and the due date.
+model Loan {
+  id          String @id @default(cuid())
+  workspaceId String
+  /// Human-facing, unique per workspace: L-0001, L-0002, …
+  loanNumber  String
+  personId    String
+  direction   LoanDirection
+
+  principalMinor BigInt
+  /// Off by default: most household lending in Bangladesh carries no interest.
+  interestType   LoanInterestType @default(NONE)
+  /// A single agreed sum when interestType is FIXED, poisha.
+  interestMinor  BigInt           @default(0)
+  /// Annual rate in basis points when interestType is PERCENT: 8.25% is 825.
+  interestRateBps Int             @default(0)
+
+  loanDate DateTime
+  dueDate  DateTime?
+
+  /// The cash or bank account the principal moved through.
+  accountId     String
+  /// The RECEIVABLE or PAYABLE control account this loan owns.
+  loanAccountId String  @unique
+  /// The disbursement transaction, so the two can never drift apart.
+  transactionId String?
+
+  note          String?
+  attachmentIds String[]   @default([])
+  status        LoanStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  person      Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
+  account     Account       @relation("LoanCashAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  loanAccount Account       @relation("LoanControlAccount", fields: [loanAccountId], references: [id], onDelete: Restrict)
+  payments    LoanPayment[]
+
+  @@unique([workspaceId, loanNumber])
+  @@index([workspaceId, status])
+  @@index([workspaceId, direction, status])
+  @@index([workspaceId, personId])
+  @@index([workspaceId, dueDate])
+}
+
+/// One instalment against a loan. Immutable once written: a correction is a new
+/// row, never an edit, so the payment history stays an audit trail.
+model LoanPayment {
+  id          String @id @default(cuid())
+  workspaceId String
+  loanId      String
+
+  date            DateTime
+  amountMinor     BigInt
+  method          PaymentMethod @default(CASH)
+  referenceNumber String?
+  note            String?
+  attachmentIds   String[]      @default([])
+
+  /// The cash or bank account the instalment moved through.
+  accountId     String
+  /// The transfer this payment booked.
+  transactionId String?
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  loan      Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, loanId, date])
+  @@index([workspaceId, referenceNumber])
+}
+
+// ---------------------------------------------------------------------------
+// Savings & insurance
+// ---------------------------------------------------------------------------
+
+enum SavingsPlanType {
+  DPS
+  FDR
+  SANCHAYPATRA
+  RECURRING_DEPOSIT
+  GOAL_SAVINGS
+}
+
+enum ProfitCalc {
+  SIMPLE
+  COMPOUND_MONTHLY
+  COMPOUND_QUARTERLY
+  COMPOUND_YEARLY
+}
+
+enum PlanFrequency {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+}
+
+enum SavingsStatus {
+  ACTIVE
+  MATURED
+  CLOSED
+}
+
+enum InstalmentStatus {
+  DUE
+  PAID
+  MISSED
+  SKIPPED
+}
+
+model SavingsPlan {
+  id              String          @id @default(cuid())
+  workspaceId     String
+  institution     String?
+  planName        String
+  planType        SavingsPlanType @default(DPS)
+  /// One instalment, in poisha. Zero for a lump-sum FDR.
+  installmentMinor BigInt         @default(0)
+  /// The lump sum an FDR or Sanchayapatra starts with.
+  principalMinor  BigInt          @default(0)
+  frequency       PlanFrequency   @default(MONTHLY)
+  termMonths      Int
+  startDate       DateTime
+  maturityDate    DateTime?
+  /// Annual rate in basis points, so 8.25% is 825 — the user types the rate
+  /// their bank advertises and we never infer it.
+  profitRateBps   Int             @default(0)
+  profitCalc      ProfitCalc      @default(COMPOUND_YEARLY)
+  linkedAccountId String?
+  status          SavingsStatus   @default(ACTIVE)
+  note            String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  installments SavingsInstallment[]
+
+  @@index([workspaceId, status])
+}
+
+model SavingsInstallment {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  planId        String
+  dueDate       DateTime
+  expectedMinor BigInt
+  paidDate      DateTime?
+  transactionId String?
+  status        InstalmentStatus @default(DUE)
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      SavingsPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, dueDate])
+  @@index([workspaceId, status, dueDate])
+}
+
+enum PolicyStatus {
+  ACTIVE
+  LAPSED
+  MATURED
+  CANCELLED
+}
+
+model InsurancePolicy {
+  id                  String        @id @default(cuid())
+  workspaceId         String
+  insurer             String
+  policyNumberMasked  String?
+  policyType          String?
+  sumAssuredMinor     BigInt        @default(0)
+  premiumMinor        BigInt        @default(0)
+  frequency           PlanFrequency @default(YEARLY)
+  startDate           DateTime
+  maturityDate        DateTime?
+  nomineeName         String?
+  status              PolicyStatus  @default(ACTIVE)
+  note                String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  premiums  PremiumPayment[]
+
+  @@index([workspaceId, status])
+}
+
+model PremiumPayment {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  policyId      String
+  dueDate       DateTime
+  amountMinor   BigInt
+  paidDate      DateTime?
+  transactionId String?
+  status        InstalmentStatus @default(DUE)
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  policy    InsurancePolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, dueDate])
+  @@index([workspaceId, status, dueDate])
 }
 
 // ---------------------------------------------------------------------------

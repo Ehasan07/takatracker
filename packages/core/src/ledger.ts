@@ -1,5 +1,4 @@
 import {
-  isDebitNormal,
   sumMinor,
   type AccountType,
   type EntryDirection,
@@ -89,14 +88,23 @@ export function assertBalanced(entries: readonly EntryDraft[]): void {
 }
 
 /**
- * Signed effect of one entry on its own account, in the direction a human
- * expects: positive = the account went up.
+ * Signed effect of one entry on its own account: **debits add, credits subtract,
+ * for every account type**.
+ *
+ * The tempting alternative is to sign by what is "normal" for the type, so a
+ * credit card's balance climbs as you spend on it. Two things break when you do.
+ * `openingBalance` already uses this convention — a ৳15,000 debt is entered as
+ * −15,000 — so the two halves of the same balance would disagree the moment an
+ * entry was posted. And `buildBalanceSheet` negates liability balances to print
+ * them, which only yields a positive figure if a debt is stored negative.
+ *
+ * The user-facing consequence is the one that settles it: a card you owe ৳5,000
+ * on reads −৳5,000 in the account list, and the dashboard's total balance
+ * subtracts your debts instead of counting them as wealth.
  */
-export function signedEffect(entry: EntryDraft, accountType: AccountType): number {
+export function signedEffect(entry: EntryDraft, _accountType: AccountType): number {
   const magnitude = baseMinor(entry);
-  const debitIncreases = isDebitNormal(accountType);
-  const isDebit = entry.direction === 'DEBIT';
-  return isDebit === debitIncreases ? magnitude : -magnitude;
+  return entry.direction === 'DEBIT' ? magnitude : -magnitude;
 }
 
 /** Running balance for one account: opening balance plus every entry's effect. */

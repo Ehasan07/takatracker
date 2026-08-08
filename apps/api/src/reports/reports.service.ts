@@ -13,7 +13,7 @@ import {
   type CategoryTotal,
   type TrendPoint,
 } from '@hishab/core';
-import { fromLocalDateString, isDebitNormal, toLocalDateString } from '@hishab/shared';
+import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
 import { minorToNumber } from '../common/bigint-json';
 import { AccountsService } from '../accounts/accounts.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -221,7 +221,7 @@ export class ReportsService {
       const type = typeById.get(row.accountId);
       if (!type) return 0;
       const magnitude = minorToNumber(row._sum.amountMinor ?? 0n);
-      return (row.direction === 'DEBIT') === isDebitNormal(type) ? magnitude : -magnitude;
+      return row.direction === 'DEBIT' ? magnitude : -magnitude;
     };
 
     const openingMinor =

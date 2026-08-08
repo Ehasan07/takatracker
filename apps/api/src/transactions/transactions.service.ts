@@ -7,7 +7,6 @@ import {
 } from '@hishab/core';
 import {
   fromLocalDateString,
-  isDebitNormal,
   toLocalDateString,
   type ReconcileInput,
   type SimpleTransactionInput,
@@ -367,8 +366,7 @@ export class TransactionsService {
     });
     if (!account) return;
 
-    const sign = (direction: 'DEBIT' | 'CREDIT'): number =>
-      (direction === 'DEBIT') === isDebitNormal(account.type) ? 1 : -1;
+    const sign = (direction: 'DEBIT' | 'CREDIT'): number => (direction === 'DEBIT' ? 1 : -1);
 
     const newer = await this.prisma.$queryRaw<{ direction: string; total: bigint }[]>`
       SELECT e."direction"::text AS direction, COALESCE(SUM(e."amountMinor"), 0) AS total

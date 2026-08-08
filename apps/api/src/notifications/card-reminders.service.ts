@@ -323,7 +323,9 @@ export class CardRemindersService {
           },
         });
 
-        if (paidThisCycle > 0 || balance <= 0) {
+        // A card is credit-normal, so what you owe on it is a negative balance:
+        // zero or above means there is nothing left to chase.
+        if (paidThisCycle > 0 || balance >= 0) {
           await this.prisma.cardReminderCycle.update({
             where: { id: row.id },
             data: { mutedAt: new Date(), mutedReason: 'PAID' },
@@ -341,11 +343,9 @@ export class CardRemindersService {
       where: { workspaceId, accountId: account.id, transaction: { deletedAt: null } },
       _sum: { amountMinor: true },
     });
-    const debitIncreases = isDebitNormal(account.type);
     return grouped.reduce((sum, row) => {
       const magnitude = minorToNumber(row._sum.amountMinor ?? 0n);
-      const isDebit = row.direction === 'DEBIT';
-      return sum + (isDebit === debitIncreases ? magnitude : -magnitude);
+      return sum + (row.direction === 'DEBIT' ? magnitude : -magnitude);
     }, minorToNumber(account.openingBalance));
   }
 

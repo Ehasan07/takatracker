@@ -1,4 +1,4 @@
-import { isDebitNormal, sumMinor, type AccountType } from '@hishab/shared';
+import { sumMinor, type AccountType } from '@hishab/shared';
 
 /**
  * Report assembly. The database does the grouping; this decides what the groups
@@ -100,13 +100,17 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
   };
 }
 
-/** Signed effect of one entry on its own account, for cash-flow work. */
+/**
+ * Signed effect of one entry on its own account, for cash-flow work.
+ * Debits add, credits subtract — see `signedEffect` in `ledger.ts` for why the
+ * sign does not depend on the account type.
+ */
 export function signedEffectFor(
-  type: AccountType,
+  _type: AccountType,
   direction: 'DEBIT' | 'CREDIT',
   amountMinor: number,
 ): number {
-  return (direction === 'DEBIT') === isDebitNormal(type) ? amountMinor : -amountMinor;
+  return direction === 'DEBIT' ? amountMinor : -amountMinor;
 }
 
 // --- trend ------------------------------------------------------------------

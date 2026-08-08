@@ -46,6 +46,91 @@ Last updated: 2026-08-08.
 
 ---
 
+## Loan ledger (M12) — the design, so nobody re-litigates it
+
+Every loan owns a **control account**: `RECEIVABLE` when we lent, `PAYABLE` when
+we borrowed, created automatically and named after the counterparty and the loan
+number (`করিম — ধার #L-0001`). Disbursement and every repayment are ordinary
+double-entry transfers between that control account and a cash or bank account.
+
+This is deliberate, and it is what QuickBooks does. The consequence worth
+stating: `packages/core/src/reports.ts` classifies by `ACCOUNT_CLASS`, so loan
+movements reach the balance sheet, the cash flow statement and the account
+running balance **with no special-casing**, and can never be counted as income
+or expense. There is no rule anywhere that says "exclude loans from income" —
+the structure makes it impossible. No `INCOME`/`EXPENSE` transaction is ever
+written by the loan module, and it never posts to `SYSTEM_INCOME`/`SYSTEM_EXPENSE`.
+
+The second consequence: per-loan statements, running balances and the party
+ledger came free, because account-scoped running balances already worked.
+
+Interest is off by default (`NONE`), because most household lending in
+Bangladesh carries none. `PERCENT` is **simple** interest over elapsed days and
+**stops accruing at the due date** — a household loan does not keep growing
+forever after the agreed date. The user types every rate; we infer none.
+
+### Deliberately not built, and why
+
+| Asked for       | Shipped                                      | Why                                                                                                    |
+| --------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| PDF export      | Print-to-PDF via a `@media print` stylesheet | A real PDF needs a new dependency. The button says print, so nobody is misled.                         |
+| Excel export    | CSV with a UTF-8 BOM                         | The BOM is what makes Bengali survive Excel. A file named `.xlsx` that is really CSV corrupts on open. |
+| SMS reminders   | Telegram only                                | No SMS gateway is configured. Telegram reminders (M36) carry loan due dates too.                       |
+| Multi-currency  | `currency` column, no conversion             | Storing a currency is not supporting one. No rate source, so no conversion.                            |
+| Email reminders | Not yet                                      | M28/M29 own outbound email; the loan reminder hooks into it when it lands.                             |
+
+### Timezone caveat carried by the maths
+
+`packages/core/src/loans.ts` reads dates as **local calendar days**. On a UTC
+server with an Asia/Dhaka user that differs by up to six hours at the day
+boundary, which can move `daysOverdue` by one. The API must therefore pass dates
+already shifted into the workspace timezone, exactly as the card reminder
+scheduler does. Flagged rather than silently papered over.
+
+### Defects the loan work turned up elsewhere
+
+Four were in the savings and insurance modules written the same week, found by
+their own e2e suite and fixed:
+
+- **Deletion was logged as an update.** Both `savings.remove` and
+  `insurance.remove` emitted `*_updated`, so the one event an operator opens an
+  audit log to find was the one it did not record.
+- **A policy's term and its maturity date could disagree, and both were
+  honoured** — a policy maturing in 2030 with premiums scheduled to 2046. The
+  date on the document now wins and the term is derived from it.
+- **"Next due" skipped a missed instalment**, pointing the saver at a later date
+  and quietly dropping the payment actually owed. Insurance already got this
+  right; savings now matches it.
+- **A yearly plan over a six-month term** passed validation with zero scheduled
+  instalments: money attached, nothing to tick off, progress frozen at zero.
+
+Two were in the loan maths itself:
+
+- **A repaid loan reopened the next morning.** Interest stopped at the due date
+  but not at settlement, so ৳1,00,000 at 10% settled in full showed ৳27.40
+  outstanding the following day and flipped back to ACTIVE. `settlementDate` in
+  `packages/core/src/loans.ts` now walks the payments in date order and freezes
+  accrual on the day the debt was cleared. It is exported rather than private
+  because the API stamps the statement's interest row with it and the web app
+  renders progress from it — two copies of that rule would drift, and the first
+  symptom would be a statement disagreeing with the summary above it.
+- **A back-dated final payment drove the statement negative**, because the
+  payment cap was judged as of today while the freeze keys off the payment's own
+  date. Both now use the day the money changed hands.
+
+And one in the web forms, shared with savings and insurance:
+`Math.trunc(Number('0.29') * 100)` is **28**, not 29 — the float lands a hair
+under and truncation removes the hair. Every new form now uses
+`parseMoneyToMinor`, which does it with string maths. Bengali digits work as a
+side effect.
+
+### Known gap: the e2e specs are not typechecked
+
+`apps/api/tsconfig.json` excludes `test/`, and vitest runs the specs through swc,
+which only strips types. So no `*.e2e-spec.ts` in this repo has ever been
+typechecked — the new ones were verified against a throwaway config instead.
+Worth fixing; recorded here so it is not rediscovered as a surprise.
+
 ## Decisions taken
 
 **Money.** `BIGINT` poisha in Postgres, `bigint` in Prisma, integer JSON number

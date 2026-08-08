@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { SYSTEM_ACCOUNT_KEYS, type SystemAccounts } from '@hishab/core';
-import { isDebitNormal, type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
+import { type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
 import type { Account, AccountType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
@@ -71,9 +71,9 @@ export class AccountsService {
       const type = typeById.get(row.accountId);
       if (!type) continue;
       const magnitude = minorToNumber(row._sum.amountMinor ?? 0n);
-      const debitIncreases = isDebitNormal(type);
-      const isDebit = row.direction === 'DEBIT';
-      const signed = isDebit === debitIncreases ? magnitude : -magnitude;
+      // Debits add, credits subtract, whatever the type — so a debt is negative,
+      // matching `openingBalance`. See `signedEffect` in @hishab/core.
+      const signed = row.direction === 'DEBIT' ? magnitude : -magnitude;
       out.set(row.accountId, (out.get(row.accountId) ?? 0) + signed);
     }
     return out;
@@ -170,10 +170,17 @@ export class AccountsService {
   ): Promise<AccountWithBalance> {
     const existing = await this.prisma.account.findFirst({
       where: { id, workspaceId, deletedAt: null },
+      include: { loanControl: { select: { loanNumber: true } } },
     });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     if (existing.systemKey)
       throw new BadRequestException('সিস্টেম অ্যাকাউন্ট সম্পাদনা করা যায় না');
+    // A loan owns its control account. Renaming or retyping it here would leave
+    // the loan screen describing something that no longer exists.
+    if (existing.loanControl)
+      throw new BadRequestException(
+        `এই অ্যাকাউন্টটি ঋণ #${existing.loanControl.loanNumber}-এর, ঋণের পাতা থেকে বদলাতে হবে`,
+      );
 
     await this.prisma.account.update({
       where: { id },
@@ -216,9 +223,18 @@ export class AccountsService {
     id: string,
     actorUserId?: string,
   ): Promise<{ id: string; isArchived: boolean }> {
-    const existing = await this.prisma.account.findFirst({ where: { id, workspaceId } });
+    const existing = await this.prisma.account.findFirst({
+      where: { id, workspaceId },
+      include: { loanControl: { select: { loanNumber: true, status: true } } },
+    });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     if (existing.systemKey) throw new BadRequestException('সিস্টেম অ্যাকাউন্ট আর্কাইভ করা যায় না');
+    // Archiving a live loan's control account would hide a debt that is still
+    // owed. Closing the loan archives it.
+    if (existing.loanControl && existing.loanControl.status === 'ACTIVE')
+      throw new BadRequestException(
+        `ঋণ #${existing.loanControl.loanNumber} এখনও চলমান, আগে সেটি শেষ বা বাতিল করুন`,
+      );
     await this.prisma.account.update({ where: { id }, data: { isArchived: true } });
     this.audit.emit({
       workspaceId,

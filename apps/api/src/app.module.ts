@@ -6,6 +6,9 @@ import { AccountsModule } from './accounts/accounts.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
+import { InsuranceModule } from './insurance/insurance.module';
+import { LoansModule } from './loans/loans.module';
+import { SavingsModule } from './savings/savings.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
 import { HealthController } from './health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -33,6 +36,9 @@ import { TransactionsModule } from './transactions/transactions.module';
     AuthModule,
     AccountsModule,
     CategoriesModule,
+    SavingsModule,
+    InsuranceModule,
+    LoansModule,
     TransactionsModule,
     ReportsModule,
     NotificationsModule,

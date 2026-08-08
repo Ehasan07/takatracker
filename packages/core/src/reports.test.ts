@@ -98,9 +98,11 @@ describe('signed effect', () => {
     expect(signedEffectFor('CASH', 'CREDIT', 500)).toBe(-500);
   });
 
-  it('flips for a credit-normal account', () => {
-    expect(signedEffectFor('CREDIT_CARD', 'CREDIT', 500)).toBe(500);
-    expect(signedEffectFor('CREDIT_CARD', 'DEBIT', 500)).toBe(-500);
+  it('does not flip for a credit-normal account', () => {
+    // Debits add and credits subtract whatever the account is, so a debt is
+    // negative. See `signedEffect` in ledger.ts for why.
+    expect(signedEffectFor('CREDIT_CARD', 'CREDIT', 500)).toBe(-500);
+    expect(signedEffectFor('CREDIT_CARD', 'DEBIT', 500)).toBe(500);
   });
 });
 

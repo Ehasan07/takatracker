@@ -134,9 +134,13 @@ describe('balances', () => {
     expect(signedEffect(e('cash', 'CREDIT', 500), 'CASH')).toBe(-500);
   });
 
-  it('increases a credit-normal account on credit', () => {
-    expect(signedEffect(e('card', 'CREDIT', 500), 'CREDIT_CARD')).toBe(500);
-    expect(signedEffect(e('card', 'DEBIT', 500), 'CREDIT_CARD')).toBe(-500);
+  it('drives a credit-normal account negative as the debt grows', () => {
+    /* Spending on a card credits it, and what you owe reads as a negative
+     * balance — the same convention `openingBalance` uses, and the one that
+     * lets the dashboard subtract debts instead of counting them as wealth. */
+    expect(signedEffect(e('card', 'CREDIT', 500), 'CREDIT_CARD')).toBe(-500);
+    // Paying the card off debits it, moving the balance back towards zero.
+    expect(signedEffect(e('card', 'DEBIT', 500), 'CREDIT_CARD')).toBe(500);
   });
 
   it('walks a full month of a cash account', () => {

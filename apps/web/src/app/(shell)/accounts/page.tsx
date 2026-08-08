@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellOff, Plus, Scale, Tags } from 'lucide-react';
+import { BellOff, PiggyBank, Plus, Scale, Tags } from 'lucide-react';
 import * as React from 'react';
 import { parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
@@ -56,6 +56,13 @@ export default function AccountsPage() {
         <div className="flex items-center gap-2">
           {/* Accounts say what you have; categories say where money goes. Both
               answer "what do I keep books with", so they sit together. */}
+          <Link
+            href="/savings"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+          >
+            <PiggyBank className="h-4 w-4" aria-hidden />
+            সঞ্চয়
+          </Link>
           <Link
             href="/categories"
             className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"

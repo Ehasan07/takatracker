@@ -1,0 +1,115 @@
+/*
+ * Print styles for the loan statements.
+ *
+ * The app on screen is a fixed-height flex shell with its own scroll container,
+ * which is exactly wrong for paper: without unpinning it the printer gets one
+ * screenful and stops. Everything else here is the same idea — a statement on
+ * paper is a document, black on white, with no chrome and no buttons.
+ *
+ * Only `.loan-print-only` leaks outside `@media print`, and it is hidden.
+ */
+
+.loan-print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  /* Black on white whatever the theme was on screen, including dark mode. */
+  :root {
+    --hishab-ink: #000000 !important;
+    --hishab-ink-muted: #333333 !important;
+    --hishab-paper: #ffffff !important;
+    --hishab-surface: #ffffff !important;
+    --hishab-greenbar: #ffffff !important;
+    --hishab-rule: #767676 !important;
+    --hishab-income: #000000 !important;
+    --hishab-expense: #000000 !important;
+    --hishab-brass: #000000 !important;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Unpin the shell: no clipping, no capped heights, no transforms. */
+  body * {
+    overflow: visible !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+    transform: none !important;
+    background-image: none !important;
+  }
+
+  body > div,
+  body > div > div {
+    display: block !important;
+    height: auto !important;
+  }
+
+  /* Navigation and controls never reach the paper. */
+  aside,
+  nav,
+  button,
+  .chrome-blur,
+  .no-print {
+    display: none !important;
+  }
+
+  a {
+    color: #000000 !important;
+    text-decoration: none !important;
+  }
+
+  .loan-print-only {
+    display: block !important;
+    margin-bottom: 8mm;
+  }
+
+  /* The wide table is collapsed to cards on a phone. On paper the table is
+     always the right answer, whatever the print viewport measures. */
+  .loan-print-table {
+    display: block !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .loan-screen-cards {
+    display: none !important;
+  }
+
+  .loan-print-table table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+    font-size: 9.5pt;
+  }
+
+  .loan-print-table th,
+  .loan-print-table td {
+    border: 1px solid #767676 !important;
+    padding: 3pt 4pt !important;
+  }
+
+  .loan-print-table thead {
+    display: table-header-group;
+  }
+
+  .loan-print-table tr,
+  .loan-print-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .loan-print-block {
+    border: 1px solid #767676 !important;
+  }
+}

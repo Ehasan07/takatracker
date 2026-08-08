@@ -143,7 +143,17 @@ export class EntitlementsService implements OnModuleInit {
 
     const [accounts, monthlyTransactions, members] = await Promise.all([
       this.prisma.account.count({
-        where: { workspaceId, systemKey: null, deletedAt: null, isArchived: false },
+        where: {
+          workspaceId,
+          systemKey: null,
+          deletedAt: null,
+          isArchived: false,
+          // A loan's control account is bookkeeping machinery, not an account
+          // the user opened. Counting it would spend a plan slot every time
+          // somebody records a loan, and they would hit a 402 for doing the
+          // very thing the loan screen invited them to do.
+          loanControl: null,
+        },
       }),
       this.prisma.transaction.count({
         where: { workspaceId, deletedAt: null, createdAt: { gte: monthStart, lt: monthEnd } },

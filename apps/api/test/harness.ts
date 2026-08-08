@@ -32,7 +32,7 @@ export async function createTestApp(): Promise<TestContext> {
 /** Wipe every table between suites. Order matters only for readability — CASCADE does the work. */
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "AuditEvent", "LedgerEntry", "Transaction", "Category", "Account", "Person", "Invitation", "Membership", "TelegramConnection", "CardReminderCycle", "WorkspaceFeatureOverride", "Workspace", "RefreshToken", "User" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "AuditEvent", "LedgerEntry", "Transaction", "LoanPayment", "Loan", "SavingsInstallment", "SavingsPlan", "PremiumPayment", "InsurancePolicy", "Category", "Account", "Person", "Invitation", "Membership", "TelegramConnection", "CardReminderCycle", "WorkspaceFeatureOverride", "Workspace", "RefreshToken", "User" RESTART IDENTITY CASCADE',
   );
 }
 

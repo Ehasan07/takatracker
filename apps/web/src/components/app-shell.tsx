@@ -1,7 +1,15 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ChartColumn, Inbox, LayoutDashboard, Plus, Settings, Wallet } from 'lucide-react';
+import {
+  ChartColumn,
+  HandCoins,
+  Inbox,
+  LayoutDashboard,
+  Plus,
+  Settings,
+  Wallet,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
@@ -24,10 +32,19 @@ import { QuickAddSheet } from './quick-add-sheet';
 const NAV = [
   { href: '/', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
   { href: '/transactions', label: 'খাতা', icon: Inbox },
+  { href: '/loans', label: 'ঋণ', icon: HandCoins },
   { href: '/accounts', label: 'অ্যাকাউন্ট', icon: Wallet },
   { href: '/reports', label: 'রিপোর্ট', icon: ChartColumn },
   { href: '/settings', label: 'সেটিংস', icon: Settings },
 ] as const;
+
+/**
+ * The phone bar carries five of the six. Six tabs at 360px leaves 60px each,
+ * which truncates every Bengali label into an unreadable stub. Accounts is the
+ * one that drops: it is a setup screen, and the dashboard's balance card links
+ * straight to it, whereas loans is visited weekly.
+ */
+const MOBILE_NAV = NAV.filter((item) => item.href !== '/accounts');
 
 const TITLES: Record<string, string> = {
   '/': 'ড্যাশবোর্ড',
@@ -35,6 +52,9 @@ const TITLES: Record<string, string> = {
   '/accounts': 'অ্যাকাউন্ট',
   '/categories': 'ক্যাটাগরি',
   '/reports': 'রিপোর্ট',
+  '/savings': 'সঞ্চয় ও বীমা',
+  '/insurance': 'বীমা',
+  '/loans': 'ঋণ',
   '/settings': 'সেটিংস',
 };
 
@@ -167,7 +187,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="প্রধান মেনু"
           className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-5 border-t md:hidden"
         >
-          {NAV.map((item) => (
+          {MOBILE_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
