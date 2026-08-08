@@ -21,15 +21,15 @@ Last updated: 2026-08-08.
 | M36     | Telegram credit-card due reminders                                | done        |
 | M25     | Audit log + timeline                                              | done        |
 | —       | Category management + asset/liability accounts                    | done        |
-| M5      | Reports v1 + filters                                              | **next**    |
-| M6      | Excel/CSV import with mapping UI + export                         | not started |
+| M5      | Reports v1 + filters                                              | done        |
+| M6      | Excel/CSV import with mapping UI + export                         | **next**    |
 | M7–M11  | Ingestion, parsing, draft inbox, dedupe, email channel            | not started |
 | M12–M14 | People/loans, savings/insurance, assets/net worth                 | not started |
 | M15–M22 | Mobile, sync, AI, recurring, SMS, OCR, polish, store prep         | not started |
 
 ### Acceptance evidence
 
-- `pnpm test` — 141 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 7 parser, 60 API integration.
+- `pnpm test` — 170 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 19 reports, 7 parser, 70 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
@@ -139,6 +139,26 @@ that guard the back-to-back windows would invent a debt the card never had.
 cannot double-send. BullMQ and a separate worker process would buy scheduling
 guarantees this job does not need. Each workspace is served at 09:00 in its own
 timezone.
+
+**Report numbers come from a hand-checked fixture.** `packages/core/reports.test.ts`
+works one balance sheet out on paper — ten accounts, in taka, in a comment — and
+every assertion refers to it. The API suite then repeats the exercise end to end
+over a month of transactions. The check that matters most is that cash flow's
+closing figure equals the balance sheet's liquid total: if a query ever misses
+an entry, those two stop agreeing.
+
+**A quiet month is a zero, not a gap.** `buildTrend` fills months with no
+activity. Omitting them makes a chart draw a straight line across the gap and
+invent a trend that never happened.
+
+**Charts are fed poisha, never taka.** Converting to a float and back would
+round money, which nothing in this codebase does. The axis divides for display
+only and that number never returns to the ledger — the ESLint rule caught the
+first attempt.
+
+**Recharts loads after the numbers.** It is larger than the rest of the reports
+page put together, so it sits behind `next/dynamic`: the route went from 270 kB
+to 155 kB of first-load JS and the cards above the fold render immediately.
 
 **Cascading deletes.** `LedgerEntry.account` originally had no `onDelete`, so
 Postgres refused to delete a `User` — the cascade stopped at the ledger. Spec §9

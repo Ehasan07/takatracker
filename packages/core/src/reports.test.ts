@@ -1,0 +1,204 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ACCOUNT_CLASS,
+  buildBalanceSheet,
+  buildCashFlow,
+  buildTrend,
+  shiftMonthKey,
+  signedEffectFor,
+  topWithRest,
+  withShares,
+  type AccountBalanceRow,
+  type CategoryTotal,
+} from './reports.js';
+
+/**
+ * The fixture below is worked out by hand once, in taka, and every expectation
+ * refers back to it. That is what "numbers match a hand-checked fixture set"
+ * means — if a query changes shape, these numbers do not move.
+ *
+ *   নগদ            ৳  1,200.00   asset, liquid
+ *   ব্র্যাক ব্যাংক   ৳ 45,000.00   asset, liquid
+ *   বিকাশ          ৳  3,300.50   asset, liquid
+ *   ডিপিএস         ৳ 60,000.00   asset, not liquid
+ *   জমি            ৳500,000.00   asset, not liquid
+ *   করিম পাবে      ৳  5,000.00   receivable → asset
+ *   ক্রেডিট কার্ড    −৳ 12,400.00   liability, ৳12,400 owed
+ *   গাড়ির ঋণ       −৳150,000.00   liability
+ *   দোকানের দেনা    −৳  2,500.00   payable → liability
+ *   আয় (system)    −৳ 80,000.00   nominal, must be ignored
+ *
+ *   assets      = 1,200 + 45,000 + 3,300.50 + 60,000 + 500,000 + 5,000
+ *               = ৳614,500.50   → 61,450,050 poisha
+ *   liabilities = 12,400 + 150,000 + 2,500
+ *               = ৳164,900.00   → 16,490,000 poisha
+ *   net worth   = ৳449,600.50   → 44,960,050 poisha
+ *   liquid      = 1,200 + 45,000 + 3,300.50 = ৳49,500.50 → 4,950,050 poisha
+ */
+const FIXTURE: AccountBalanceRow[] = [
+  { id: 'a1', name: 'নগদ', type: 'CASH', balanceMinor: 120_000 },
+  { id: 'a2', name: 'ব্র্যাক ব্যাংক', type: 'BANK', balanceMinor: 4_500_000 },
+  { id: 'a3', name: 'বিকাশ', type: 'MOBILE_WALLET', balanceMinor: 330_050 },
+  { id: 'a4', name: 'ডিপিএস', type: 'SAVINGS', balanceMinor: 6_000_000 },
+  { id: 'a5', name: 'জমি', type: 'ASSET', balanceMinor: 50_000_000 },
+  { id: 'a6', name: 'করিম পাবে', type: 'RECEIVABLE', balanceMinor: 500_000 },
+  { id: 'l1', name: 'ক্রেডিট কার্ড', type: 'CREDIT_CARD', balanceMinor: -1_240_000 },
+  { id: 'l2', name: 'গাড়ির ঋণ', type: 'LIABILITY', balanceMinor: -15_000_000 },
+  { id: 'l3', name: 'দোকানের দেনা', type: 'PAYABLE', balanceMinor: -250_000 },
+  { id: 's1', name: 'আয়', type: 'EQUITY', balanceMinor: -8_000_000 },
+];
+
+describe('balance sheet', () => {
+  const sheet = buildBalanceSheet(FIXTURE);
+
+  it('adds up to the hand-checked totals', () => {
+    expect(sheet.assetsMinor).toBe(61_450_050);
+    expect(sheet.liabilitiesMinor).toBe(16_490_000);
+    expect(sheet.netWorthMinor).toBe(44_960_050);
+  });
+
+  it('separates what could actually be spent today', () => {
+    expect(sheet.liquidMinor).toBe(4_950_050);
+  });
+
+  it('reports what is owed as a positive figure and then subtracts it', () => {
+    const card = sheet.liabilities.find((l) => l.id === 'l1');
+    expect(card?.amountMinor).toBe(1_240_000);
+    expect(sheet.assetsMinor - sheet.liabilitiesMinor).toBe(sheet.netWorthMinor);
+  });
+
+  it('ignores the hidden nominal accounts, which would double everything', () => {
+    expect(ACCOUNT_CLASS.EQUITY).toBe('NOMINAL');
+    expect([...sheet.assets, ...sheet.liabilities].some((l) => l.id === 's1')).toBe(false);
+  });
+
+  it('shows the breakdown, largest first, never a bare number', () => {
+    expect(sheet.assets[0]?.name).toBe('জমি');
+    expect(sheet.liabilities[0]?.name).toBe('গাড়ির ঋণ');
+    expect(sheet.assets).toHaveLength(6);
+    expect(sheet.liabilities).toHaveLength(3);
+  });
+
+  it('handles an empty workspace without dividing by anything', () => {
+    const empty = buildBalanceSheet([]);
+    expect(empty).toMatchObject({ assetsMinor: 0, liabilitiesMinor: 0, netWorthMinor: 0 });
+  });
+
+  it('classifies every account type', () => {
+    for (const [type, klass] of Object.entries(ACCOUNT_CLASS)) {
+      expect(['ASSET', 'LIABILITY', 'NOMINAL'], type).toContain(klass);
+    }
+  });
+});
+
+describe('signed effect', () => {
+  it('is positive when a debit-normal account is debited', () => {
+    expect(signedEffectFor('CASH', 'DEBIT', 500)).toBe(500);
+    expect(signedEffectFor('CASH', 'CREDIT', 500)).toBe(-500);
+  });
+
+  it('flips for a credit-normal account', () => {
+    expect(signedEffectFor('CREDIT_CARD', 'CREDIT', 500)).toBe(500);
+    expect(signedEffectFor('CREDIT_CARD', 'DEBIT', 500)).toBe(-500);
+  });
+});
+
+describe('month keys', () => {
+  it('walks forwards and backwards across a year boundary', () => {
+    expect(shiftMonthKey('2026-08', -1)).toBe('2026-07');
+    expect(shiftMonthKey('2026-01', -1)).toBe('2025-12');
+    expect(shiftMonthKey('2026-12', 1)).toBe('2027-01');
+    expect(shiftMonthKey('2026-08', -12)).toBe('2025-08');
+  });
+});
+
+describe('trend', () => {
+  const rows = [
+    { month: '2026-06', incomeMinor: 5_000_000, expenseMinor: 3_200_000 },
+    // July deliberately missing — the user was away and recorded nothing.
+    { month: '2026-08', incomeMinor: 5_500_000, expenseMinor: 6_100_000 },
+  ];
+
+  it('fills a quiet month with zeros rather than skipping it', () => {
+    const series = buildTrend(rows, '2026-08', 3);
+    expect(series.map((p) => p.month)).toEqual(['2026-06', '2026-07', '2026-08']);
+    // Omitting July would make the chart draw a straight line across it and
+    // invent a trend that never happened.
+    expect(series[1]).toEqual({
+      month: '2026-07',
+      incomeMinor: 0,
+      expenseMinor: 0,
+      netMinor: 0,
+    });
+  });
+
+  it('computes net per month', () => {
+    const series = buildTrend(rows, '2026-08', 3);
+    expect(series[0]?.netMinor).toBe(1_800_000);
+    expect(series[2]?.netMinor).toBe(-600_000);
+  });
+
+  it('returns exactly the number of months asked for', () => {
+    expect(buildTrend(rows, '2026-08', 12)).toHaveLength(12);
+    expect(buildTrend([], '2026-08', 6)).toHaveLength(6);
+  });
+});
+
+describe('category shares', () => {
+  const rows: CategoryTotal[] = [
+    { categoryId: 'c1', name: 'খাবার ও বাজার', totalMinor: 2_500_000 },
+    { categoryId: 'c2', name: 'বাসা ভাড়া', totalMinor: 1_800_000 },
+    { categoryId: 'c3', name: 'যাতায়াত', totalMinor: 700_000 },
+  ];
+
+  it('sorts largest first and shares sum to the whole', () => {
+    const shares = withShares(rows);
+    expect(shares[0]?.name).toBe('খাবার ও বাজার');
+    // 25,000 / 50,000 = 50%, 18,000 = 36%, 7,000 = 14%
+    expect(shares.map((s) => s.sharePercent)).toEqual([50, 36, 14]);
+  });
+
+  it('does not divide by zero on an empty period', () => {
+    expect(withShares([{ categoryId: 'c1', name: 'x', totalMinor: 0 }])[0]?.sharePercent).toBe(0);
+  });
+});
+
+describe('top with rest', () => {
+  const rows: CategoryTotal[] = [
+    { categoryId: 'a', name: 'A', totalMinor: 500 },
+    { categoryId: 'b', name: 'B', totalMinor: 400 },
+    { categoryId: 'c', name: 'C', totalMinor: 300 },
+    { categoryId: 'd', name: 'D', totalMinor: 200 },
+    { categoryId: 'e', name: 'E', totalMinor: 100 },
+  ];
+
+  it('folds the tail into one line and loses nothing', () => {
+    const top = topWithRest(rows, 3);
+    expect(top).toHaveLength(4);
+    expect(top[3]).toEqual({ categoryId: null, name: 'অন্যান্য', totalMinor: 300 });
+    expect(top.reduce((s, r) => s + r.totalMinor, 0)).toBe(1500);
+  });
+
+  it('leaves a short list alone', () => {
+    expect(topWithRest(rows, 10)).toHaveLength(5);
+  });
+});
+
+describe('cash flow', () => {
+  it('closes where the balance should end up', () => {
+    const flow = buildCashFlow({
+      openingMinor: 1_000_000,
+      inflowMinor: 5_000_000,
+      outflowMinor: 3_250_000,
+    });
+    expect(flow.netMinor).toBe(1_750_000);
+    // This is the figure that must equal the account's closing balance; a
+    // mismatch means the query missed an entry.
+    expect(flow.closingMinor).toBe(2_750_000);
+  });
+
+  it('handles a month that spent more than it earned', () => {
+    const flow = buildCashFlow({ openingMinor: 100, inflowMinor: 0, outflowMinor: 500 });
+    expect(flow.closingMinor).toBe(-400);
+  });
+});

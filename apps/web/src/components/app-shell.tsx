@@ -1,7 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Inbox, LayoutDashboard, Plus, Settings, Tags, Wallet } from 'lucide-react';
+import { ChartColumn, Inbox, LayoutDashboard, Plus, Settings, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
@@ -25,7 +25,7 @@ const NAV = [
   { href: '/', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
   { href: '/transactions', label: 'খাতা', icon: Inbox },
   { href: '/accounts', label: 'অ্যাকাউন্ট', icon: Wallet },
-  { href: '/categories', label: 'খাত', icon: Tags },
+  { href: '/reports', label: 'রিপোর্ট', icon: ChartColumn },
   { href: '/settings', label: 'সেটিংস', icon: Settings },
 ] as const;
 
@@ -34,6 +34,7 @@ const TITLES: Record<string, string> = {
   '/transactions': 'খাতা',
   '/accounts': 'অ্যাকাউন্ট',
   '/categories': 'ক্যাটাগরি',
+  '/reports': 'রিপোর্ট',
   '/settings': 'সেটিংস',
 };
 

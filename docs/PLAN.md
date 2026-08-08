@@ -296,21 +296,21 @@ dominates everything else:
 > isolation test gets rewritten twice. Done now — with one user and no
 > transactions in production — the migration is nearly free.
 
-| Phase    | Milestones                 | Rationale                                                                               |
-| -------- | -------------------------- | --------------------------------------------------------------------------------------- |
-| **Done** | M0–M4, M23, M24, M36       | Live. Workspaces 07-08, entitlements + Telegram reminders 08-08.                        |
-| **Next** | **M25**                    | Audit log — every later feature registers against it.                                   |
-| A        | —                          | (M24 done; M25 is now the Next row.)                                                    |
-| B        | M5, M6                     | Reports and Excel import: the two things that make the app useful enough to charge for. |
-| C        | M30                        | Signup, verification, password reset, sessions, onboarding.                             |
-| D        | —                          | (M36 done, brought forward: the owner supplied a bot.)                                  |
-| E        | M7–M9                      | Ingestion core, parser, draft inbox — the highest-value feature in the product.         |
-| F        | M26, M27                   | SMS build split and the automation replacements. Pairs naturally with ingestion.        |
-| G        | M33, M34                   | Observability, legal and backups. (M31 billing dropped at the owner's request.)         |
-| H        | M10, M11                   | Dedupe/LLM fallback, email alias channel.                                               |
-| I        | M15, M16                   | Mobile app and sync.                                                                    |
-| J        | M28, M29                   | IMAP mailbox connector — deliberately last of the ingestion work, see §6.               |
-| K        | M12–M14, M17–M22, M32, M35 | Loans, savings, net worth, AI, polish, store prep, admin, launch.                       |
+| Phase    | Milestones                 | Rationale                                                                             |
+| -------- | -------------------------- | ------------------------------------------------------------------------------------- |
+| **Done** | M0–M5, M23–M25, M36        | Live. Workspaces 07-08; entitlements, reminders, audit, categories and reports 08-08. |
+| **Next** | **M25**                    | Audit log — every later feature registers against it.                                 |
+| A        | —                          | (M24 done; M25 is now the Next row.)                                                  |
+| B        | M6                         | Excel import and export. (M5 reports done.)                                           |
+| C        | M30                        | Signup, verification, password reset, sessions, onboarding.                           |
+| D        | —                          | (M36 done, brought forward: the owner supplied a bot.)                                |
+| E        | M7–M9                      | Ingestion core, parser, draft inbox — the highest-value feature in the product.       |
+| F        | M26, M27                   | SMS build split and the automation replacements. Pairs naturally with ingestion.      |
+| G        | M33, M34                   | Observability, legal and backups. (M31 billing dropped at the owner's request.)       |
+| H        | M10, M11                   | Dedupe/LLM fallback, email alias channel.                                             |
+| I        | M15, M16                   | Mobile app and sync.                                                                  |
+| J        | M28, M29                   | IMAP mailbox connector — deliberately last of the ingestion work, see §6.             |
+| K        | M12–M14, M17–M22, M32, M35 | Loans, savings, net worth, AI, polish, store prep, admin, launch.                     |
 
 M19 is deleted; M26 and M27 replace it.
 

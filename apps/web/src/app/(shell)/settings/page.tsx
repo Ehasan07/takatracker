@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { api, endpoints } from '@/lib/api';
@@ -80,6 +81,17 @@ export default function SettingsPage() {
             limit={entitlements.data?.entitlements['members.max'] ?? null}
           />
         </div>
+      </section>
+
+      <section className="rounded-card border-rule bg-surface border p-4">
+        <h2 className="text-ink-muted text-sm font-medium">খাত ব্যবস্থাপনা</h2>
+        <p className="text-ink-muted mt-1 text-sm">আয় ও খরচের খাত যোগ করুন, নাম বদলান, মুছুন।</p>
+        <Link
+          href="/categories"
+          className="press bg-income mt-3 inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-white"
+        >
+          ক্যাটাগরি দেখুন
+        </Link>
       </section>
 
       <TelegramSettings />
