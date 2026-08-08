@@ -39,7 +39,7 @@ export class AccountsController {
     @CurrentUser() user: AuthUser,
     @Body(zodPipe(createAccountSchema)) body: ReturnType<typeof createAccountSchema.parse>,
   ) {
-    return this.accounts.create(user.workspaceId, body, user.timezone);
+    return this.accounts.create(user.workspaceId, body, user.timezone, user.id);
   }
 
   @Patch(':id')
@@ -48,12 +48,12 @@ export class AccountsController {
     @Param('id') id: string,
     @Body(zodPipe(updateAccountSchema)) body: ReturnType<typeof updateAccountSchema.parse>,
   ) {
-    return this.accounts.update(user.workspaceId, id, body);
+    return this.accounts.update(user.workspaceId, id, body, user.id);
   }
 
   @Delete(':id')
   archive(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.accounts.archive(user.workspaceId, id);
+    return this.accounts.archive(user.workspaceId, id, user.id);
   }
 
   /** Enter the real balance; the server books the difference as an ADJUSTMENT. */

@@ -127,6 +127,7 @@ export class AccountsService {
     workspaceId: string,
     input: CreateAccountInput,
     timezone = 'Asia/Dhaka',
+    actorUserId?: string,
   ): Promise<AccountWithBalance> {
     // Archived accounts do not count, so hitting the ceiling has a way out that
     // is not "delete your history".
@@ -152,6 +153,7 @@ export class AccountsService {
     });
     this.audit.emit({
       workspaceId,
+      actorUserId,
       action: 'account.created',
       entity: 'Account',
       entityId: account.id,
@@ -164,6 +166,7 @@ export class AccountsService {
     workspaceId: string,
     id: string,
     input: UpdateAccountInput,
+    actorUserId?: string,
   ): Promise<AccountWithBalance> {
     const existing = await this.prisma.account.findFirst({
       where: { id, workspaceId, deletedAt: null },
@@ -194,6 +197,7 @@ export class AccountsService {
     });
     this.audit.emit({
       workspaceId,
+      actorUserId,
       action: 'account.updated',
       entity: 'Account',
       entityId: id,
@@ -207,13 +211,18 @@ export class AccountsService {
   }
 
   /** Archive rather than delete — history must stay intact. */
-  async archive(workspaceId: string, id: string): Promise<{ id: string; isArchived: boolean }> {
+  async archive(
+    workspaceId: string,
+    id: string,
+    actorUserId?: string,
+  ): Promise<{ id: string; isArchived: boolean }> {
     const existing = await this.prisma.account.findFirst({ where: { id, workspaceId } });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     if (existing.systemKey) throw new BadRequestException('সিস্টেম অ্যাকাউন্ট আর্কাইভ করা যায় না');
     await this.prisma.account.update({ where: { id }, data: { isArchived: true } });
     this.audit.emit({
       workspaceId,
+      actorUserId,
       action: 'account.archived',
       entity: 'Account',
       entityId: id,

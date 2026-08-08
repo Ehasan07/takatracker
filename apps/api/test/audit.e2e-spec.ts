@@ -140,6 +140,8 @@ describe('audit log', () => {
     expect(event.entity).toBe('Account');
     expect(event.after.name).toBe('ব্যাংক');
     expect(event.actorType).toBe('USER');
+    // "Who did that" is the whole point; an anonymous entry is a broken one.
+    expect(event.actor?.id).toBe(user.id);
   });
 
   it('is newest first and pages with a cursor', async () => {
