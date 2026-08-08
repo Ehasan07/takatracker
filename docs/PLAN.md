@@ -306,7 +306,7 @@ dominates everything else:
 | D        | —                          | (M36 done, brought forward: the owner supplied a bot.)                                  |
 | E        | M7–M9                      | Ingestion core, parser, draft inbox — the highest-value feature in the product.         |
 | F        | M26, M27                   | SMS build split and the automation replacements. Pairs naturally with ingestion.        |
-| G        | M31, M33, M34              | Billing, observability, legal and backups. Sellable from here.                          |
+| G        | M33, M34                   | Observability, legal and backups. (M31 billing dropped at the owner's request.)         |
 | H        | M10, M11                   | Dedupe/LLM fallback, email alias channel.                                               |
 | I        | M15, M16                   | Mobile app and sync.                                                                    |
 | J        | M28, M29                   | IMAP mailbox connector — deliberately last of the ingestion work, see §6.               |
@@ -340,7 +340,14 @@ and the native mobile behaviour are all untouched by M23.
 Carried over from v2 §11, plus new ones from v3 and the Telegram feature.
 None block M23.
 
-**Billing (M31) — decided 2026-08-08, defaults chosen on the owner's "go ahead"**
+**Billing (M31) — DROPPED 2026-08-08. The owner does not want billing.**
+
+The entitlement engine stays: it is what enforces limits and it costs nothing to
+keep. No payment provider is integrated, no plan is sold, and M31 leaves the
+schedule. Turning it on later is wiring a provider to the plans that already
+exist, not rebuilding the layer. The reasoning below is kept for that day.
+
+**Billing, if it is ever switched on**
 
 1. **Web-only selling.** The mobile apps sign in to an existing account and
    never mention price, purchase or upgrade — that is what keeps them outside

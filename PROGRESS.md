@@ -20,6 +20,7 @@ Last updated: 2026-08-08.
 | M24     | Entitlements engine + 402 limit responses                         | done        |
 | M36     | Telegram credit-card due reminders                                | done        |
 | M25     | Audit log + timeline                                              | done        |
+| —       | Category management + asset/liability accounts                    | done        |
 | M5      | Reports v1 + filters                                              | **next**    |
 | M6      | Excel/CSV import with mapping UI + export                         | not started |
 | M7–M11  | Ingestion, parsing, draft inbox, dedupe, email channel            | not started |
@@ -28,7 +29,7 @@ Last updated: 2026-08-08.
 
 ### Acceptance evidence
 
-- `pnpm test` — 135 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 7 parser, 54 API integration.
+- `pnpm test` — 141 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 7 parser, 60 API integration.
 - `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.

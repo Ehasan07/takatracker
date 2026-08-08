@@ -21,6 +21,8 @@ export const AUDIT_ACTIONS = [
   'transaction.restored',
   'transaction.reconciled',
   'category.created',
+  'category.updated',
+  'category.deleted',
   'plan.changed',
   'entitlement.override_changed',
   'notifications.telegram_bound',

@@ -12,13 +12,19 @@ import { SkeletonRows } from '@/components/skeleton';
 import { api, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
 import { UsageMeter } from '@/components/usage-meter';
 
-const ACCOUNT_TYPES: { value: string; label: string }[] = [
-  { value: 'CASH', label: 'নগদ' },
-  { value: 'BANK', label: 'ব্যাংক' },
-  { value: 'MOBILE_WALLET', label: 'মোবাইল ওয়ালেট' },
-  { value: 'CREDIT_CARD', label: 'ক্রেডিট কার্ড' },
-  { value: 'SAVINGS', label: 'সঞ্চয়' },
+const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
+  { value: 'CASH', label: 'নগদ', group: 'হাতে ও ব্যাংকে' },
+  { value: 'BANK', label: 'ব্যাংক', group: 'হাতে ও ব্যাংকে' },
+  { value: 'MOBILE_WALLET', label: 'মোবাইল ওয়ালেট', group: 'হাতে ও ব্যাংকে' },
+  { value: 'SAVINGS', label: 'সঞ্চয় / ডিপিএস', group: 'হাতে ও ব্যাংকে' },
+  { value: 'ASSET', label: 'সম্পদ (জমি, স্বর্ণ, গাড়ি)', group: 'সম্পদ' },
+  { value: 'RECEIVABLE', label: 'পাওনা (যা আমি পাব)', group: 'সম্পদ' },
+  { value: 'CREDIT_CARD', label: 'ক্রেডিট কার্ড', group: 'দায়' },
+  { value: 'LIABILITY', label: 'ঋণ / দায়', group: 'দায়' },
+  { value: 'PAYABLE', label: 'দেনা (যা আমি দেব)', group: 'দায়' },
 ];
+
+const TYPE_GROUPS = ['হাতে ও ব্যাংকে', 'সম্পদ', 'দায়'] as const;
 
 export default function AccountsPage() {
   const queryClient = useQueryClient();
@@ -200,10 +206,14 @@ function AddAccountSheet({
         </Field>
         <Field label="ধরন" htmlFor="acc-type">
           <Select id="acc-type" value={type} onChange={(e) => setType(e.target.value)}>
-            {ACCOUNT_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
+            {TYPE_GROUPS.map((group) => (
+              <optgroup key={group} label={group}>
+                {ACCOUNT_TYPES.filter((t) => t.group === group).map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </Select>
         </Field>

@@ -179,6 +179,9 @@ export interface CategoryDto {
   icon: string | null;
   color: string | null;
   sortOrder: number;
+  parentId?: string | null;
+  isSystem?: boolean;
+  usageCount?: number;
 }
 
 export interface TransactionDto {

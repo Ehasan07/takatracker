@@ -1,7 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Inbox, LayoutDashboard, Plus, Settings, Wallet } from 'lucide-react';
+import { Inbox, LayoutDashboard, Plus, Settings, Tags, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
@@ -25,6 +25,7 @@ const NAV = [
   { href: '/', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
   { href: '/transactions', label: 'খাতা', icon: Inbox },
   { href: '/accounts', label: 'অ্যাকাউন্ট', icon: Wallet },
+  { href: '/categories', label: 'খাত', icon: Tags },
   { href: '/settings', label: 'সেটিংস', icon: Settings },
 ] as const;
 
@@ -32,6 +33,7 @@ const TITLES: Record<string, string> = {
   '/': 'ড্যাশবোর্ড',
   '/transactions': 'খাতা',
   '/accounts': 'অ্যাকাউন্ট',
+  '/categories': 'ক্যাটাগরি',
   '/settings': 'সেটিংস',
 };
 
@@ -162,7 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav
           data-testid="bottom-nav"
           aria-label="প্রধান মেনু"
-          className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-4 border-t md:hidden"
+          className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-5 border-t md:hidden"
         >
           {NAV.map((item) => (
             <Link
