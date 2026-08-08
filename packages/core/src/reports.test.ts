@@ -4,6 +4,7 @@ import {
   buildBalanceSheet,
   buildCashFlow,
   buildTrend,
+  rollUpToParents,
   shiftMonthKey,
   signedEffectFor,
   topWithRest,
@@ -200,5 +201,67 @@ describe('cash flow', () => {
   it('handles a month that spent more than it earned', () => {
     const flow = buildCashFlow({ openingMinor: 100, inflowMinor: 0, outflowMinor: 500 });
     expect(flow.closingMinor).toBe(-400);
+  });
+});
+
+describe('sub-category roll-up', () => {
+  /**
+   * যাতায়াত ৳500 of its own, with two children:
+   *   ├ রিকশা   ৳300
+   *   └ বাস     ৳200
+   * খাবার ও বাজার has no spending of its own, only:
+   *   └ সবজি    ৳900
+   *
+   * যাতায়াত rolls up to ৳1,000; খাবার rolls up to ৳900 and must still appear.
+   */
+  const parentOf = new Map<string, string | null>([
+    ['transport', null],
+    ['rickshaw', 'transport'],
+    ['bus', 'transport'],
+    ['food', null],
+    ['veg', 'food'],
+  ]);
+
+  const rows = [
+    { categoryId: 'transport', name: 'যাতায়াত', totalMinor: 50_000 },
+    { categoryId: 'rickshaw', name: 'রিকশা', totalMinor: 30_000, parentName: 'যাতায়াত' },
+    { categoryId: 'bus', name: 'বাস', totalMinor: 20_000, parentName: 'যাতায়াত' },
+    { categoryId: 'veg', name: 'সবজি', totalMinor: 90_000, parentName: 'খাবার ও বাজার' },
+  ];
+
+  it('adds the children into the parent but keeps its own total separate', () => {
+    const nodes = rollUpToParents(rows, parentOf);
+    const transport = nodes.find((n) => n.categoryId === 'transport')!;
+    expect(transport.totalMinor).toBe(50_000); // spent directly on "যাতায়াত"
+    expect(transport.rolledUpMinor).toBe(100_000); // with রিকশা and বাস
+    expect(transport.children.map((c) => c.name)).toEqual(['রিকশা', 'বাস']);
+  });
+
+  it('still shows a parent that has no spending of its own', () => {
+    const nodes = rollUpToParents(rows, parentOf);
+    const food = nodes.find((n) => n.categoryId === 'food')!;
+    // Dropping it would make ৳900 vanish from the report.
+    expect(food.name).toBe('খাবার ও বাজার');
+    expect(food.totalMinor).toBe(0);
+    expect(food.rolledUpMinor).toBe(90_000);
+  });
+
+  it('sorts by the rolled-up figure, which is what the reader compares', () => {
+    const nodes = rollUpToParents(rows, parentOf);
+    expect(nodes.map((n) => n.categoryId)).toEqual(['transport', 'food']);
+  });
+
+  it('loses nothing', () => {
+    const nodes = rollUpToParents(rows, parentOf);
+    expect(nodes.reduce((s, n) => s + n.rolledUpMinor, 0)).toBe(190_000);
+  });
+
+  it('keeps uncategorised money visible', () => {
+    const nodes = rollUpToParents(
+      [...rows, { categoryId: null, name: 'অশ্রেণিবদ্ধ', totalMinor: 10_000 }],
+      parentOf,
+    );
+    expect(nodes.some((n) => n.categoryId === null)).toBe(true);
+    expect(nodes.reduce((s, n) => s + n.rolledUpMinor, 0)).toBe(200_000);
   });
 });

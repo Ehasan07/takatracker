@@ -105,7 +105,9 @@ describe('reports', () => {
   const get = (path: string) => ctx.http().get(path).set(auth(user));
 
   it('totals expense by category and merges repeats of the same one', async () => {
-    const res = await get('/v1/reports/by-category?kind=EXPENSE').expect(200);
+    // flat=1 is the every-line view; the default folds sub-categories into
+    // their parent, which this fixture does not use.
+    const res = await get('/v1/reports/by-category?kind=EXPENSE&flat=1').expect(200);
     expect(res.body.total).toBe(3_000_000);
 
     const food = res.body.rows.find((r: { name: string }) => r.name === 'খাবার ও বাজার');
@@ -118,7 +120,7 @@ describe('reports', () => {
   });
 
   it('totals income by category', async () => {
-    const res = await get('/v1/reports/by-category?kind=INCOME').expect(200);
+    const res = await get('/v1/reports/by-category?kind=INCOME&flat=1').expect(200);
     expect(res.body.total).toBe(8_000_000);
     expect(res.body.rows[0].name).toBe('বেতন');
   });
@@ -186,14 +188,14 @@ describe('reports', () => {
 
   it('honours an explicit date range', async () => {
     const narrow = await get(
-      `/v1/reports/by-category?kind=EXPENSE&from=${day('05')}&to=${day('06')}`,
+      `/v1/reports/by-category?kind=EXPENSE&flat=1&from=${day('05')}&to=${day('06')}`,
     ).expect(200);
     // Only the two food entries fall inside.
     expect(narrow.body.total).toBe(1_000_000);
 
     // The upper bound is inclusive.
     const single = await get(
-      `/v1/reports/by-category?kind=EXPENSE&from=${day('07')}&to=${day('07')}`,
+      `/v1/reports/by-category?kind=EXPENSE&flat=1&from=${day('07')}&to=${day('07')}`,
     ).expect(200);
     expect(single.body.total).toBe(200_000);
   });
@@ -209,7 +211,7 @@ describe('reports', () => {
 
     const byCat = await ctx
       .http()
-      .get('/v1/reports/by-category?kind=EXPENSE')
+      .get('/v1/reports/by-category?kind=EXPENSE&flat=1')
       .set(auth(bob))
       .expect(200);
     expect(byCat.body.total).toBe(0);

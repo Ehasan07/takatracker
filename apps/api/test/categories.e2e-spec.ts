@@ -144,3 +144,191 @@ describe('categories', () => {
     );
   });
 });
+
+describe('sub-categories', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  const add = (user: Awaited<ReturnType<typeof signup>>, body: unknown) =>
+    ctx.http().post('/v1/categories').set(auth(user)).send(body);
+
+  it('nests one level and reports the parent name', async () => {
+    const user = await signup(ctx);
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const transport = cats.body.find((c: { nameBn: string }) => c.nameBn === 'যাতায়াত');
+
+    const child = await add(user, {
+      name: 'রিকশা',
+      nameBn: 'রিকশা',
+      kind: 'EXPENSE',
+      parentId: transport.id,
+    }).expect(201);
+    expect(child.body.parentId).toBe(transport.id);
+
+    const listed = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const found = listed.body.find((c: { id: string }) => c.id === child.body.id);
+    expect(found.parentName).toBe('যাতায়াত');
+  });
+
+  it('refuses a third level', async () => {
+    const user = await signup(ctx);
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const parent = cats.body.find((c: { nameBn: string }) => c.nameBn === 'যাতায়াত');
+
+    const child = await add(user, {
+      name: 'রিকশা',
+      nameBn: 'রিকশা',
+      kind: 'EXPENSE',
+      parentId: parent.id,
+    }).expect(201);
+
+    // Deeper nesting makes a report unreadable and a picker unusable on a phone.
+    const refused = await add(user, {
+      name: 'সিএনজি',
+      nameBn: 'সিএনজি',
+      kind: 'EXPENSE',
+      parentId: child.body.id,
+    }).expect(400);
+    expect(refused.body.message).toContain('উপ-খাত');
+  });
+
+  it('refuses a parent of the other kind', async () => {
+    const user = await signup(ctx);
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const income = cats.body.find((c: { nameBn: string }) => c.nameBn === 'বেতন');
+
+    await add(user, {
+      name: 'বোনাস',
+      nameBn: 'বোনাস',
+      kind: 'EXPENSE',
+      parentId: income.id,
+    }).expect(400);
+  });
+
+  it('allows the same name under different parents but not as siblings', async () => {
+    const user = await signup(ctx);
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const transport = cats.body.find((c: { nameBn: string }) => c.nameBn === 'যাতায়াত');
+    const business = cats.body.find((c: { nameBn: string }) => c.nameBn === 'মেরামত');
+
+    await add(user, {
+      name: 'ভাড়া',
+      nameBn: 'ভাড়া',
+      kind: 'EXPENSE',
+      parentId: transport.id,
+    }).expect(201);
+    // Different parent, same word — a real distinction, so allowed.
+    await add(user, {
+      name: 'ভাড়া',
+      nameBn: 'ভাড়া',
+      kind: 'EXPENSE',
+      parentId: business.id,
+    }).expect(201);
+    // Same parent twice — ambiguous in a picker, so refused.
+    await add(user, {
+      name: 'ভাড়া',
+      nameBn: 'ভাড়া',
+      kind: 'EXPENSE',
+      parentId: transport.id,
+    }).expect(400);
+  });
+
+  it('refuses to delete a parent that still has children', async () => {
+    const user = await signup(ctx);
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const parent = cats.body.find((c: { nameBn: string }) => c.nameBn === 'যাতায়াত');
+    await add(user, {
+      name: 'রিকশা',
+      nameBn: 'রিকশা',
+      kind: 'EXPENSE',
+      parentId: parent.id,
+    }).expect(201);
+
+    const refused = await ctx
+      .http()
+      .delete(`/v1/categories/${parent.id}`)
+      .set(auth(user))
+      .expect(400);
+    expect(refused.body.message).toContain('উপ-ক্যাটাগরি');
+  });
+
+  it('rolls child spending into the parent and still drills down correctly', async () => {
+    const user = await signup(ctx);
+    const account = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নগদ', type: 'CASH' })
+      .expect(201);
+
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const transport = cats.body.find((c: { nameBn: string }) => c.nameBn === 'যাতায়াত');
+    const rickshaw = (
+      await add(user, {
+        name: 'রিকশা',
+        nameBn: 'রিকশা',
+        kind: 'EXPENSE',
+        parentId: transport.id,
+      }).expect(201)
+    ).body;
+    const bus = (
+      await add(user, {
+        name: 'বাস',
+        nameBn: 'বাস',
+        kind: 'EXPENSE',
+        parentId: transport.id,
+      }).expect(201)
+    ).body;
+
+    const spend = (categoryId: string, amountMinor: number) =>
+      ctx
+        .http()
+        .post('/v1/transactions')
+        .set(auth(user))
+        .send({ date: today, type: 'EXPENSE', amountMinor, accountId: account.body.id, categoryId })
+        .expect(201);
+
+    await spend(transport.id, 50_000); // ৳500 directly on যাতায়াত
+    await spend(rickshaw.id, 30_000); // ৳300
+    await spend(bus.id, 20_000); // ৳200
+
+    const report = await ctx
+      .http()
+      .get('/v1/reports/by-category?kind=EXPENSE')
+      .set(auth(user))
+      .expect(200);
+
+    const node = report.body.nodes.find(
+      (n: { categoryId: string }) => n.categoryId === transport.id,
+    );
+    expect(node.totalMinor).toBe(50_000); // its own
+    expect(node.rolledUpMinor).toBe(100_000); // with both children
+    expect(node.children).toHaveLength(2);
+
+    // The flat view still lists every line separately.
+    const flat = await ctx
+      .http()
+      .get('/v1/reports/by-category?kind=EXPENSE&flat=1')
+      .set(auth(user))
+      .expect(200);
+    expect(flat.body.rows).toHaveLength(3);
+
+    // Tapping the parent must show what its children hold, or the drill-down
+    // total would not match the slice that was tapped.
+    const drill = await ctx
+      .http()
+      .get(`/v1/reports/category/${transport.id}`)
+      .set(auth(user))
+      .expect(200);
+    expect(drill.body.totalMinor).toBe(100_000);
+    expect(drill.body.items).toHaveLength(3);
+  });
+});

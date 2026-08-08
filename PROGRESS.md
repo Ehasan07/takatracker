@@ -29,8 +29,8 @@ Last updated: 2026-08-08.
 
 ### Acceptance evidence
 
-- `pnpm test` — 170 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 19 reports, 7 parser, 70 API integration.
-- `pnpm test:e2e` — 36 passing (9 specs × 320/390/768/1280 px).
+- `pnpm test` — 181 passing: 16 money, 16 ledger, 18 entitlements, 24 card-reminder, 24 reports, 7 parser, 76 API integration.
+- `pnpm test:e2e` — 48 passing (12 specs × 320/390/768/1280 px).
 - Unbalanced transaction is rejected by the database trigger, proven by a test
   that bypasses the service layer.
 - Workspace isolation holds on every surface that exists: read by ID, write by
@@ -146,6 +146,15 @@ every assertion refers to it. The API suite then repeats the exercise end to end
 over a month of transactions. The check that matters most is that cash flow's
 closing figure equals the balance sheet's liquid total: if a query ever misses
 an entry, those two stop agreeing.
+
+**Categories are exactly two levels deep.** Deeper nesting makes a report
+unreadable and a picker unusable on a phone, so a sub-category cannot have
+sub-categories. A report folds children into their parent by default —
+"যাতায়াত ৳১,০০০" rather than four lines the reader has to add up — and keeps
+the parent's own direct spending as a separate figure, or a parent would look
+like it had none. A parent whose money is entirely in its children still
+appears, otherwise that money would vanish from the report. Drilling into a
+parent includes its children, so the total on screen matches the slice tapped.
 
 **A quiet month is a zero, not a gap.** `buildTrend` fills months with no
 activity. Omitting them makes a chart draw a straight line across the gap and

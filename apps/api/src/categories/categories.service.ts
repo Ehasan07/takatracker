@@ -11,6 +11,7 @@ export interface CategoryView {
   icon: string | null;
   color: string | null;
   parentId: string | null;
+  parentName: string | null;
   sortOrder: number;
   isSystem: boolean;
   /** How many live ledger entries point at it. Deleting is refused above zero. */
@@ -31,6 +32,8 @@ export class CategoriesService {
       include: { _count: { select: { entries: true } } },
     });
 
+    const nameById = new Map(rows.map((c) => [c.id, c.nameBn ?? c.name]));
+
     return rows.map((c) => ({
       id: c.id,
       name: c.name,
@@ -39,6 +42,7 @@ export class CategoriesService {
       icon: c.icon,
       color: c.color,
       parentId: c.parentId,
+      parentName: c.parentId ? (nameById.get(c.parentId) ?? null) : null,
       sortOrder: c.sortOrder,
       isSystem: c.isSystem,
       usageCount: c._count.entries,
@@ -50,7 +54,14 @@ export class CategoriesService {
     actorUserId: string,
     input: CreateCategoryInput,
   ): Promise<CategoryView> {
-    await this.assertNameFree(workspaceId, input.kind, input.nameBn ?? input.name);
+    const parentId = await this.resolveParent(workspaceId, input.kind, input.parentId);
+    await this.assertNameFree(
+      workspaceId,
+      input.kind,
+      input.nameBn ?? input.name,
+      undefined,
+      parentId,
+    );
 
     const created = await this.prisma.category.create({
       data: {
@@ -58,7 +69,7 @@ export class CategoriesService {
         name: input.name,
         nameBn: input.nameBn ?? input.name,
         kind: input.kind,
-        parentId: input.parentId,
+        parentId,
         icon: input.icon,
         color: input.color,
         sortOrder: input.sortOrder,
@@ -74,7 +85,7 @@ export class CategoriesService {
       after: { name: created.nameBn ?? created.name, kind: created.kind },
     });
 
-    return { ...created, usageCount: 0 };
+    return { ...created, parentName: null, usageCount: 0 };
   }
 
   async update(
@@ -155,22 +166,53 @@ export class CategoriesService {
     return { id };
   }
 
-  /** Two categories with the same name in the same kind is a data-entry trap. */
+  /**
+   * Two names may repeat across different parents — "রিকশা" under যাতায়াত and
+   * under ব্যবসা are different things — but not as siblings, which is the case
+   * that makes a picker ambiguous.
+   */
   private async assertNameFree(
     workspaceId: string,
     kind: 'INCOME' | 'EXPENSE',
     name: string,
     exceptId?: string,
+    parentId?: string | null,
   ): Promise<void> {
     const clash = await this.prisma.category.findFirst({
       where: {
         workspaceId,
         kind,
         deletedAt: null,
+        parentId: parentId ?? null,
         ...(exceptId ? { id: { not: exceptId } } : {}),
         OR: [{ name }, { nameBn: name }],
       },
     });
     if (clash) throw new BadRequestException('এই নামে একটি ক্যাটাগরি আগে থেকেই আছে');
+  }
+
+  /**
+   * Categories are two levels deep, deliberately. Deeper nesting makes a report
+   * unreadable and a picker unusable on a phone, so a sub-category cannot have
+   * sub-categories of its own.
+   */
+  private async resolveParent(
+    workspaceId: string,
+    kind: 'INCOME' | 'EXPENSE',
+    parentId?: string | null,
+  ): Promise<string | null> {
+    if (!parentId) return null;
+
+    const parent = await this.prisma.category.findFirst({
+      where: { id: parentId, workspaceId, deletedAt: null },
+    });
+    if (!parent) throw new NotFoundException('মূল খাত পাওয়া যায়নি');
+    if (parent.kind !== kind) {
+      throw new BadRequestException('উপ-খাত ও মূল খাতের ধরন এক হতে হবে');
+    }
+    if (parent.parentId) {
+      throw new BadRequestException('উপ-খাতের নিচে আরেকটি উপ-খাত রাখা যায় না');
+    }
+    return parent.id;
   }
 }

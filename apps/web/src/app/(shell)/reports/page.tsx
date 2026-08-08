@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
+import { ChevronDown } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { formatMinor, toBengaliDigits } from '@hishab/shared';
 import { Skeleton } from '@/components/skeleton';
@@ -10,12 +11,17 @@ import { SkeletonCard } from '@/components/skeleton';
 import { Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 interface CategoryRow {
   categoryId: string | null;
   name: string;
   totalMinor: number;
-  sharePercent: number;
+  sharePercent?: number;
+}
+interface CategoryNode extends CategoryRow {
+  rolledUpMinor: number;
+  children: CategoryRow[];
 }
 interface TrendPoint {
   month: string;
@@ -78,11 +84,14 @@ export default function ReportsPage() {
     queryKey: ['reports', 'trend', months],
     queryFn: () => api<TrendPoint[]>(`/reports/trend?months=${months}`),
   });
+  /* Parents, with their children attached. The pie takes the six largest
+     parents; the list below can expand any of them. */
   const byCategory = useQuery({
     queryKey: ['reports', 'by-category', kind],
     queryFn: () =>
-      api<{ total: number; rows: CategoryRow[] }>(`/reports/by-category?kind=${kind}&top=6`),
+      api<{ total: number; nodes: CategoryNode[] }>(`/reports/by-category?kind=${kind}`),
   });
+  const [expanded, setExpanded] = React.useState<string | null>(null);
   const sheet = useQuery({
     queryKey: ['reports', 'balance-sheet'],
     queryFn: () => api<BalanceSheetDto>('/reports/balance-sheet'),
@@ -184,43 +193,112 @@ export default function ReportsPage() {
             </Select>
           </div>
 
-          {(byCategory.data?.rows.length ?? 0) === 0 ? (
+          {(byCategory.data?.nodes.length ?? 0) === 0 ? (
             <p className="text-ink-muted mt-3 text-sm">এই মাসে কিছু নেই।</p>
           ) : (
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="h-40 w-full sm:w-40">
                 <CategoryPie
                   colours={SLICE_COLOURS}
-                  data={(byCategory.data?.rows ?? []).map((r) => ({
-                    name: r.name,
-                    value: r.totalMinor,
+                  data={(byCategory.data?.nodes ?? []).slice(0, 6).map((n) => ({
+                    name: n.name,
+                    value: n.rolledUpMinor,
                   }))}
                 />
               </div>
 
               {/* The legend is the real interface: colour is never the only signal. */}
               <ul className="min-w-0 flex-1">
-                {(byCategory.data?.rows ?? []).map((row, i) => (
-                  <li key={row.categoryId ?? row.name}>
-                    <button
-                      type="button"
-                      disabled={!row.categoryId}
-                      onClick={() => row.categoryId && setDrilldownId(row.categoryId)}
-                      className="press hover:bg-greenbar flex min-h-9 w-full items-center gap-2 rounded-md px-1 text-left disabled:cursor-default"
-                    >
-                      <span
-                        aria-hidden
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ background: SLICE_COLOURS[i % SLICE_COLOURS.length] }}
-                      />
-                      <span className="text-ink min-w-0 flex-1 truncate text-sm">{row.name}</span>
-                      <span className="text-ink-muted shrink-0 text-xs">
-                        {toBengaliDigits(String(row.sharePercent))}%
-                      </span>
-                      <Money minor={row.totalMinor} className="shrink-0 text-sm" decimals={false} />
-                    </button>
-                  </li>
-                ))}
+                {(byCategory.data?.nodes ?? []).map((node, i) => {
+                  const total = byCategory.data?.total ?? 0;
+                  const share =
+                    total === 0 ? 0 : Math.floor((node.rolledUpMinor / total) * 1000 + 0.5) / 10;
+                  const isOpen = expanded === node.categoryId;
+                  const hasChildren = node.children.length > 0;
+
+                  return (
+                    <li key={node.categoryId ?? node.name}>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={!node.categoryId}
+                          onClick={() => node.categoryId && setDrilldownId(node.categoryId)}
+                          className="press hover:bg-greenbar flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left disabled:cursor-default"
+                        >
+                          <span
+                            aria-hidden
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ background: SLICE_COLOURS[i % SLICE_COLOURS.length] }}
+                          />
+                          <span className="text-ink min-w-0 flex-1 truncate text-sm">
+                            {node.name}
+                          </span>
+                          <span className="text-ink-muted shrink-0 text-xs">
+                            {toBengaliDigits(String(share))}%
+                          </span>
+                          <Money
+                            minor={node.rolledUpMinor}
+                            className="shrink-0 text-sm"
+                            decimals={false}
+                          />
+                        </button>
+
+                        {hasChildren ? (
+                          <button
+                            type="button"
+                            aria-expanded={isOpen}
+                            aria-label={`${node.name} — উপ-খাত`}
+                            onClick={() => setExpanded(isOpen ? null : node.categoryId)}
+                            className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                          >
+                            <ChevronDown
+                              className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')}
+                              aria-hidden
+                            />
+                          </button>
+                        ) : (
+                          <span className="w-11 shrink-0" aria-hidden />
+                        )}
+                      </div>
+
+                      {isOpen ? (
+                        <ul className="border-rule mb-1 ml-4 border-l pl-2">
+                          {/* Money spent on the parent itself, not on any child. */}
+                          {node.totalMinor > 0 ? (
+                            <li className="flex items-center justify-between gap-2 py-1">
+                              <span className="text-ink-muted min-w-0 truncate text-xs">
+                                সরাসরি {node.name}
+                              </span>
+                              <Money
+                                minor={node.totalMinor}
+                                className="shrink-0 text-xs"
+                                decimals={false}
+                              />
+                            </li>
+                          ) : null}
+                          {node.children.map((child) => (
+                            <li key={child.categoryId}>
+                              <button
+                                type="button"
+                                onClick={() => child.categoryId && setDrilldownId(child.categoryId)}
+                                className="press hover:bg-greenbar flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-1 text-left"
+                              >
+                                <span className="text-ink min-w-0 truncate text-xs">
+                                  {child.name}
+                                </span>
+                                <Money
+                                  minor={child.totalMinor}
+                                  className="shrink-0 text-xs"
+                                  decimals={false}
+                                />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

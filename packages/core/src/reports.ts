@@ -157,6 +157,8 @@ export interface CategoryTotal {
   categoryId: string | null;
   name: string;
   totalMinor: number;
+  /** Set on a sub-category so a roll-up can name a parent that has no spending. */
+  parentName?: string;
 }
 
 export interface CategoryShare extends CategoryTotal {
@@ -178,6 +180,83 @@ export function withShares(rows: readonly CategoryTotal[]): CategoryShare[] {
       ...row,
       sharePercent: total === 0 ? 0 : Math.floor((row.totalMinor / total) * 1000 + 0.5) / 10,
     }));
+}
+
+export interface CategoryNode extends CategoryTotal {
+  /** The parent's own total plus every child's. */
+  rolledUpMinor: number;
+  children: CategoryTotal[];
+}
+
+/**
+ * Fold sub-category totals into their parent.
+ *
+ * Categories are two levels deep on purpose: deeper nesting makes a report
+ * unreadable and a picker unusable on a phone. A report therefore shows parents
+ * by default — "যাতায়াত ৳৪,০০০" rather than four separate lines — and the
+ * children are there to expand into.
+ *
+ * A transaction may sit on either level, so a parent's own total is kept
+ * separate from the rolled-up figure; losing that distinction would make
+ * "যাতায়াত" look like it had no direct spending of its own.
+ */
+export function rollUpToParents(
+  rows: readonly CategoryTotal[],
+  parentOf: ReadonlyMap<string, string | null>,
+): CategoryNode[] {
+  const byId = new Map<string, CategoryNode>();
+  const orphans: CategoryTotal[] = [];
+
+  const nodeFor = (row: CategoryTotal): CategoryNode => {
+    const id = row.categoryId!;
+    const existing = byId.get(id);
+    if (existing) return existing;
+    const created: CategoryNode = { ...row, rolledUpMinor: row.totalMinor, children: [] };
+    byId.set(id, created);
+    return created;
+  };
+
+  // Parents first, so a child never creates a stub that loses the real name.
+  for (const row of rows) {
+    if (row.categoryId && !parentOf.get(row.categoryId)) nodeFor(row);
+  }
+
+  for (const row of rows) {
+    if (!row.categoryId) {
+      orphans.push(row);
+      continue;
+    }
+    const parentId = parentOf.get(row.categoryId);
+    if (!parentId) continue; // already added above
+
+    const parent = byId.get(parentId);
+    if (!parent) {
+      /* The parent had no spending of its own, so it is not in `rows`. It still
+       * has to appear, or its children's money would vanish from the report. */
+      const stub: CategoryNode = {
+        categoryId: parentId,
+        name: row.parentName ?? 'অন্যান্য',
+        totalMinor: 0,
+        rolledUpMinor: 0,
+        children: [],
+      };
+      byId.set(parentId, stub);
+    }
+    const target = byId.get(parentId)!;
+    target.children.push(row);
+    target.rolledUpMinor += row.totalMinor;
+  }
+
+  const nodes = [...byId.values()].map((n) => ({
+    ...n,
+    children: n.children.slice().sort((a, b) => b.totalMinor - a.totalMinor),
+  }));
+
+  for (const orphan of orphans) {
+    nodes.push({ ...orphan, rolledUpMinor: orphan.totalMinor, children: [] });
+  }
+
+  return nodes.sort((a, b) => b.rolledUpMinor - a.rolledUpMinor);
 }
 
 /** The n largest, with everything else folded into one "অন্যান্য" line. */

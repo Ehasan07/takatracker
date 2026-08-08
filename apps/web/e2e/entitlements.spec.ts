@@ -48,3 +48,42 @@ test.describe('plan limits', () => {
     await expect(page.getByText('এই মাসের লেনদেন')).toBeVisible();
   });
 });
+
+test.describe('categories and sub-categories', () => {
+  test('adds a sub-category and rolls it up in the report', async ({ page }) => {
+    await signup(page);
+
+    // A cash account and a spend, so the report has something to show.
+    await page.goto('/accounts');
+    await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+    await page.getByLabel('নাম').fill('নগদ');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // The categories link lives next to the accounts, where both are found
+    // together. It says "ক্যাটাগরি", not "খাত" — that is one letter from the
+    // ledger tab "খাতা" and reads ambiguously.
+    await page.getByRole('link', { name: 'ক্যাটাগরি' }).click();
+    await expect(page).toHaveURL(/\/categories/);
+
+    // Nest রিকশা under যাতায়াত.
+    await page.getByRole('button', { name: 'যাতায়াত-এ উপ-খাত যোগ করুন' }).click();
+    await page.getByLabel('নাম').fill('রিকশা');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.getByText('রিকশা')).toBeVisible();
+
+    // Spend on the child.
+    await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
+    await page.getByLabel('পরিমাণ (৳)').fill('300');
+    await page.getByLabel('ক্যাটাগরি').selectOption({ label: 'রিকশা' });
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // The report shows the parent, and expanding reveals the child.
+    await page.goto('/reports');
+    await expect(page.getByText('যাতায়াত').first()).toBeVisible();
+    await page.getByRole('button', { name: 'যাতায়াত — উপ-খাত' }).click();
+    await expect(page.getByText('রিকশা').first()).toBeVisible();
+  });
+});

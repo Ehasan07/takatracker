@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellOff, Plus, Scale } from 'lucide-react';
+import { BellOff, Plus, Scale, Tags } from 'lucide-react';
 import * as React from 'react';
 import { parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
@@ -10,6 +10,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
 import { api, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
+import Link from 'next/link';
 import { UsageMeter } from '@/components/usage-meter';
 
 const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
@@ -52,15 +53,26 @@ export default function AccountsPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
         <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">অ্যাকাউন্ট</h1>
-        <Button
-          onClick={() => setAddOpen(true)}
-          size="sm"
-          disabled={atLimit}
-          title={atLimit ? 'প্ল্যানের সীমা শেষ' : undefined}
-        >
-          <Plus className="h-4 w-4" aria-hidden />
-          নতুন
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Accounts say what you have; categories say where money goes. Both
+              answer "what do I keep books with", so they sit together. */}
+          <Link
+            href="/categories"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+          >
+            <Tags className="h-4 w-4" aria-hidden />
+            ক্যাটাগরি
+          </Link>
+          <Button
+            onClick={() => setAddOpen(true)}
+            size="sm"
+            disabled={atLimit}
+            title={atLimit ? 'প্ল্যানের সীমা শেষ' : undefined}
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            নতুন
+          </Button>
+        </div>
       </header>
 
       <section className="rounded-card border-rule bg-surface border p-4">

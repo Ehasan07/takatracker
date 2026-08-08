@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CornerDownRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as React from 'react';
 import { toBengaliDigits } from '@hishab/shared';
 import { SkeletonRows } from '@/components/skeleton';
@@ -16,6 +16,8 @@ type Kind = 'INCOME' | 'EXPENSE';
 interface CategoryRow extends CategoryDto {
   isSystem: boolean;
   usageCount: number;
+  parentId: string | null;
+  parentName: string | null;
 }
 
 export default function CategoriesPage() {
@@ -23,6 +25,8 @@ export default function CategoriesPage() {
   const [kind, setKind] = React.useState<Kind>('EXPENSE');
   const [editing, setEditing] = React.useState<CategoryRow | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
+  /** Set when adding a sub-category, so the sheet knows its parent. */
+  const [addUnder, setAddUnder] = React.useState<CategoryRow | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   const categories = useQuery({
@@ -41,7 +45,17 @@ export default function CategoriesPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'মুছে ফেলা যায়নি'),
   });
 
-  const rows = (categories.data ?? []).filter((c) => c.kind === kind);
+  /* Two levels, flattened into one list with the children under their parent.
+     An indent reads better on a phone than a nested tree with its own scroll. */
+  const rows = React.useMemo(() => {
+    const all = (categories.data ?? []).filter((c) => c.kind === kind);
+    const parents = all.filter((c) => !c.parentId);
+    const childrenOf = (id: string) => all.filter((c) => c.parentId === id);
+    return parents.flatMap((parent) => [
+      { row: parent, depth: 0 },
+      ...childrenOf(parent.id).map((child) => ({ row: child, depth: 1 })),
+    ]);
+  }, [categories.data, kind]);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -96,11 +110,16 @@ export default function CategoriesPage() {
         </div>
       ) : (
         <ul className="rounded-card border-rule bg-surface overflow-hidden border">
-          {rows.map((category) => (
+          {rows.map(({ row: category, depth }) => (
             <li
               key={category.id}
               className="ledger-row border-rule flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0"
+              style={{ paddingLeft: depth === 1 ? '2rem' : undefined }}
             >
+              {depth === 1 ? (
+                <CornerDownRight className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
+              ) : null}
+
               <div className="min-w-0 flex-1">
                 <p className="text-ink truncate text-sm">{category.nameBn ?? category.name}</p>
                 <p className="text-ink-muted truncate text-xs">
@@ -109,6 +128,21 @@ export default function CategoriesPage() {
                     : 'কোনো লেনদেন নেই'}
                 </p>
               </div>
+
+              {/* Only a top-level category can take children — two levels deep,
+                  deliberately, so the picker stays usable on a phone. */}
+              {depth === 0 ? (
+                <button
+                  type="button"
+                  aria-label={`${category.nameBn ?? category.name}-এ উপ-খাত যোগ করুন`}
+                  title="উপ-খাত যোগ করুন"
+                  onClick={() => setAddUnder(category)}
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-md"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                </button>
+              ) : null}
+
               <button
                 type="button"
                 aria-label={`${category.nameBn ?? category.name} সম্পাদনা`}
@@ -139,13 +173,15 @@ export default function CategoriesPage() {
       </Button>
 
       <CategorySheet
-        open={addOpen || editing !== null}
+        open={addOpen || editing !== null || addUnder !== null}
         editing={editing}
+        parent={addUnder}
         defaultKind={kind}
         onOpenChange={(open) => {
           if (!open) {
             setAddOpen(false);
             setEditing(null);
+            setAddUnder(null);
           }
         }}
       />
@@ -156,11 +192,13 @@ export default function CategoriesPage() {
 function CategorySheet({
   open,
   editing,
+  parent,
   defaultKind,
   onOpenChange,
 }: {
   open: boolean;
   editing: CategoryRow | null;
+  parent: CategoryRow | null;
   defaultKind: Kind;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -172,9 +210,9 @@ function CategorySheet({
   React.useEffect(() => {
     if (!open) return;
     setName(editing ? (editing.nameBn ?? editing.name) : '');
-    setKind(editing ? (editing.kind as Kind) : defaultKind);
+    setKind(editing ? (editing.kind as Kind) : parent ? (parent.kind as Kind) : defaultKind);
     setError(null);
-  }, [open, editing, defaultKind]);
+  }, [open, editing, parent, defaultKind]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -183,7 +221,10 @@ function CategorySheet({
             method: 'PATCH',
             body: { name, nameBn: name },
           })
-        : api('/categories', { method: 'POST', body: { name, nameBn: name, kind } }),
+        : api('/categories', {
+            method: 'POST',
+            body: { name, nameBn: name, kind, parentId: parent?.id },
+          }),
     onSuccess: () => {
       haptic('success');
       void queryClient.invalidateQueries();
@@ -213,7 +254,7 @@ function CategorySheet({
           />
         </Field>
 
-        {editing ? (
+        {parent ? null : editing ? (
           /* Flipping a category from expense to income would silently invert
              every transaction already filed under it. */
           <p className="text-ink-muted text-xs">

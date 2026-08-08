@@ -4,10 +4,12 @@ import {
   buildCashFlow,
   buildTrend,
   LIQUID_TYPES,
+  rollUpToParents,
   topWithRest,
   withShares,
   type BalanceSheet,
   type CashFlow,
+  type CategoryNode,
   type CategoryTotal,
   type TrendPoint,
 } from '@hishab/core';
@@ -57,26 +59,56 @@ export class ReportsService {
     });
 
     const ids = grouped.map((g) => g.categoryId).filter((v): v is string => Boolean(v));
+    /* Every category, not only the ones with spending: a parent whose money is
+     * all in its children still has to appear, or that money vanishes. */
     const cats = await this.prisma.category.findMany({
-      where: { id: { in: ids }, workspaceId: ctx.workspaceId },
-      select: { id: true, name: true, nameBn: true },
+      where: { workspaceId: ctx.workspaceId, deletedAt: null },
+      select: { id: true, name: true, nameBn: true, parentId: true },
     });
     const nameById = new Map(cats.map((c) => [c.id, c.nameBn ?? c.name]));
+    const parentOf = new Map(cats.map((c) => [c.id, c.parentId]));
 
-    const rows: CategoryTotal[] = grouped.map((g) => ({
-      categoryId: g.categoryId,
-      name: g.categoryId ? (nameById.get(g.categoryId) ?? 'অজানা') : 'অশ্রেণিবদ্ধ',
-      totalMinor: minorToNumber(g._sum.amountMinor ?? 0n),
-    }));
+    const rows: CategoryTotal[] = grouped.map((g) => {
+      const parentId = g.categoryId ? parentOf.get(g.categoryId) : null;
+      return {
+        categoryId: g.categoryId,
+        name: g.categoryId ? (nameById.get(g.categoryId) ?? 'অজানা') : 'অশ্রেণিবদ্ধ',
+        totalMinor: minorToNumber(g._sum.amountMinor ?? 0n),
+        parentName: parentId ? (nameById.get(parentId) ?? undefined) : undefined,
+      };
+    });
 
     const withShare = withShares(rows);
     return { total: withShare.reduce((s, r) => s + r.totalMinor, 0), rows: withShare };
   }
 
+  /**
+   * The same period, folded to parents. This is what a report shows by default:
+   * "যাতায়াত ৳৪,০০০" rather than four separate lines the reader has to add up.
+   */
+  async byParentCategory(
+    ctx: TenantContext,
+    kind: 'INCOME' | 'EXPENSE',
+    period: PeriodQuery,
+  ): Promise<{ total: number; nodes: CategoryNode[] }> {
+    const { rows, total } = await this.byCategory(ctx, kind, period);
+    const cats = await this.prisma.category.findMany({
+      where: { workspaceId: ctx.workspaceId, deletedAt: null },
+      select: { id: true, parentId: true },
+    });
+    const parentOf = new Map(cats.map((c) => [c.id, c.parentId]));
+    return { total, nodes: rollUpToParents(rows, parentOf) };
+  }
+
   /** Same data, folded to a slice count a pie chart can actually read. */
   async byCategoryTop(ctx: TenantContext, kind: 'INCOME' | 'EXPENSE', period: PeriodQuery, n = 6) {
-    const { rows, total } = await this.byCategory(ctx, kind, period);
-    return { total, rows: withShares(topWithRest(rows, n)) };
+    const { nodes, total } = await this.byParentCategory(ctx, kind, period);
+    const parents: CategoryTotal[] = nodes.map((node) => ({
+      categoryId: node.categoryId,
+      name: node.name,
+      totalMinor: node.rolledUpMinor,
+    }));
+    return { total, rows: withShares(topWithRest(parents, n)) };
   }
 
   /**
@@ -218,11 +250,19 @@ export class ReportsService {
     });
     if (!category) throw new NotFoundException('ক্যাটাগরি পাওয়া যায়নি');
 
+    /* Drilling into a parent must include what was filed under its children,
+     * or the total on screen would not match the slice that was tapped. */
+    const children = await this.prisma.category.findMany({
+      where: { workspaceId: ctx.workspaceId, parentId: categoryId, deletedAt: null },
+      select: { id: true },
+    });
+    const categoryIds = [categoryId, ...children.map((c) => c.id)];
+
     const date = this.range(period, ctx.timezone);
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {
         workspaceId: ctx.workspaceId,
-        categoryId,
+        categoryId: { in: categoryIds },
         transaction: { deletedAt: null, date },
       },
       include: {

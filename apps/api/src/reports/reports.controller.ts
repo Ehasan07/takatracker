@@ -32,11 +32,14 @@ export class ReportsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('top') top?: string,
+    @Query('flat') flat?: string,
   ) {
     const period = this.period(user, from, to);
-    return top
-      ? this.reports.byCategoryTop(user, kind, period, Number(top))
-      : this.reports.byCategory(user, kind, period);
+    if (top) return this.reports.byCategoryTop(user, kind, period, Number(top));
+    // Parents by default; `flat=1` returns every category on its own line.
+    return flat === '1'
+      ? this.reports.byCategory(user, kind, period)
+      : this.reports.byParentCategory(user, kind, period);
   }
 
   @Get('trend')
