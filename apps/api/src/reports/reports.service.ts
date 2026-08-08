@@ -58,7 +58,6 @@ export class ReportsService {
       _sum: { amountMinor: true },
     });
 
-    const ids = grouped.map((g) => g.categoryId).filter((v): v is string => Boolean(v));
     /* Every category, not only the ones with spending: a parent whose money is
      * all in its children still has to appear, or that money vanishes. */
     const cats = await this.prisma.category.findMany({
