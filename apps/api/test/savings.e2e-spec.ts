@@ -40,7 +40,7 @@ describe('savings', () => {
 
   type User = Awaited<ReturnType<typeof signup>>;
 
-  const create = (user: User, body: unknown) =>
+  const create = (user: User, body: Record<string, unknown>) =>
     ctx.http().post('/v1/savings').set(auth(user)).send(body);
 
   /** A plain monthly DPS, so each test only has to spell out what it changes. */

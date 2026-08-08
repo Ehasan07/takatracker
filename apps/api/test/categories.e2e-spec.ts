@@ -157,7 +157,7 @@ describe('sub-categories', () => {
     await ctx.app.close();
   });
 
-  const add = (user: Awaited<ReturnType<typeof signup>>, body: unknown) =>
+  const add = (user: Awaited<ReturnType<typeof signup>>, body: Record<string, unknown>) =>
     ctx.http().post('/v1/categories').set(auth(user)).send(body);
 
   it('nests one level and reports the parent name', async () => {

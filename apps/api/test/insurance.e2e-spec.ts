@@ -40,7 +40,7 @@ describe('insurance', () => {
 
   type User = Awaited<ReturnType<typeof signup>>;
 
-  const create = (user: User, body: unknown) =>
+  const create = (user: User, body: Record<string, unknown>) =>
     ctx.http().post('/v1/insurance').set(auth(user)).send(body);
 
   /** A plain yearly endowment, so each test only spells out what it changes. */

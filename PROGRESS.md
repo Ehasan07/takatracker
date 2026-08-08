@@ -162,6 +162,24 @@ same interface and switches on when `SMTP_HOST` is set and the package resolves.
 Production with no `SMTP_HOST` logs a warning that links are not reaching users
 rather than failing silently.
 
+### Known flakiness in the API e2e suite
+
+Thirteen spec files share one Postgres database and each truncates it in its own
+`beforeAll`. `fileParallelism: false` keeps the files sequential, but the apps
+boot and close around those truncations and `AuditService.emit` is deliberately
+fire-and-forget, so a write can still be in flight when the next suite wipes the
+tables.
+
+Measured over ten consecutive full runs: **eight clean, two with a single
+failure**, and a different test each time (a 403 on a delete, a 400 on a
+restore, a stale-token check reading 200 instead of 401). Every one of those
+tests passes on its own, repeatedly — the suite files are individually stable.
+
+Recorded rather than papered over. The real fix is a database per spec file
+(a schema per worker, threaded through `DATABASE_URL`), not a retry or a sleep.
+Until then, treat a single failure in a full run as suspect and re-run the file
+alone before believing it.
+
 ## Decisions taken
 
 **Money.** `BIGINT` poisha in Postgres, `bigint` in Prisma, integer JSON number

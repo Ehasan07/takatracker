@@ -1,0 +1,16 @@
+{
+  // The build config has `rootDir: ./src` so it cannot compile the specs, and
+  // vitest runs them through swc, which only strips types without checking
+  // them. The result was that no e2e spec in this repo had ever been
+  // typechecked — a spec asserting on a field the API does not return would
+  // fail at runtime with `undefined` rather than at the gate.
+  //
+  // This config exists only to check them. It emits nothing.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

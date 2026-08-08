@@ -42,7 +42,7 @@ describe('reports', () => {
     await resetDatabase(ctx.prisma);
     user = await signup(ctx);
 
-    const post = (path: string, body: unknown) =>
+    const post = (path: string, body: Record<string, unknown>) =>
       ctx.http().post(path).set(auth(user)).send(body).expect(201);
 
     cashId = (await post('/v1/accounts', { name: 'নগদ', type: 'CASH', openingBalance: 100_000 }))
