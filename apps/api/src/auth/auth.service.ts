@@ -27,8 +27,12 @@ export interface AuthResult extends TokenPair {
 const REFRESH_TTL_DAYS = 30;
 const ACCESS_TTL = process.env.JWT_ACCESS_TTL ?? '15m';
 
-/** Argon2id parameters — OWASP's second recommended option (19 MiB, t=2, p=1). */
-const ARGON_OPTIONS: argon2.Options = {
+/**
+ * Argon2id parameters — OWASP's second recommended option (19 MiB, t=2, p=1).
+ * Exported so a password set by a reset is hashed exactly like one set at
+ * signup; two definitions would drift and the weaker one would win silently.
+ */
+export const ARGON_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19_456,
   timeCost: 2,
@@ -183,12 +187,16 @@ export class AuthService {
   }
 
   private async issue(
-    user: { id: string; email: string; name: string; locale: string },
+    user: { id: string; email: string; name: string; locale: string; tokenVersion: number },
     workspace: { id: string; name: string; currency: string; timezone: string },
     meta: { deviceId?: string; userAgent?: string; familyId?: string } = {},
   ): Promise<AuthResult> {
     const accessToken = await this.jwt.signAsync(
-      { sub: user.id, email: user.email, ws: workspace.id },
+      /* `tv` is the user's token version at the moment of minting. JwtStrategy
+       * compares it against the stored value on every request, which is how a
+       * password reset kills an access token that has not expired yet — the
+       * refresh families it revokes cannot reach one. */
+      { sub: user.id, email: user.email, ws: workspace.id, tv: user.tokenVersion },
       { secret: process.env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL },
     );
 
@@ -294,6 +302,9 @@ export class AuthService {
         phone: true,
         locale: true,
         notifyTimezone: true,
+        // null while unproven. Nothing gates on it — see AccountService — but
+        // the client needs it to show the verification nag.
+        emailVerifiedAt: true,
         createdAt: true,
       },
     });

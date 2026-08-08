@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
+  Param,
   Post,
   Req,
   Res,
@@ -11,12 +13,15 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { loginSchema, signupSchema } from '@hishab/shared';
 import { zodPipe } from '../common/zod.pipe';
+import { AccountService } from './account.service';
 import { AuthService, type AuthResult } from './auth.service';
 import { CurrentUser, type AuthUser } from './current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from './jwt.strategy';
+import { SessionsService, type SessionRequestContext } from './sessions.service';
 
 const isProd = process.env.NODE_ENV === 'production';
 const isTest = process.env.NODE_ENV === 'test';
@@ -24,9 +29,42 @@ const isTest = process.env.NODE_ENV === 'test';
 /** Auth endpoints are rate-limited; the e2e suite needs headroom to sign up users. */
 const rate = (limit: number) => ({ default: { limit: isTest ? 10_000 : limit, ttl: 60_000 } });
 
+/** Links arrive as an opaque base64url string; bound so a body cannot be huge. */
+const tokenField = z.string().min(1).max(512);
+
+const verifyConfirmSchema = z.object({ token: tokenField });
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+const resetPasswordSchema = z.object({
+  token: tokenField,
+  password: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
+});
+/** Mobile has no cookie jar, so it may name its own session in the body. */
+const revokeOthersSchema = z.object({ refreshToken: z.string().min(1).optional() }).default({});
+
+type CookieRequest = Request & { cookies?: Record<string, string> };
+
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly account: AccountService,
+    private readonly sessions: SessionsService,
+  ) {}
+
+  /** How a request identifies which session it is speaking from. */
+  private sessionContext(req: CookieRequest, refreshToken?: string): SessionRequestContext {
+    return {
+      refreshToken: refreshToken ?? req.cookies?.[REFRESH_COOKIE],
+      deviceId: req.header('x-device-id') ?? undefined,
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    };
+  }
+
+  private clearCookies(res: Response): void {
+    res.clearCookie(ACCESS_COOKIE, { path: '/' });
+    res.clearCookie(REFRESH_COOKIE, { path: '/' });
+  }
 
   /** Same-origin httpOnly cookies for the web app; the body serves mobile. */
   private setCookies(res: Response, result: AuthResult): void {
@@ -97,13 +135,137 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.auth.logout(body?.refreshToken ?? req.cookies?.[REFRESH_COOKIE]);
-    res.clearCookie(ACCESS_COOKIE, { path: '/' });
-    res.clearCookie(REFRESH_COOKIE, { path: '/' });
+    this.clearCookies(res);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  me(@CurrentUser() user: AuthUser) {
-    return this.auth.me(user.id, user.workspaceId);
+  async me(@CurrentUser() user: AuthUser) {
+    const [profile, onboardingCompletedAt] = await Promise.all([
+      this.auth.me(user.id, user.workspaceId),
+      this.account.onboardingCompletedAt(user.workspaceId),
+    ]);
+    // `emailVerifiedAt` (from the profile) drives the verification nag and
+    // `onboardingCompletedAt` the first-run flow. Both are additive fields.
+    return { ...profile, onboardingCompletedAt: onboardingCompletedAt?.toISOString() ?? null };
+  }
+
+  // --- email verification ----------------------------------------------------
+
+  @Post('verify/send')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @Throttle(rate(5))
+  sendVerification(@CurrentUser() user: AuthUser, @Req() req: Request) {
+    return this.account.sendVerification(user.id, user.workspaceId, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
+  }
+
+  /**
+   * Anonymous: the link is routinely opened on a different device from the one
+   * that asked for it, and requiring a session there would strand people.
+   */
+  @Post('verify/confirm')
+  @HttpCode(200)
+  @Throttle(rate(20))
+  confirmVerification(
+    @Body(zodPipe(verifyConfirmSchema)) body: z.infer<typeof verifyConfirmSchema>,
+    @Req() req: Request,
+  ) {
+    return this.account.confirmVerification(body.token, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
+  }
+
+  // --- password reset --------------------------------------------------------
+
+  /**
+   * Always 200, always the same body, whether or not the address is registered.
+   * This is an account-enumeration defence, not an oversight — see
+   * `FORGOT_RESPONSE` in account.service.ts before changing anything here.
+   */
+  @Post('password/forgot')
+  @HttpCode(200)
+  @Throttle(rate(5))
+  forgotPassword(
+    @Body(zodPipe(forgotPasswordSchema)) body: z.infer<typeof forgotPasswordSchema>,
+    @Req() req: Request,
+  ) {
+    return this.account.forgotPassword(body.email, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
+  }
+
+  @Post('password/reset')
+  @HttpCode(200)
+  @Throttle(rate(10))
+  async resetPassword(
+    @Body(zodPipe(resetPasswordSchema)) body: z.infer<typeof resetPasswordSchema>,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.account.resetPassword(body.token, body.password, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
+    // Every session on the account was just destroyed, this browser's included.
+    // Leaving a stale access-token cookie behind only produces confusing 401s.
+    this.clearCookies(res);
+    return result;
+  }
+
+  // --- sessions --------------------------------------------------------------
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  async listSessions(@CurrentUser() user: AuthUser, @Req() req: CookieRequest) {
+    return { sessions: await this.sessions.list(user.id, this.sessionContext(req)) };
+  }
+
+  @Delete('sessions/:familyId')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async revokeSession(
+    @CurrentUser() user: AuthUser,
+    @Param('familyId') familyId: string,
+    @Req() req: CookieRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.sessions.revoke(user.id, familyId, this.sessionContext(req));
+    if (result.wasCurrent) this.clearCookies(res);
+    return result;
+  }
+
+  @Post('sessions/revoke-others')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async revokeOtherSessions(
+    @Body(zodPipe(revokeOthersSchema)) body: z.infer<typeof revokeOthersSchema>,
+    @CurrentUser() user: AuthUser,
+    @Req() req: CookieRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.sessions.revokeOthers(
+      user.id,
+      this.sessionContext(req, body.refreshToken),
+    );
+    if (result.currentSessionRevoked) this.clearCookies(res);
+    return result;
+  }
+
+  // --- onboarding ------------------------------------------------------------
+
+  @Post('onboarding/complete')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  completeOnboarding(@CurrentUser() user: AuthUser, @Req() req: Request) {
+    return this.account.completeOnboarding(user.workspaceId, user.id, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
   }
 }

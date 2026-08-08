@@ -6,6 +6,8 @@ import { AccountsModule } from './accounts/accounts.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ImportModule } from './import/import.module';
+import { IngestionModule } from './ingestion/ingestion.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { LoansModule } from './loans/loans.module';
 import { SavingsModule } from './savings/savings.module';
@@ -39,6 +41,8 @@ import { TransactionsModule } from './transactions/transactions.module';
     SavingsModule,
     InsuranceModule,
     LoansModule,
+    ImportModule,
+    IngestionModule,
     TransactionsModule,
     ReportsModule,
     NotificationsModule,

@@ -143,6 +143,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@hishab/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@hishab/shared':
         specifier: workspace:*
         version: link:../../packages/shared

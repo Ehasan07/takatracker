@@ -12,6 +12,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@hishab/core": "workspace:*",
     "@hishab/shared": "workspace:*",
     "@hishab/ui": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.4",

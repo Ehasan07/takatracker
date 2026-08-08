@@ -55,6 +55,7 @@ const TITLES: Record<string, string> = {
   '/savings': 'সঞ্চয় ও বীমা',
   '/insurance': 'বীমা',
   '/loans': 'ঋণ',
+  '/import': 'আমদানি ও রপ্তানি',
   '/settings': 'সেটিংস',
 };
 

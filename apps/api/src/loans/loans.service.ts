@@ -676,18 +676,13 @@ export class LoansService {
 
     const created = await this.runWithLoanNumberGuard(() =>
       this.prisma.$transaction(async (tx) => {
-        /* Creating the person inside the same write is what lets someone record
-         * a loan without first visiting a contacts screen — and means a failed
-         * loan leaves no orphan behind. */
+        /* Resolving the person inside the same write is what lets someone
+         * record a loan without first visiting a contacts screen — and means a
+         * failed loan leaves no orphan behind. An explicit `personId` is taken
+         * at its word; only a typed name goes looking. */
         const person =
           existingPerson ??
-          (await tx.person.create({
-            data: {
-              workspaceId: ctx.workspaceId,
-              name: personName,
-              phone: input.personPhone,
-            },
-          }));
+          (await LoansService.resolvePerson(tx, ctx.workspaceId, personName, input.personPhone));
 
         const control = await tx.account.create({
           data: {
@@ -1231,6 +1226,64 @@ export class LoansService {
     });
     if (!person) throw new NotFoundException('ব্যক্তি পাওয়া যায়নি');
     return person;
+  }
+
+  /**
+   * Find the counterparty by what was typed, or create them.
+   *
+   * This reads like a convenience and it is not. A `Person` is the axis the
+   * party ledger turns on: `GET /loans/people/:personId/ledger` exists to
+   * answer "everything between me and this person, on one running balance".
+   * Typing করিম on Monday and করিম again on Friday must reach the same row, or
+   * that ledger quietly splits in two and *neither half is the answer* — each
+   * shows part of the debt, the net position is wrong on both, and nothing on
+   * screen suggests anything is missing. A duplicate person is not a tidiness
+   * problem; it is a wrong number presented as a right one.
+   *
+   * The phone wins over the name when both are on offer. Two cousins really can
+   * both be করিম and a name cannot separate them, but a number belongs to one
+   * person — so a phone match is an identification and a name match is only a
+   * strong guess. Oldest match wins, deterministically: that is the row the
+   * history already hangs off.
+   */
+  private static async resolvePerson(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    name: string,
+    phone: string | undefined,
+  ): Promise<Person> {
+    const trimmedPhone = phone?.trim() || undefined;
+
+    const byPhone = trimmedPhone
+      ? await tx.person.findFirst({
+          where: { workspaceId, deletedAt: null, phone: trimmedPhone },
+          orderBy: { createdAt: 'asc' },
+        })
+      : null;
+
+    /* Case-insensitive because "Karim" and "karim" are one person; trimmed by
+     * the caller because a trailing space is a typo, not a different name. */
+    const match =
+      byPhone ??
+      (await tx.person.findFirst({
+        where: { workspaceId, deletedAt: null, name: { equals: name, mode: 'insensitive' } },
+        orderBy: { createdAt: 'asc' },
+      }));
+
+    if (!match) {
+      return tx.person.create({ data: { workspaceId, name, phone: trimmedPhone } });
+    }
+
+    /* A number we did not have before is new information, so record it. A
+     * number we did have is not up for revision here — someone recording a loan
+     * is not editing their contacts, and silently overwriting a stored phone
+     * from a half-remembered one typed into a loan form would lose the good
+     * value to the worse one. The contacts screen is where that gets corrected. */
+    if (trimmedPhone && !match.phone) {
+      return tx.person.update({ where: { id: match.id }, data: { phone: trimmedPhone } });
+    }
+
+    return match;
   }
 
   /**

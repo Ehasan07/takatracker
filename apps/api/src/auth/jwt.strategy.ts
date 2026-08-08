@@ -10,6 +10,16 @@ export interface JwtPayload {
   email: string;
   /** Active workspace. Every tenant-scoped query filters on this. */
   ws: string;
+  /**
+   * The user's `tokenVersion` when this token was minted.
+   *
+   * Optional only so tokens issued before the claim existed keep working for
+   * the fifteen minutes it takes them to expire; a missing claim reads as 0,
+   * which is where every account starts. Once a reset bumps the stored value
+   * past 0 those old tokens stop matching too, so the rollout gap closes
+   * itself rather than leaving a hole.
+   */
+  tv?: number;
 }
 
 export const ACCESS_COOKIE = 'hishab_at';
@@ -38,6 +48,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    * A valid signature is not enough: the membership is re-checked on every
    * request, so revoking someone's access takes effect immediately rather than
    * when their 15-minute token happens to expire.
+   *
+   * `tokenVersion` rides along in that same query — the row is already being
+   * read, so invalidating access tokens costs no extra round trip.
    */
   async validate(payload: JwtPayload): Promise<AuthUser> {
     if (!payload.ws) throw new UnauthorizedException();
@@ -45,7 +58,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const membership = await this.prisma.membership.findUnique({
       where: { workspaceId_userId: { workspaceId: payload.ws, userId: payload.sub } },
       include: {
-        user: { select: { id: true, email: true } },
+        user: { select: { id: true, email: true, tokenVersion: true } },
         workspace: { select: { id: true, status: true, deletedAt: true, timezone: true } },
       },
     });
@@ -57,6 +70,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       membership.workspace.status === 'SUSPENDED' ||
       membership.workspace.status === 'CANCELLED'
     ) {
+      throw new UnauthorizedException();
+    }
+
+    /* The account's credentials moved after this token was minted — a password
+     * reset, today. The signature is still perfectly valid, which is exactly
+     * the problem: without this check a token stolen before the reset would
+     * keep working until it expired on its own. */
+    if ((payload.tv ?? 0) !== membership.user.tokenVersion) {
       throw new UnauthorizedException();
     }
 

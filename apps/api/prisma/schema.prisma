@@ -30,10 +30,21 @@ model User {
   /// When to deliver reminders to this person, which need not match the
   /// workspace's accounting timezone.
   notifyTimezone String @default("Asia/Dhaka")
+  /// null until the address is proven. Unverified accounts still work — locking
+  /// somebody out of their own books over an undelivered email is worse than
+  /// the risk — but the nag stays until this is set.
+  emailVerifiedAt DateTime?
+  /// Bumped whenever every session must die — a password reset, an admin
+  /// lockout. Access tokens carry the value they were minted with, so a stolen
+  /// one stops working the moment this moves rather than surviving its
+  /// remaining fifteen minutes. Refresh families are revoked separately; this
+  /// closes the access-token window they cannot reach.
+  tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   memberships      Membership[]
+  emailTokens      EmailToken[]
   ownedWorkspaces  Workspace[]    @relation("WorkspaceOwner")
   createdTxns      Transaction[]  @relation("TransactionAuthor")
   refreshTokens    RefreshToken[]
@@ -61,6 +72,34 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, familyId])
+  @@index([expiresAt])
+}
+
+enum EmailTokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+/// One-shot links sent by email.
+///
+/// Only the hash is stored, exactly as with refresh tokens: a leaked database
+/// must not hand somebody a working password-reset link. Rows are kept after
+/// use so a replay can be told apart from an expired link, which changes what
+/// the user is told.
+model EmailToken {
+  id        String            @id @default(cuid())
+  userId    String
+  purpose   EmailTokenPurpose
+  tokenHash String            @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+  /// Where it was requested from, for the audit trail on a reset.
+  requestIp String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
   @@index([expiresAt])
 }
 
@@ -167,6 +206,9 @@ model Workspace {
   auditEvents  AuditEvent[]
   loans        Loan[]
   loanPayments LoanPayment[]
+  importBatches ImportBatch[]
+  ingestionMessages IngestionMessage[]
+  transactionDrafts TransactionDraft[]
   savingsPlans SavingsPlan[]
   savingsInstallments SavingsInstallment[]
   policies     InsurancePolicy[]
@@ -710,6 +752,117 @@ model PremiumPayment {
 // Ledger
 // ---------------------------------------------------------------------------
 
+enum ImportStatus {
+  PENDING
+  APPLIED
+  REVERTED
+}
+
+/// One spreadsheet upload.
+///
+/// Imports are recorded as a batch so the whole thing can be undone in one
+/// action. Somebody who maps a column wrong and lands two hundred rows in the
+/// wrong account needs one button, not two hundred deletions.
+model ImportBatch {
+  id          String       @id @default(cuid())
+  workspaceId String
+  createdByUserId String?
+  filename    String
+  /// SHA-256 of the uploaded bytes, so the same file offered twice can be
+  /// spotted before it doubles somebody's books.
+  fileHash    String
+  /// The column mapping the user chose, kept so the next import of the same
+  /// export can reuse it.
+  mapping     Json
+  rowCount    Int          @default(0)
+  importedCount Int        @default(0)
+  skippedCount  Int        @default(0)
+  status      ImportStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  appliedAt   DateTime?
+  revertedAt  DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, fileHash])
+}
+
+enum IngestionChannel {
+  SMS
+  EMAIL
+  WEBHOOK
+}
+
+enum DraftStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  DUPLICATE
+}
+
+/// A message that arrived from outside — a bank SMS, an email alert, a webhook.
+///
+/// The raw body is kept because a parser that gets something wrong can only be
+/// fixed against the text that broke it. It is also the deduplication key: the
+/// same alert delivered twice must produce one draft, not two.
+model IngestionMessage {
+  id          String           @id @default(cuid())
+  workspaceId String
+  channel     IngestionChannel
+  /// Sender address, shortcode or webhook source.
+  sender      String?
+  receivedAt  DateTime
+  body        String
+  /// SHA-256 of channel + sender + body, unique per workspace.
+  bodyHash    String
+  /// Whatever the parser produced, kept for debugging a bad parse.
+  parsed      Json?
+  parserName  String?
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  drafts    TransactionDraft[]
+
+  @@unique([workspaceId, bodyHash])
+  @@index([workspaceId, receivedAt(sort: Desc)])
+}
+
+/// A proposed transaction awaiting a human.
+///
+/// Nothing an SMS parser produces reaches the ledger on its own. The draft
+/// carries a confidence score and the exact span of text each field came from,
+/// so the review screen can show its working rather than asking for blind trust.
+model TransactionDraft {
+  id          String      @id @default(cuid())
+  workspaceId String
+  messageId   String?
+  status      DraftStatus @default(PENDING)
+
+  date        DateTime?
+  amountMinor BigInt?
+  direction   String?
+  payee       String?
+  accountId   String?
+  categoryId  String?
+  /// 0–100. Below the review threshold the draft is shown but never applied.
+  confidence  Int         @default(0)
+  /// Field name to the substring it was read from, for the "why" popover.
+  evidence    Json?
+
+  /// Set once accepted, so a draft can never be applied twice.
+  transactionId String?  @unique
+  reviewedAt    DateTime?
+  reviewedByUserId String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  message   IngestionMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt(sort: Desc)])
+}
+
 enum TransactionType {
   INCOME
   EXPENSE
@@ -750,6 +903,7 @@ model Transaction {
   attachmentIds String[]          @default([])
   source        TransactionSource @default(MANUAL)
   sourceDraftId String?
+  importBatchId String?
   externalRef   String?
   /// Device-generated UUID so offline rows keep identity across sync (§8).
   clientId      String?
@@ -759,14 +913,16 @@ model Transaction {
 
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   author    User?         @relation("TransactionAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  person    Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
-  entries   LedgerEntry[]
+  person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  entries     LedgerEntry[]
 
   @@unique([workspaceId, clientId])
   @@index([workspaceId, date(sort: Desc)])
   @@index([workspaceId, type])
   @@index([workspaceId, source])
   @@index([workspaceId, externalRef])
+  @@index([workspaceId, importBatchId])
 }
 
 enum EntryDirection {

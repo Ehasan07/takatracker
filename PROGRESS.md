@@ -131,6 +131,37 @@ which only strips types. So no `*.e2e-spec.ts` in this repo has ever been
 typechecked — the new ones were verified against a throwaway config instead.
 Worth fixing; recorded here so it is not rediscovered as a surprise.
 
+## M30 — account lifecycle, and the one gap left open
+
+Verification, password reset, session management and onboarding all land server
+side. Three decisions worth keeping:
+
+- **Unverified users are gated by nothing.** No guard, no route, no feature.
+  Locking somebody out of their own books because an email did not arrive is a
+  worse failure than the one verification prevents. The nag is enough.
+- **`/auth/password/forgot` returns a byte-identical response whether or not the
+  address exists**, and its rate limit is silent — saying "wait 40 seconds"
+  would itself confirm the address. Both carry "do not fix this" comments,
+  because this reads like a bug to anyone who has not thought about
+  account enumeration.
+- **Onboarding needed no column.** It is an `auth.onboarding_completed` audit
+  event: already append-only, workspace-scoped, timestamped and attributable.
+  It earns a column the day it grows per-step state.
+
+A password reset revokes every refresh family _and_ bumps `User.tokenVersion`,
+which every request checks. Without that second half a stolen **access** token
+would keep working for its remaining fifteen minutes after the reset — and a
+reset is precisely what somebody does when they believe their account is
+compromised. Completing a reset also sets `emailVerifiedAt`: the link only
+arrives in that mailbox, which is exactly what verification asks for.
+
+**Mail goes to the log, not to an inbox.** `nodemailer` is not a dependency and
+none was added. `LogMailTransport` renders the Bengali message and writes it,
+link included, so the flow is fully exercisable; `SmtpMailTransport` speaks the
+same interface and switches on when `SMTP_HOST` is set and the package resolves.
+Production with no `SMTP_HOST` logs a warning that links are not reaching users
+rather than failing silently.
+
 ## Decisions taken
 
 **Money.** `BIGINT` poisha in Postgres, `bigint` in Prisma, integer JSON number

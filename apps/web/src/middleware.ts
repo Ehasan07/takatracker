@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/signup', '/offline'];
+/**
+ * Reachable without a session. `/verify`, `/forgot` and `/reset` have to be
+ * here: they are opened from an email link, by definition on a device that is
+ * not signed in. Bouncing them to /login would also drop the `?token=`, which
+ * the redirect below does not carry — so the link would be spent for nothing
+ * and the user would have to request another.
+ */
+const PUBLIC_PATHS = ['/login', '/signup', '/offline', '/verify', '/forgot', '/reset'];
 
 /**
  * Route guard. The refresh cookie is the durable session marker — the 15-minute
