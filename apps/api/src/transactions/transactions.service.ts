@@ -181,8 +181,14 @@ export class TransactionsService {
   ): Promise<TransactionView> {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
+      include: txInclude,
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
+
+    /* Captured before the write, because an audit line that records only what a
+     * row became cannot answer the question people open an audit log to ask:
+     * what did it say before somebody changed it? */
+    const before = TransactionsService.auditSnapshot(existing);
 
     await this.assertOwnership(ctx.workspaceId, input);
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
@@ -225,7 +231,8 @@ export class TransactionsService {
       action: 'transaction.updated',
       entity: 'Transaction',
       entityId: id,
-      after: { type: input.type, amountMinor: input.amountMinor, date: input.date },
+      before,
+      after: TransactionsService.auditSnapshot(updated),
     });
 
     return this.present(updated, tz);
@@ -234,6 +241,7 @@ export class TransactionsService {
   async remove(ctx: TenantContext, id: string): Promise<{ id: string }> {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
+      include: txInclude,
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
     // Soft delete keeps the row for sync; the balance query filters it out.
@@ -244,6 +252,10 @@ export class TransactionsService {
       action: 'transaction.deleted',
       entity: 'Transaction',
       entityId: id,
+      /* The whole row, not just its id. The transaction is only soft-deleted so
+       * the record survives either way, but somebody reading the timeline
+       * should not have to go digging to see what was removed. */
+      before: TransactionsService.auditSnapshot(existing),
     });
     return { id };
   }
@@ -256,6 +268,7 @@ export class TransactionsService {
   async restore(ctx: TenantContext, id: string): Promise<TransactionView> {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, workspaceId: ctx.workspaceId, deletedAt: { not: null } },
+      include: txInclude,
     });
     if (!existing) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
     await this.prisma.transaction.update({ where: { id }, data: { deletedAt: null } });
@@ -265,8 +278,42 @@ export class TransactionsService {
       action: 'transaction.restored',
       entity: 'Transaction',
       entityId: id,
+      after: TransactionsService.auditSnapshot(existing),
     });
     return this.findOne(ctx, id);
+  }
+
+  /**
+   * What an audit line records about a transaction.
+   *
+   * The ledger legs are included because the amount alone does not say where
+   * the money went: an edit that moves ৳500 from groceries to fuel changes no
+   * total, and without the legs the log would show two identical rows.
+   */
+  private static auditSnapshot(row: {
+    date: Date;
+    type: string;
+    description: string | null;
+    payee: string | null;
+    entries?: {
+      accountId: string;
+      direction: string;
+      amountMinor: bigint;
+      categoryId: string | null;
+    }[];
+  }): Prisma.InputJsonValue {
+    return {
+      date: row.date.toISOString().slice(0, 10),
+      type: row.type,
+      description: row.description,
+      payee: row.payee,
+      entries: (row.entries ?? []).map((e) => ({
+        accountId: e.accountId,
+        categoryId: e.categoryId,
+        direction: e.direction,
+        amountMinor: minorToNumber(e.amountMinor),
+      })),
+    };
   }
 
   async findOne(ctx: TenantContext, id: string): Promise<TransactionView> {

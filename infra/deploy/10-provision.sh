@@ -37,8 +37,9 @@ for port in "$API_PORT" "$WEB_PORT" "$PG_PORT" "$REDIS_PORT"; do
   fi
 done
 
-if [ -e "/etc/nginx/sites-available/${DOMAIN}" ] && ! grep -q 'managed by hishab' "/etc/nginx/sites-available/${DOMAIN}"; then
-  die "/etc/nginx/sites-available/${DOMAIN} exists and was not created by this script"
+NGINX_SITE="/etc/nginx/sites-available/${DOMAIN}"
+if [ -e "$NGINX_SITE" ] && ! grep -q 'managed by hishab' "$NGINX_SITE"; then
+  die "${NGINX_SITE} exists and was not created by this script"
 fi
 
 for unit in hishab-api hishab-web; do
@@ -191,6 +192,17 @@ else
   REDIS_URL='redis://127.0.0.1:6379/9'
 fi
 
+# --- attachment storage -----------------------------------------------------
+# Receipt photos live on this disk, not in the database and not in the release
+# directory — a release is replaced on every deploy and the files must outlive
+# it. The API creates the leaf lazily but cannot create /var/lib itself, so the
+# root is made here, owned by the service user.
+ATTACHMENTS_DIR=/var/lib/hishab/attachments
+say "Creating ${ATTACHMENTS_DIR}"
+mkdir -p "$ATTACHMENTS_DIR"
+chown -R "$APP_USER":"$APP_USER" /var/lib/hishab
+chmod 700 /var/lib/hishab "$ATTACHMENTS_DIR"
+
 # --- environment file -------------------------------------------------------
 ENV_FILE=/etc/hishab/hishab.env
 if [ -f "$ENV_FILE" ]; then
@@ -225,6 +237,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
 TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)
 APP_URL=https://${DOMAIN}
+ATTACHMENTS_DIR=${ATTACHMENTS_DIR}
 
 ANTHROPIC_API_KEY=
 ENV
@@ -271,6 +284,13 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${APP_DIR}
+# Receipt photos. systemd creates /var/lib/hishab, owns it to the service user
+# and punches it through the ProtectSystem=strict sandbox — which is why the
+# directory cannot simply be mkdir'd from outside: under that sandbox the API
+# cannot see it, and the failure surfaces as a confusing ENOENT rather than a
+# permission error.
+StateDirectory=hishab
+StateDirectoryMode=0700
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=hishab-api
@@ -315,8 +335,19 @@ UNIT
 systemctl daemon-reload
 
 # --- nginx vhost (HTTP only; 30-tls.sh adds HTTPS) --------------------------
+#
+# Re-running this script must not clobber a vhost that certbot has already
+# extended with TLS. It did once: the rewrite dropped the `listen 443` block,
+# nginx fell back to the alphabetically first site on the box for HTTPS, and
+# takatracker.com started serving another project's certificate. The cert was
+# still on disk — only this file had lost its reference to it — but every
+# browser and every API client saw a name mismatch until 30-tls.sh was re-run.
+if [ -e "${NGINX_SITE}" ] && grep -q 'ssl_certificate' "${NGINX_SITE}"; then
+  say "Keeping the existing ${DOMAIN} vhost — it already has TLS configured"
+  say "  (delete it and re-run 30-tls.sh if you need it rebuilt from scratch)"
+else
 say "Adding the nginx site for ${DOMAIN}"
-cat > "/etc/nginx/sites-available/${DOMAIN}" <<CONF
+cat > "${NGINX_SITE}" <<CONF
 # managed by hishab — matches only ${DOMAIN}; every other vhost is unaffected.
 server {
     listen 80;
@@ -353,9 +384,10 @@ server {
     }
 }
 CONF
+fi
 
 mkdir -p /var/www/html
-ln -sfn "/etc/nginx/sites-available/${DOMAIN}" "/etc/nginx/sites-enabled/${DOMAIN}"
+ln -sfn "${NGINX_SITE}" "/etc/nginx/sites-enabled/${DOMAIN}"
 
 say 'Testing the whole nginx configuration before reloading'
 nginx -t

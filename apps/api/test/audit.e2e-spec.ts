@@ -198,6 +198,74 @@ describe('audit log', () => {
     ]);
   });
 
+  it('records what a transaction used to say, not only what it became', async () => {
+    /* The question an audit log exists to answer is "what did this say before
+     * somebody changed it?". A line carrying only the new values cannot answer
+     * it, and the old values are gone from the row by then. */
+    const user = await signup(ctx);
+    const cash = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নগদ', type: 'CASH', openingBalance: 1_000_000 })
+      .expect(201);
+    const categories = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const categoryId = categories.body.find((c: { kind: string }) => c.kind === 'EXPENSE').id;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const created = await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 500_000,
+        accountId: cash.body.id,
+        categoryId,
+        description: 'বাজার',
+      })
+      .expect(201);
+
+    await ctx
+      .http()
+      .patch(`/v1/transactions/${created.body.id as string}`)
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 250_000,
+        accountId: cash.body.id,
+        categoryId,
+        description: 'বাজার (সংশোধিত)',
+      })
+      .expect(200);
+
+    await ctx
+      .http()
+      .delete(`/v1/transactions/${created.body.id as string}`)
+      .set(auth(user))
+      .expect(200);
+    await settle();
+
+    const events = await ctx.prisma.auditEvent.findMany({
+      where: { workspaceId: user.workspaceId, entityId: created.body.id as string },
+      orderBy: { createdAt: 'asc' },
+    });
+    const updated = events.find((e) => e.action === 'transaction.updated');
+    const deleted = events.find((e) => e.action === 'transaction.deleted');
+
+    const before = updated?.before as { description: string; entries: { amountMinor: number }[] };
+    const after = updated?.after as { description: string };
+    expect(before.description).toBe('বাজার');
+    expect(after.description).toBe('বাজার (সংশোধিত)');
+    // The legs are what say where the money went; an amount alone would not.
+    expect(before.entries.some((e) => e.amountMinor === 500_000)).toBe(true);
+
+    // A deletion records the row it removed, not just its id.
+    expect((deleted?.before as { description: string }).description).toBe('বাজার (সংশোধিত)');
+  });
+
   it('has no endpoint that can rewrite history', async () => {
     const user = await signup(ctx);
     await settle();
