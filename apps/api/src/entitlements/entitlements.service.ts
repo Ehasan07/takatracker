@@ -15,7 +15,14 @@ import {
 import { startOfMonth, startOfNextMonth } from '@hishab/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
-const UPGRADE_URL = process.env.UPGRADE_URL ?? 'https://takatracker.com/settings/plan';
+/**
+ * Where a 402 sends someone. Two things were wrong with the old value
+ * (`https://takatracker.com/settings/plan`): that route does not exist, so
+ * every plan limit dead-ended on a 404, and hardcoding the production origin
+ * meant a limit hit in development jumped the user to the live site.
+ */
+const UPGRADE_URL =
+  process.env.UPGRADE_URL ?? `${process.env.APP_URL ?? 'http://localhost:3000'}/plans`;
 
 /**
  * 402, with enough detail for the client to say "you have used all 5 of your

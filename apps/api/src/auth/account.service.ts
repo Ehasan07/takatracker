@@ -5,15 +5,16 @@ import {
   HttpStatus,
   Injectable,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { AuditService } from '../audit/audit.service';
+import { AuditService, type AuditAction } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
 import { toBengaliDigits } from '../mail/mail.templates';
 import { PrismaService } from '../prisma/prisma.service';
-import { primaryWorkspaceId } from './auth.helpers';
-import { ARGON_OPTIONS } from './auth.service';
+import { ARGON_OPTIONS, primaryWorkspaceId } from './auth.helpers';
 import { EmailTokenService, RESET_TTL_MS, VERIFY_TTL_MS } from './email-token.service';
+import { SessionsService, type SessionRequestContext } from './sessions.service';
 
 export interface RequestMeta {
   ip?: string;
@@ -34,6 +35,24 @@ const FORGOT_RESPONSE = {
   message: 'এই ইমেইলে অ্যাকাউন্ট থাকলে পাসওয়ার্ড রিসেটের লিংক পাঠানো হয়েছে। ইনবক্স দেখুন।',
 };
 
+/**
+ * The action a deliberate, signed-in password change is filed under.
+ *
+ * Not `auth.password_reset_completed`. A reset is a recovery from an account
+ * that may already be in someone else's hands and it destroys every session;
+ * this is somebody in Settings who typed their current password correctly and
+ * kept their own session. Filing both under one string makes them
+ * indistinguishable on the one timeline that has to answer "was I broken
+ * into?", which is the only question the timeline exists for.
+ *
+ * `AUDIT_ACTIONS` in audit/audit.service.ts does not carry it yet and that file
+ * belongs to another change, so the string is asserted here instead of edited
+ * in there. Nothing is wrong with the row that gets written — `AuditEvent.action`
+ * is a plain `String` column, no enum and no migration. Delete this assertion
+ * once 'auth.password_changed' is in the union.
+ */
+const PASSWORD_CHANGED_ACTION = 'auth.password_changed' as AuditAction;
+
 @Injectable()
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
@@ -43,6 +62,7 @@ export class AccountService {
     private readonly tokens: EmailTokenService,
     private readonly mail: MailService,
     private readonly audit: AuditService,
+    private readonly sessions: SessionsService,
   ) {}
 
   // --- email verification ----------------------------------------------------
@@ -452,6 +472,171 @@ export class AccountService {
       sessionsRevoked,
       message:
         'পাসওয়ার্ড পরিবর্তন হয়েছে। নিরাপত্তার জন্য সব ডিভাইস থেকে লগআউট করা হয়েছে — নতুন পাসওয়ার্ড দিয়ে আবার লগইন করুন।',
+    };
+  }
+
+  // --- password change (signed in) -------------------------------------------
+
+  /**
+   * Change the password of a user who is already signed in and knows the old one.
+   *
+   * Deliberately not the same event as `resetPassword`, and the difference is
+   * the whole design. A reset is triggered by somebody who has lost the account,
+   * so it must assume the account is in someone else's hands and destroys every
+   * session including the caller's. This is a person in Settings who just proved
+   * they hold the current password. Logging them out of the tab they are
+   * standing in teaches nothing, protects nothing, and is hostile — so their
+   * session lives.
+   *
+   * Everything that does matter still happens: every *other* refresh-token
+   * family dies, so a session a thief is holding is gone; and `tokenVersion`
+   * moves, so any access token minted before this second stops validating even
+   * though its signature is still perfectly good and it has minutes left to run.
+   * That bump also kills the caller's own access token, which is why
+   * `AuthController` mints them a replacement on the way out.
+   *
+   * When the caller's family cannot be identified — no refresh cookie, no device
+   * id — everything is revoked, the caller included. Same call as
+   * `SessionsService.revokeOthers` makes and for the same reason: not acting
+   * because we could not work out which session is theirs would be the worst of
+   * the available answers.
+   */
+  async changePassword(
+    userId: string,
+    workspaceId: string,
+    currentPassword: string,
+    newPassword: string,
+    ctx: SessionRequestContext = {},
+  ): Promise<{
+    ok: true;
+    sessionsRevoked: number;
+    currentSessionRevoked: boolean;
+    message: string;
+  }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, passwordHash: true },
+    });
+
+    /* No options argument, exactly as the login path does it: argon2 reads the
+     * cost parameters back out of the stored digest, so a hash written under an
+     * older ARGON_OPTIONS still verifies. ARGON_OPTIONS governs writing, below.
+     * The `.catch` mirrors login too — a malformed digest is a failed check,
+     * not a 500. */
+    const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
+
+    if (!ok) {
+      /* Filed under the same action as a failed login, because that is what it
+       * is: a wrong credential against this account. A settings page that lets
+       * somebody sitting at an unlocked laptop grind for the password has to be
+       * visible on the owner's timeline. */
+      this.audit.emit({
+        workspaceId,
+        actorUserId: userId,
+        action: 'auth.login_failed',
+        entity: 'User',
+        entityId: userId,
+        after: { via: 'password_change' },
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      });
+      throw new UnauthorizedException({
+        code: 'CURRENT_PASSWORD_INVALID',
+        message: 'বর্তমান পাসওয়ার্ড ভুল।',
+      });
+    }
+
+    // Nothing changes, so nothing should be revoked or invalidated either.
+    if (currentPassword === newPassword) {
+      throw new BadRequestException({
+        code: 'PASSWORD_UNCHANGED',
+        message: 'নতুন পাসওয়ার্ড আগের পাসওয়ার্ডের থেকে আলাদা হতে হবে।',
+      });
+    }
+
+    // Resolved before the transaction: it reads the same rows the transaction
+    // then updates, and it is a read-only decision, not part of the atom.
+    const currentFamilyId = await this.sessions.currentFamilyId(userId, ctx);
+    const passwordHash = await argon2.hash(newPassword, ARGON_OPTIONS);
+    const now = new Date();
+
+    const sessionsRevoked = await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash,
+          /* Same transaction as the revocation, for the reason `resetPassword`
+           * spells out: a bump without the revocation, or the reverse, leaves
+           * the account half-changed with one of the two doors still open. */
+          tokenVersion: { increment: 1 },
+        },
+      });
+
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          ...(currentFamilyId ? { familyId: { not: currentFamilyId } } : {}),
+        },
+        data: { revokedAt: now },
+      });
+
+      /* Any reset link still in flight dies here. Otherwise a link mailed
+       * minutes ago — possibly requested by whoever the user is changing their
+       * password to lock out — could be redeemed afterwards and undo all of
+       * this, which is exactly the window a password change is meant to close. */
+      await tx.emailToken.updateMany({
+        where: { userId, purpose: 'RESET_PASSWORD', usedAt: null },
+        data: { usedAt: now },
+      });
+
+      return revoked.count;
+    });
+
+    const currentSessionRevoked = currentFamilyId === null;
+
+    // Fire-and-forget: the notification must not be able to fail a change that
+    // is already committed. Same contract as `resetPassword`.
+    void this.mail.sendPasswordChanged({
+      to: user.email,
+      name: user.name,
+      allSessionsRevoked: currentSessionRevoked,
+    });
+
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: PASSWORD_CHANGED_ACTION,
+      entity: 'User',
+      entityId: userId,
+      after: { sessionsRevoked, currentSessionRevoked },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+
+    if (currentSessionRevoked) {
+      this.logger.warn(
+        `password/change for user ${userId} could not identify the caller's session`,
+      );
+      return {
+        ok: true,
+        sessionsRevoked,
+        currentSessionRevoked: true,
+        message:
+          'পাসওয়ার্ড পরিবর্তন হয়েছে। বর্তমান সেশনটি শনাক্ত করা যায়নি, তাই নিরাপত্তার জন্য সব সেশন বাতিল করা হয়েছে — নতুন পাসওয়ার্ড দিয়ে আবার লগইন করুন।',
+      };
+    }
+
+    this.logger.log(`Password changed for user ${userId}; ${sessionsRevoked} session(s) revoked`);
+
+    return {
+      ok: true,
+      sessionsRevoked,
+      currentSessionRevoked: false,
+      message:
+        sessionsRevoked > 0
+          ? 'পাসওয়ার্ড পরিবর্তন হয়েছে। অন্য সব ডিভাইস থেকে লগআউট করা হয়েছে — এই ডিভাইসটি লগইন থাকবে।'
+          : 'পাসওয়ার্ড পরিবর্তন হয়েছে। এই ডিভাইসটি লগইন থাকবে।',
     };
   }
 

@@ -5,7 +5,10 @@ import * as argon2 from 'argon2';
 import { DEFAULT_CATEGORIES, DEFAULT_PLAN_CODE, SYSTEM_ACCOUNT_SEED } from '@hishab/core';
 import type { LoginInput, SignupInput } from '@hishab/shared';
 import { AuditService } from '../audit/audit.service';
+import { jwtAccessSecret } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccountService } from './account.service';
+import { ARGON_OPTIONS } from './auth.helpers';
 
 export interface TokenPair {
   accessToken: string;
@@ -26,18 +29,11 @@ export interface AuthResult extends TokenPair {
 
 const REFRESH_TTL_DAYS = 30;
 const ACCESS_TTL = process.env.JWT_ACCESS_TTL ?? '15m';
+/** The same window, in seconds, for the `expiresIn` a client schedules refreshes on. */
+const ACCESS_TTL_SECONDS = 15 * 60;
 
-/**
- * Argon2id parameters — OWASP's second recommended option (19 MiB, t=2, p=1).
- * Exported so a password set by a reset is hashed exactly like one set at
- * signup; two definitions would drift and the weaker one would win silently.
- */
-export const ARGON_OPTIONS: argon2.Options = {
-  type: argon2.argon2id,
-  memoryCost: 19_456,
-  timeCost: 2,
-  parallelism: 1,
-};
+/** Moved to auth.helpers.ts to keep this file out of an import cycle; re-exported so existing importers are undisturbed. */
+export { ARGON_OPTIONS } from './auth.helpers';
 
 @Injectable()
 export class AuthService {
@@ -47,6 +43,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly account: AccountService,
   ) {}
 
   private static hashToken(token: string): string {
@@ -122,6 +119,27 @@ export class AuthService {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
+
+    /* The cold start for email verification. Without this call the loop never
+     * begins: `sendVerification` was only reachable from the resend button on
+     * /verify, and /verify is only reachable from the link this sends.
+     *
+     * Fire-and-forget with the error swallowed into the logger, exactly like
+     * AuditService.emit, and for a stronger reason. An SMTP host that is down,
+     * greylisting us, or simply slow must not be able to fail a signup: the
+     * account, the workspace and the seed data are already committed, so a
+     * throw here would return an error to somebody whose account exists, and
+     * their retry would hit "এই ইমেইলে ইতিমধ্যে অ্যাকাউন্ট আছে". Nothing gates
+     * on being verified either (see AccountService), so a mail that never
+     * arrives costs a nag in the UI and a button press, not access. */
+    void this.account
+      .sendVerification(user.id, workspace.id, { ip: meta.ip, userAgent: meta.userAgent })
+      .catch((err: unknown) => {
+        this.logger.warn(
+          `Signup verification mail for user ${user.id} was not sent: ${(err as Error).message}`,
+        );
+      });
+
     return this.issue(user, workspace);
   }
 
@@ -186,19 +204,56 @@ export class AuthService {
     return membership.workspace;
   }
 
+  /** The single place an access token is minted, so the claims cannot drift. */
+  private signAccessToken(
+    user: { id: string; email: string; tokenVersion: number },
+    workspaceId: string,
+  ): Promise<string> {
+    return this.jwt.signAsync(
+      /* `tv` is the user's token version at the moment of minting. JwtStrategy
+       * compares it against the stored value on every request, which is how a
+       * password reset kills an access token that has not expired yet — the
+       * refresh families it revokes cannot reach one. */
+      { sub: user.id, email: user.email, ws: workspaceId, tv: user.tokenVersion },
+      // Read through the resolver, never `process.env`: the strategy that
+      // verifies this token reads it at a different moment in the boot, and the
+      // two must not be able to see different values. See common/env.ts.
+      { secret: jwtAccessSecret(), expiresIn: ACCESS_TTL },
+    );
+  }
+
+  /**
+   * A replacement access token for a session that is deliberately surviving a
+   * `tokenVersion` bump — today only `POST /auth/password/change`.
+   *
+   * That flow keeps the caller's refresh family alive on purpose, but the bump
+   * it performs invalidates the access token that authorised the very request
+   * making the change. Without this the next call is a 401. Only the
+   * short-lived half is replaced: no new refresh token, no new family, so this
+   * cannot be used to manufacture a session.
+   */
+  async reissueAccessToken(
+    userId: string,
+    workspaceId: string,
+  ): Promise<{ accessToken: string; expiresIn: number }> {
+    // Re-read rather than trusting a caller-supplied version: the bump has just
+    // been written and this token has to carry the value that is now stored.
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true, tokenVersion: true },
+    });
+    return {
+      accessToken: await this.signAccessToken(user, workspaceId),
+      expiresIn: ACCESS_TTL_SECONDS,
+    };
+  }
+
   private async issue(
     user: { id: string; email: string; name: string; locale: string; tokenVersion: number },
     workspace: { id: string; name: string; currency: string; timezone: string },
     meta: { deviceId?: string; userAgent?: string; familyId?: string } = {},
   ): Promise<AuthResult> {
-    const accessToken = await this.jwt.signAsync(
-      /* `tv` is the user's token version at the moment of minting. JwtStrategy
-       * compares it against the stored value on every request, which is how a
-       * password reset kills an access token that has not expired yet — the
-       * refresh families it revokes cannot reach one. */
-      { sub: user.id, email: user.email, ws: workspace.id, tv: user.tokenVersion },
-      { secret: process.env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL },
-    );
+    const accessToken = await this.signAccessToken(user, workspace.id);
 
     const refreshToken = randomBytes(48).toString('base64url');
     const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86_400_000);
@@ -217,7 +272,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      expiresIn: 15 * 60,
+      expiresIn: ACCESS_TTL_SECONDS,
       user: { id: user.id, email: user.email, name: user.name, locale: user.locale },
       workspace: {
         id: workspace.id,

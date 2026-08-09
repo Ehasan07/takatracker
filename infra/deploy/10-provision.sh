@@ -199,6 +199,9 @@ else
   say "Writing ${ENV_FILE}"
   cat > "$ENV_FILE" <<ENV
 NODE_ENV=production
+# Fallback only. Every deploy writes the real stamp — version, short git SHA,
+# release id and release time — to /etc/hishab/release.env, which the units read
+# after this file and which therefore wins. See 20-release.sh / 50-rollback.sh.
 APP_VERSION=0.1.0
 
 DATABASE_URL=${DATABASE_URL}
@@ -230,6 +233,13 @@ chown root:"$APP_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+# ...except /opt/hishab/bin, which holds root-owned helpers run by root timers
+# (see 40-backups.sh). A root unit must never execute a file the app user can
+# rewrite.
+if [ -d "${APP_DIR}/bin" ]; then
+  chown -R root:root "${APP_DIR}/bin"
+  chmod 750 "${APP_DIR}/bin"
+fi
 
 # --- systemd units ----------------------------------------------------------
 say 'Installing the hishab-api and hishab-web units'
@@ -246,6 +256,11 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/current/apps/api
 EnvironmentFile=/etc/hishab/hishab.env
+# Written by 20-release.sh (and rewritten by 50-rollback.sh) with APP_VERSION,
+# GIT_SHA, RELEASE_ID and RELEASED_AT so /v1/health can say what is running.
+# Listed second on purpose: for a key set in both files, the later one wins.
+# The leading '-' means "optional" — the API still starts if it is absent.
+EnvironmentFile=-/etc/hishab/release.env
 Environment=HOME=${APP_DIR}
 Environment=PATH=${APP_DIR}/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${APP_DIR}/node/bin/node dist/main.js
@@ -277,6 +292,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/current/apps/web
 EnvironmentFile=/etc/hishab/hishab.env
+EnvironmentFile=-/etc/hishab/release.env
 Environment=HOME=${APP_DIR}
 Environment=PORT=${WEB_PORT}
 Environment=PATH=${APP_DIR}/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

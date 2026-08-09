@@ -146,6 +146,20 @@ export class SessionsService {
     };
   }
 
+  /**
+   * The family the caller is speaking from, or null when it cannot be told.
+   *
+   * Public because `AccountService.changePassword` has to revoke every family
+   * *except* this one, inside its own transaction, and a second copy of the
+   * matching rules — refresh-token hash first, device id as a soft fallback —
+   * would drift from this one. Null means "could not tell", not "none"; the
+   * caller decides what to do with that, and both callers here choose the
+   * cautious reading.
+   */
+  async currentFamilyId(userId: string, ctx: SessionRequestContext = {}): Promise<string | null> {
+    return this.resolveCurrentFamily(await this.loadLiveRows(userId), ctx);
+  }
+
   // --- internals -------------------------------------------------------------
 
   /** Rows that have not been revoked. Used rows stay: they carry the history. */

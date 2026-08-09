@@ -11,6 +11,25 @@ import {
 const APP_URL = process.env.APP_URL ?? 'https://takatracker.com';
 
 /**
+ * Web routes, not names we are free to invent.
+ *
+ * These must match the App Router directories in `apps/web/src/app` exactly —
+ * `/verify` is `app/verify/page.tsx`, `/reset` is `app/reset/page.tsx` — and
+ * they must stay inside the `PUBLIC_PATHS` allowlist in
+ * `apps/web/src/middleware.ts`, which today is `/login`, `/signup`, `/offline`,
+ * `/verify`, `/forgot`, `/reset` and nothing else.
+ *
+ * Get either wrong and the failure is silent and expensive: the middleware
+ * redirects the visitor to `/login` and the redirect does not carry the query
+ * string, so the `?token=` is gone. The link is single use, so it is now spent,
+ * and a user locked out of their account has just been handed a dead end. That
+ * is exactly what `/verify-email` and `/reset-password` did before they were
+ * corrected here. Rename a page in the web app, change these.
+ */
+const VERIFY_PATH = '/verify';
+const RESET_PATH = '/reset';
+
+/**
  * The one place the product sends email.
  *
  * Configuration-driven and fail-soft, same contract as `TelegramClient`:
@@ -92,7 +111,7 @@ export class MailService {
         name: params.name,
         // The token rides in the query string of a web route, never in a path
         // segment — proxies and analytics log paths far more eagerly.
-        url: `${APP_URL}/verify-email?token=${encodeURIComponent(params.token)}`,
+        url: `${APP_URL}${VERIFY_PATH}?token=${encodeURIComponent(params.token)}`,
         expiresInHours: params.expiresInHours,
       }),
     );
@@ -108,13 +127,18 @@ export class MailService {
       passwordResetEmail({
         to: params.to,
         name: params.name,
-        url: `${APP_URL}/reset-password?token=${encodeURIComponent(params.token)}`,
+        url: `${APP_URL}${RESET_PATH}?token=${encodeURIComponent(params.token)}`,
         expiresInMinutes: params.expiresInMinutes,
       }),
     );
   }
 
-  sendPasswordChanged(params: { to: string; name: string }): Promise<MailSendResult> {
+  sendPasswordChanged(params: {
+    to: string;
+    name: string;
+    /** See the template: false when the caller's own session was kept alive. */
+    allSessionsRevoked?: boolean;
+  }): Promise<MailSendResult> {
     return this.send(passwordChangedEmail(params));
   }
 }

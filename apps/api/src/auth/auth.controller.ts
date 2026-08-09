@@ -38,6 +38,11 @@ const resetPasswordSchema = z.object({
   token: tokenField,
   password: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
 });
+/** `currentPassword` is only ever compared, never stored, so it is not bounded by policy. */
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
+});
 /** Mobile has no cookie jar, so it may name its own session in the body. */
 const revokeOthersSchema = z.object({ refreshToken: z.string().min(1).optional() }).default({});
 
@@ -66,12 +71,26 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE, { path: '/' });
   }
 
+  private static readonly cookieOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+
+  /** The short-lived half on its own, for a session that outlives its access token. */
+  private setAccessCookie(res: Response, accessToken: string): void {
+    res.cookie(ACCESS_COOKIE, accessToken, {
+      ...AuthController.cookieOptions,
+      maxAge: 15 * 60 * 1000,
+    });
+  }
+
   /** Same-origin httpOnly cookies for the web app; the body serves mobile. */
   private setCookies(res: Response, result: AuthResult): void {
-    const common = { httpOnly: true, secure: isProd, sameSite: 'lax' as const, path: '/' };
-    res.cookie(ACCESS_COOKIE, result.accessToken, { ...common, maxAge: 15 * 60 * 1000 });
+    this.setAccessCookie(res, result.accessToken);
     res.cookie(REFRESH_COOKIE, result.refreshToken, {
-      ...common,
+      ...AuthController.cookieOptions,
       maxAge: 30 * 86_400 * 1000,
     });
   }
@@ -216,6 +235,48 @@ export class AuthController {
     // Leaving a stale access-token cookie behind only produces confusing 401s.
     this.clearCookies(res);
     return result;
+  }
+
+  /**
+   * Change the password of a signed-in user. Not a reset: see
+   * `AccountService.changePassword` for why this one keeps the caller logged in.
+   */
+  @Post('password/change')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @Throttle(rate(5))
+  async changePassword(
+    @Body(zodPipe(changePasswordSchema)) body: z.infer<typeof changePasswordSchema>,
+    @CurrentUser() user: AuthUser,
+    @Req() req: CookieRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.account.changePassword(
+      user.id,
+      user.workspaceId,
+      body.currentPassword,
+      body.newPassword,
+      this.sessionContext(req),
+    );
+
+    if (result.currentSessionRevoked) {
+      // The caller's own family went with the rest, so leaving cookies behind
+      // only produces confusing 401s. Same handling as password/reset.
+      this.clearCookies(res);
+      return result;
+    }
+
+    /* The `tokenVersion` bump inside changePassword invalidated the access
+     * token that authorised this very request — this browser's cookie included.
+     * The refresh family was kept alive on purpose, so replace only the
+     * short-lived half and the session carries on without a visible blip. The
+     * body carries it too, for mobile, which has no cookie jar. */
+    const { accessToken, expiresIn } = await this.auth.reissueAccessToken(
+      user.id,
+      user.workspaceId,
+    );
+    this.setAccessCookie(res, accessToken);
+    return { ...result, accessToken, expiresIn };
   }
 
   // --- sessions --------------------------------------------------------------

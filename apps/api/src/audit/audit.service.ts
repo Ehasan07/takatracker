@@ -34,6 +34,12 @@ export const AUDIT_ACTIONS = [
   'auth.verification_sent',
   'auth.password_reset_requested',
   'auth.password_reset_completed',
+  /* Distinct from a reset on purpose. A reset is recovery from a lost or
+   * compromised account and kills every session; a change is somebody in
+   * settings who still has their password. Merging them would make the one
+   * question this timeline exists to answer — "was I broken into?" —
+   * unanswerable. */
+  'auth.password_changed',
   'auth.session_revoked',
   'auth.onboarding_completed',
   'loan.created',

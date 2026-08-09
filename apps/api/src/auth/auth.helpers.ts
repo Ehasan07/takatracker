@@ -1,5 +1,25 @@
 import { createHash } from 'node:crypto';
+import * as argon2 from 'argon2';
 import type { PrismaService } from '../prisma/prisma.service';
+
+/**
+ * Argon2id parameters — OWASP's second recommended option (19 MiB, t=2, p=1).
+ *
+ * One definition, so a password set at signup, by a reset, and by a change from
+ * Settings are all hashed identically; two would drift and the weaker one would
+ * win silently. It lives here rather than in auth.service.ts because
+ * AuthService now imports AccountService (to send the signup verification
+ * mail), and AccountService needs these — importing them back out of
+ * auth.service would close that loop into a cycle, and a cycle at module load
+ * hands Nest an `undefined` class in `design:paramtypes`. This file imports
+ * nothing from the folder, so it cannot take part in one.
+ */
+export const ARGON_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+};
 
 /**
  * The one hashing shape used for every bearer secret in this folder: refresh

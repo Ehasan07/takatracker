@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import type { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { jwtAccessSecret } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from './current-user.decorator';
 
@@ -40,7 +41,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         fromCookie,
       ]),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_ACCESS_SECRET ?? 'change-me-access',
+      /* No `?? 'change-me-access'`. That default meant an EnvironmentFile that
+       * failed to load left this strategy accepting tokens signed with a
+       * constant published in .env.example — a silent, total auth bypass on a
+       * box that looks perfectly healthy. The resolver throws in production
+       * instead, and hands out one memoised value so this and the signer in
+       * auth.service.ts cannot end up on different keys. */
+      secretOrKey: jwtAccessSecret(),
     });
   }
 

@@ -31,23 +31,33 @@ describe('email verification', () => {
     await ctx.app.close();
   });
 
-  /** The plaintext half of a freshly issued token, recovered for the test. */
+  /**
+   * The plaintext half of a freshly issued token, recovered for the test.
+   *
+   * Only the hash is stored, so the token cannot be read back — the test
+   * replaces the row's hash with one it knows instead. Signup dispatches the
+   * verification email without awaiting it, so the row can land a moment after
+   * the response; poll rather than race it.
+   */
   async function issueAndSteal(
     user: Awaited<ReturnType<typeof signup>>,
     purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD',
   ): Promise<string> {
-    // Only the hash is stored, so the test cannot read the token back — it
-    // brute-forces nothing and instead re-hashes candidates it generates
-    // itself. Simpler: replace the row's hash with one we know.
     const token = `test-${purpose}-${Math.floor(performance.now() * 1000)}`;
     const tokenHash = createHash('sha256').update(token).digest('hex');
-    const row = await ctx.prisma.emailToken.findFirst({
-      where: { userId: user.id, purpose, usedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!row) throw new Error(`no ${purpose} token was issued`);
-    await ctx.prisma.emailToken.update({ where: { id: row.id }, data: { tokenHash } });
-    return token;
+
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const row = await ctx.prisma.emailToken.findFirst({
+        where: { userId: user.id, purpose, usedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (row) {
+        await ctx.prisma.emailToken.update({ where: { id: row.id }, data: { tokenHash } });
+        return token;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`no ${purpose} token was issued`);
   }
 
   it('starts unverified and verifies with the emailed token', async () => {
@@ -56,7 +66,6 @@ describe('email verification', () => {
     const before = await ctx.http().get('/v1/auth/me').set(auth(user)).expect(200);
     expect(before.body.emailVerifiedAt).toBeNull();
 
-    await ctx.http().post('/v1/auth/verify/send').set(auth(user)).send({}).expect(200);
     const token = await issueAndSteal(user, 'VERIFY_EMAIL');
 
     const confirmed = await ctx.http().post('/v1/auth/verify/confirm').send({ token }).expect(200);
@@ -68,7 +77,6 @@ describe('email verification', () => {
 
   it('tells a used link apart from an expired one', async () => {
     const user = await signup(ctx);
-    await ctx.http().post('/v1/auth/verify/send').set(auth(user)).send({}).expect(200);
     const token = await issueAndSteal(user, 'VERIFY_EMAIL');
     await ctx.http().post('/v1/auth/verify/confirm').send({ token }).expect(200);
 
@@ -84,7 +92,6 @@ describe('email verification', () => {
 
   it('rejects a token that has expired', async () => {
     const user = await signup(ctx);
-    await ctx.http().post('/v1/auth/verify/send').set(auth(user)).send({}).expect(200);
     const token = await issueAndSteal(user, 'VERIFY_EMAIL');
     const hash = createHash('sha256').update(token).digest('hex');
     await ctx.prisma.emailToken.update({
@@ -99,6 +106,18 @@ describe('email verification', () => {
   it('refuses a made-up token without saying whether one exists', async () => {
     const res = await ctx.http().post('/v1/auth/verify/confirm').send({ token: 'not-a-token' });
     expect(res.status).toBe(400);
+  });
+
+  it('sends the verification email at signup, and will not be asked again at once', async () => {
+    // The loop needs a cold start: before this, `sendVerification` was only
+    // reachable from a page you could only get to via the link it sends.
+    const user = await signup(ctx);
+    await issueAndSteal(user, 'VERIFY_EMAIL'); // proves signup issued one
+
+    // Asking again immediately is refused — one per minute per account, or the
+    // endpoint becomes a way to mail-bomb somebody.
+    const again = await ctx.http().post('/v1/auth/verify/send').set(auth(user)).send({});
+    expect(again.status).toBe(429);
   });
 
   it('lets an unverified user keep full access to their own books', async () => {
@@ -126,6 +145,19 @@ describe('password reset', () => {
   afterAll(async () => {
     await ctx.app.close();
   });
+
+  /** The dispatch at signup is unawaited, so the row can land just after. */
+  async function waitForToken(userId: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD') {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const row = await ctx.prisma.emailToken.findFirst({
+        where: { userId, purpose, usedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (row) return row;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`no ${purpose} token was issued`);
+  }
 
   async function stealResetToken(userId: string): Promise<string> {
     const token = `test-reset-${Math.floor(performance.now() * 1000)}`;
@@ -254,15 +286,13 @@ describe('password reset', () => {
   });
 
   it('will not accept a verification token on the reset endpoint', async () => {
+    // Signup issues the verification token itself, so there is no need to ask
+    // for another — and asking would be refused by the per-account cooldown.
     const user = await signup(ctx);
-    await ctx.http().post('/v1/auth/verify/send').set(auth(user)).send({}).expect(200);
-    const row = await ctx.prisma.emailToken.findFirst({
-      where: { userId: user.id, purpose: 'VERIFY_EMAIL' },
-      orderBy: { createdAt: 'desc' },
-    });
+    const row = await waitForToken(user.id, 'VERIFY_EMAIL');
     const token = 'crossed-purpose-token';
     await ctx.prisma.emailToken.update({
-      where: { id: row!.id },
+      where: { id: row.id },
       data: { tokenHash: createHash('sha256').update(token).digest('hex') },
     });
 

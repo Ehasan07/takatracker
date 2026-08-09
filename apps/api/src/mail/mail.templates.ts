@@ -111,16 +111,33 @@ export function passwordResetEmail(params: {
 }
 
 /**
- * Sent after a reset succeeds. This is the only warning a user gets if somebody
- * else reset their password, so it goes out even though nothing is asked of
- * them — and it never contains a link that could itself be abused.
+ * Sent after a reset succeeds, and after a signed-in user changes their
+ * password from Settings. This is the only warning a user gets if somebody else
+ * did it, so it goes out even though nothing is asked of them — and it never
+ * contains a link that could itself be abused.
  */
-export function passwordChangedEmail(params: { to: string; name: string }): MailMessage {
+export function passwordChangedEmail(params: {
+  to: string;
+  name: string;
+  /**
+   * False when a signed-in user changed their own password and their session
+   * was deliberately kept alive; every other device was still logged out.
+   *
+   * Defaults to true, which is what a reset does. Worth a parameter rather than
+   * one generic sentence: this line is what somebody reads to decide whether
+   * they have been broken into, and telling them every device was logged out
+   * when one was not is exactly the wrong thing to be vague about.
+   */
+  allSessionsRevoked?: boolean;
+}): MailMessage {
+  const allRevoked = params.allSessionsRevoked ?? true;
   const { text, html } = render({
     heading: 'আপনার পাসওয়ার্ড পরিবর্তন করা হয়েছে',
     lines: [
       `আসসালামু আলাইকুম ${params.name},`,
-      `${BRAND}-এ আপনার পাসওয়ার্ড এইমাত্র পরিবর্তন করা হয়েছে এবং সব ডিভাইস থেকে লগআউট করা হয়েছে।`,
+      allRevoked
+        ? `${BRAND}-এ আপনার পাসওয়ার্ড এইমাত্র পরিবর্তন করা হয়েছে এবং সব ডিভাইস থেকে লগআউট করা হয়েছে।`
+        : `${BRAND}-এ আপনার পাসওয়ার্ড এইমাত্র পরিবর্তন করা হয়েছে। যে ডিভাইস থেকে পরিবর্তন করা হয়েছে সেটি ছাড়া বাকি সব ডিভাইস থেকে লগআউট করা হয়েছে।`,
     ],
     footer: ['এটি আপনি না করে থাকলে এখনই "পাসওয়ার্ড ভুলে গেছি" দিয়ে নতুন পাসওয়ার্ড সেট করুন।'],
   });
