@@ -47,13 +47,30 @@ const listLoansQuerySchema = z.object({
   direction: optionalQuery(z.enum(LOAN_DIRECTIONS)),
   status: optionalQuery(z.enum(LOAN_STATUSES)),
   personId: optionalQuery(cuid),
-  /** Smart search: loan number, person name or phone, note, payment reference,
-   * and — when it parses as a number — the principal in taka. */
+  /**
+   * Smart search over the loan number, the person's name and phone, the note,
+   * the payment references, and — when it parses as a number — the principal in
+   * taka. Bengali and Banglish reach each other: `karim`, `korim` and করিম all
+   * find করিম. Fewer than two characters is not a filter and returns the whole
+   * list.
+   */
   q: optionalQuery(z.string().max(120)),
   from: optionalQuery(isoDate),
   to: optionalQuery(isoDate),
 });
 export type ListLoansQuery = z.infer<typeof listLoansQuerySchema>;
+
+/**
+ * The counterparty picker. `q` runs through the same matcher as the loan list,
+ * over the person's name, phone, relation and note; absent or too short, the
+ * response is the plain workspace list, oldest first.
+ */
+const searchPeopleQuerySchema = z.object({
+  q: optionalQuery(z.string().max(120)),
+  /** A ceiling for one dropdown, not a page — there is no cursor to follow. */
+  limit: optionalQuery(z.coerce.number().int().min(1).max(100)),
+});
+export type SearchPeopleQuery = z.infer<typeof searchPeopleQuerySchema>;
 
 const loanFields = z.object({
   /** Either an existing person… */
@@ -142,6 +159,17 @@ export class LoansController {
   @Get('dashboard')
   dashboard(@CurrentUser() user: AuthUser) {
     return this.loans.dashboard(user);
+  }
+
+  /* Read-only, and the only way to find a person without already knowing a loan
+   * they are on — the ledger route below needs an id the client had nowhere
+   * else to get. Declared above `:id` for the same reason `dashboard` is. */
+  @Get('people')
+  searchPeople(
+    @CurrentUser() user: AuthUser,
+    @Query(zodPipe(searchPeopleQuerySchema)) query: SearchPeopleQuery,
+  ) {
+    return this.loans.searchPeople(user, query);
   }
 
   @Get('people/:personId/ledger')

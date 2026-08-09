@@ -89,7 +89,13 @@ export function Toast({
   );
 }
 
-/** Destructive actions that cannot be undone ask first — as a sheet, not a modal. */
+/**
+ * Destructive actions that cannot be undone ask first — as a sheet, not a modal.
+ *
+ * `body` is a node rather than a string so a confirmation can name the amount
+ * it is about through `<Money>`. "Delete this instalment" is a question nobody
+ * can answer safely; "delete ৳20,000 of 5 June" is.
+ */
 export function ConfirmSheet({
   open,
   onOpenChange,
@@ -104,7 +110,7 @@ export function ConfirmSheet({
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
-  body: string;
+  body: React.ReactNode;
   confirmLabel: string;
   onConfirm: () => void;
   pending?: boolean;

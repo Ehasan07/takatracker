@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { formatLedgerDate } from '@hishab/shared';
+import { formatLedgerDate, fromLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { SkeletonCard } from '@/components/skeleton';
 import { endpoints } from '@/lib/api';
@@ -152,7 +152,9 @@ export default function DashboardPage() {
                     <p className="text-ink truncate text-sm">
                       {txn.description || txn.categoryName || txn.accountName}
                     </p>
-                    <p className="text-ink-muted truncate text-xs">{txn.date}</p>
+                    <p className="text-ink-muted truncate text-xs">
+                      {formatLedgerDate(fromLocalDateString(txn.date))}
+                    </p>
                   </div>
                   <Money minor={txn.amountMinor} colored signed className="shrink-0 text-sm" />
                 </li>

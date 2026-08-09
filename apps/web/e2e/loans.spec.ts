@@ -323,7 +323,7 @@ test.describe('loans', () => {
     await loanRow(page, 'করিম').getByRole('link').click();
     await addPayment(page, '40000');
 
-    await page.getByRole('link', { name: 'বিবরণী' }).click();
+    await page.getByRole('link', { name: 'বিবরণী', exact: true }).click();
     await expect(page).toHaveURL(/\/statement$/);
     await expect(page.getByRole('heading', { name: 'ঋণের বিবরণী' })).toBeVisible();
 
@@ -363,7 +363,7 @@ test.describe('loans', () => {
     await addLoan(page, { person: 'করিম', amount: '100000' });
     await loanRow(page, 'করিম').getByRole('link').click();
     await addPayment(page, '40000');
-    await page.getByRole('link', { name: 'বিবরণী' }).click();
+    await page.getByRole('link', { name: 'বিবরণী', exact: true }).click();
     await expect(stat(page, 'সমাপনী জের')).toHaveText('৳60,000.00');
 
     const downloading = page.waitForEvent('download');

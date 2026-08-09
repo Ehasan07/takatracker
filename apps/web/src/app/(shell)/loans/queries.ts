@@ -79,9 +79,24 @@ export async function fetchPartyLedger(
 /**
  * A loan moves real money, so the accounts, the khata and the reports are all
  * stale the moment one changes — not just the loan screens.
+ *
+ * Every mutation on a loan now touches the ledger: creating one books the
+ * disbursement, a payment books the repayment, and editing the principal,
+ * deleting an instalment, cancelling or deleting all reverse entries and can
+ * archive the control account. So the home summary (`['summary']`, the
+ * income/expense card on `/`) belongs in this list too — a repayment carrying
+ * interest posts to income or expense, and the card would otherwise keep
+ * showing the figure from before the edit until something else refetched it.
  */
 export function invalidateLoanData(queryClient: QueryClient): void {
-  for (const key of [['loans'], ['accounts'], ['transactions'], ['reports'], ['entitlements']]) {
+  for (const key of [
+    ['loans'],
+    ['accounts'],
+    ['transactions'],
+    ['summary'],
+    ['reports'],
+    ['entitlements'],
+  ]) {
     void queryClient.invalidateQueries({ queryKey: key });
   }
 }

@@ -3,10 +3,12 @@ import {
   assertBalanced,
   expandSimpleTransaction,
   reconciliationDelta,
+  searchTokens,
   type EntryDraft,
 } from '@hishab/core';
 import {
   fromLocalDateString,
+  toBengaliDigits,
   toLocalDateString,
   type ReconcileInput,
   type SimpleTransactionInput,
@@ -331,6 +333,11 @@ export class TransactionsService {
   ): Promise<{ items: TransactionView[]; nextCursor: string | null }> {
     const tz = ctx.timezone;
 
+    /* Built before the `where` so the unfiltered list path — the app's main
+     * screen — pays nothing for search: no tokenising, no extra predicates, no
+     * change to the plan the `[workspaceId, date desc]` index already serves. */
+    const search = query.q ? buildSearchWhere(ctx.workspaceId, query.q) : null;
+
     const where: Prisma.TransactionWhereInput = {
       workspaceId: ctx.workspaceId,
       deletedAt: null,
@@ -363,16 +370,7 @@ export class TransactionsService {
             },
           }
         : {}),
-      ...(query.q
-        ? {
-            OR: [
-              { description: { contains: query.q, mode: 'insensitive' } },
-              { payee: { contains: query.q, mode: 'insensitive' } },
-              { notes: { contains: query.q, mode: 'insensitive' } },
-              { externalRef: { contains: query.q, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
+      ...(search ?? {}),
     };
 
     const rows = await this.prisma.transaction.findMany({
@@ -613,4 +611,142 @@ function computeTransferSign(tx: TxWithEntries, accountId: string, magnitude: nu
 
 function addOneDay(d: Date): Date {
   return new Date(d.getTime() + 86_400_000);
+}
+
+/**
+ * How many tokens of `q` reach SQL.
+ *
+ * The schema caps `q` at 200 characters, which can tokenise into roughly a
+ * hundred words, and each token costs six ILIKE branches — two of them across a
+ * relation. The ceiling stops one search from planning six hundred predicates.
+ * Dropped tokens would only ever have *narrowed* the result (tokens are ANDed),
+ * so truncating widens slightly rather than hiding a row the user asked for.
+ */
+const MAX_SEARCH_TOKENS = 8;
+
+/**
+ * Escape the LIKE metacharacters before a token reaches `contains`.
+ *
+ * Prisma interpolates `contains` straight into `ILIKE '%' || $1 || '%'`, so an
+ * unescaped `%` is a wildcard: searching `50%` would return the whole ledger and
+ * `_` would match any single character. Postgres's default LIKE escape is the
+ * backslash and the Prisma filter exposes no ESCAPE clause, so prefixing the
+ * three metacharacters is both necessary and sufficient.
+ */
+function escapeLike(token: string): string {
+  return token.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * The forms of one token worth putting to SQL.
+ *
+ * `searchTokens` folds Bengali numerals to ASCII so `৫০০০` and `5000` are the
+ * same query — but the *stored* description is whatever the user typed, and
+ * Postgres will not fold it back. A token carrying digits is therefore matched
+ * in both scripts, which covers the pair in either direction. Letters need no
+ * such twin: ILIKE handles case, and Bengali has none.
+ */
+function needlesFor(token: string): string[] {
+  const ascii = escapeLike(token);
+  const bengali = escapeLike(toBengaliDigits(token));
+  return ascii === bengali ? [ascii] : [ascii, bengali];
+}
+
+/**
+ * Translate `q` into a workspace-scoped `WHERE`: every token must appear
+ * somewhere on the row, in any one of its searchable fields.
+ *
+ * ANDing the tokens and ORing the fields is what makes `করিম bhara` work — the
+ * name can sit on the person while the word sits in the description. It is also
+ * why the old single `contains` over the raw string was wrong: it required the
+ * user to type a contiguous substring of one column.
+ *
+ * Tokenisation comes from `@hishab/core` so the server and the in-memory
+ * matcher the client runs over small lists agree on what a token *is* — NFC,
+ * case-folded, punctuation split out. That is also why a query that normalises
+ * to nothing (`q=###`, `q=৳`) returns `null` and applies no filter at all: core
+ * §4.1 treats an empty normalisation as *no query*, and the two paths must not
+ * disagree about it.
+ *
+ * ## What this cannot do
+ *
+ * **Postgres cannot transliterate.** `khabar` will not find `খাবার` here, and no
+ * amount of ILIKE will change that: the two strings share not one code point, so
+ * neither is a substring of the other. `@hishab/core` bridges the scripts with a
+ * five-rung fold (`transliterateBengali`, then `b1`/`b2`/`skel`), but that runs
+ * in memory over a loaded list, and there are thousands of transactions — the
+ * main screen cannot load them all. So this endpoint is the honest SQL subset:
+ * script-preserving substring matching, nothing more. Banglish only finds a
+ * Bengali row when something else bridges the gap for it.
+ *
+ * Three smaller gaps follow from the same root:
+ *
+ *  - **No ranking.** Rows come back newest-first, not best-match-first; the tier
+ *    and score model in core has no SQL equivalent.
+ *  - **No fuzziness.** A typo misses. `korim` finds nothing, and so does `karim`.
+ *  - **No normalisation on the stored side.** The query is NFC-folded; a
+ *    description typed on a keyboard that emits `ে`+`া` rather than `ো` is stored
+ *    decomposed and stays invisible to a composed query.
+ *
+ * ## The smallest real fix — deliberately not built here
+ *
+ * Three options were on the table:
+ *
+ *  1. **A stored normalised + folded column on `Transaction`, maintained on
+ *     write.** `buildStoredSearchKeys` in core already computes exactly the two
+ *     values (`searchNorm`, `searchFold`), and `storedFoldNeedle` already turns a
+ *     query into the matching needle. It needs a migration, a one-off backfill,
+ *     and two lines in `create`/`update`.
+ *  2. **A trigram GIN index.** Fixes the speed of `ILIKE '%x%'`, but not the
+ *     script gap: Latin and Bengali trigrams share nothing, so `khabar` still
+ *     misses `খাবার`.
+ *  3. **Resolve Banglish to matching category and person ids first**, then filter
+ *     on those ids. Cheap — categories and people are small enough to match in
+ *     memory with `searchDocs` — but it only rescues rows that *point at* a
+ *     matching category or person. A free-text `খাবার কিনলাম` with no category
+ *     still misses.
+ *
+ * **Pick (1)**, with (2) as the index on top of it. It is the only one that
+ * makes the row's own text findable across scripts, the fold is already written
+ * and tested, and the cost is O(1) per write rather than per query. (3) is a
+ * good complement later — it catches the categorised rows whose description says
+ * nothing — but it is not a substitute.
+ */
+function buildSearchWhere(workspaceId: string, raw: string): Prisma.TransactionWhereInput | null {
+  const tokens = searchTokens(raw).slice(0, MAX_SEARCH_TOKENS);
+  if (tokens.length === 0) return null;
+
+  return {
+    AND: tokens.map((token) => ({
+      OR: needlesFor(token).flatMap((needle) => {
+        const contains = { contains: needle, mode: 'insensitive' } as const;
+        return [
+          { description: contains },
+          { payee: contains },
+          { notes: contains },
+          /* Kept from the filter this replaced. A bank reference is how someone
+           * finds the one transaction they have a receipt for. */
+          { externalRef: contains },
+          /* Both relation hops repeat `workspaceId` even though they are only
+           * reachable from an already-scoped transaction. Search is exactly the
+           * endpoint where a missing tenant guard hands one person's
+           * counterparties to another, and the redundant predicate costs an
+           * index lookup that the join was doing anyway.
+           *
+           * Neither hop filters `deletedAt`: a soft-deleted category still
+           * labels the historical rows it was attached to, and `present()` still
+           * shows its name — so it has to stay findable by that name. */
+          { person: { workspaceId, name: contains } },
+          {
+            entries: {
+              some: {
+                workspaceId,
+                category: { workspaceId, OR: [{ name: contains }, { nameBn: contains }] },
+              },
+            },
+          },
+        ];
+      }),
+    })),
+  };
 }

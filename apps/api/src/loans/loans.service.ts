@@ -11,17 +11,20 @@ import {
   loanInterestMinor,
   nextLoanNumber,
   presetRange,
+  searchDocs,
+  searchField,
   settlementDate,
   summariseLoan,
   type EntryDraft,
   type LoanPaymentInput,
   type LoanProgress,
   type LoanTerms,
+  type SearchBucket,
+  type SearchDoc,
 } from '@hishab/core';
 import {
   formatMinor,
   fromLocalDateString,
-  parseMoneyToMinor,
   toLocalDateString,
   type EntryDirection,
 } from '@hishab/shared';
@@ -44,6 +47,7 @@ import type {
   AddLoanPaymentInput,
   CreateLoanInput,
   ListLoansQuery,
+  SearchPeopleQuery,
   StatementQuery,
   UpdateLoanInput,
 } from './loans.controller';
@@ -91,6 +95,31 @@ export interface PersonView {
   phone: string | null;
   relation: string | null;
   note: string | null;
+}
+
+/** One row of the counterparty picker. */
+export interface PersonSearchHit extends PersonView {
+  /**
+   * Loans with this person that still mean something. Soft-deleted and
+   * cancelled ones are left out, so the number agrees with the party ledger the
+   * picker is about to open rather than promising rows that are not there.
+   */
+  loanCount: number;
+  /**
+   * `suggestion` is a did-you-mean, not a match: the query missed every field
+   * and only the fuzzy rungs reached this person. It is on the row because the
+   * UI has to be able to say so instead of presenting a guess as an answer.
+   */
+  bucket: SearchBucket;
+}
+
+export interface PersonSearchResponse {
+  /**
+   * False when `q` was absent or too short to be a filter — `people` is then
+   * the plain workspace list, oldest first, not a search result.
+   */
+  filtered: boolean;
+  people: PersonSearchHit[];
 }
 
 export interface LoanPaymentView {
@@ -224,6 +253,9 @@ const CURRENCY = 'BDT';
 
 /** How far ahead a due date still counts as "coming up" on the dashboard. */
 const UPCOMING_WINDOW_DAYS = 30;
+
+/** A picker shows a handful of rows. The controller's `limit` raises this. */
+const DEFAULT_PEOPLE_RESULTS = 20;
 
 /** Control accounts sort below the accounts a user actually picks from. */
 const CONTROL_ACCOUNT_SORT_ORDER = 900;
@@ -461,7 +493,6 @@ export class LoansService {
             },
           }
         : {}),
-      ...(query.q ? { OR: LoansService.searchClauses(query.q) } : {}),
     };
 
     const rows = await this.prisma.loan.findMany({
@@ -470,7 +501,18 @@ export class LoansService {
       orderBy: [{ loanDate: 'desc' }, { createdAt: 'desc' }],
     });
 
-    const views = await this.presentMany(ctx, rows);
+    /* `q` is applied here rather than in the WHERE clause, and that move is the
+     * whole change. Postgres `contains` can only find the bytes that were
+     * typed: it will never take `karim` to করিম, and `korim` matches neither
+     * spelling. Getting there means transliterating and folding both sides,
+     * which no index can do — so the rows come back and are matched in memory.
+     *
+     * Direction, person and the date window still narrow in SQL first, and a
+     * workspace's loans are human-sized: this is a list somebody scrolls, not a
+     * table somebody mines. The cost of loading them is the cost of the
+     * unfiltered list this endpoint already serves. */
+    const matched = LoansService.searchLoans(rows, query.q);
+    const views = await this.presentMany(ctx, matched);
     /* Status is derived, so it cannot be a SQL filter without trusting a column
      * that may be a day stale. Filtering the derived value is the only way a
      * "OVERDUE" chip can be honest the morning a due date passes. */
@@ -565,6 +607,83 @@ export class LoansService {
       person: LoansService.presentPerson(row.person),
       from: range.from,
       to: range.to,
+    };
+  }
+
+  /**
+   * The counterparty picker: the workspace's people, ranked by the same matcher
+   * as the loan list.
+   *
+   * Read-only, and until now there was no way to find a person at all without
+   * already knowing a loan they were on — `GET /loans/people/:personId/ledger`
+   * needs an id the client had nowhere to get.
+   *
+   * The matching matters more here than in the list. This endpoint is what lets
+   * a client send `personId` instead of `personName`, and every time it does,
+   * `resolvePerson` never has to guess. A picker that cannot find করিম when the
+   * user types `karim` is exactly how a workspace ends up with two করিমs — and
+   * a party ledger split in two is wrong on both halves while looking right on
+   * each. Suggestions stay on for that reason: a near-miss offered as a
+   * near-miss is far better than a silent second person.
+   *
+   * Workspace-scoped in the only two queries it runs. Nothing here takes an id
+   * from the caller, so there is no second path in and no way to reach another
+   * workspace's contacts by guessing one.
+   */
+  async searchPeople(ctx: TenantContext, query: SearchPeopleQuery): Promise<PersonSearchResponse> {
+    const [people, loanCounts] = await Promise.all([
+      this.prisma.person.findMany({
+        where: { workspaceId: ctx.workspaceId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      }),
+      /* Cancelled loans are left out for the reason the party ledger leaves
+       * them out: the two people called the thing off, and it owes nothing. */
+      this.prisma.loan.groupBy({
+        by: ['personId'],
+        where: {
+          workspaceId: ctx.workspaceId,
+          deletedAt: null,
+          status: { not: 'CANCELLED' },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const counts = new Map(loanCounts.map((group) => [group.personId, group._count._all]));
+
+    const docs: SearchDoc<Person>[] = people.map((person, index) => ({
+      id: person.id,
+      row: person,
+      /* createdAt ascending — the same "oldest wins" order `resolvePerson` uses
+       * to decide identity, so two people a query cannot separate come back in
+       * the order the one that owns the history comes first. */
+      order: index,
+      fields: [
+        searchField('name', 'PRIMARY', person.name),
+        searchField('phone', 'SECONDARY', person.phone),
+        /* Relation and note are how someone finds the cousin whose name they
+         * cannot spell. Below the name, never instead of it. */
+        searchField('relation', 'SECONDARY', person.relation),
+        searchField('note', 'FREE', person.note),
+      ],
+    }));
+
+    const result = searchDocs(docs, query.q ?? '');
+    /* Suggestions come after every real match, never mixed in, and `bucket`
+     * survives onto the row so the client cannot lose the distinction. `hits`
+     * is already the whole list when the query was not a filter. */
+    const ranked = [...result.hits, ...result.suggestions].slice(
+      0,
+      query.limit ?? DEFAULT_PEOPLE_RESULTS,
+    );
+
+    return {
+      filtered: result.filtered,
+      people: ranked.map((hit) => ({
+        ...LoansService.presentPerson(hit.row),
+        loanCount: counts.get(hit.row.id) ?? 0,
+        bucket: hit.bucket,
+      })),
     };
   }
 
@@ -1479,36 +1598,80 @@ export class LoansService {
     };
   }
 
+  // --- search ------------------------------------------------------------------
+
+  /**
+   * The `q` filter, ranked, strongest first.
+   *
+   * Everything the old five-`contains`-plus-amount predicate found this still
+   * finds — the matcher's A tier *is* case-insensitive substring matching — and
+   * above it the transliteration and fold rungs reach করিম from `karim` and
+   * from `korim`, which no `contains` ever could.
+   *
+   * **Suggestions are off.** They are the C and D rungs — deliberate
+   * near-misses — and this endpoint hands back a bare `LoanView[]` with nowhere
+   * to mark a row as a guess. A filtered list of debts where some rows do not
+   * match the filter shows a wrong debt as a right one; the picker above can
+   * afford them because its shape can label them. It also spares every row the
+   * edit-distance work.
+   *
+   * A query too short to be a filter comes back as the untouched list. That is
+   * `filtered: false`, and it is deliberate: `5` used to return every loan with
+   * a five anywhere in its phone number, which is no more a filter than typing
+   * nothing but is a great deal more surprising.
+   */
+  private static searchLoans(rows: LoanRow[], q: string | undefined): LoanRow[] {
+    const raw = q?.trim() ?? '';
+    if (raw === '') return rows;
+
+    const result = searchDocs(rows.map(LoansService.loanSearchDoc), raw, {
+      allowSuggestions: false,
+    });
+    return result.hits.map((hit) => hit.row);
+  }
+
+  /**
+   * One loan as the matcher sees it.
+   *
+   * The same five text fields and the same principal the SQL predicate
+   * searched, and deliberately nothing new: `relation`, the payment notes and
+   * the interest are all searchable data this endpoint has always ignored, and
+   * widening what `q` covers is a different decision from changing how it
+   * matches. Weights only say which field wins a tie — a name beats a note at
+   * the same tier, and no weight ever lifts a weaker match past a stronger one.
+   *
+   * `order` is the row's place in the SQL ordering (`loanDate desc, createdAt
+   * desc`), which the matcher applies only after score, so equally-good loans
+   * still come back newest first and the unfiltered list is unchanged.
+   */
+  private static loanSearchDoc(row: LoanRow, index: number): SearchDoc<LoanRow> {
+    return {
+      id: row.id,
+      row,
+      order: index,
+      fields: [
+        searchField('personName', 'PRIMARY', row.person.name),
+        searchField('loanNumber', 'PRIMARY', row.loanNumber),
+        searchField('personPhone', 'SECONDARY', row.person.phone),
+        /* One field per payment, keyed by the payment's own id so the
+         * shorter-field tie-break resolves to the reference that actually
+         * matched. A payment with no reference builds an empty key and can
+         * never match anything. */
+        ...row.payments.map((payment) =>
+          searchField(`reference:${payment.id}`, 'SECONDARY', payment.referenceNumber),
+        ),
+        // Prose. It matches, but it must never outrank a name.
+        searchField('note', 'FREE', row.note),
+      ],
+      /* "৫০০০" and "5,000" both mean the same loan: typing an amount is how
+       * people find a loan they remember by size rather than by name. Exact
+       * poisha, so ৳5,000.50 is a different loan — the one clause of the old
+       * predicate that was never a substring search, kept as one. */
+      amounts: [{ name: 'principal', weight: 'PRIMARY', minor: minorToNumber(row.principalMinor) }],
+    };
+  }
+
   // --- statements ------------------------------------------------------------
-
-  private static searchClauses(q: string): Prisma.LoanWhereInput[] {
-    const term = q.trim();
-    const clauses: Prisma.LoanWhereInput[] = [
-      { loanNumber: { contains: term, mode: 'insensitive' } },
-      { note: { contains: term, mode: 'insensitive' } },
-      { person: { name: { contains: term, mode: 'insensitive' } } },
-      { person: { phone: { contains: term, mode: 'insensitive' } } },
-      { payments: { some: { referenceNumber: { contains: term, mode: 'insensitive' } } } },
-    ];
-
-    /* "৫০০০" and "5,000" both mean the same loan. Typing an amount is how
-     * people find a loan they remember by size rather than by name. */
-    const principalMinor = LoansService.parseAmountQuery(term);
-    if (principalMinor !== null) clauses.push({ principalMinor: BigInt(principalMinor) });
-
-    return clauses;
-  }
-
-  private static parseAmountQuery(term: string): number | null {
-    if (term === '') return null;
-    try {
-      const minor = parseMoneyToMinor(term);
-      return minor > 0 ? minor : null;
-    } catch {
-      // Not a number — the text clauses above are the whole search then.
-      return null;
-    }
-  }
 
   /**
    * Explicit `from`/`to` win over a preset, and both absent means the whole

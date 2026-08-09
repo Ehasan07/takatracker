@@ -63,7 +63,15 @@ test.describe('categories and sub-categories', () => {
     // The categories link lives next to the accounts, where both are found
     // together. It says "ক্যাটাগরি", not "খাত" — that is one letter from the
     // ledger tab "খাতা" and reads ambiguously.
-    await page.getByRole('link', { name: 'ক্যাটাগরি' }).click();
+    //
+    // Scoped to the content area, not `exact`: the desktop sidebar carries a
+    // row with precisely this accessible name, so at 768px and above an
+    // unscoped lookup is ambiguous however exactly it matches. What this test
+    // is about is the link on the accounts screen.
+    await page
+      .getByTestId('app-scroll')
+      .getByRole('link', { name: 'ক্যাটাগরি', exact: true })
+      .click();
     await expect(page).toHaveURL(/\/categories/);
 
     // Nest রিকশা under যাতায়াত.

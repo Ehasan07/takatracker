@@ -48,7 +48,7 @@ export class AccountsController {
     @Param('id') id: string,
     @Body(zodPipe(updateAccountSchema)) body: ReturnType<typeof updateAccountSchema.parse>,
   ) {
-    return this.accounts.update(user.workspaceId, id, body, user.id);
+    return this.accounts.update(user.workspaceId, id, body, user.id, user.timezone);
   }
 
   @Delete(':id')

@@ -123,6 +123,11 @@ export const simpleTransactionSchema = z
     payee: z.string().max(200).optional(),
     externalRef: z.string().max(200).optional(),
     source: z.enum(TRANSACTION_SOURCES).default('MANUAL'),
+    /* Receipt photographs. The ids come from POST /attachments, which has
+     * already checked the bytes and the workspace; this only records which ones
+     * belong to this entry. Loans have carried this since M12 — transactions
+     * were the outlier, so a receipt attached to one silently vanished. */
+    attachmentIds: z.array(cuid).max(10).optional(),
   })
   .superRefine((val, ctx) => {
     if (val.type === 'TRANSFER') {
@@ -161,8 +166,13 @@ export const transactionQuerySchema = z.object({
   source: z.enum(TRANSACTION_SOURCES).optional(),
   personId: cuid.optional(),
   q: z.string().max(200).optional(),
-  minAmount: minorAmount.optional(),
-  maxAmount: minorAmount.optional(),
+  /* Coerced, unlike `minorAmount` in a request body. A query string only ever
+   * carries text, so `?minAmount=10000` arrives as "10000" and the uncoerced
+   * schema answered 400 for every value — the two filters could not be used at
+   * all. The integer check still applies after coercion, so a float is still
+   * refused and no fractional poisha gets in. */
+  minAmount: z.coerce.number().int().safe().optional(),
+  maxAmount: z.coerce.number().int().safe().optional(),
 });
 export type TransactionQuery = z.infer<typeof transactionQuerySchema>;
 

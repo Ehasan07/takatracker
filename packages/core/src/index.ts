@@ -7,3 +7,4 @@ export * from './savings.js';
 export * from './import.js';
 export * from './ingestion.js';
 export * from './loans.js';
+export * from './search.js';

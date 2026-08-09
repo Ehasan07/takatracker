@@ -101,8 +101,11 @@ export function AddLoanSheet({
           interestType: form.interestType,
           interestMinor:
             form.interestType === 'FIXED' ? parseMoneyToMinor(form.interest || '0') : 0,
+          /* Basis points are hundredths of a percent, so the same parser: "৮.২৫"
+             is 825. `Math.trunc(Number(x) * 100)` would look equivalent and is
+             not — it reads 0.29 as 28, because 0.29 has no exact binary form. */
           interestRateBps:
-            form.interestType === 'PERCENT' ? Math.trunc(Number(form.rate || '0') * 100) : 0,
+            form.interestType === 'PERCENT' ? parseMoneyToMinor(form.rate || '0') : 0,
           loanDate: form.loanDate,
           dueDate: form.dueDate || undefined,
           accountId: form.accountId,

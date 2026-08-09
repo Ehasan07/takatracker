@@ -1,21 +1,32 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ban, FileText, Plus, Trash2, User } from 'lucide-react';
+import { ArrowLeft, Ban, FileText, Pencil, Plus, Trash2, User } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { SkeletonCard, SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { EditLoanSheet } from '../edit-loan-sheet';
 import { bnDate, bnNum, directionLabel, methodLabel, paidPercent } from '../labels';
 import { ConfirmSheet, ProgressBar, QueryError, StatusPill, Toast } from '../parts';
 import { PaymentSheet } from '../payment-sheet';
 import { fetchLoanDetail, invalidateLoanData, loanKeys } from '../queries';
-import type { LoanDetail } from '../types';
+import type { LoanDetail, LoanPayment } from '../types';
+
+/** The id the "go to the instalments" button scrolls to. */
+const PAYMENTS_ANCHOR = 'loan-payments';
+
+/**
+ * Cancelling and deleting are both refused once an instalment exists, and both
+ * refusals have the same cure. `null` means the action can go ahead.
+ */
+type BlockedAction = 'cancel' | 'delete' | null;
 
 /** One line of the payment history, with the running balance already worked out. */
 interface HistoryRow {
@@ -29,7 +40,9 @@ interface HistoryRow {
   balanceMinor: number;
   method: string;
   reference: string;
-  paymentId: string | null;
+  /** The instalment this row came from — null on the disbursement row, which
+   *  is not a payment and cannot be deleted on its own. */
+  payment: LoanPayment | null;
 }
 
 const COLUMNS = [
@@ -67,7 +80,7 @@ function buildHistory(detail: LoanDetail | undefined): HistoryRow[] {
       balanceMinor: total,
       method: '',
       reference: loan.loanNumber,
-      paymentId: null,
+      payment: null,
     },
   ];
 
@@ -87,7 +100,7 @@ function buildHistory(detail: LoanDetail | undefined): HistoryRow[] {
       balanceMinor: balance,
       method: methodLabel(payment.method),
       reference: payment.referenceNumber ?? '',
-      paymentId: payment.id,
+      payment,
     });
   });
 
@@ -98,10 +111,16 @@ export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [payOpen, setPayOpen] = React.useState(false);
-  const [deleting, setDeleting] = React.useState<string | null>(null);
+  const [editOpen, setEditOpen] = React.useState(false);
+  /* The whole payment, not its id: the confirmation names the amount and the
+     date, and it has to keep naming them while the delete is in flight. */
+  const [deleting, setDeleting] = React.useState<LoanPayment | null>(null);
   const [cancelOpen, setCancelOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [blocked, setBlocked] = React.useState<BlockedAction>(null);
   const [toast, setToast] = React.useState<string | null>(null);
   const dismissToast = React.useCallback(() => setToast(null), []);
 
@@ -118,7 +137,7 @@ export default function LoanDetailPage() {
       haptic('success');
       invalidateLoanData(queryClient);
       setDeleting(null);
-      setToast('কিস্তিটি মুছে ফেলা হয়েছে');
+      setToast('কিস্তিটি মুছে ফেলা হয়েছে — খাতার লেনদেনটিও ফিরিয়ে নেওয়া হয়েছে');
     },
     onError: (err) => {
       setDeleting(null);
@@ -139,6 +158,30 @@ export default function LoanDetailPage() {
       setToast(err instanceof ApiError ? err.message : 'ঋণ বাতিল করা যায়নি');
     },
   });
+
+  const removeLoan = useMutation({
+    mutationFn: () => api(`/loans/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      haptic('success');
+      invalidateLoanData(queryClient);
+      setDeleteOpen(false);
+      // Nothing left to look at; `replace` so Back does not land on a 404.
+      router.replace('/loans');
+    },
+    onError: (err) => {
+      setDeleteOpen(false);
+      setToast(err instanceof ApiError ? err.message : 'ঋণ মুছে ফেলা যায়নি');
+    },
+  });
+
+  /* The instalment list is already on this screen, so the cure for "delete the
+     instalments first" is a scroll, not another journey. */
+  const goToPayments = React.useCallback(() => {
+    setBlocked(null);
+    document
+      .getElementById(PAYMENTS_ANCHOR)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const history = React.useMemo(() => buildHistory(detail.data), [detail.data]);
 
@@ -163,10 +206,13 @@ export default function LoanDetailPage() {
     );
   }
 
-  const { loan, person, progress } = detail.data;
+  const { loan, person, progress, payments } = detail.data;
   const percent = paidPercent(progress.paidMinor, progress.totalPayableMinor);
   const overdue = progress.daysOverdue > 0 || loan.status === 'OVERDUE';
   const closed = loan.status === 'CANCELLED' || loan.status === 'COMPLETED';
+  /* Both refusals are the API's, and both are worth catching here: a button
+     that explains itself beats one that fires a request in order to fail. */
+  const hasPayments = payments.length > 0;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
@@ -248,17 +294,34 @@ export default function LoanDetailPage() {
               পার্টি লেজার
             </Link>
           ) : null}
-          {!closed ? (
+          {/* Allowed on a settled loan too — a note or a date can be wrong on a
+              finished loan, and the API says so by returning 200. */}
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4" aria-hidden />
+            সম্পাদনা
+          </Button>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {!closed ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-expense"
+                onClick={() => (hasPayments ? setBlocked('cancel') : setCancelOpen(true))}
+              >
+                <Ban className="h-4 w-4" aria-hidden />
+                ঋণ বাতিল
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               size="sm"
-              className="text-expense ml-auto"
-              onClick={() => setCancelOpen(true)}
+              className="text-expense"
+              onClick={() => (hasPayments ? setBlocked('delete') : setDeleteOpen(true))}
             >
-              <Ban className="h-4 w-4" aria-hidden />
-              ঋণ বাতিল
+              <Trash2 className="h-4 w-4" aria-hidden />
+              ঋণ মুছুন
             </Button>
-          ) : null}
+          </div>
         </div>
       </header>
 
@@ -270,11 +333,11 @@ export default function LoanDetailPage() {
         </Button>
       ) : null}
 
-      <section className="flex flex-col gap-2">
+      <section id={PAYMENTS_ANCHOR} className="flex scroll-mt-4 flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-ink text-base font-semibold">কিস্তির হিসাব</h2>
           <span className="text-ink-muted text-xs">
-            {bnNum(progress.paymentCount || detail.data.payments.length)}টি কিস্তি
+            {bnNum(progress.paymentCount || payments.length)}টি কিস্তি
           </span>
         </div>
 
@@ -311,11 +374,11 @@ export default function LoanDetailPage() {
                       </>
                     )}
                   </div>
-                  {row.paymentId ? (
+                  {row.payment ? (
                     <button
                       type="button"
                       aria-label="কিস্তি মুছুন"
-                      onClick={() => setDeleting(row.paymentId)}
+                      onClick={() => setDeleting(row.payment)}
                       className="press touch-target text-expense hover:bg-greenbar no-print flex items-center justify-center rounded-md"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
@@ -383,11 +446,11 @@ export default function LoanDetailPage() {
                   </td>
                   <td className="text-ink-muted px-2 py-2">{row.reference || '—'}</td>
                   <td className="no-print px-1 py-1 text-right">
-                    {row.paymentId ? (
+                    {row.payment ? (
                       <button
                         type="button"
                         aria-label="কিস্তি মুছুন"
-                        onClick={() => setDeleting(row.paymentId)}
+                        onClick={() => setDeleting(row.payment)}
                         className="press text-expense hover:bg-greenbar flex h-9 w-9 items-center justify-center rounded-md"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
@@ -400,7 +463,7 @@ export default function LoanDetailPage() {
           </table>
         </div>
 
-        {detail.data.payments.length === 0 ? (
+        {payments.length === 0 ? (
           <p className="text-ink-muted text-sm">
             এখনও কোনো কিস্তি জমা হয়নি — উপরের বোতামে প্রথম কিস্তিটি যোগ করুন।
           </p>
@@ -416,14 +479,35 @@ export default function LoanDetailPage() {
         onOpenChange={setPayOpen}
       />
 
+      <EditLoanSheet
+        detail={detail.data}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={setToast}
+      />
+
+      {/* Deleting an instalment moves real money, so the question names which
+          one: the amount and the day it was paid, not "this instalment". */}
       <ConfirmSheet
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title="কিস্তি মুছবেন?"
-        body="কিস্তিটি খাতা থেকেও মুছে যাবে এবং ঋণের বাকি টাকা আবার বেড়ে যাবে। এটি ফেরানো যাবে না।"
+        description={deleting ? bnDate(deleting.date) : undefined}
+        body={
+          deleting ? (
+            <>
+              <Money minor={deleting.amountMinor} className="font-semibold" /> ·{' '}
+              {bnDate(deleting.date)}
+              {methodLabel(deleting.method) ? ` · ${methodLabel(deleting.method)}` : ''}
+              {deleting.referenceNumber ? ` · ${deleting.referenceNumber}` : ''} — এই কিস্তিটি মুছে
+              যাবে। খাতা থেকে লেনদেনটিও ফিরিয়ে নেওয়া হবে এবং ঋণের বাকি টাকা আবার বেড়ে যাবে। এটি
+              ফেরানো যাবে না।
+            </>
+          ) : null
+        }
         confirmLabel="হ্যাঁ, মুছে ফেলুন"
         pending={removePayment.isPending}
-        onConfirm={() => deleting && removePayment.mutate(deleting)}
+        onConfirm={() => deleting && removePayment.mutate(deleting.id)}
       />
 
       <ConfirmSheet
@@ -431,11 +515,57 @@ export default function LoanDetailPage() {
         onOpenChange={setCancelOpen}
         title="ঋণ বাতিল করবেন?"
         description={loan.loanNumber}
-        body="বাতিল করলে ঋণটি হিসাবের বাইরে চলে যাবে। জমা হওয়া কিস্তিগুলো খাতায় থেকে যাবে।"
+        body="বাতিল করলে খাতা থেকে ঋণের মূল লেনদেনটি ফিরিয়ে নেওয়া হবে আর ঋণের হিসাবটি আর্কাইভ হয়ে যাবে — ব্যালেন্স শিটে কিছুই পড়ে থাকবে না। ঋণ নম্বরটি তালিকায় ‘বাতিল’ হয়ে থেকে যাবে।"
         confirmLabel="হ্যাঁ, বাতিল করুন"
         pending={cancelLoan.isPending}
         onConfirm={() => cancelLoan.mutate()}
       />
+
+      <ConfirmSheet
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="ঋণটি মুছে ফেলবেন?"
+        description={`${loan.loanNumber} · ${person?.name ?? ''}`}
+        body={
+          <>
+            পুরো ঋণটি তালিকা থেকে চলে যাবে। খাতা থেকে <Money minor={loan.principalMinor} />
+            -এর মূল লেনদেনটি ফিরিয়ে নেওয়া হবে আর ঋণের হিসাবটি আর্কাইভ হয়ে যাবে — ব্যালেন্স শিটে
+            কিছুই পড়ে থাকবে না। এটি ফেরানো যাবে না।
+          </>
+        }
+        confirmLabel="হ্যাঁ, মুছে ফেলুন"
+        pending={removeLoan.isPending}
+        onConfirm={() => removeLoan.mutate()}
+      />
+
+      {/* The API refuses both cancel and delete while an instalment exists.
+          Relaying that sentence alone leaves the user hunting; the way out is
+          one tap away on this very screen, so point at it. */}
+      <Sheet
+        open={blocked !== null}
+        onOpenChange={(open) => !open && setBlocked(null)}
+        title="আগে কিস্তিগুলো মুছুন"
+        description={loan.loanNumber}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-ink text-sm">
+            এই ঋণে {bnNum(payments.length)}টি কিস্তি জমা আছে, মোট{' '}
+            <Money minor={progress.paidMinor} className="font-semibold" /> — তাই ঋণটি এখন{' '}
+            {blocked === 'cancel' ? 'বাতিল করা যাবে না' : 'মুছে ফেলা যাবে না'}। জমা হওয়া টাকা খাতার
+            সত্যি ঘটনা, আর সেটি মুছলে হিসাবও বদলে যায়।
+          </p>
+          <p className="text-ink-muted text-sm">
+            নিচের ‘কিস্তির হিসাব’ তালিকা থেকে কিস্তিগুলো একে একে মুছে ফেলুন — শেষটি মুছলেই ঋণটি{' '}
+            {blocked === 'cancel' ? 'বাতিল করা যাবে' : 'মুছে ফেলা যাবে'}।
+          </p>
+          <Button size="block" onClick={goToPayments}>
+            কিস্তির তালিকায় যান
+          </Button>
+          <Button variant="outline" size="block" onClick={() => setBlocked(null)}>
+            থাক
+          </Button>
+        </div>
+      </Sheet>
 
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </div>

@@ -4,13 +4,24 @@
  * to be obvious and auditable, and money data must never be served stale
  * without the page knowing. */
 
-const VERSION = 'hishab-v1';
+/* Bumped with the shell precache list below: `activate` deletes every cache
+ * whose key does not start with VERSION, which is how an old inventory is
+ * retired rather than left to shadow the new one. */
+const VERSION = 'hishab-v2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
+/* Every destination the bottom tab bar reaches in one tap, the আরও hub that
+ * lists the other nine, and the two the desktop sidebar carries. Precaching the
+ * navigation surface rather than just the entry point is the difference between
+ * "the app opens offline" and "the app opens offline and you can move around
+ * it" — a navigation the cache misses falls through to /offline. */
 const SHELL_ASSETS = [
   '/',
   '/transactions',
+  '/loans',
+  '/reports',
+  '/more',
   '/accounts',
   '/settings',
   '/offline',

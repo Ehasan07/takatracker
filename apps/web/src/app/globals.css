@@ -64,6 +64,21 @@
     -webkit-touch-callout: none;
   }
 
+  /* `-webkit-tap-highlight-color: transparent` above deletes Android's built-in
+     press feedback, so something has to put it back. `.press` and `.press-row`
+     cover every control the design system knows about; this is the floor under
+     everything else, so no tap anywhere in the app can look like nothing
+     happened. Opacity only — a transform here would fight the two classes. */
+  @media (pointer: coarse) {
+    a:not(.press, .press-row):active,
+    button:not(.press, .press-row, :disabled):active,
+    summary:not(.press, .press-row):active,
+    [role='button']:not(.press, .press-row, [aria-disabled='true']):active,
+    [role='tab']:not(.press, .press-row, [aria-disabled='true']):active {
+      opacity: 0.55;
+    }
+  }
+
   /* 16px minimum on touch, or iOS Safari zooms the page when a field takes
      focus. Desktop is free to be denser. */
   @media (pointer: coarse) {
@@ -117,6 +132,25 @@
   @media (pointer: fine) {
     .press:active {
       transform: scale(0.99);
+    }
+  }
+
+  /* A full-width list row must not shrink when pressed — a native row lights
+     up in place. Same job as `.press`, different physics. The explicit
+     `opacity: 1` is belt and braces against the fallback dim in the base layer
+     above, which would otherwise stack a fade on top of the highlight. */
+  .press-row {
+    transition: background-color 90ms ease;
+  }
+  .press-row:active {
+    background-color: var(--hishab-greenbar);
+    opacity: 1;
+  }
+  /* Hover only where there is a cursor: on a touch screen it sticks after the
+     tap and the row stays lit on a page you have already left. */
+  @media (pointer: fine) {
+    .press-row:hover {
+      background-color: var(--hishab-greenbar);
     }
   }
 
@@ -175,10 +209,31 @@
 
 /* --- motion ---------------------------------------------------------------- */
 
+/* Screens arrive from the side they came from: forward pushes in from the
+   right, back slides in from the left. Direction is what tells a person they
+   are inside a stack rather than clicking through pages, and it is what makes
+   the back arrow feel like it undid something.
+
+   Both keyframes translate on X only, and the animated element carries no
+   Tailwind `translate` utility — that property composes with `transform`
+   rather than replacing it, which is how the sheet once ended up a full width
+   off-centre. The element also lives inside `.app-scroll`, which is
+   `overflow-x: hidden`, so 14px of travel can never widen the document. */
 @keyframes hishab-page-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translate3d(14px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hishab-page-back {
+  from {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0);
   }
   to {
     opacity: 1;
@@ -187,7 +242,11 @@
 }
 
 .page-enter {
-  animation: hishab-page-in 180ms cubic-bezier(0.2, 0, 0, 1) both;
+  animation: hishab-page-in 190ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.page-enter-back {
+  animation: hishab-page-back 190ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 @keyframes hishab-sheet-up {

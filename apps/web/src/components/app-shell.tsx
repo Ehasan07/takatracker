@@ -1,21 +1,22 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  ChartColumn,
-  HandCoins,
-  Inbox,
-  LayoutDashboard,
-  Plus,
-  Settings,
-  Wallet,
-} from 'lucide-react';
+import { ChevronLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
-import { useIsDesktop } from '@/hooks/use-device';
+import { useIsDesktop, useKeyboardInset } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import {
+  HUB_DESTINATIONS,
+  MORE_HREF,
+  PRIMARY,
+  SIDEBAR_GROUPS,
+  isPrimaryRoute,
+  parentOf,
+  titleFor,
+} from './nav-model';
 import { OfflineBar } from './offline-bar';
 import { PageTransition } from './page-transition';
 import { PullToRefresh } from './pull-to-refresh';
@@ -23,56 +24,157 @@ import { QuickAddSheet } from './quick-add-sheet';
 
 /**
  * One information architecture, two presentations (spec §5):
- *   ≤767px  fixed title bar + bottom tab bar, exactly like the native app
- *   ≥768px  left sidebar, desktop density
+ *   ≤767px  fixed title bar + five-tab bottom bar, exactly like the native app
+ *   ≥768px  left sidebar carrying all thirteen, in the hub's own three groups
+ *
+ * The phone's fifth tab is আরও, which lists the nine the bar cannot hold, so no
+ * screen is more than two taps from the bottom of the thumb's reach. The
+ * desktop needs no such compression and gets none: every screen is one click.
  *
  * The chrome never scrolls. Only `<main>` does. That single structural choice
  * is most of what separates "an app" from "a website" on a phone.
+ *
+ * The destinations themselves live in `nav-model.ts`; this file is only their
+ * presentation and the behaviour around them — back, scroll memory, direction.
  */
-const NAV = [
-  { href: '/', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
-  { href: '/transactions', label: 'খাতা', icon: Inbox },
-  { href: '/loans', label: 'ঋণ', icon: HandCoins },
-  { href: '/accounts', label: 'অ্যাকাউন্ট', icon: Wallet },
-  { href: '/reports', label: 'রিপোর্ট', icon: ChartColumn },
-  { href: '/settings', label: 'সেটিংস', icon: Settings },
-] as const;
+
+/** `/import` must not light up on a hypothetical `/importer`. */
+function isUnder(pathname: string, href: string): boolean {
+  if (href === '/') return pathname === '/';
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 /**
- * The phone bar carries five of the six. Six tabs at 360px leaves 60px each,
- * which truncates every Bengali label into an unreadable stub. Accounts is the
- * one that drops: it is a setup screen, and the dashboard's balance card links
- * straight to it, whereas loans is visited weekly.
+ * A popstate that does not end in a route change — going back over a
+ * search-param-only entry on /reports, say — would otherwise leave the flag set
+ * and make the next forward navigation restore a stale scroll offset.
  */
-const MOBILE_NAV = NAV.filter((item) => item.href !== '/accounts');
-
-const TITLES: Record<string, string> = {
-  '/': 'ড্যাশবোর্ড',
-  '/transactions': 'খাতা',
-  '/accounts': 'অ্যাকাউন্ট',
-  '/categories': 'ক্যাটাগরি',
-  '/reports': 'রিপোর্ট',
-  '/savings': 'সঞ্চয় ও বীমা',
-  '/insurance': 'বীমা',
-  '/loans': 'ঋণ',
-  '/import': 'আমদানি ও রপ্তানি',
-  '/settings': 'সেটিংস',
-};
+const POP_WINDOW_MS = 600;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isDesktop = useIsDesktop();
+  const keyboardInset = useKeyboardInset();
   const queryClient = useQueryClient();
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const scrollRef = React.useRef<HTMLElement | null>(null);
 
-  const isActive = (href: string): boolean =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
+  const isActive = (href: string): boolean => isUnder(pathname, href);
 
-  // Every route change starts at the top, as a pushed screen would.
+  /* আরও owns every screen it lists. Standing on /settings, the tab a person
+   * came through is the one that should look selected. */
+  const inHub = React.useMemo(
+    () => HUB_DESTINATIONS.some((item) => isUnder(pathname, item.href)),
+    [pathname],
+  );
+  const tabActive = (href: string): boolean =>
+    href === MORE_HREF ? pathname === MORE_HREF || inHub : isActive(href);
+
+  /* --- navigation history ------------------------------------------------ */
+
+  const scrollMemory = React.useRef(new Map<string, number>());
+  const poppedRef = React.useRef(false);
+  const popTimer = React.useRef<number | null>(null);
+  const previousPath = React.useRef<string | null>(null);
+  const directionRef = React.useRef<'forward' | 'back'>('forward');
+
+  // Computed in render, not in an effect: a class that changes after the node
+  // has mounted restarts the animation, and the restart is visible.
+  if (previousPath.current !== pathname) {
+    directionRef.current = poppedRef.current ? 'back' : 'forward';
+    previousPath.current = pathname;
+  }
+
   React.useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
+    const onPopState = (): void => {
+      poppedRef.current = true;
+      if (popTimer.current) window.clearTimeout(popTimer.current);
+      popTimer.current = window.setTimeout(() => {
+        poppedRef.current = false;
+      }, POP_WINDOW_MS);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      if (popTimer.current) window.clearTimeout(popTimer.current);
+    };
+  }, []);
+
+  // Remember where each screen was left, cheaply — one write per frame at most.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const memory = scrollMemory.current;
+    let frame = 0;
+    const onScroll = (): void => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        memory.set(pathname, el.scrollTop);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', onScroll);
+    };
   }, [pathname]);
+
+  /**
+   * Forward goes to the top, as a pushed screen would. Back returns to the
+   * pixel the list was left on — which is the whole point of going back, and
+   * the thing whose absence makes a PWA feel like a web page.
+   *
+   * The retry loop exists because the screen being restored is usually a
+   * skeleton for a frame or two: the container is not yet tall enough to hold
+   * the offset, so a single `scrollTo` silently clamps to the bottom.
+   */
+  React.useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const restoring = poppedRef.current;
+    poppedRef.current = false;
+    if (popTimer.current) window.clearTimeout(popTimer.current);
+
+    const target = restoring ? (scrollMemory.current.get(pathname) ?? 0) : 0;
+    el.scrollTo({ top: target });
+    if (target === 0) return;
+
+    let attempts = 0;
+    let frame = 0;
+    const retry = (): void => {
+      attempts += 1;
+      if (el.scrollTop < target) el.scrollTo({ top: target });
+      if (el.scrollTop >= target || attempts > 20) return;
+      frame = requestAnimationFrame(retry);
+    };
+    frame = requestAnimationFrame(retry);
+    return () => cancelAnimationFrame(frame);
+  }, [pathname]);
+
+  /* --- back ---------------------------------------------------------------- */
+
+  const showBack = !isPrimaryRoute(pathname);
+
+  /* How many screens this session has been through. One means the app opened
+   * straight onto this route — a deep link, a notification, a restored
+   * standalone window — so there is nothing of ours behind it and `back()`
+   * would leave the app entirely. `history.length` cannot tell us that: it
+   * counts the tab's whole browsing history, not ours. */
+  const screensVisited = React.useRef(0);
+  React.useEffect(() => {
+    screensVisited.current += 1;
+  }, [pathname]);
+
+  const goBack = (): void => {
+    haptic('tap');
+    if (screensVisited.current > 1) router.back();
+    else router.push(parentOf(pathname));
+  };
+
+  /* --- quick add ------------------------------------------------------------ */
 
   // Desktop accelerators. "n" for a new transaction, Escape to close.
   React.useEffect(() => {
@@ -94,6 +196,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [isDesktop]);
 
+  /* The home-screen shortcut "নতুন লেনদেন" opens `/?quickadd=1`. The manifest
+   * has advertised that URL since the app was installable and nothing had ever
+   * read it, so the shortcut landed on the dashboard and did nothing.
+   *
+   * Read from `location` rather than `useSearchParams`, which would force every
+   * screen under this layout out of static rendering for one query parameter. */
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('quickadd')) return;
+    setQuickAddOpen(true);
+    params.delete('quickadd');
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, []);
+
   const refresh = React.useCallback(() => queryClient.invalidateQueries(), [queryClient]);
 
   const openQuickAdd = (): void => {
@@ -103,37 +220,66 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden">
-      {/* Sidebar — 768px and up */}
+      {/* Sidebar — 768px and up. One <nav>, because the 44px audit in
+          e2e/responsive.spec.ts resolves it with getByRole('navigation'). */}
       <aside
         data-testid="sidebar"
         className="border-rule bg-surface safe-top hidden w-56 shrink-0 flex-col border-r md:flex lg:w-64"
       >
-        <div className="px-4 py-5">
-          <Link href="/" className="text-ink text-xl font-semibold">
+        <div className="shrink-0 px-4 pb-2 pt-4">
+          <Link href="/" className="text-ink text-lg font-semibold">
             হিসাব
           </Link>
           <p className="text-ink-muted text-xs">takatracker.com</p>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 px-2" aria-label="প্রধান মেনু">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              prefetch
-              aria-current={isActive(item.href) ? 'page' : undefined}
-              className={cn(
-                'press flex min-h-11 items-center gap-3 rounded-md px-3 text-sm',
-                isActive(item.href)
-                  ? 'bg-greenbar text-income font-semibold'
-                  : 'text-ink hover:bg-greenbar',
-              )}
-            >
-              <item.icon className="h-5 w-5 shrink-0" aria-hidden />
-              <span className="truncate">{item.label}</span>
-            </Link>
+
+        {/* Thirteen 44px rows and three labels measure 664px, which is exactly
+            the room a 1280×800 window leaves between the wordmark and the add
+            button — hence `pt-2` on the labels rather than anything rounder.
+            It scrolls on a shorter window instead of silently losing its tail.
+
+            The group titles are <p>, not headings: the sidebar is chrome, and
+            three more headings would clutter a screen reader's document
+            outline. `aria-labelledby` still names each list. */}
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="প্রধান মেনু">
+          {SIDEBAR_GROUPS.map((group) => (
+            <div key={group.id}>
+              {group.title ? (
+                <p
+                  id={`nav-${group.id}`}
+                  className="text-ink-muted px-3 pb-0.5 pt-2 text-[11px] font-medium tracking-wide"
+                >
+                  {group.title}
+                </p>
+              ) : null}
+              <ul
+                className="flex flex-col"
+                aria-labelledby={group.title ? `nav-${group.id}` : undefined}
+              >
+                {group.items.map((item) => (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      prefetch={group.id === 'primary'}
+                      aria-current={isActive(item.href) ? 'page' : undefined}
+                      className={cn(
+                        'press flex min-h-11 items-center gap-3 rounded-md px-3 text-sm',
+                        isActive(item.href)
+                          ? 'bg-greenbar text-income font-semibold'
+                          : 'text-ink hover:bg-greenbar',
+                      )}
+                    >
+                      <item.icon className="h-5 w-5 shrink-0" aria-hidden />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
         </nav>
-        <div className="p-3">
+
+        <div className="shrink-0 p-3">
           <button
             type="button"
             onClick={openQuickAdd}
@@ -147,12 +293,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Fixed title bar — phones only. Mirrors a native navigation bar. */}
+        {/* Fixed title bar — phones only. Mirrors a native navigation bar:
+            centred title, back arrow on anything that is not a tab root. */}
         <header className="chrome-blur border-rule safe-top safe-x z-30 shrink-0 border-b md:hidden">
-          <div className="flex h-12 items-center justify-center px-3">
-            <h1 className="text-ink truncate text-base font-semibold">
-              {TITLES[pathname] ?? 'হিসাব'}
-            </h1>
+          <div
+            className={cn(
+              'relative flex h-12 items-center justify-center',
+              showBack ? 'px-12' : 'px-3',
+            )}
+          >
+            {showBack ? (
+              <button
+                type="button"
+                onClick={goBack}
+                aria-label="পিছনে"
+                className="press touch-target text-ink absolute inset-y-0 left-0 flex items-center justify-center"
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+            ) : null}
+            <h1 className="text-ink truncate text-base font-semibold">{titleFor(pathname)}</h1>
           </div>
         </header>
 
@@ -166,47 +326,71 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <PullToRefresh scrollRef={scrollRef} onRefresh={refresh}>
             {/* Bottom padding clears the tab bar and the floating button. */}
             <div className="px-3 pb-28 pt-4 sm:px-4 md:px-6 md:pb-10 md:pt-6">
-              <PageTransition>{children}</PageTransition>
+              <PageTransition direction={directionRef.current}>{children}</PageTransition>
             </div>
           </PullToRefresh>
         </main>
 
-        {/* Floating quick add — under five seconds to a saved transaction. */}
+        {/* Floating quick add — under five seconds to a saved transaction. It
+            gets out of the way when the on-screen keyboard is up, where it would
+            otherwise sit on top of the field being typed into. */}
         <button
           type="button"
           aria-label="নতুন লেনদেন"
           onClick={openQuickAdd}
-          className="press bg-income fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg md:hidden"
+          className={cn(
+            'press bg-income fixed right-4 z-30 h-14 w-14 items-center justify-center rounded-full text-white shadow-lg',
+            // Not the `hidden` attribute: `display: flex` from a utility class
+            // is an author rule and beats the user agent's `[hidden]`.
+            keyboardInset > 0 ? 'hidden' : 'flex md:hidden',
+          )}
           style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
         >
           <Plus className="h-6 w-6" aria-hidden />
         </button>
 
-        {/* Bottom tab bar — up to 767px */}
+        {/* Bottom tab bar — up to 767px.
+
+            Five, measured rather than assumed. At 320px five cells are 64px and
+            every label clears its box by 15–45px. Six cells are 53px, where
+            "ড্যাশবোর্ড" (47px) and "অ্যাকাউন্ট" (48px) fit by one or two pixels
+            with the fallback Bengali face — one font substitution from clipping,
+            and too narrow for the 48px selected-tab pill. Seven clips three of
+            the seven outright. So five, with short labels, is the honest limit
+            and everything else lives one tap deeper in আরও. */}
         <nav
           data-testid="bottom-nav"
           aria-label="প্রধান মেনু"
           className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-5 border-t md:hidden"
         >
-          {MOBILE_NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              prefetch
-              onClick={() => haptic('tap')}
-              aria-current={isActive(item.href) ? 'page' : undefined}
-              className={cn(
-                'press touch-target flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]',
-                isActive(item.href) ? 'text-income font-semibold' : 'text-ink-muted',
-              )}
-            >
-              <item.icon
-                className={cn('h-5 w-5 transition-transform', isActive(item.href) && 'scale-110')}
-                aria-hidden
-              />
-              <span className="truncate px-0.5">{item.label}</span>
-            </Link>
-          ))}
+          {PRIMARY.map((item) => {
+            const active = tabActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                prefetch
+                onClick={() => haptic('tap')}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'press touch-target flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]',
+                  active ? 'text-income font-semibold' : 'text-ink-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-7 w-12 items-center justify-center rounded-full transition-colors',
+                    active && 'bg-greenbar',
+                  )}
+                >
+                  <item.icon className="h-5 w-5" aria-hidden />
+                </span>
+                <span className="w-full truncate px-0.5 text-center">
+                  {item.tabLabel ?? item.label}
+                </span>
+              </Link>
+            );
+          })}
         </nav>
       </div>
 

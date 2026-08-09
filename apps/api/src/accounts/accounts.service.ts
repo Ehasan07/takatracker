@@ -167,6 +167,7 @@ export class AccountsService {
     id: string,
     input: UpdateAccountInput,
     actorUserId?: string,
+    timezone?: string,
   ): Promise<AccountWithBalance> {
     const existing = await this.prisma.account.findFirst({
       where: { id, workspaceId, deletedAt: null },
@@ -181,6 +182,18 @@ export class AccountsService {
       throw new BadRequestException(
         `এই অ্যাকাউন্টটি ঋণ #${existing.loanControl.loanNumber}-এর, ঋণের পাতা থেকে বদলাতে হবে`,
       );
+
+    /* Un-archiving adds an account back to the count, so it has to pass the same
+     * limit `create` does. Without this, somebody at their ceiling could archive
+     * one account, add a new one, then restore the old one and quietly end up
+     * over the plan — the archive button would be a way around the limit. */
+    if (existing.isArchived && input.isArchived === false) {
+      await this.entitlements.assertWithinLimit(
+        workspaceId,
+        'accounts.max',
+        timezone ?? 'Asia/Dhaka',
+      );
+    }
 
     await this.prisma.account.update({
       where: { id },

@@ -1,15 +1,27 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellOff, FileUp, PiggyBank, Plus, Scale, Tags } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  Archive,
+  ArchiveRestore,
+  BellOff,
+  FileUp,
+  Pencil,
+  PiggyBank,
+  Plus,
+  Scale,
+  Tags,
+} from 'lucide-react';
 import * as React from 'react';
-import { parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
+import { formatMinor, parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
-import { api, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
+import { api, ApiError, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
+import { haptic } from '@/lib/haptics';
+import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { UsageMeter } from '@/components/usage-meter';
 
@@ -27,12 +39,58 @@ const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
 
 const TYPE_GROUPS = ['হাতে ও ব্যাংকে', 'সম্পদ', 'দায়'] as const;
 
+/** Offered only because the row draws it — see AccountAvatar. */
+const ACCOUNT_COLORS: { value: string; label: string }[] = [
+  { value: '#0F7B4F', label: 'সবুজ' },
+  { value: '#1E5EB8', label: 'নীল' },
+  { value: '#B26A00', label: 'সোনালি' },
+  { value: '#B3261E', label: 'লাল' },
+  { value: '#6B3FA0', label: 'বেগুনি' },
+  { value: '#3F4A55', label: 'ধূসর' },
+];
+
+const typeLabel = (value: string): string =>
+  ACCOUNT_TYPES.find((t) => t.value === value)?.label ?? value;
+
+/**
+ * An account edit moves money. The opening balance and the type change today's
+ * balance, the ledger's running balance, this month's summary and the balance
+ * sheet; archiving frees a slot in the plan. Everything that reads any of that
+ * is stale the moment one of these mutations lands.
+ */
+function invalidateAccountData(queryClient: QueryClient): void {
+  for (const key of [
+    ['accounts'],
+    ['transactions'],
+    ['summary'],
+    ['reports'],
+    ['entitlements'],
+    // Loan screens name the account the money moved through.
+    ['loans'],
+  ]) {
+    void queryClient.invalidateQueries({ queryKey: key });
+  }
+}
+
 export default function AccountsPage() {
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const entitlements = useQuery({ queryKey: ['entitlements'], queryFn: endpoints.entitlements });
   const [addOpen, setAddOpen] = React.useState(false);
   const [reconciling, setReconciling] = React.useState<AccountDto | null>(null);
+  const [editing, setEditing] = React.useState<AccountDto | null>(null);
+  const [archiving, setArchiving] = React.useState<AccountDto | null>(null);
+  const [showArchived, setShowArchived] = React.useState(false);
+
+  /* Kept in its own key rather than widening ['accounts']: the total above, the
+     plan meter and every account picker in the app read that key and must go on
+     seeing live accounts only. */
+  const archived = useQuery({
+    queryKey: ['accounts', 'archived'],
+    queryFn: () => api<AccountDto[]>('/accounts?includeArchived=true'),
+    enabled: showArchived,
+    select: (rows: AccountDto[]) => rows.filter((a) => a.isArchived),
+  });
 
   const muteReminders = useMutation({
     mutationFn: (accountId: string) =>
@@ -41,6 +99,27 @@ export default function AccountsPage() {
         body: {},
       }),
     onSuccess: () => void queryClient.invalidateQueries(),
+  });
+
+  /* DELETE archives; history is never thrown away. The API refuses for a system
+     account and for the control account of a loan that is still running, both
+     with a sentence of its own — carried into the confirmation sheet. */
+  const archive = useMutation({
+    mutationFn: (accountId: string) => api(`/accounts/${accountId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      haptic('success');
+      invalidateAccountData(queryClient);
+      setArchiving(null);
+    },
+  });
+
+  const restore = useMutation({
+    mutationFn: (accountId: string) =>
+      api<AccountDto>(`/accounts/${accountId}`, { method: 'PATCH', body: { isArchived: false } }),
+    onSuccess: () => {
+      haptic('success');
+      invalidateAccountData(queryClient);
+    },
   });
 
   const total = (accounts.data ?? []).reduce((sum, a) => sum + a.balanceMinor, 0);
@@ -95,7 +174,8 @@ export default function AccountsPage() {
         <UsageMeter className="mt-3" label="অ্যাকাউন্ট" used={accountsUsed} limit={accountLimit} />
         {atLimit ? (
           <p className="text-brass mt-2 text-xs">
-            প্ল্যানের সীমা শেষ। পুরনো অ্যাকাউন্ট আর্কাইভ করুন, অথবা প্ল্যান আপগ্রেড করুন।
+            প্ল্যানের সীমা শেষ। পুরনো অ্যাকাউন্টের নামে চাপ দিয়ে সেটি আর্কাইভ করুন, অথবা প্ল্যান
+            আপগ্রেড করুন।
           </p>
         ) : null}
       </section>
@@ -116,19 +196,35 @@ export default function AccountsPage() {
           {(accounts.data ?? []).map((account) => (
             <li
               key={account.id}
-              className="ledger-row border-rule flex items-center gap-3 border-b px-3 py-3 last:border-b-0"
+              className="ledger-row border-rule flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-ink truncate text-sm font-medium">{account.name}</p>
-                <p className="text-ink-muted truncate text-xs">
-                  {ACCOUNT_TYPES.find((t) => t.value === account.type)?.label ?? account.type}
-                  {account.accountNumberMasked ? ` · ${account.accountNumberMasked}` : ''}
-                  {account.dueDayOfMonth
-                    ? ` · প্রতি মাসের ${toBengaliDigits(String(account.dueDayOfMonth))} তারিখে পেমেন্ট`
-                    : ''}
-                </p>
-              </div>
-              <Money minor={account.balanceMinor} className="amount-col shrink-0 pl-3 text-sm" />
+              {/* The whole name block opens the editor: a fourth icon button
+                  would leave nothing of the name at 320px. */}
+              <button
+                type="button"
+                aria-label={`${account.name} সম্পাদনা`}
+                onClick={() => {
+                  haptic('tap');
+                  setEditing(account);
+                }}
+                className="press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
+              >
+                <AccountAvatar account={account} />
+                <span className="min-w-0 flex-1">
+                  <span className="text-ink block truncate text-sm font-medium">
+                    {account.name}
+                  </span>
+                  <span className="text-ink-muted block truncate text-xs">
+                    {typeLabel(account.type)}
+                    {account.accountNumberMasked ? ` · ${account.accountNumberMasked}` : ''}
+                    {account.dueDayOfMonth
+                      ? ` · প্রতি মাসের ${toBengaliDigits(String(account.dueDayOfMonth))} তারিখে পেমেন্ট`
+                      : ''}
+                  </span>
+                </span>
+                <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
+              </button>
+              <Money minor={account.balanceMinor} className="amount-col shrink-0 pl-2 text-sm" />
               {account.dueDayOfMonth ? (
                 <button
                   type="button"
@@ -153,17 +249,562 @@ export default function AccountsPage() {
         </ul>
       )}
 
+      {/* Archiving is only a way out of the plan limit if what went in can be
+          found again. */}
+      <section className="flex flex-col gap-2">
+        <button
+          type="button"
+          aria-expanded={showArchived}
+          onClick={() => {
+            haptic('tap');
+            setShowArchived((open) => !open);
+          }}
+          className="press border-rule text-ink-muted hover:bg-greenbar flex min-h-11 items-center gap-2 self-start rounded-md border px-3 text-sm"
+        >
+          <Archive className="h-4 w-4" aria-hidden />
+          {showArchived ? 'আর্কাইভ লুকান' : 'আর্কাইভ করা অ্যাকাউন্ট দেখুন'}
+        </button>
+
+        {showArchived ? (
+          archived.isLoading ? (
+            <div className="rounded-card border-rule bg-surface overflow-hidden border">
+              <SkeletonRows rows={2} />
+            </div>
+          ) : (archived.data?.length ?? 0) === 0 ? (
+            <p className="text-ink-muted rounded-card border-rule border border-dashed p-4 text-center text-sm">
+              আর্কাইভে কোনো অ্যাকাউন্ট নেই।
+            </p>
+          ) : (
+            <>
+              <ul className="rounded-card border-rule bg-surface overflow-hidden border">
+                {(archived.data ?? []).map((account) => (
+                  <li
+                    key={account.id}
+                    className="border-rule flex flex-col gap-1.5 border-b px-3 py-3 last:border-b-0"
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-ink min-w-0 flex-1 truncate text-sm">
+                        {account.name}
+                      </span>
+                      <Money minor={account.balanceMinor} className="shrink-0 text-sm" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-ink-muted min-w-0 truncate text-xs">
+                        {typeLabel(account.type)}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={restore.isPending}
+                        onClick={() => restore.mutate(account.id)}
+                      >
+                        <ArchiveRestore className="h-4 w-4" aria-hidden />
+                        আবার চালু করুন
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {atLimit ? (
+                <p className="text-brass text-xs">
+                  প্ল্যানের সীমা এখন পূর্ণ — কোনোটি আবার চালু করলে সীমা ছাড়িয়ে যাবে।
+                </p>
+              ) : null}
+              {restore.error ? (
+                <p role="alert" className="text-expense text-sm">
+                  {restore.error.message}
+                </p>
+              ) : null}
+            </>
+          )
+        ) : null}
+      </section>
+
       <AddAccountSheet
         open={addOpen}
         onOpenChange={setAddOpen}
-        onSaved={() => void queryClient.invalidateQueries()}
+        onSaved={() => invalidateAccountData(queryClient)}
+      />
+      <EditAccountSheet
+        account={editing}
+        onClose={() => setEditing(null)}
+        onArchive={(account) => {
+          archive.reset();
+          setEditing(null);
+          setArchiving(account);
+        }}
+      />
+      <ConfirmSheet
+        open={archiving !== null}
+        onOpenChange={(open) => {
+          if (!open) setArchiving(null);
+        }}
+        title="আর্কাইভ করবেন?"
+        description={archiving?.name}
+        body="অ্যাকাউন্টটি তালিকা থেকে সরে যাবে এবং নতুন লেনদেনের ঘরে আর বেছে নেওয়া যাবে না। পুরনো লেনদেন, ব্যালেন্স আর প্রতিবেদনের হিসাব অক্ষত থাকবে, আর প্ল্যানের সীমার হিসাবেও এটি আর গোনা হবে না। চাইলে আবার চালু করা যাবে।"
+        confirmLabel="আর্কাইভ করুন"
+        pending={archive.isPending}
+        error={archive.error ? archive.error.message : null}
+        onConfirm={() => {
+          if (archiving) archive.mutate(archiving.id);
+        }}
       />
       <ReconcileSheet
         account={reconciling}
         onClose={() => setReconciling(null)}
-        onSaved={() => void queryClient.invalidateQueries()}
+        onSaved={() => invalidateAccountData(queryClient)}
       />
     </div>
+  );
+}
+
+/** Only drawn when the user has set one, so the row stays as wide as it was. */
+function AccountAvatar({ account }: { account: AccountDto }) {
+  if (!account.icon && !account.color) return null;
+  return (
+    <span
+      aria-hidden
+      className="border-rule flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-base"
+      style={account.color ? { backgroundColor: account.color } : undefined}
+    >
+      {account.icon ?? ''}
+    </span>
+  );
+}
+
+/**
+ * Archiving asks first — as a sheet, not a modal. The loan screens have the
+ * same component; it is written out again here rather than imported across
+ * feature folders. `error` is what the API said when it refused.
+ */
+function ConfirmSheet({
+  open,
+  onOpenChange,
+  title,
+  description,
+  body,
+  confirmLabel,
+  onConfirm,
+  pending = false,
+  error = null,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  body: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  pending?: boolean;
+  error?: string | null;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={title} description={description}>
+      <div className="flex flex-col gap-4">
+        <p className="text-ink text-sm">{body}</p>
+        {error ? (
+          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          variant="danger"
+          size="block"
+          disabled={pending}
+          onClick={() => {
+            haptic('warn');
+            onConfirm();
+          }}
+        >
+          {confirmLabel}
+        </Button>
+        <Button variant="outline" size="block" onClick={() => onOpenChange(false)}>
+          থাক
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+interface AccountForm {
+  name: string;
+  type: string;
+  opening: string;
+  institution: string;
+  masked: string;
+  hints: string;
+  icon: string;
+  color: string;
+  sortOrder: string;
+  statementDay: string;
+  dueDay: string;
+  leadDays: string;
+}
+
+const toForm = (a: AccountDto | null): AccountForm => ({
+  name: a?.name ?? '',
+  type: a?.type ?? 'CASH',
+  // Major units, so the field reads the way it was typed in the first place.
+  opening: formatMinor(a?.openingBalance ?? 0, { symbol: false }),
+  institution: a?.institution ?? '',
+  masked: a?.accountNumberMasked ?? '',
+  hints: (a?.matchHints ?? []).join(', '),
+  icon: a?.icon ?? '',
+  color: a?.color ?? '',
+  sortOrder: String(a?.sortOrder ?? 0),
+  statementDay: a?.statementDayOfMonth ? String(a.statementDayOfMonth) : '',
+  dueDay: a?.dueDayOfMonth ? String(a.dueDayOfMonth) : '',
+  leadDays: a?.reminderLeadDays ? String(a.reminderLeadDays) : '',
+});
+
+/**
+ * Only what actually changed goes into the PATCH. Sending an unchanged value
+ * back is not always a no-op — it writes an audit entry, and on other screens
+ * the API rederives things from whatever it is handed.
+ */
+function accountPatch(
+  account: AccountDto,
+  form: AccountForm,
+  openingBalance: number,
+): Record<string, unknown> {
+  const isCard = form.type === 'CREDIT_CARD';
+  const next = {
+    name: form.name.trim(),
+    type: form.type,
+    openingBalance,
+    institution: form.institution.trim(),
+    accountNumberMasked: form.masked.trim(),
+    matchHints: form.hints
+      .split(',')
+      .map((hint) => hint.trim())
+      .filter(Boolean)
+      .slice(0, 20),
+    icon: form.icon.trim(),
+    color: form.color,
+    sortOrder: Number(form.sortOrder || '0'),
+    // Only a card has these. Switching away clears them rather than leaving a
+    // payment date on a savings account.
+    statementDayOfMonth: isCard && form.statementDay ? Number(form.statementDay) : null,
+    dueDayOfMonth: isCard && form.dueDay ? Number(form.dueDay) : null,
+    reminderLeadDays: isCard && form.leadDays ? Number(form.leadDays) : null,
+  };
+  const before: typeof next = {
+    name: account.name,
+    type: account.type,
+    openingBalance: account.openingBalance,
+    institution: account.institution ?? '',
+    accountNumberMasked: account.accountNumberMasked ?? '',
+    matchHints: account.matchHints,
+    icon: account.icon ?? '',
+    color: account.color ?? '',
+    sortOrder: account.sortOrder,
+    statementDayOfMonth: account.statementDayOfMonth,
+    dueDayOfMonth: account.dueDayOfMonth,
+    reminderLeadDays: account.reminderLeadDays,
+  };
+
+  const body: Record<string, unknown> = {};
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    const after = next[key];
+    const previous = before[key];
+    const same =
+      Array.isArray(after) && Array.isArray(previous)
+        ? after.length === previous.length && after.every((v, i) => v === previous[i])
+        : after === previous;
+    if (!same) body[key] = after;
+  }
+  return body;
+}
+
+function EditAccountSheet({
+  account,
+  onClose,
+  onArchive,
+}: {
+  account: AccountDto | null;
+  onClose: () => void;
+  onArchive: (account: AccountDto) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = React.useState<AccountForm>(() => toForm(null));
+  const [error, setError] = React.useState<string | null>(null);
+  const [refusal, setRefusal] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!account) return;
+    setForm(toForm(account));
+    setError(null);
+    setRefusal(null);
+  }, [account]);
+
+  const set =
+    (key: keyof AccountForm) =>
+    (e: { target: { value: string } }): void =>
+      setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api<AccountDto>(`/accounts/${account!.id}`, { method: 'PATCH', body }),
+    onSuccess: () => {
+      haptic('success');
+      invalidateAccountData(queryClient);
+      onClose();
+    },
+    onError: (err) => {
+      /* A 400 carrying no field issues is the API explaining itself in Bengali:
+         a loan owns this account, or it is one of the hidden system accounts.
+         That is a sentence for the user, not an error to swallow. */
+      if (err instanceof ApiError && err.status === 400 && !err.issues) setRefusal(err.message);
+      else setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি');
+    },
+  });
+
+  const isCard = form.type === 'CREDIT_CARD';
+
+  return (
+    <Sheet
+      open={account !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title="অ্যাকাউন্ট সম্পাদনা"
+      description={account?.name}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          setRefusal(null);
+          if (!account) return;
+          let openingBalance: number;
+          try {
+            openingBalance = parseMoneyToMinor(form.opening || '0');
+          } catch {
+            setError('প্রারম্ভিক জেরের অঙ্কটি বোঝা যায়নি।');
+            return;
+          }
+          const body = accountPatch(account, form, openingBalance);
+          // Nothing moved; a PATCH here would only add a line to the audit log.
+          if (Object.keys(body).length === 0) {
+            onClose();
+            return;
+          }
+          save.mutate(body);
+        }}
+      >
+        <Field label="নাম" htmlFor="edit-acc-name">
+          <Input
+            id="edit-acc-name"
+            value={form.name}
+            onChange={set('name')}
+            required
+            placeholder="যেমন: ব্র্যাক ব্যাংক"
+          />
+        </Field>
+
+        <Field label="ধরন" htmlFor="edit-acc-type">
+          <Select id="edit-acc-type" value={form.type} onChange={set('type')}>
+            {TYPE_GROUPS.map((group) => (
+              <optgroup key={group} label={group}>
+                {ACCOUNT_TYPES.filter((t) => t.group === group).map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        </Field>
+        {account && form.type !== account.type ? (
+          <p className="text-ink-muted -mt-2 text-xs">
+            ধরন বদলালে প্রতিবেদনে অ্যাকাউন্টটি সম্পদ ও দায়ের অন্য পাশে চলে যাবে।
+          </p>
+        ) : null}
+
+        {isCard ? (
+          <>
+            <Field label="পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)" htmlFor="edit-acc-due-day">
+              <Input
+                id="edit-acc-due-day"
+                type="number"
+                min={1}
+                max={31}
+                inputMode="numeric"
+                value={form.dueDay}
+                onChange={set('dueDay')}
+                placeholder="যেমন: ১২"
+              />
+            </Field>
+            <Field label="স্টেটমেন্টের তারিখ (মাসের কত তারিখ)" htmlFor="edit-acc-stmt-day">
+              <Input
+                id="edit-acc-stmt-day"
+                type="number"
+                min={1}
+                max={31}
+                inputMode="numeric"
+                value={form.statementDay}
+                onChange={set('statementDay')}
+              />
+            </Field>
+            <Field label="কত দিন আগে মনে করিয়ে দেব" htmlFor="edit-acc-lead">
+              <Input
+                id="edit-acc-lead"
+                type="number"
+                min={1}
+                max={28}
+                inputMode="numeric"
+                value={form.leadDays}
+                onChange={set('leadDays')}
+                placeholder="ফাঁকা রাখলে ওয়ার্কস্পেসের নিয়ম"
+              />
+            </Field>
+          </>
+        ) : null}
+
+        <Field label="প্রারম্ভিক জের (৳)" htmlFor="edit-acc-opening">
+          <Input
+            id="edit-acc-opening"
+            value={form.opening}
+            onChange={set('opening')}
+            inputMode="decimal"
+            placeholder="০.০০"
+            className="money"
+          />
+        </Field>
+        <p className="text-ink-muted -mt-2 text-xs">
+          খাতা অনুযায়ী এখন <Money minor={account?.balanceMinor ?? 0} className="inline" />।
+          প্রারম্ভিক জের বদলালে আজকের ব্যালেন্সও ঠিক ততটাই বদলাবে।
+        </p>
+
+        <Field label="প্রতিষ্ঠান" htmlFor="edit-acc-inst">
+          <Input
+            id="edit-acc-inst"
+            value={form.institution}
+            onChange={set('institution')}
+            placeholder="যেমন: ব্র্যাক ব্যাংক"
+          />
+        </Field>
+
+        <Field label="অ্যাকাউন্ট নম্বর (শেষ কয়েক অঙ্ক)" htmlFor="edit-acc-masked">
+          <Input
+            id="edit-acc-masked"
+            value={form.masked}
+            onChange={set('masked')}
+            placeholder="****৪৫২১"
+          />
+        </Field>
+
+        <Field label="মেলানোর সংকেত" htmlFor="edit-acc-hints">
+          <Input
+            id="edit-acc-hints"
+            value={form.hints}
+            onChange={set('hints')}
+            placeholder="যেমন: ৪৫২১, bKash, DBBL"
+          />
+        </Field>
+        <p className="text-ink-muted -mt-2 text-xs">
+          শেষ চার অঙ্ক, ওয়ালেট নম্বর বা এসএমএস প্রেরকের নাম — আমদানি করা লেনদেন এগুলো দেখে এই
+          অ্যাকাউন্টে বসে। কমা দিয়ে আলাদা করুন।
+        </p>
+
+        <Field label="আইকন (ইমোজি)" htmlFor="edit-acc-icon">
+          <Input
+            id="edit-acc-icon"
+            value={form.icon}
+            onChange={set('icon')}
+            maxLength={4}
+            placeholder="🏦"
+          />
+        </Field>
+
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="text-ink text-sm font-medium">রঙ</legend>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={form.color === ''}
+              onClick={() => setForm((f) => ({ ...f, color: '' }))}
+              className={cn(
+                'press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-md border px-3 text-xs',
+                form.color === '' && 'border-ink font-medium',
+              )}
+            >
+              রঙ নেই
+            </button>
+            {ACCOUNT_COLORS.map((swatch) => (
+              <button
+                key={swatch.value}
+                type="button"
+                aria-label={swatch.label}
+                aria-pressed={form.color === swatch.value}
+                onClick={() => setForm((f) => ({ ...f, color: swatch.value }))}
+                className={cn(
+                  'press touch-target flex items-center justify-center rounded-full border-2',
+                  form.color === swatch.value ? 'border-ink' : 'border-transparent',
+                )}
+              >
+                <span
+                  className="block h-6 w-6 rounded-full"
+                  style={{ backgroundColor: swatch.value }}
+                />
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <Field label="তালিকায় ক্রম (ছোট আগে)" htmlFor="edit-acc-sort">
+          <Input
+            id="edit-acc-sort"
+            type="number"
+            inputMode="numeric"
+            value={form.sortOrder}
+            onChange={set('sortOrder')}
+          />
+        </Field>
+
+        {refusal ? (
+          <div
+            role="alert"
+            className="border-rule bg-greenbar text-ink flex flex-col items-start gap-2 rounded-md border p-3 text-sm"
+          >
+            <p>{refusal}</p>
+            {/* Both loan refusals name the loan; the system-account one does not. */}
+            {refusal.includes('ঋণ') ? (
+              <Link
+                href="/loans"
+                className="press text-income flex min-h-11 items-center underline"
+              >
+                ঋণের পাতায় যান
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="text-expense text-sm">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="block" disabled={save.isPending}>
+          সংরক্ষণ করুন
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="block"
+          className="text-expense"
+          onClick={() => account && onArchive(account)}
+        >
+          <Archive className="h-4 w-4" aria-hidden />
+          আর্কাইভ করুন
+        </Button>
+        <p className="text-ink-muted text-xs">
+          আর্কাইভ করলে অ্যাকাউন্টটি তালিকা থেকে সরে যায়, লেনদেন অক্ষত থাকে, আর প্ল্যানের সীমার
+          হিসাবে আর গোনা হয় না।
+        </p>
+      </form>
+    </Sheet>
   );
 }
 

@@ -29,10 +29,34 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
+/**
+ * Runs before the first paint, which is the only time it is any use.
+ *
+ * The theme choice was written to localStorage by the settings screen and read
+ * back by the settings screen — and by nothing else. Every other route loaded
+ * with no `.dark` class at all, so somebody who had chosen dark got the light
+ * palette everywhere until they visited settings again, and a launch from the
+ * home screen flashed white before showing the wrong theme. Applying it here
+ * costs one synchronous statement and fixes both.
+ *
+ * It deliberately leaves `theme-color` alone. The two media-scoped tags below
+ * are right whenever the app follows the OS, which is the default and the
+ * common case; rewriting them here for someone who has overridden the OS holds
+ * only until the first client-side navigation, when Next re-renders its own
+ * metadata and puts them back. A tint that is right on launch and flips on the
+ * first tap is worse than one that is consistently OS-driven.
+ */
+const THEME_BOOT = `(function(){try{
+var t=localStorage.getItem('hishab.theme');
+if(t!=='dark'&&t!=='light')return;
+var r=document.documentElement;r.classList.remove('dark','light');r.classList.add(t);
+}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="bn" suppressHydrationWarning>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         <Providers>{children}</Providers>
         <ServiceWorkerRegistrar />
       </body>

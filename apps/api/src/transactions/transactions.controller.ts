@@ -26,6 +26,19 @@ import { TransactionsService } from './transactions.service';
 export class TransactionsController {
   constructor(private readonly transactions: TransactionsService) {}
 
+  /**
+   * `GET /v1/transactions` — the main screen, and the ledger search.
+   *
+   * Response shape is unchanged: `{ items, nextCursor }`, newest first. The only
+   * thing that moved is what `?q=` means. It is now every token of the query
+   * ANDed together, each matched against the description, payee, notes, bank
+   * reference, the person the row points at and the category it is filed under.
+   *
+   * Callers should not expect relevance ordering, and should not expect a Latin
+   * query to reach a Bengali row — this is substring matching in Postgres, which
+   * cannot transliterate. `buildSearchWhere` in the service states the full list
+   * of limits and the fix that would lift them.
+   */
   @Get()
   list(
     @CurrentUser() user: AuthUser,

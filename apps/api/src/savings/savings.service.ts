@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   buildInstalmentSchedule,
   clampDayToMonth,
+  MONTHS_PER_PERIOD,
   projectSavings,
   summariseProgress,
   type SavingsProgress,
@@ -216,6 +217,19 @@ export class SavingsService {
 
     if (maturityDate !== undefined && maturityDate <= startDate) {
       throw new BadRequestException('মেয়াদপূর্তির তারিখ শুরুর তারিখের পরে হতে হবে');
+    }
+
+    /* `create` refuses a plan whose term schedules no instalments at all — a
+     * yearly plan over six months. `update` did not, so the same contradiction
+     * could be edited back in: money attached, nothing to tick off, progress
+     * frozen at zero, and no complaint, because the schedule is deliberately
+     * never rebuilt. */
+    const nextFrequency = input.frequency ?? existing.frequency;
+    const nextInstallment = input.installmentMinor ?? minorToNumber(existing.installmentMinor);
+    if (nextInstallment > 0 && Math.floor(termMonths / MONTHS_PER_PERIOD[nextFrequency]) === 0) {
+      throw new BadRequestException(
+        'এই মেয়াদে একটিও কিস্তি পড়ে না — মেয়াদ বাড়ান অথবা কিস্তির হার বদলান',
+      );
     }
 
     await this.prisma.savingsPlan.update({

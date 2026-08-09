@@ -1,10 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, PiggyBank, Plus } from 'lucide-react';
+import { Check, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
-import { parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
+import { formatMinor, parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
@@ -42,12 +42,39 @@ const FREQUENCIES = [
   ['YEARLY', 'বার্ষিক'],
 ] as const;
 
+const STATUSES = [
+  ['ACTIVE', 'চলমান'],
+  ['LAPSED', 'তামাদি (প্রিমিয়াম বন্ধ)'],
+  ['MATURED', 'মেয়াদপূর্ণ'],
+  ['CANCELLED', 'বাতিল'],
+] as const;
+
 const freqLabel = (v: string): string => FREQUENCIES.find(([k]) => k === v)?.[1] ?? v;
+
+/** Taka typed by a human into integer poisha. Null when it cannot be read. */
+function toMinor(text: string): number | null {
+  try {
+    return parseMoneyToMinor(text.trim() || '0');
+  } catch {
+    return null;
+  }
+}
+
+/** Only the fields the user actually touched; the rest are left alone. */
+function changedOnly<T extends Record<string, string | number>>(before: T, after: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const key of Object.keys(after) as (keyof T)[]) {
+    if (after[key] !== before[key]) out[key] = after[key];
+  }
+  return out;
+}
 
 export default function InsurancePage() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = React.useState(false);
   const [openId, setOpenId] = React.useState<string | null>(null);
+  const [editing, setEditing] = React.useState<Policy | null>(null);
+  const [removing, setRemoving] = React.useState<Policy | null>(null);
 
   const policies = useQuery({
     queryKey: ['insurance'],
@@ -65,6 +92,17 @@ export default function InsurancePage() {
     onSuccess: () => {
       haptic('success');
       void queryClient.invalidateQueries();
+    },
+  });
+
+  /* A policy holds no money of its own — marking a premium paid does not touch
+     the ledger — so nothing outside ['insurance'] goes stale. */
+  const remove = useMutation({
+    mutationFn: (policyId: string) => api(`/insurance/${policyId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey: ['insurance'] });
+      setRemoving(null);
     },
   });
 
@@ -192,71 +230,278 @@ export default function InsurancePage() {
                 </li>
               ))}
             </ul>
+
+            {/* One sheet at a time: the detail closes as the editor opens. */}
+            <div className="border-rule flex gap-2 border-t pt-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setEditing(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <Pencil className="h-4 w-4" aria-hidden />
+                সম্পাদনা
+              </Button>
+              <Button
+                variant="outline"
+                className="text-expense flex-1"
+                onClick={() => {
+                  remove.reset();
+                  setRemoving(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+                সরিয়ে ফেলুন
+              </Button>
+            </div>
           </div>
         ) : null}
       </Sheet>
 
-      <AddPolicySheet open={addOpen} onOpenChange={setAddOpen} />
+      <PolicySheet
+        open={addOpen || editing !== null}
+        policy={editing}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddOpen(false);
+            setEditing(null);
+          }
+        }}
+        onSaved={(policyId) => {
+          // Back to the policy the user was reading, now with the new figures.
+          if (editing) setOpenId(policyId);
+        }}
+      />
+
+      <ConfirmSheet
+        open={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null);
+        }}
+        title="পলিসি সরিয়ে ফেলবেন?"
+        description={removing?.insurer}
+        body="পলিসিটি আপনার তালিকা থেকে সরে যাবে এবং অ্যাপে আর ফিরে পাওয়া যাবে না। প্রিমিয়াম পরিশোধের যে হিসাব রাখা আছে তা খাতায় মুছে-ফেলা অবস্থায় থেকে যায় — একেবারে মুছে যায় না।"
+        confirmLabel="সরিয়ে ফেলুন"
+        pending={remove.isPending}
+        error={remove.error ? remove.error.message : null}
+        onConfirm={() => {
+          if (removing) remove.mutate(removing.id);
+        }}
+      />
     </div>
   );
 }
 
-function AddPolicySheet({
+/**
+ * Anything that removes something asks first — as a sheet, not a modal. The
+ * loan screens have the same component; written out again here rather than
+ * imported across feature folders.
+ */
+function ConfirmSheet({
   open,
   onOpenChange,
+  title,
+  description,
+  body,
+  confirmLabel,
+  onConfirm,
+  pending = false,
+  error = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  body: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  pending?: boolean;
+  error?: string | null;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={title} description={description}>
+      <div className="flex flex-col gap-4">
+        <p className="text-ink text-sm">{body}</p>
+        {error ? (
+          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          variant="danger"
+          size="block"
+          disabled={pending}
+          onClick={() => {
+            haptic('warn');
+            onConfirm();
+          }}
+        >
+          {confirmLabel}
+        </Button>
+        <Button variant="outline" size="block" onClick={() => onOpenChange(false)}>
+          থাক
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+interface PolicyForm {
+  insurer: string;
+  policyNumberMasked: string;
+  policyType: string;
+  sumAssured: string;
+  premium: string;
+  frequency: string;
+  startDate: string;
+  /** New policies are typed as a term; an existing one carries the real date. */
+  termMonths: string;
+  maturityDate: string;
+  nomineeName: string;
+  status: string;
+}
+
+const emptyPolicyForm = (): PolicyForm => ({
+  insurer: '',
+  policyNumberMasked: '',
+  policyType: '',
+  sumAssured: '',
+  premium: '',
+  frequency: 'YEARLY',
+  startDate: toLocalDateString(new Date()),
+  termMonths: '240',
+  maturityDate: '',
+  nomineeName: '',
+  status: 'ACTIVE',
+});
+
+const policyToForm = (policy: Policy): PolicyForm => ({
+  insurer: policy.insurer,
+  policyNumberMasked: policy.policyNumberMasked ?? '',
+  policyType: policy.policyType ?? '',
+  // Poisha back to taka the string way; no float touches an amount.
+  sumAssured: formatMinor(policy.sumAssuredMinor, { symbol: false }),
+  premium: formatMinor(policy.premiumMinor, { symbol: false }),
+  frequency: policy.frequency,
+  startDate: policy.startDate,
+  termMonths: '',
+  maturityDate: policy.maturityDate ?? '',
+  nomineeName: policy.nomineeName ?? '',
+  status: policy.status,
+});
+
+/** Add and edit are the same form; `policy` decides which. */
+function PolicySheet({
+  open,
+  policy,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  policy: Policy | null;
+  onOpenChange: (open: boolean) => void;
+  onSaved: (policyId: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = React.useState({
-    insurer: '',
-    policyNumberMasked: '',
-    policyType: '',
-    sumAssured: '',
-    premium: '',
-    frequency: 'YEARLY',
-    startDate: toLocalDateString(new Date()),
-    termMonths: '240',
-    nomineeName: '',
-  });
+  const [form, setForm] = React.useState<PolicyForm>(emptyPolicyForm);
   const [error, setError] = React.useState<string | null>(null);
-  const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
+  const set = (key: keyof PolicyForm) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  React.useEffect(() => {
+    if (!open) return;
+    setForm(policy ? policyToForm(policy) : emptyPolicyForm());
+    setError(null);
+  }, [open, policy]);
+
   const save = useMutation({
-    mutationFn: () =>
-      api('/insurance', {
-        method: 'POST',
-        body: {
-          insurer: form.insurer,
-          // Only the last digits, never the whole policy number (spec §9).
-          policyNumberMasked: form.policyNumberMasked || undefined,
-          policyType: form.policyType || undefined,
-          sumAssuredMinor: parseMoneyToMinor(form.sumAssured || '0'),
-          premiumMinor: parseMoneyToMinor(form.premium || '0'),
-          frequency: form.frequency,
-          startDate: form.startDate,
-          termMonths: Number(form.termMonths),
-          nomineeName: form.nomineeName || undefined,
-        },
-      }),
-    onSuccess: () => {
+    mutationFn: (body: Record<string, unknown>) =>
+      policy
+        ? api<Policy>(`/insurance/${policy.id}`, { method: 'PATCH', body })
+        : api<Policy>('/insurance', { method: 'POST', body }),
+    onSuccess: (saved) => {
       haptic('success');
-      void queryClient.invalidateQueries();
+      void queryClient.invalidateQueries({ queryKey: ['insurance'] });
       onOpenChange(false);
+      onSaved(saved.id);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
   });
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="নতুন বীমা পলিসি">
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={policy ? 'পলিসি সম্পাদনা' : 'নতুন বীমা পলিসি'}
+      description={policy?.insurer}
+    >
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
-          save.mutate();
+
+          const sumAssuredMinor = toMinor(form.sumAssured);
+          const premiumMinor = toMinor(form.premium);
+          if (sumAssuredMinor === null || premiumMinor === null) {
+            setError('টাকার অঙ্কটি বোঝা যায়নি।');
+            return;
+          }
+
+          if (!policy) {
+            save.mutate({
+              insurer: form.insurer.trim(),
+              // Only the last digits, never the whole policy number (spec §9).
+              policyNumberMasked: form.policyNumberMasked.trim() || undefined,
+              policyType: form.policyType.trim() || undefined,
+              sumAssuredMinor,
+              premiumMinor,
+              frequency: form.frequency,
+              startDate: form.startDate,
+              termMonths: Number(form.termMonths || '0'),
+              nomineeName: form.nomineeName.trim() || undefined,
+            });
+            return;
+          }
+
+          /* The term is not stored — start and maturity are — so the edit form
+             moves the date itself. An emptied field means "leave it alone"
+             rather than "clear it": the API has no way to unset a maturity. */
+          const existingMaturity = policy.maturityDate ?? '';
+          const body = changedOnly(
+            {
+              insurer: policy.insurer,
+              policyNumberMasked: policy.policyNumberMasked ?? '',
+              policyType: policy.policyType ?? '',
+              sumAssuredMinor: policy.sumAssuredMinor,
+              premiumMinor: policy.premiumMinor,
+              frequency: policy.frequency,
+              startDate: policy.startDate,
+              maturityDate: existingMaturity,
+              nomineeName: policy.nomineeName ?? '',
+              status: policy.status,
+            },
+            {
+              insurer: form.insurer.trim(),
+              policyNumberMasked: form.policyNumberMasked.trim(),
+              policyType: form.policyType.trim(),
+              sumAssuredMinor,
+              premiumMinor,
+              frequency: form.frequency,
+              startDate: form.startDate,
+              maturityDate: form.maturityDate || existingMaturity,
+              nomineeName: form.nomineeName.trim(),
+              status: form.status,
+            },
+          );
+          if (Object.keys(body).length === 0) {
+            onOpenChange(false);
+            return;
+          }
+          save.mutate(body);
         }}
       >
         <Field label="বীমা প্রতিষ্ঠান" htmlFor="ip-insurer">
@@ -322,21 +567,50 @@ function AddPolicySheet({
             required
           />
         </Field>
-        <Field label="মেয়াদ (মাস)" htmlFor="ip-term">
-          <Input
-            id="ip-term"
-            type="number"
-            min={1}
-            max={720}
-            value={form.termMonths}
-            onChange={set('termMonths')}
-            inputMode="numeric"
-            required
-          />
-        </Field>
+        {policy ? (
+          <Field label="মেয়াদপূর্তির তারিখ" htmlFor="ip-maturity">
+            <Input
+              id="ip-maturity"
+              type="date"
+              value={form.maturityDate}
+              onChange={set('maturityDate')}
+            />
+          </Field>
+        ) : (
+          <Field label="মেয়াদ (মাস)" htmlFor="ip-term">
+            <Input
+              id="ip-term"
+              type="number"
+              min={1}
+              max={720}
+              value={form.termMonths}
+              onChange={set('termMonths')}
+              inputMode="numeric"
+              required
+            />
+          </Field>
+        )}
+        {policy ? (
+          <p className="text-ink-muted -mt-2 text-xs">
+            প্রিমিয়াম, কিস্তির হার বা মেয়াদপূর্তির তারিখ বদলালে প্রিমিয়ামের তালিকা নতুন করে
+            বানানো হয় না — তাতে কোন কিস্তি পরিশোধ হয়েছে সেই হিসাব মুছে যেত — তাই পুরনো তালিকা ও
+            তার অঙ্ক আগের মতোই থাকবে।
+          </p>
+        ) : null}
         <Field label="নমিনি" htmlFor="ip-nominee">
           <Input id="ip-nominee" value={form.nomineeName} onChange={set('nomineeName')} />
         </Field>
+        {policy ? (
+          <Field label="অবস্থা" htmlFor="ip-status">
+            <Select id="ip-status" value={form.status} onChange={set('status')}>
+              {STATUSES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
 
         {error ? (
           <p role="alert" className="text-expense text-sm">

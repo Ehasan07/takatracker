@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { CreateCategoryInput } from '@hishab/shared';
+import { searchDocs, searchField, type SearchDoc } from '@hishab/core';
+import { toBengaliDigits, type CreateCategoryInput } from '@hishab/shared';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,7 +17,34 @@ export interface CategoryView {
   isSystem: boolean;
   /** How many live ledger entries point at it. Deleting is refused above zero. */
   usageCount: number;
+  /**
+   * Present only on a `?q=` response. `false` marks a parent that did not match
+   * and is in the list purely so a matching child is not shown orphaned — the
+   * client can grey it out rather than presenting it as a hit. Absent entirely
+   * on an unfiltered list, so that response is byte-for-byte what it always was.
+   */
+  matched?: boolean;
 }
+
+/**
+ * Raw query-string values, exactly as express hands them over.
+ *
+ * Deliberately `unknown`: a repeated parameter (`?q=a&q=b`) arrives as an array
+ * and a bracketed one (`?q[x]=1`) as an object, so neither can be trusted to be
+ * a string until it has been checked. Narrowing happens in `list`, which is also
+ * where the Bengali refusals live, so every caller gets the same message.
+ */
+export interface ListCategoriesQuery {
+  readonly kind?: unknown;
+  readonly q?: unknown;
+}
+
+/**
+ * Longer than this is a paste, not a search. Every token of the query is
+ * transliterated and branched into candidate spellings before it touches a row,
+ * so an unbounded `q` buys unbounded work for a result no one asked for.
+ */
+export const MAX_SEARCH_QUERY_LENGTH = 120;
 
 @Injectable()
 export class CategoriesService {
@@ -25,7 +53,16 @@ export class CategoriesService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(workspaceId: string, kind?: 'INCOME' | 'EXPENSE'): Promise<CategoryView[]> {
+  async list(workspaceId: string, query: ListCategoriesQuery = {}): Promise<CategoryView[]> {
+    const kind = parseKind(query.kind);
+    const q = parseSearchQuery(query.q);
+
+    /* The only database query this endpoint makes, and so the only place its
+     * tenancy can be got wrong. Everything below — matching, ranking, pulling a
+     * matched child's parent back in — runs in memory over exactly these rows,
+     * so no later step can widen the set past this `workspaceId`. Search is
+     * precisely the endpoint where that matters: a leak here would hand one
+     * household's category names to another. */
     const rows = await this.prisma.category.findMany({
       where: { workspaceId, deletedAt: null, ...(kind ? { kind } : {}) },
       orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
@@ -34,7 +71,7 @@ export class CategoriesService {
 
     const nameById = new Map(rows.map((c) => [c.id, c.nameBn ?? c.name]));
 
-    return rows.map((c) => ({
+    const views: CategoryView[] = rows.map((c) => ({
       id: c.id,
       name: c.name,
       nameBn: c.nameBn,
@@ -47,6 +84,8 @@ export class CategoriesService {
       isSystem: c.isSystem,
       usageCount: c._count.entries,
     }));
+
+    return q === undefined ? views : searchCategories(views, q);
   }
 
   async create(
@@ -215,4 +254,119 @@ export class CategoriesService {
     }
     return parent.id;
   }
+}
+
+// --- search -------------------------------------------------------------------
+
+/**
+ * Match and rank the workspace's categories against `q`, in memory.
+ *
+ * In memory on purpose. A workspace holds a few dozen categories, the whole tree
+ * is already loaded to resolve `parentName` and `usageCount`, and ranking it is
+ * not measurable next to the round trip that fetched it.
+ *
+ * The obvious future change is to push `q` down into SQL as a `WHERE name ILIKE
+ * '%…%' OR nameBn ILIKE '%…%'`, and that would quietly destroy the feature.
+ * Postgres cannot transliterate and no configuration makes it able to: `lower()`
+ * is a no-op on a script with no case, `unaccent` has no Bengali rules, and the
+ * trigram similarity between `খাবার` and `khabar` is exactly zero because they
+ * share no trigrams. `?q=khabar` finds `খাবার ও বাজার` only because the fold
+ * runs here, in TypeScript, over the rows already in hand. If this list ever
+ * grows past a few hundred rows per workspace the answer is to materialise the
+ * fold into a column at write time (`buildStoredSearchKeys` in @hishab/core,
+ * which is what transactions do) — not to swap the matcher for `contains`.
+ */
+function searchCategories(views: readonly CategoryView[], rawQuery: string): CategoryView[] {
+  const docs: SearchDoc<CategoryView>[] = views.map((c) => ({
+    id: c.id,
+    row: c,
+    /* The picker's own order, the last tie-break before `id`, so two rows that
+     * match equally well still come back in the order the user arranged them. */
+    order: c.sortOrder,
+    /* Both names are PRIMARY, matching the matcher's own category fixture.
+     * Demoting the English one would let a Bengali hit on an unrelated row
+     * outrank the row the user actually named when they typed `utility`. */
+    fields: [searchField('nameBn', 'PRIMARY', c.nameBn), searchField('name', 'PRIMARY', c.name)],
+  }));
+
+  const result = searchDocs(docs, rawQuery);
+
+  /* A one-character query is not a filter (§4.3): it would match nearly every
+   * row at the weakest tier, which is indistinguishable from no filter but far
+   * more surprising. Hand back the natural list rather than a ranked pretence. */
+  if (!result.filtered) return [...views];
+
+  /* Suggestions are appended rather than interleaved, which is also exactly
+   * descending score order — the matcher keeps the two bands apart, the worst
+   * real match scoring above the best suggestion — and the matcher only fills
+   * the bucket at all when the real matches nearly ran out. So a good query
+   * never shows fuzz, and a typo gets an answer instead of an empty picker. */
+  const ranked = [...result.hits, ...result.suggestions].map((hit) => hit.row);
+  return keepHierarchy(ranked, views);
+}
+
+/**
+ * Re-attach every matched child to its parent.
+ *
+ * The list is two levels and the client renders it as a tree, so a child on its
+ * own is an orphan: `রিকশা` with no `যাতায়াত` above it reads as a top-level
+ * category that does not exist. Any parent a match needs is pulled back in and
+ * flagged `matched: false`.
+ *
+ * Rows are grouped into families and the families ordered by their best-ranked
+ * member, so a child that scored first still puts its family first — with the
+ * parent printed above it. The reverse does not hold: a matching parent does not
+ * drag in its children, because searching for `যাতায়াত` asks for that row, not
+ * for everything filed beneath it.
+ */
+function keepHierarchy(
+  ranked: readonly CategoryView[],
+  all: readonly CategoryView[],
+): CategoryView[] {
+  const byId = new Map(all.map((c) => [c.id, c]));
+  const order: string[] = [];
+  const families = new Map<string, CategoryView[]>();
+
+  for (const row of ranked) {
+    const familyId = row.parentId ?? row.id;
+    const family = families.get(familyId);
+    if (family) {
+      family.push(row);
+    } else {
+      families.set(familyId, [row]);
+      order.push(familyId);
+    }
+  }
+
+  const out: CategoryView[] = [];
+  for (const familyId of order) {
+    const family = families.get(familyId) ?? [];
+    const parent = byId.get(familyId);
+    /* Absent only if a child outlived its parent, which `remove` refuses to
+     * allow. Emit the children anyway rather than dropping real matches. */
+    if (parent) out.push({ ...parent, matched: family.some((c) => c.id === familyId) });
+    for (const child of family) if (child.id !== familyId) out.push({ ...child, matched: true });
+  }
+  return out;
+}
+
+// --- query parameters ---------------------------------------------------------
+
+function parseKind(value: unknown): 'INCOME' | 'EXPENSE' | undefined {
+  if (value === undefined || value === '') return undefined;
+  if (value === 'INCOME' || value === 'EXPENSE') return value;
+  throw new BadRequestException('ধরন শুধু INCOME অথবা EXPENSE হতে পারে');
+}
+
+function parseSearchQuery(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  /* A repeated `?q=` arrives as an array. Silently taking the first would search
+   * for something the user did not ask for, which is worse than refusing. */
+  if (typeof value !== 'string') throw new BadRequestException('খোঁজার শব্দ একবারই দিন');
+  if (value.length > MAX_SEARCH_QUERY_LENGTH) {
+    throw new BadRequestException(
+      `খোঁজার শব্দ ${toBengaliDigits(String(MAX_SEARCH_QUERY_LENGTH))} অক্ষরের বেশি হতে পারবে না`,
+    );
+  }
+  return value;
 }

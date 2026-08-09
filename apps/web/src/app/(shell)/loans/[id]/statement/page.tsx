@@ -52,7 +52,11 @@ export default function LoanStatementPage() {
         ) : null}
       </div>
 
-      <h1 className="text-ink no-print text-xl font-semibold sm:text-2xl">ঋণের বিবরণী</h1>
+      {/* The phone gets this from the shell's title bar, which names this route
+          explicitly; printing drops it either way via `no-print`. */}
+      <h1 className="text-ink no-print hidden text-xl font-semibold sm:text-2xl md:block">
+        ঋণের বিবরণী
+      </h1>
 
       <StatementView
         heading={heading}

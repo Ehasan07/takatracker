@@ -8,6 +8,7 @@ import { api, endpoints } from '@/lib/api';
 import { resetSessionForSignOut } from '@/lib/session-reset';
 import { UsageMeter } from '@/components/usage-meter';
 import { SessionsList } from '@/components/sessions-list';
+import { IngestionSettings } from '@/components/ingestion-settings';
 import { TelegramSettings } from '@/components/telegram-settings';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
@@ -104,6 +105,8 @@ export default function SettingsPage() {
 
       <TelegramSettings />
 
+      <IngestionSettings />
+
       <SessionsList />
 
       <section className="rounded-card border-rule bg-surface border p-4">
@@ -130,9 +133,9 @@ export default function SettingsPage() {
       <section className="rounded-card border-rule bg-surface border p-4">
         <h2 className="text-ink-muted text-sm font-medium">পরের ধাপ</h2>
         <ul className="text-ink-muted mt-2 list-disc pl-5 text-sm">
-          <li>রিপোর্ট ও এক্সেল ইমপোর্ট (M5–M6)</li>
-          <li>ড্রাফট ইনবক্স ও বার্তা থেকে স্বয়ংক্রিয় লেনদেন (M7–M11)</li>
-          <li>ধার-দেনা, ডিপিএস, বীমা (M12–M14)</li>
+          <li>ব্যাংকের এসএমএস পড়ে খসড়া তৈরি — আপনার আসল বার্তার নমুনা পেলে</li>
+          <li>ইমেইলে যাচাই ও পাসওয়ার্ড রিসেটের লিংক পাঠানো</li>
+          <li>মোবাইল অ্যাপ</li>
         </ul>
       </section>
 
