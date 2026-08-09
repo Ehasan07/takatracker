@@ -207,6 +207,7 @@ model Workspace {
   loans        Loan[]
   loanPayments LoanPayment[]
   importBatches ImportBatch[]
+  attachments   Attachment[]
   ingestionMessages IngestionMessage[]
   transactionDrafts TransactionDraft[]
   savingsPlans SavingsPlan[]
@@ -751,6 +752,38 @@ model PremiumPayment {
 // ---------------------------------------------------------------------------
 // Ledger
 // ---------------------------------------------------------------------------
+
+/// A photo of a receipt, or any file a user attached to a record.
+///
+/// The bytes live on the server's own disk under a content-addressed path, not
+/// in the database and not in object storage: the user chose local disk, and a
+/// BYTEA column would drag every receipt through the same buffer as the ledger.
+/// The row exists so a file can be found, checked and deleted by id, and so a
+/// workspace's attachments can never be read across the tenant boundary.
+model Attachment {
+  id              String  @id @default(cuid())
+  workspaceId     String
+  createdByUserId String?
+
+  /// What the user called it. Shown back to them; never used as a path.
+  filename    String
+  mimeType    String
+  sizeBytes   Int
+  /// SHA-256 of the bytes. Two uploads of the same receipt share one file on
+  /// disk, and a corrupted read can be detected rather than served.
+  sha256      String
+  /// Path relative to the attachment root, derived from the hash. Never from
+  /// anything the user typed.
+  storagePath String
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, sha256])
+}
 
 enum ImportStatus {
   PENDING

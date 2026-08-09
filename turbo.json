@@ -19,9 +19,27 @@
       "cache": false,
       "persistent": true
     },
+    // Cacheable, and correctly so: packages/core, packages/shared,
+    // packages/parsers and apps/web run pure in-process tests, so the hash of
+    // their own files plus their dependencies' build outputs is a complete
+    // description of what was tested. Replaying that is the point of turbo.
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
+    },
+    // Not cacheable, and it must stay that way: @hishab/api's suite is
+    // integration, not unit. It boots Nest against a live PostgreSQL, truncates
+    // every table and asserts on database triggers and constraints — state
+    // turbo cannot see, cannot hash, and therefore cannot know is unchanged. A
+    // cache hit here prints "13 suites, 149 tests passed" without a database
+    // having been touched, so a dropped migration, a stale schema or a Postgres
+    // that is not even running reports green. `pnpm test` is the evidence
+    // behind every quality claim in this repo; evidence that can be replayed
+    // from disk is not evidence. Package-task config replaces the generic
+    // entry rather than merging with it, hence the repeated dependsOn.
+    "@hishab/api#test": {
+      "dependsOn": ["^build"],
+      "cache": false
     },
     "test:e2e": {
       "dependsOn": ["^build"],

@@ -9,6 +9,9 @@ Last updated: 2026-08-08.
 
 ## Milestone status
 
+> The table below is historical. The **Status** section further down is the
+> current picture; where they disagree, believe that one.
+
 | #       | Milestone                                                         | State       |
 | ------- | ----------------------------------------------------------------- | ----------- |
 | M0      | Monorepo, Docker (Postgres+Redis), lint/format/CI, `.env.example` | done        |
@@ -179,6 +182,72 @@ Recorded rather than papered over. The real fix is a database per spec file
 (a schema per worker, threaded through `DATABASE_URL`), not a retry or a sleep.
 Until then, treat a single failure in a full run as suspect and re-run the file
 alone before believing it.
+
+## Status, as of this pass
+
+Shipped and deployed: **M0–M7, M12, M13, M23–M25, M30, M36**, plus attachment
+storage (M3's server half). Test counts, measured rather than remembered:
+`pnpm test` is 558 across 24 files (`packages/core` 381, `shared` 16, `parsers`
+7, `apps/web` 5, `apps/api` 149 integration), and Playwright is 84 (81 run, 3
+skipped by design).
+
+### Defects this pass found and closed
+
+Everything below was live on the production box, and none of it was visible from
+a passing test suite:
+
+- **Password reset was unusable end to end.** The emailed links pointed at
+  `/verify-email` and `/reset-password`; the routes are `/verify` and `/reset`,
+  and `middleware.ts` allowlists only the latter — so the link redirected to
+  `/login` and the redirect dropped the `?token=`, spending it for nothing.
+- **Signup never sent a verification email**, so the only way to reach the
+  verification page was the link that was never sent.
+- **`JWT_ACCESS_SECRET` fell back to a value published in `.env.example`**, and
+  the three places reading it ran at different times — `JwtModule.register()`
+  executes during module import, before `ConfigModule` loads `.env`, so it
+  always took the placeholder while the strategy read the real value. It worked
+  only because the two happened to be equal.
+- **`trust proxy` was never set**, so behind nginx every request reported
+  `127.0.0.1`: the rate limiter was one bucket for the whole deployment, and
+  every IP in the audit log and the session list was fabricated rather than
+  merely missing.
+- **The offline queue was not scoped to a user.** On a shared phone, a mutation
+  queued by one person replayed under the next person's session, into the wrong
+  workspace's ledger. Rejected mutations were also deleted and reported as
+  synced.
+- **The service worker cached money data across sign-ins**, in direct defiance
+  of the `Cache-Control: no-store` the API sets on every response.
+- **`pnpm test` truncated whatever database it was pointed at**, and the README
+  walked the reader into doing exactly that after seeding.
+- **CI had never run** and could not have passed: it created no e2e database and
+  its ports disagreed with everything else.
+- **The deploy's health check could not fail the deploy** — `curl -fsS … && echo`
+  is exempt from `errexit`, and the endpoint returned 200 while the database was
+  unreachable anyway.
+- **There were no backups at all.**
+
+### The offline read that never settles
+
+`networkMode: 'offlineFirst'` with a retry means a query that fails while
+offline _pauses_ rather than settling. Any `await queryClient.invalidateQueries()`
+then hangs forever — which is what quick-add does after parking a transaction,
+so the sheet stayed open over a write that had in fact been saved and the user
+pressed the button again. Fixed by `retry: 0`, which is a correctness setting
+here, not a tuning preference.
+
+### Backups: what exists and what does not
+
+Nightly verified `pg_dump` at 02:30, 7 daily and 4 weekly, gzip integrity and a
+size floor checked before the file gets its real name, and a deploy dumps before
+it migrates. A restore has been **rehearsed**, not merely written: 27 tables into
+a scratch database, row counts matching live, and debits minus credits still
+zero in the restored copy.
+
+Still missing, and worth stating plainly: the dumps sit on the same disk as the
+database, so losing the VPS loses both. No encryption at rest, no PITR (up to
+24h of loss), no alert if the timer stops, and `/etc/hishab/hishab.env` is
+deliberately excluded — keep a copy of it out of band or a perfect restore is
+still partly unreadable.
 
 ## Decisions taken
 

@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AccountsModule } from './accounts/accounts.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -42,6 +43,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     InsuranceModule,
     LoansModule,
     ImportModule,
+    AttachmentsModule,
     IngestionModule,
     TransactionsModule,
     ReportsModule,

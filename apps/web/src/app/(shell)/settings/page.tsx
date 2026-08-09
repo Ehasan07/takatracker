@@ -1,10 +1,11 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { api, endpoints } from '@/lib/api';
+import { resetSessionForSignOut } from '@/lib/session-reset';
 import { UsageMeter } from '@/components/usage-meter';
 import { SessionsList } from '@/components/sessions-list';
 import { TelegramSettings } from '@/components/telegram-settings';
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ['me'], queryFn: endpoints.me });
   const entitlements = useQuery({ queryKey: ['entitlements'], queryFn: endpoints.entitlements });
   const [theme, setTheme] = React.useState<'system' | 'light' | 'dark'>('system');
@@ -37,6 +39,11 @@ export default function SettingsPage() {
 
   const logout = async (): Promise<void> => {
     await api('/auth/logout', { method: 'POST', body: {} }).catch(() => undefined);
+    /* After the token is dead so a racing tab cannot refill the cache, and
+     * before navigating so nothing survives into /login. Without this the
+     * service worker keeps serving the previous person's balances offline on a
+     * shared phone. */
+    await resetSessionForSignOut(queryClient);
     router.push('/login');
     router.refresh();
   };

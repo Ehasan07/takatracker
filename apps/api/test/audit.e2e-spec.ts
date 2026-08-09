@@ -188,10 +188,14 @@ describe('audit log', () => {
     const bobsView = await ctx.http().get('/v1/audit').set(auth(bob)).expect(200);
     const serialised = JSON.stringify(bobsView.body);
     expect(serialised).not.toContain('অ্যালিসের গোপন অ্যাকাউন্ট');
-    // Bob sees only his own signup.
-    expect(bobsView.body.items.every((i: { action: string }) => i.action === 'auth.signup')).toBe(
-      true,
-    );
+    /* Bob sees only his own account being created — signing up now writes two
+     * events, because it also dispatches the verification email. What matters
+     * is that every row belongs to Bob's own workspace and none of Alice's
+     * activity leaks in. */
+    expect(bobsView.body.items.map((i: { action: string }) => i.action).sort()).toEqual([
+      'auth.signup',
+      'auth.verification_sent',
+    ]);
   });
 
   it('has no endpoint that can rewrite history', async () => {

@@ -219,9 +219,23 @@ export interface EntitlementsDto {
   plan: { code: string; name: string; priceMinor: number } | null;
 }
 
+/**
+ * `workspace` is what `/auth/me` has always returned; it is declared here
+ * because the offline queue stamps every parked mutation with the user *and*
+ * the workspace it was written under, and a user id alone would let a row
+ * queued in one workspace replay into another.
+ */
+export interface MeDto {
+  id: string;
+  email: string;
+  name: string;
+  locale: string;
+  workspace: { id: string; name: string; currency: string; timezone: string };
+}
+
 export const endpoints = {
   entitlements: () => api<EntitlementsDto>('/entitlements'),
-  me: () => api<{ id: string; email: string; name: string; locale: string }>('/auth/me'),
+  me: () => api<MeDto>('/auth/me'),
   accounts: () => api<AccountDto[]>('/accounts'),
   categories: () => api<CategoryDto[]>('/categories'),
   summary: () => api<SummaryDto>('/transactions/summary'),

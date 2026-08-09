@@ -1,5 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/* Ports and database are deliberately not the development ones: the suite
+ * truncates what it points at. The defaults below match infra/docker-compose.yml
+ * (Postgres on 5433) and .github/workflows/ci.yml sets all four of these
+ * explicitly, so CI and a laptop run the same wiring.
+ *
+ * `hishab_e2e` does not exist until someone creates it — see the Tests section
+ * of README.md. e2e/global-setup.ts fails the run with that instruction rather
+ * than letting every spec fail at the login screen. */
 const WEB_PORT = process.env.E2E_WEB_PORT ?? '3100';
 const API_PORT = process.env.E2E_API_PORT ?? '4100';
 const BASE_URL = `http://127.0.0.1:${WEB_PORT}`;
@@ -44,6 +52,9 @@ export default defineConfig({
   webServer: [
     {
       command: 'pnpm --filter @hishab/api run start',
+      /* A real readiness probe now: /v1/health answers 503 while the database
+       * is unreachable, so Playwright waits instead of starting a run against
+       * an API that cannot serve a single request. */
       url: `${API_URL}/v1/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

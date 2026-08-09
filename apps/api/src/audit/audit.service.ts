@@ -23,6 +23,8 @@ export const AUDIT_ACTIONS = [
   'category.created',
   'category.updated',
   'category.deleted',
+  'attachment.uploaded',
+  'attachment.deleted',
   'import.uploaded',
   'import.applied',
   'import.reverted',

@@ -7,16 +7,24 @@ liabilities — with AI-written monthly analytics in Bengali and English.
 Ships as a responsive installable PWA (this repo), with iOS and Android to
 follow from the same business-logic packages.
 
-Production: **https://takatracker.com** — live, M0–M4 deployed.
+Production: **https://takatracker.com** — live.
 
 ---
 
 ## Status
 
-Milestones **M0–M4** are complete: monorepo, auth, the double-entry engine, the
-transaction API, full manual bookkeeping on the web, and the responsive PWA
-shell. See [PROGRESS.md](./PROGRESS.md) for exactly what is done, what is next
-and the decisions taken along the way.
+Shipped: **M0–M7**, **M12**, **M13**, **M23–M25**, **M30** and **M36** —
+monorepo and infrastructure, auth and account lifecycle, the double-entry
+engine, the transaction API, manual bookkeeping and the responsive PWA shell on
+the web, reports and filters, spreadsheet import/export, inbound ingestion,
+people and loans, savings and insurance, workspaces, entitlements, the
+append-only audit log, and Telegram credit-card due reminders.
+
+Next: **M8–M11** (parser templates, the draft inbox, dedupe, the email channel),
+**M14** (assets and net worth), then **M15+** (mobile, sync, AI).
+
+See [PROGRESS.md](./PROGRESS.md) for exactly what is done, what is next and the
+decisions taken along the way.
 
 ## Layout
 
@@ -65,19 +73,47 @@ straight to the API.
 
 ### Tests
 
+Both suites truncate every table in the database they are pointed at, so each
+has its own throwaway database. Create and migrate them once — `migrate deploy`
+creates the database if it does not exist:
+
 ```bash
-pnpm test        # 60 tests: money, ledger engine, parsers, API integration
-pnpm test:e2e    # 36 Playwright tests at 320 / 390 / 768 / 1280 px
+cd apps/api
+DATABASE_URL="postgresql://hishab:hishab@localhost:5433/hishab_test?schema=public" pnpm exec prisma migrate deploy
+DATABASE_URL="postgresql://hishab:hishab@localhost:5433/hishab_e2e?schema=public"  pnpm exec prisma migrate deploy
+```
+
+Then, from the repo root:
+
+```bash
+pnpm test        # 558 tests in 24 files
+pnpm test:e2e    # 84 Playwright tests: 21 specs × 320 / 390 / 768 / 1280 px
 pnpm lint
 pnpm typecheck
 ```
 
-The e2e suite runs against its own database (`hishab_e2e`) and truncates it
-before each run:
+Of those 558: 381 in `packages/core` (ledger, reports, loans, savings, import,
+ingestion, entitlements, card reminders), 16 money in `packages/shared`, 7 in
+`packages/parsers`, 5 import-parsing in `apps/web`, and 149 API integration
+tests across 13 suites in `apps/api`. Of the 84 Playwright tests, 3 skip by
+design — one loan spec only means anything at 320 px.
 
-```bash
-cd apps/api && DATABASE_URL="postgresql://hishab:hishab@localhost:5433/hishab_e2e?schema=public" pnpm exec prisma migrate deploy
-```
+**The API suite will not run against a database whose name is not
+`hishab_test`, `hishab_e2e` or something ending `_test`.** `pnpm test` truncates
+every table, and `apps/api/src/app.module.ts` loads the repo-root `.env` — so
+without that guard a bare `pnpm test` after `pnpm db:seed` would destroy your
+working data. `apps/api/vitest.config.ts` defaults `DATABASE_URL` to
+`hishab_test`; `apps/api/test/harness.ts` refuses anything that overrides it
+with a non-test name.
+
+The e2e suite works the same way: `apps/web/playwright.config.ts` defaults to
+`hishab_e2e`, override it with `E2E_DATABASE_URL`, and `e2e/global-setup.ts`
+truncates it before the run and fails the run outright if it cannot reach it.
+It needs `psql` on `PATH`.
+
+CI (`.github/workflows/ci.yml`) runs exactly these commands against Postgres on
+5433 and Redis on 6380 — the same ports as `pnpm db:up`, so a green CI run and a
+green laptop run mean the same thing.
 
 ## The double-entry invariant
 

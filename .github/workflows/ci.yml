@@ -9,9 +9,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Ports match infra/docker-compose.yml exactly (Postgres 5433, Redis 6380), so
+# the connection strings a developer runs locally are the ones CI runs. Two
+# databases, deliberately: `pnpm test` truncates hishab_test in its own
+# beforeAll hooks, and Playwright's global setup truncates hishab_e2e — sharing
+# one would have the API suite wiping tables out from under a browser test.
 env:
-  DATABASE_URL: postgresql://hishab:hishab@localhost:5432/hishab_test?schema=public
-  REDIS_URL: redis://localhost:6379
+  DATABASE_URL: postgresql://hishab:hishab@localhost:5433/hishab_test?schema=public
+  E2E_DATABASE_URL: postgresql://hishab:hishab@localhost:5433/hishab_e2e?schema=public
+  E2E_API_PORT: '4100'
+  E2E_WEB_PORT: '3100'
+  REDIS_URL: redis://localhost:6380
   JWT_ACCESS_SECRET: ci-access-secret
   JWT_REFRESH_SECRET: ci-refresh-secret
   INGEST_ENCRYPTION_KEY: dGVzdC1rZXktMzItYnl0ZXMtbG9uZy1mb3ItY2khIQ==
@@ -26,12 +34,12 @@ jobs:
           POSTGRES_USER: hishab
           POSTGRES_PASSWORD: hishab
           POSTGRES_DB: hishab_test
-        ports: ['5432:5432']
+        ports: ['5433:5432']
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
-        ports: ['6379:6379']
+        ports: ['6380:6379']
         options: >-
           --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
 
@@ -44,7 +52,25 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @hishab/api exec prisma migrate deploy
+
+      # The service container creates hishab_test only; the e2e database is
+      # ours to make. `prisma migrate deploy` below would create it implicitly,
+      # but doing it here with psql fails in ten seconds rather than ten
+      # minutes if the client is missing or Postgres is unreachable — and
+      # apps/web/e2e/global-setup.ts needs that same psql later anyway.
+      - name: Create the e2e database
+        run: |
+          psql "postgresql://hishab:hishab@localhost:5433/postgres" \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE hishab_e2e'
+
+      - name: Migrate hishab_test
+        run: pnpm --filter @hishab/api exec prisma migrate deploy
+
+      - name: Migrate hishab_e2e
+        run: pnpm --filter @hishab/api exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
+
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm build
@@ -53,6 +79,9 @@ jobs:
 
       - name: Install Playwright browsers
         run: pnpm --filter @hishab/web exec playwright install --with-deps chromium
+      # playwright.config.ts reads E2E_DATABASE_URL / E2E_API_PORT /
+      # E2E_WEB_PORT from the job env above and hands them to the two
+      # webServers it starts.
       - run: pnpm --filter @hishab/web run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

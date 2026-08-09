@@ -40,3 +40,6 @@ apps/web/public/workbox-*.js
 .windsurf/
 .github/copilot-instructions.md
 AGENTS.md
+
+# Uploaded receipts in development. Never in the repository.
+.data/
