@@ -34,6 +34,16 @@ model User {
   /// somebody out of their own books over an undelivered email is worse than
   /// the risk — but the nag stays until this is set.
   emailVerifiedAt DateTime?
+  /**
+   * Platform operator, not a workspace role.
+   *
+   * A super admin can read across every tenant, which is a deliberate hole in
+   * the guard that protects all of them. It is a column on `User` rather than a
+   * `Membership` role precisely so it can never be granted by workspace
+   * administration — inviting somebody to a workspace must not be able to make
+   * them an operator of the platform.
+   */
+  isSuperAdmin    Boolean   @default(false)
   /// Bumped whenever every session must die — a password reset, an admin
   /// lockout. Access tokens carry the value they were minted with, so a stolen
   /// one stops working the moment this moves rather than surviving its
@@ -103,6 +113,84 @@ model EmailToken {
   @@index([expiresAt])
 }
 
+enum FeatureKind {
+  /// A ceiling: 5 accounts, 300 transactions a month. `null` means unlimited.
+  LIMIT
+  /// On or off. 0 is off, anything else is on.
+  FLAG
+  /// A ceiling that is consumed and refills each period.
+  QUOTA
+}
+
+enum MeterPeriod {
+  /// Counts everything ever — storage, member seats.
+  LIFETIME
+  /// Resets on the first of the workspace's month.
+  MONTHLY
+  DAILY
+}
+
+/**
+ * What a package can sell, as data.
+ *
+ * This used to be a TypeScript union in `packages/core/entitlements.ts`, which
+ * meant adding a feature was a code change and a deployment — so a super admin
+ * could never assemble a Custom package at runtime, which is the whole point of
+ * having packages. The code now holds the *defaults* and seeds them at boot; the
+ * database holds the catalogue.
+ *
+ * `key` stays a string rather than an enum for the same reason: an enum would
+ * put the list back in a migration.
+ */
+model Feature {
+  key       String      @id
+  label     String
+  labelBn   String
+  kind      FeatureKind
+  /// 'count', 'per-month', 'tokens', 'mb' — shown next to the number.
+  unit      String
+  /// Which period a QUOTA refills on. Ignored for LIMIT and FLAG.
+  period    MeterPeriod @default(LIFETIME)
+  /// Grouping for the admin screen: 'core', 'ingest', 'ai', 'integrations'.
+  category  String      @default("core")
+  /// False once a feature is retired: existing plans keep it, nothing new sells
+  /// it. Deleting the row instead would silently drop a limit somebody is on.
+  isActive  Boolean     @default(true)
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  planFeatures PlanFeature[]
+  overrides    WorkspaceFeatureOverride[]
+  meters       UsageMeter[]
+}
+
+/**
+ * What a workspace has actually consumed.
+ *
+ * Nine of the twelve features could not be enforced because nothing counted
+ * them — a limit nobody measures is a promise, not a control. Writes happen
+ * where the work happens; `assertWithinLimit` reads from here.
+ *
+ * `periodKey` is the bucket: 'lifetime', '2026-08', or '2026-08-10'. Storing it
+ * as text rather than a date range keeps the unique index simple and makes a
+ * month's row obvious when reading the table by hand.
+ */
+model UsageMeter {
+  id          String   @id @default(cuid())
+  workspaceId String
+  featureKey  String
+  periodKey   String
+  value       BigInt   @default(0)
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  feature   Feature   @relation(fields: [featureKey], references: [key], onDelete: Cascade)
+
+  @@unique([workspaceId, featureKey, periodKey])
+  @@index([workspaceId, featureKey])
+}
+
 // ---------------------------------------------------------------------------
 // Plans & entitlements
 //
@@ -140,7 +228,8 @@ model PlanFeature {
   /// null = unlimited. For a flag, 0 is off.
   limitValue Int?
 
-  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureKey], references: [key], onDelete: Cascade)
 
   @@unique([planId, featureKey])
 }
@@ -156,7 +245,11 @@ model WorkspaceFeatureOverride {
   note        String?
   createdAt   DateTime  @default(now())
 
+  /// Who granted it. A support tool with no attribution is a liability.
+  grantedByUserId String?
+
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  feature   Feature   @relation(fields: [featureKey], references: [key], onDelete: Cascade)
 
   @@unique([workspaceId, featureKey])
   @@index([expiresAt])
@@ -206,10 +299,14 @@ model Workspace {
   auditEvents  AuditEvent[]
   loans        Loan[]
   loanPayments LoanPayment[]
+  usageMeters  UsageMeter[]
+  mailAccounts MailAccount[]
+  smsGateways  SmsGateway[]
   importBatches ImportBatch[]
   attachments   Attachment[]
   ingestionMessages IngestionMessage[]
   transactionDrafts TransactionDraft[]
+  mailMessages      MailMessage[]
   savingsPlans SavingsPlan[]
   savingsInstallments SavingsInstallment[]
   policies     InsurancePolicy[]
@@ -343,6 +440,16 @@ model Category {
   workspaceId String
   name        String
   nameBn      String?
+  /**
+   * Extra words that should find this category.
+   *
+   * Transliteration gets `khabar` to খাবার because they are the same word in two
+   * scripts. It cannot get `restaurant` to খাবার ও বাজার, or `poribohon` to
+   * যাতায়াত — those are synonyms, and no amount of letter mapping bridges them.
+   * Proven live: `poribohon` returned nothing while `khabar` and `bajar` both
+   * ranked first.
+   */
+  searchAliases String[]   @default([])
   parentId    String?
   kind        CategoryKind
   icon        String?
@@ -839,6 +946,115 @@ model ImportBatch {
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([workspaceId, fileHash])
+}
+
+enum MailProvider {
+  /// Username and app password. Closing: Microsoft 365 has already disabled
+  /// basic auth, and Google keeps narrowing app passwords.
+  IMAP
+  GMAIL_OAUTH
+  OUTLOOK_OAUTH
+}
+
+enum MailAccountStatus {
+  ACTIVE
+  /// Credentials rejected. Kept rather than deleted so the user is told why.
+  AUTH_FAILED
+  DISABLED
+}
+
+/**
+ * One mailbox a tenant has connected.
+ *
+ * Credentials are encrypted with a key held outside the database backup, so a
+ * stolen dump does not hand over somebody's mailbox. Reading a mailbox is slow
+ * and rate-limited, so nothing here is fetched inside an HTTP request — a sync
+ * worker does it and the screens read what it stored.
+ */
+model MailAccount {
+  id          String            @id @default(cuid())
+  workspaceId String
+  provider    MailProvider
+  /// The address, shown to the user. Never a credential.
+  email       String
+  /// Encrypted. IMAP host/port/password, or an OAuth refresh token.
+  secretCipher String
+  secretIv     String
+  imapHost    String?
+  imapPort    Int?
+  status      MailAccountStatus @default(ACTIVE)
+  lastError   String?
+  lastSyncAt  DateTime?
+  /// Only messages after this are read, so connecting a decade-old mailbox does
+  /// not pull ten years of mail on the first sync.
+  syncSince   DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages  MailMessage[]
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, status])
+}
+
+enum MailFolder {
+  INBOX
+  SENT
+  DRAFTS
+  ARCHIVE
+}
+
+/// A message pulled from a connected mailbox. Tenant-scoped like everything
+/// else; one workspace can never read another's mail.
+model MailMessage {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  mailAccountId String
+  folder        MailFolder
+  /// The provider's own id, so a re-sync updates rather than duplicates.
+  externalId    String
+  fromAddress   String?
+  toAddress     String?
+  subject       String?
+  snippet       String?
+  body          String?
+  receivedAt    DateTime
+  isRead        Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mailAccount MailAccount @relation(fields: [mailAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([mailAccountId, folder, externalId])
+  @@index([workspaceId, folder, receivedAt(sort: Desc)])
+}
+
+/**
+ * A tenant's own SMS gateway, for **sending**.
+ *
+ * Receiving is not here and cannot be: no server can read a phone's SMS on
+ * either platform. Inbound stays device-side — a forwarder app on Android, a
+ * Shortcuts automation on iOS.
+ */
+model SmsGateway {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  /// 'twilio', 'ssl-wireless', 'bulksmsbd' — a string, so adding one is data.
+  provider     String
+  senderId     String?
+  secretCipher String
+  secretIv     String
+  isActive     Boolean  @default(true)
+  lastError    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, isActive])
 }
 
 enum IngestionChannel {

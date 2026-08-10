@@ -67,6 +67,19 @@ export const AUDIT_ACTIONS = [
   'card.reminders_muted',
   'workspace.deleted',
   'data.exported',
+  /* Reads, not just writes. Looking at a tenant's books is the event a customer
+   * will ask about, and a support tool nobody can review is a liability. */
+  'mail.account_connected',
+  'mail.account_disconnected',
+  'mail.sync_failed',
+  'admin.tenant_list_viewed',
+  'admin.tenant_viewed',
+  'admin.overview_viewed',
+  'admin.audit_viewed',
+  'admin.plan_assigned',
+  'admin.feature_overridden',
+  'admin.tenant_suspended',
+  'admin.tenant_reactivated',
   'support.impersonation_started',
   'support.impersonation_ended',
 ] as const;

@@ -9,13 +9,27 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { createCategorySchema } from '@hishab/shared';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
 import { CategoriesService } from './categories.service';
 
-const updateCategorySchema = createCategorySchema.partial();
+/**
+ * The shared create schema plus the alias list, which lives here rather than in
+ * @hishab/shared because it is deliberately loose: `unknown` entries, or one
+ * string, because pasting `khabar, bajar, restaurant` into a single box is the
+ * common case and zod's own type error would arrive in English.
+ *
+ * Everything real — splitting, trimming, de-duplication, the caps — happens in
+ * `parseSearchAliases`, so create and update refuse identically and in Bengali.
+ */
+const categoryBodySchema = createCategorySchema.extend({
+  searchAliases: z.union([z.string(), z.array(z.unknown())]).optional(),
+});
+
+const updateCategorySchema = categoryBodySchema.partial();
 
 @Controller('categories')
 @UseGuards(JwtAuthGuard)
@@ -39,7 +53,7 @@ export class CategoriesController {
   @Post()
   create(
     @CurrentUser() user: AuthUser,
-    @Body(zodPipe(createCategorySchema)) body: ReturnType<typeof createCategorySchema.parse>,
+    @Body(zodPipe(categoryBodySchema)) body: ReturnType<typeof categoryBodySchema.parse>,
   ) {
     return this.categories.create(user.workspaceId, user.id, body);
   }

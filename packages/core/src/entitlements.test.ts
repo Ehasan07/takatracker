@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   can,
+  DEFAULT_FEATURES,
   DEFAULT_PLANS,
   describeBreach,
   entitlementsFromJson,
   entitlementsToJson,
   FEATURE_KEYS,
+  featureLabel,
   findPlan,
   isWithinLimit,
+  KNOWN_FEATURE_KEYS,
   limitFor,
   remaining,
   resolveEntitlements,
+  usagePeriodKey,
   type PlanFeatureRow,
 } from './entitlements.js';
 
@@ -43,6 +47,62 @@ describe('plan catalogue', () => {
     for (const plan of DEFAULT_PLANS) {
       expect(Number.isInteger(plan.priceMinor)).toBe(true);
     }
+  });
+});
+
+describe('feature defaults', () => {
+  it('carries both languages, because the database column pair demands both', () => {
+    for (const feature of DEFAULT_FEATURES) {
+      expect(feature.label, `${feature.key} needs a Bengali label`).not.toBe('');
+      expect(feature.labelEn, `${feature.key} needs an English label`).not.toBe('');
+      // The Bengali one is what a user reads, so it must not be ASCII.
+      expect(feature.label, `${feature.key} label must be Bengali`).not.toMatch(/^[\x20-\x7e]+$/);
+    }
+  });
+
+  it('has a unique key and a stable order', () => {
+    expect(new Set(FEATURE_KEYS).size).toBe(FEATURE_KEYS.length);
+    const orders = DEFAULT_FEATURES.map((f) => f.sortOrder);
+    expect(orders).toEqual([...orders].sort((a, b) => a - b));
+  });
+
+  it('gives every monthly ceiling a MONTHLY period', () => {
+    // A meter for a per-month limit that buckets by LIFETIME never resets, and
+    // the user would be locked out for good in their second month.
+    for (const feature of DEFAULT_FEATURES.filter((f) => f.unit === 'per-month')) {
+      expect(feature.period, `${feature.key}`).toBe('MONTHLY');
+    }
+  });
+
+  it('keeps the narrow union pointing at features that really exist', () => {
+    for (const key of KNOWN_FEATURE_KEYS) expect(FEATURE_KEYS).toContain(key);
+  });
+
+  it('labels an unknown key with the key rather than crashing', () => {
+    expect(featureLabel('accounts.max')).toBe('অ্যাকাউন্ট');
+    expect(featureLabel('custom.widgets.max')).toBe('custom.widgets.max');
+    expect(featureLabel('custom.widgets.max', 'উইজেট')).toBe('উইজেট');
+  });
+});
+
+describe('meter period keys', () => {
+  // 2026-08-31T19:00Z is already 2026-09-01 in Dhaka (+06). A server that used
+  // its own clock would post September's traffic into August's bucket.
+  const lateAugustUtc = new Date('2026-08-31T19:00:00Z');
+
+  it('buckets a month in the workspace timezone, not the server one', () => {
+    expect(usagePeriodKey('MONTHLY', lateAugustUtc, 'Asia/Dhaka')).toBe('2026-09');
+    expect(usagePeriodKey('MONTHLY', lateAugustUtc, 'UTC')).toBe('2026-08');
+  });
+
+  it('buckets a day the same way', () => {
+    expect(usagePeriodKey('DAILY', lateAugustUtc, 'Asia/Dhaka')).toBe('2026-09-01');
+    expect(usagePeriodKey('DAILY', lateAugustUtc, 'UTC')).toBe('2026-08-31');
+  });
+
+  it('collapses a lifetime meter to one bucket', () => {
+    expect(usagePeriodKey('LIFETIME', lateAugustUtc, 'Asia/Dhaka')).toBe('lifetime');
+    expect(usagePeriodKey('LIFETIME', new Date('2020-01-01T00:00:00Z'), 'UTC')).toBe('lifetime');
   });
 });
 
@@ -124,11 +184,45 @@ describe('overrides', () => {
     expect(limitFor(live, 'accounts.max')).toBe(50);
   });
 
-  it('ignores keys it does not recognise', () => {
+  /**
+   * This used to assert the opposite — that an unrecognised key was dropped.
+   * That behaviour is exactly what stopped a super admin from assembling a
+   * Custom package without a deployment, and it is not a safety net worth
+   * keeping: the row can only exist because `WorkspaceFeatureOverride
+   * .featureKey` passed a foreign key into `Feature.key`, so the database has
+   * already vouched for it. The old assertion, that the neighbouring key is
+   * untouched, still holds.
+   */
+  it('carries a key this build has never heard of', () => {
     const e = resolveEntitlements(asRows('FREE'), [
-      { featureKey: 'not.a.real.feature', limitValue: 1 },
+      { featureKey: 'custom.widgets.max', limitValue: 7 },
     ]);
+    expect(limitFor(e, 'custom.widgets.max')).toBe(7);
     expect(limitFor(e, 'accounts.max')).toBe(5);
+  });
+
+  it('reaches the client, so a runtime feature can be rendered', () => {
+    const e = resolveEntitlements(asRows('FREE'), [
+      { featureKey: 'custom.widgets.max', limitValue: 7 },
+    ]);
+    expect(entitlementsToJson(e)['custom.widgets.max']).toBe(7);
+  });
+});
+
+describe('a feature nobody has sold you', () => {
+  it('is off, not unlimited', () => {
+    // The dangerous default. If an unknown key resolved to `null` the way a
+    // missing entry once did, creating a feature in the admin screen would hand
+    // it to every workspace at once, uncapped, before anyone priced it.
+    const free = resolveEntitlements(asRows('FREE'));
+    expect(limitFor(free, 'custom.widgets.max')).toBe(0);
+    expect(can(free, 'custom.widgets.max')).toBe(false);
+    expect(isWithinLimit(free, 'custom.widgets.max', 0)).toBe(false);
+  });
+
+  it('can still be asked to default to something else explicitly', () => {
+    const free = resolveEntitlements(asRows('FREE'));
+    expect(limitFor(free, 'custom.widgets.max', null)).toBeNull();
   });
 });
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
@@ -12,6 +13,7 @@ import {
   HUB_DESTINATIONS,
   MORE_HREF,
   PRIMARY,
+  ADMIN_GROUP,
   SIDEBAR_GROUPS,
   isPrimaryRoute,
   parentOf,
@@ -57,6 +59,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isDesktop = useIsDesktop();
   const keyboardInset = useKeyboardInset();
   const queryClient = useQueryClient();
+  /* Draws one extra sidebar group and nothing else. Every byte the panel shows
+   * still passes `SuperAdminGuard`, which re-reads the flag from the database
+   * on every admin request — forging this buys a menu item that leads to 404. */
+  const isOperator = useIsOperator();
+  const sidebarGroups = React.useMemo(
+    () => (isOperator ? [...SIDEBAR_GROUPS, ADMIN_GROUP] : SIDEBAR_GROUPS),
+    [isOperator],
+  );
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const scrollRef = React.useRef<HTMLElement | null>(null);
 
@@ -242,7 +252,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             three more headings would clutter a screen reader's document
             outline. `aria-labelledby` still names each list. */}
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="প্রধান মেনু">
-          {SIDEBAR_GROUPS.map((group) => (
+          {sidebarGroups.map((group) => (
             <div key={group.id}>
               {group.title ? (
                 <p

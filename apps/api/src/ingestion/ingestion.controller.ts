@@ -39,14 +39,19 @@ const DIRECTIONS = ['IN', 'OUT'] as const;
 const MAX_BODY_LENGTH = 32_768;
 
 /**
- * Per minute, per IP. The e2e suite drives everything from 127.0.0.1, so the
- * ceiling is raised under test exactly as the global limiter does it.
+ * Per minute, per **workspace** — the number is unchanged, the axis is not.
  *
- * Per-IP is the wrong axis for this endpoint and is known to be: a hundred
- * users of one mobile carrier can share an address, and one workspace's runaway
- * forwarder can lock the others out. Tracking by workspace instead needs a
- * ThrottlerGuard subclass overriding `getTracker`, which is a file this
- * milestone is not adding.
+ * `WorkspaceThrottlerGuard` verifies the secret in `x-hishab-ingest-secret`
+ * before it will believe the workspace in `x-hishab-workspace`, and only then
+ * counts the request against that workspace. So a hundred forwarders behind one
+ * carrier NAT no longer share a budget, and one workspace's runaway forwarder
+ * can no longer lock the others out.
+ *
+ * A request that fails that check — no secret, wrong secret, no root secret
+ * configured — is counted against the caller's address instead, so guessing the
+ * secret is still capped at this rate per IP. The e2e suite drives everything
+ * from 127.0.0.1, so the ceiling is raised under test exactly as the global
+ * limiter does it.
  */
 const WEBHOOK_RATE_LIMIT = Number(
   process.env.INGESTION_THROTTLE_LIMIT ?? (process.env.NODE_ENV === 'test' ? 100_000 : 60),

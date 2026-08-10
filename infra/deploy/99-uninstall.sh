@@ -20,8 +20,21 @@ rm -rf /etc/systemd/system/hishab-api.service.d \
        /etc/systemd/system/hishab-web.service.d
 systemctl daemon-reload
 
-say 'Removing only the takatracker.com nginx site'
-rm -f /etc/nginx/sites-enabled/takatracker.com /etc/nginx/sites-available/takatracker.com
+say 'Removing only the hishab nginx sites'
+# The apex plus the three subdomains from 60-subdomains.sh. Each is deleted only
+# if it still says 'managed by hishab' — if someone has since replaced one of
+# these files with their own, it stays. A vhost left pointing at a dead
+# 127.0.0.1:4600 would answer 502 forever, which is why the subdomains are
+# listed here and not left behind.
+for site in takatracker.com api.takatracker.com sms.takatracker.com mail.takatracker.com; do
+  conf="/etc/nginx/sites-available/${site}"
+  if [ -e "$conf" ] && ! grep -q 'managed by hishab' "$conf"; then
+    say "  keeping ${conf} — it was not created by these scripts"
+    continue
+  fi
+  rm -f "/etc/nginx/sites-enabled/${site}" "$conf"
+done
+rm -rf /etc/nginx/hishab
 nginx -t && systemctl reload nginx
 
 say 'Removing the application directory'
@@ -41,5 +54,9 @@ fi
 say 'Backups in /var/backups/hishab were NOT removed. Delete them deliberately:'
 echo '  rm -rf /var/backups/hishab'
 
-say 'The TLS certificate is left in place. Remove it deliberately with:'
+say 'The TLS certificates are left in place. Remove them deliberately with:'
 echo '  certbot delete --cert-name takatracker.com'
+echo '  certbot delete --cert-name api.takatracker.com'
+echo '  certbot delete --cert-name sms.takatracker.com'
+echo '  certbot delete --cert-name mail.takatracker.com'
+echo '(the neighbours automation.example.com and vpn.example.com are not listed on purpose)'

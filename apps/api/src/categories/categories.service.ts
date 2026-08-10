@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { searchDocs, searchField, type SearchDoc } from '@hishab/core';
+import { searchAliasField, searchDocs, searchField, type SearchDoc } from '@hishab/core';
 import { toBengaliDigits, type CreateCategoryInput } from '@hishab/shared';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,6 +15,12 @@ export interface CategoryView {
   parentName: string | null;
   sortOrder: number;
   isSystem: boolean;
+  /**
+   * The extra words that also find this row. Returned on every response, not
+   * only after an edit: the client cannot offer to edit a list it was never
+   * shown, and a blind `PATCH` would overwrite whatever is already there.
+   */
+  searchAliases: string[];
   /** How many live ledger entries point at it. Deleting is refused above zero. */
   usageCount: number;
   /**
@@ -24,6 +30,19 @@ export interface CategoryView {
    * on an unfiltered list, so that response is byte-for-byte what it always was.
    */
   matched?: boolean;
+}
+
+/**
+ * A create or update body.
+ *
+ * `searchAliases` is `unknown` for the same reason the query parameters below
+ * are: it may arrive as a list, as one comma-separated string somebody pasted,
+ * or as something that is neither. It is narrowed in `parseSearchAliases`,
+ * which is also where the Bengali refusals live, so create and update refuse
+ * identically.
+ */
+export interface CategoryWriteInput extends CreateCategoryInput {
+  readonly searchAliases?: unknown;
 }
 
 /**
@@ -45,6 +64,30 @@ export interface ListCategoriesQuery {
  * so an unbounded `q` buys unbounded work for a result no one asked for.
  */
 export const MAX_SEARCH_QUERY_LENGTH = 120;
+
+/**
+ * A category may carry this many aliases and each may be this long.
+ *
+ * Both caps are about the same thing: every alias is a key set built on every
+ * request that searches, so the list is work the whole workspace pays for. The
+ * seeded rows use at most seventeen, so twenty-four leaves real room to add to
+ * them without leaving room to paste a paragraph. Forty characters is longer
+ * than any word anybody searches by — `Grameenphone` is twelve — and a value
+ * longer than that is a sentence, which the alias rungs cannot match anyway
+ * because they only ever compare whole words.
+ */
+export const MAX_SEARCH_ALIASES = 24;
+export const MAX_SEARCH_ALIAS_LENGTH = 40;
+
+/**
+ * What a pasted list is allowed to be separated by.
+ *
+ * Commas first, because `খাবার, বাজার, restaurant` typed into one box is the
+ * common case and refusing it teaches people that the field is fussy. Newlines
+ * and semicolons cost nothing to accept and are what a paste from a note or a
+ * spreadsheet cell actually contains.
+ */
+const ALIAS_SEPARATORS = /[,;\n\r]+/;
 
 @Injectable()
 export class CategoriesService {
@@ -82,6 +125,7 @@ export class CategoriesService {
       parentName: c.parentId ? (nameById.get(c.parentId) ?? null) : null,
       sortOrder: c.sortOrder,
       isSystem: c.isSystem,
+      searchAliases: c.searchAliases,
       usageCount: c._count.entries,
     }));
 
@@ -91,7 +135,7 @@ export class CategoriesService {
   async create(
     workspaceId: string,
     actorUserId: string,
-    input: CreateCategoryInput,
+    input: CategoryWriteInput,
   ): Promise<CategoryView> {
     const parentId = await this.resolveParent(workspaceId, input.kind, input.parentId);
     await this.assertNameFree(
@@ -112,6 +156,7 @@ export class CategoriesService {
         icon: input.icon,
         color: input.color,
         sortOrder: input.sortOrder,
+        searchAliases: parseSearchAliases(input.searchAliases) ?? [],
       },
     });
 
@@ -131,7 +176,7 @@ export class CategoriesService {
     workspaceId: string,
     actorUserId: string,
     id: string,
-    input: Partial<CreateCategoryInput>,
+    input: Partial<CategoryWriteInput>,
   ): Promise<CategoryView> {
     const existing = await this.prisma.category.findFirst({
       where: { id, workspaceId, deletedAt: null },
@@ -143,6 +188,11 @@ export class CategoriesService {
       await this.assertNameFree(workspaceId, existing.kind, nextName, id);
     }
 
+    /* Absent leaves the list alone; present replaces it whole, including with
+     * an empty list. A `PATCH` that omitted the field and still cleared the
+     * aliases would lose a row's search words to an unrelated rename. */
+    const aliases = parseSearchAliases(input.searchAliases);
+
     await this.prisma.category.update({
       where: { id },
       data: {
@@ -151,6 +201,7 @@ export class CategoriesService {
         icon: input.icon,
         color: input.color,
         sortOrder: input.sortOrder,
+        ...(aliases === undefined ? {} : { searchAliases: aliases }),
         // The kind is deliberately fixed: flipping a category from expense to
         // income would silently invert every transaction already filed under it.
       },
@@ -162,8 +213,14 @@ export class CategoriesService {
       action: 'category.updated',
       entity: 'Category',
       entityId: id,
-      before: { name: existing.nameBn ?? existing.name },
-      after: { name: nextName ?? existing.nameBn ?? existing.name },
+      before: {
+        name: existing.nameBn ?? existing.name,
+        ...(aliases === undefined ? {} : { searchAliases: existing.searchAliases }),
+      },
+      after: {
+        name: nextName ?? existing.nameBn ?? existing.name,
+        ...(aliases === undefined ? {} : { searchAliases: aliases }),
+      },
     });
 
     const [updated] = await this.list(workspaceId).then((all) => all.filter((c) => c.id === id));
@@ -291,6 +348,15 @@ function searchCategories(views: readonly CategoryView[], rawQuery: string): Cat
      * Demoting the English one would let a Bengali hit on an unrelated row
      * outrank the row the user actually named when they typed `utility`. */
     fields: [searchField('nameBn', 'PRIMARY', c.nameBn), searchField('name', 'PRIMARY', c.name)],
+    /* The aliases, and the one thing transliteration cannot do. `khabar` finds
+     * খাবার by letter mapping; `poribohon` cannot ever find যাতায়াত that way,
+     * because they are two different words that happen to mean the same thing.
+     *
+     * SECONDARY, not PRIMARY, and the twenty points are deliberate: an alias
+     * hit scores 1220, so it beats every partial match on every row and still
+     * loses to a row whose own name is exactly what was typed. See the
+     * `SearchAliases.weight` note in @hishab/core. */
+    aliases: searchAliasField('searchAliases', 'SECONDARY', c.searchAliases),
   }));
 
   const result = searchDocs(docs, rawQuery);
@@ -351,6 +417,68 @@ function keepHierarchy(
     if (parent) out.push({ ...parent, matched: family.some((c) => c.id === familyId) });
     for (const child of family) if (child.id !== familyId) out.push({ ...child, matched: true });
   }
+  return out;
+}
+
+// --- aliases ------------------------------------------------------------------
+
+/**
+ * Narrow, clean and cap a submitted alias list. Returns `undefined` when the
+ * field was absent, which is what leaves an existing list untouched.
+ *
+ * Everything a person does to this field by accident is handled rather than
+ * refused, because none of it is ambiguous:
+ *
+ *  - **A pasted string** — `khabar, bajar, restaurant` — is split. Each element
+ *    of a submitted *array* is split too, since a paste into the first box of a
+ *    list widget lands there and means exactly the same thing.
+ *  - **Whitespace** is trimmed, and an entry that was only whitespace is
+ *    dropped rather than stored as a key that can never match.
+ *  - **Duplicates** go, compared case-insensitively: `Bajar` and `bajar` are
+ *    one alias, and keeping both would cost a key set per request forever.
+ *    `toLowerCase`, never `toLocaleLowerCase` — under a Turkish locale the
+ *    latter folds `I` to `ı` and two devices would disagree about what is a
+ *    duplicate. The first spelling wins, so the user's own capitalisation is
+ *    what comes back.
+ *
+ * What is refused is only what cannot be repaired: a non-string entry, an alias
+ * past `MAX_SEARCH_ALIAS_LENGTH`, or more than `MAX_SEARCH_ALIASES` of them.
+ * Silently truncating a list somebody typed would be worse than saying no.
+ */
+export function parseSearchAliases(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  const entries = typeof value === 'string' ? [value] : value;
+  if (!Array.isArray(entries)) {
+    throw new BadRequestException('খোঁজার নাম একটি তালিকা বা কমা দিয়ে আলাদা করা লেখা হতে হবে');
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of entries) {
+    if (typeof entry !== 'string') throw new BadRequestException('খোঁজার নাম শুধু লেখা হতে পারে');
+    for (const piece of entry.split(ALIAS_SEPARATORS)) {
+      const alias = piece.trim();
+      if (alias === '') continue;
+      if (alias.length > MAX_SEARCH_ALIAS_LENGTH) {
+        throw new BadRequestException(
+          `প্রতিটি খোঁজার নাম ${toBengaliDigits(String(MAX_SEARCH_ALIAS_LENGTH))} অক্ষরের বেশি হতে পারবে না`,
+        );
+      }
+      const key = alias.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(alias);
+    }
+  }
+
+  if (out.length > MAX_SEARCH_ALIASES) {
+    throw new BadRequestException(
+      `একটি ক্যাটাগরিতে সর্বোচ্চ ${toBengaliDigits(String(MAX_SEARCH_ALIASES))}টি খোঁজার নাম রাখা যায়`,
+    );
+  }
+
   return out;
 }
 

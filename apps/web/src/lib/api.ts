@@ -230,6 +230,14 @@ export interface MeDto {
   email: string;
   name: string;
   locale: string;
+  emailVerifiedAt: string | null;
+  /**
+   * Platform operator. Decides whether one nav link is drawn and nothing else —
+   * every byte the admin panel shows still passes `SuperAdminGuard`, which
+   * re-reads this from the database on every request. Forging it here buys a
+   * menu item that leads to a 404.
+   */
+  isSuperAdmin: boolean;
   workspace: { id: string; name: string; currency: string; timezone: string };
 }
 

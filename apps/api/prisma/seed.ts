@@ -60,6 +60,7 @@ async function main(): Promise<void> {
       icon: c.icon,
       sortOrder: c.sortOrder,
       isSystem: true,
+      searchAliases: [...c.searchAliases],
     })),
   });
 

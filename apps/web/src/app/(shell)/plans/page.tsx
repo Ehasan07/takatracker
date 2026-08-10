@@ -4,45 +4,134 @@ import { FEATURE_KEYS } from '@hishab/core';
 import { useQuery } from '@tanstack/react-query';
 import { Ban, Check, Info, Lock } from 'lucide-react';
 import Link from 'next/link';
+import * as React from 'react';
 import { SkeletonCard, SkeletonRows } from '@/components/skeleton';
 import { UsageMeter } from '@/components/usage-meter';
-import type { EntitlementsDto } from '@/lib/api';
+import { api, type EntitlementsDto } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import {
-  bnNum,
-  featureLabel,
-  featureOf,
-  limitText,
-  PlanPrice,
-  QueryError,
-  unitSuffix,
-} from './parts';
-import { fetchCatalogue, fetchSnapshot, planKeys, type CataloguePlan } from './queries';
+import { bnNum, featureLabel, featureOf, PlanPrice, QueryError, unitSuffix } from './parts';
+import { fetchCatalogue, planKeys, type CataloguePlan } from './queries';
 
 /**
- * The only limits the API actually counts.
+ * The snapshot, plus the field that replaced the guesswork.
  *
- * `usage()` in apps/api/src/entitlements/entitlements.service.ts fills every
- * other feature with a hard zero on purpose — those subsystems do not exist
- * yet. Drawing "০ / ৫০ মেগাবাইট" from that zero would report a measurement
- * nobody took, so the unmeasured limits show their ceiling and say so.
+ * `measured` is the server's own list of which keys in `usage` are a real
+ * measurement rather than a placeholder zero. This screen used to keep that
+ * list as a `const` — three keys, written down by hand — and it went stale the
+ * day storage, mailbox connections and ingested messages started being counted:
+ * the page went on saying "ব্যবহার এখনও গোনা হয় না" beside numbers that were,
+ * in fact, being enforced. A limit that reads as unmeasured while a 402 is
+ * waiting behind it is the same lie as an empty bar on a limit nobody counts,
+ * only in the other direction. So the list comes from the thing that knows.
+ *
+ * `EntitlementsDto` in `lib/api.ts` does not carry the field yet, so it is
+ * widened here rather than there.
  */
-const MEASURED: ReadonlySet<string> = new Set([
-  'accounts.max',
-  'transactions.monthly.max',
-  'members.max',
-]);
+interface Snapshot extends EntitlementsDto {
+  measured?: string[];
+}
+
+const fetchSnapshot = (): Promise<Snapshot> => api<Snapshot>('/entitlements');
+
+/**
+ * One feature as this screen needs it: a Bengali name, a kind and a unit.
+ *
+ * Sourced from `GET /v1/entitlements/features`, the catalogue endpoint, so a
+ * limit created by a super admin after this build shipped still renders as
+ * "মাসিক এআই টোকেন" and not as `ai.tokens.monthly`. Note the flip: on that
+ * endpoint `label` is the **Bengali** string (`labelEn` is the English one),
+ * which is the opposite way round from the column names.
+ */
+interface FeatureView {
+  key: string;
+  label: string;
+  /** LIMIT | FLAG | QUOTA, widened — the catalogue is data now, not a union. */
+  kind: string;
+  unit: string;
+  isActive: boolean;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+async function fetchFeatureViews(): Promise<FeatureView[]> {
+  const raw = await api<unknown>('/entitlements/features');
+  const rows = Array.isArray(raw) ? raw : [];
+  return rows.map((entry, index): FeatureView => {
+    const row = isRecord(entry) ? entry : {};
+    const key = typeof row.key === 'string' && row.key !== '' ? row.key : `feature-${index}`;
+    return {
+      key,
+      label: typeof row.label === 'string' && row.label !== '' ? row.label : featureLabel(key),
+      kind: typeof row.kind === 'string' ? row.kind : 'LIMIT',
+      unit: typeof row.unit === 'string' ? row.unit : 'count',
+      isActive: row.isActive === undefined ? true : row.isActive === true,
+    };
+  });
+}
+
+/**
+ * What to show when the catalogue cannot be fetched.
+ *
+ * The shipped defaults, which is what every install has on day one. Fewer
+ * features than the server really has, but each one correctly named — better
+ * than an empty screen on a page somebody landed on because they were refused
+ * something.
+ */
+const FALLBACK_VIEWS: FeatureView[] = FEATURE_KEYS.map((key) => {
+  const definition = featureOf(key);
+  return {
+    key,
+    label: featureLabel(key),
+    kind: definition?.kind ?? 'LIMIT',
+    unit: definition?.unit ?? 'count',
+    isActive: true,
+  };
+});
+
+/**
+ * A QUOTA is a ceiling that refills each period — near enough a LIMIT that
+ * drawing it as one is right, and far better than the alternative, which is
+ * that a feature the catalogue classified as QUOTA silently vanishes from the
+ * screen that is supposed to list every limit.
+ */
+const isLimitLike = (kind: string): boolean => kind !== 'FLAG';
+
+/** What one plan grants for one feature, in the catalogue's own words. */
+function limitTextFor(view: FeatureView | undefined, limitValue: number | null): string {
+  if (view?.kind === 'FLAG') return limitValue === 0 ? 'নেই' : 'আছে';
+  if (limitValue === null) return 'সীমাহীন';
+  if (limitValue === 0) return 'নেই';
+  return `${bnNum(limitValue)}${unitSuffix(view?.unit)}`;
+}
 
 /** What a person can actually do today about a limit they have hit. */
 const RELIEF: Record<string, string> = {
   'accounts.max': 'কোনো অব্যবহৃত অ্যাকাউন্ট আর্কাইভ করলে একটি জায়গা খালি হয়।',
   'transactions.monthly.max': 'প্রতি মাসের ১ তারিখে এই গণনা আবার শূন্য থেকে শুরু হয়।',
   'members.max': 'কোনো সদস্যকে সরালে একটি জায়গা খালি হয়।',
+  'attachments.storage.mb': 'পুরনো সংযুক্তি মুছলে জায়গা ফিরে আসে।',
+  'email.connections.max': 'কোনো মেইলবক্স সংযোগ মুছলে একটি জায়গা খালি হয়।',
 };
 
 export default function PlansPage() {
   const snapshot = useQuery({ queryKey: planKeys.snapshot(), queryFn: fetchSnapshot });
   const catalogue = useQuery({ queryKey: planKeys.catalogue(), queryFn: fetchCatalogue });
+
+  /* Shared with anything else that needs a feature's name. Decoration rather
+   * than content — a failure here falls back to the shipped defaults instead of
+   * putting an error state on a page whose real content is the snapshot. */
+  const features = useQuery({
+    queryKey: ['entitlements', 'features'] as const,
+    queryFn: fetchFeatureViews,
+    staleTime: 5 * 60_000,
+  });
+
+  const views = features.data && features.data.length > 0 ? features.data : FALLBACK_VIEWS;
+  const viewOf = React.useMemo(() => {
+    const byKey = new Map(views.map((view) => [view.key, view]));
+    return (key: string): FeatureView | undefined => byKey.get(key);
+  }, [views]);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -74,7 +163,7 @@ export default function PlansPage() {
       ) : snapshot.isLoading ? (
         <SkeletonCard />
       ) : (
-        <CurrentPlan data={snapshot.data} />
+        <CurrentPlan data={snapshot.data} views={views} />
       )}
 
       <section className="flex flex-col gap-3">
@@ -99,7 +188,12 @@ export default function PlansPage() {
             <p className="text-ink">দেখানোর মতো কোনো প্ল্যান নেই।</p>
           </div>
         ) : (
-          <Catalogue plans={catalogue.data ?? []} currentCode={snapshot.data?.plan?.code ?? null} />
+          <Catalogue
+            plans={catalogue.data ?? []}
+            currentCode={snapshot.data?.plan?.code ?? null}
+            views={views}
+            viewOf={viewOf}
+          />
         )}
       </section>
     </div>
@@ -110,18 +204,32 @@ export default function PlansPage() {
  * What you have, and how much of it is gone
  * ---------------------------------------------------------------------- */
 
-function CurrentPlan({ data }: { data: EntitlementsDto | undefined }) {
+function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: FeatureView[] }) {
   const entitlements = data?.entitlements ?? {};
   const usage = data?.usage ?? {};
   const left = data?.remaining ?? {};
 
-  const limits = FEATURE_KEYS.filter((key) => featureOf(key)?.kind === 'LIMIT');
-  const flags = FEATURE_KEYS.filter((key) => featureOf(key)?.kind === 'FLAG');
+  /* The server's list, not ours. An API too old to send it leaves this empty,
+   * and every limit then reports its ceiling with "ব্যবহার এখনও গোনা হয় না" —
+   * the cautious end of the mistake. Claiming a measurement nobody took is the
+   * other end, and that one is unrecoverable: it makes a bar at zero look like
+   * headroom. */
+  const measured = React.useMemo(() => new Set(data?.measured ?? []), [data?.measured]);
 
-  const exhausted = limits.filter((key) => {
-    const limit = entitlements[key] ?? null;
-    if (limit === null || !MEASURED.has(key)) return false;
-    return (usage[key] ?? 0) >= limit;
+  /* A retired feature this workspace still has is still worth listing — plans
+   * that already granted it keep it. One that is retired *and* switched off is
+   * noise. */
+  const shown = views.filter((view) => view.isActive || (entitlements[view.key] ?? 0) !== 0);
+  const limits = shown.filter((view) => isLimitLike(view.kind));
+  const flags = shown.filter((view) => view.kind === 'FLAG');
+
+  const exhausted = limits.filter((view) => {
+    const limit = entitlements[view.key] ?? null;
+    // Unlimited has no end to reach, an unmeasured limit has no number to
+    // compare, and a limit of 0 is a feature you do not have rather than one
+    // you have used up.
+    if (limit === null || limit <= 0 || !measured.has(view.key)) return false;
+    return (usage[view.key] ?? 0) >= limit;
   });
 
   return (
@@ -144,14 +252,16 @@ function CurrentPlan({ data }: { data: EntitlementsDto | undefined }) {
       {exhausted.length > 0 ? (
         <div className="border-expense/40 bg-expense/10 mt-3 rounded-md border p-3">
           <p className="text-expense text-sm font-medium">
-            {exhausted.map((key) => featureLabel(key)).join(', ')} — সীমা শেষ
+            {exhausted.map((view) => view.label).join(', ')} — সীমা শেষ
           </p>
           <ul className="text-ink mt-1 list-disc pl-5 text-xs">
-            {exhausted.map((key) => (
-              <li key={key}>{RELIEF[key] ?? 'এই সীমা বাড়ানোর ব্যবস্থা এখনও তৈরি হয়নি।'}</li>
+            {exhausted.map((view) => (
+              <li key={view.key}>
+                {RELIEF[view.key] ?? 'এই সীমা বাড়ানোর ব্যবস্থা এখনও তৈরি হয়নি।'}
+              </li>
             ))}
           </ul>
-          {exhausted.includes('accounts.max') ? (
+          {exhausted.some((view) => view.key === 'accounts.max') ? (
             <Link
               href="/accounts"
               className="press border-rule bg-surface text-ink mt-2 inline-flex min-h-11 items-center rounded-md border px-3 text-xs font-medium md:min-h-9"
@@ -163,23 +273,24 @@ function CurrentPlan({ data }: { data: EntitlementsDto | undefined }) {
       ) : null}
 
       <div className="mt-4 flex flex-col gap-3">
-        {limits.map((key) => (
+        {limits.map((view) => (
           <LimitRow
-            key={key}
-            featureKey={key}
-            limit={entitlements[key] ?? null}
-            used={usage[key] ?? 0}
-            left={left[key] ?? null}
+            key={view.key}
+            view={view}
+            limit={entitlements[view.key] ?? null}
+            used={usage[view.key] ?? 0}
+            left={left[view.key] ?? null}
+            measured={measured.has(view.key)}
           />
         ))}
       </div>
 
       <dl className="border-rule mt-4 grid grid-cols-1 gap-x-4 gap-y-2 border-t pt-3 sm:grid-cols-2">
-        {flags.map((key) => {
-          const on = (entitlements[key] ?? 0) !== 0;
+        {flags.map((view) => {
+          const on = (entitlements[view.key] ?? 0) !== 0;
           return (
-            <div key={key} className="flex min-w-0 items-center justify-between gap-2">
-              <dt className="text-ink-muted min-w-0 truncate text-xs">{featureLabel(key)}</dt>
+            <div key={view.key} className="flex min-w-0 items-center justify-between gap-2">
+              <dt className="text-ink-muted min-w-0 truncate text-xs">{view.label}</dt>
               <dd
                 className={cn(
                   'flex shrink-0 items-center gap-1 text-xs',
@@ -202,30 +313,29 @@ function CurrentPlan({ data }: { data: EntitlementsDto | undefined }) {
 }
 
 function LimitRow({
-  featureKey,
+  view,
   limit,
   used,
   left,
+  measured,
 }: {
-  featureKey: string;
+  view: FeatureView;
   limit: number | null;
   used: number;
   left: number | null;
+  measured: boolean;
 }) {
-  const label = featureLabel(featureKey);
-  const definition = featureOf(featureKey);
-
   if (limit === null) {
-    return <Plain label={label} value="সীমাহীন" />;
+    return <Plain label={view.label} value="সীমাহীন" />;
   }
   if (limit === 0) {
-    return <Plain label={label} value="এই প্ল্যানে নেই" muted />;
+    return <Plain label={view.label} value="এই প্ল্যানে নেই" muted />;
   }
-  if (!MEASURED.has(featureKey)) {
+  if (!measured) {
     return (
       <Plain
-        label={label}
-        value={`সর্বোচ্চ ${bnNum(limit)}${unitSuffix(definition?.unit)}`}
+        label={view.label}
+        value={`সর্বোচ্চ ${bnNum(limit)}${unitSuffix(view.unit)}`}
         note="ব্যবহার এখনও গোনা হয় না"
       />
     );
@@ -233,14 +343,14 @@ function LimitRow({
 
   return (
     <div>
-      <UsageMeter label={label} used={used} limit={limit} />
+      <UsageMeter label={view.label} used={used} limit={limit} />
       <p className="mt-0.5 text-[11px]">
         {used >= limit ? (
           <span className="text-expense font-medium">সীমা শেষ</span>
         ) : (
           <span className="text-ink-muted">
             আর {bnNum(left ?? Math.max(0, limit - used))}
-            {unitSuffix(definition?.unit)} বাকি
+            {unitSuffix(view.unit)} বাকি
           </span>
         )}
       </p>
@@ -274,15 +384,46 @@ function Plain({
  * The catalogue
  * ---------------------------------------------------------------------- */
 
-function Catalogue({ plans, currentCode }: { plans: CataloguePlan[]; currentCode: string | null }) {
-  // Every key any plan mentions, in the order the core module defines them.
-  const keys = FEATURE_KEYS.filter((key) =>
-    plans.some((p) => p.features.some((f) => f.key === key)),
-  );
+function Catalogue({
+  plans,
+  currentCode,
+  views,
+  viewOf,
+}: {
+  plans: CataloguePlan[];
+  currentCode: string | null;
+  views: FeatureView[];
+  viewOf: (key: string) => FeatureView | undefined;
+}) {
+  /* Every key any plan mentions, in the catalogue's order — and keys the
+   * catalogue has never heard of last, rather than dropped. A package built
+   * this afternoon out of a feature invented this morning belongs on this table
+   * even if the build predates both. */
+  const keys = React.useMemo(() => {
+    const order = new Map(views.map((view, index) => [view.key, index]));
+    const mentioned = new Set(plans.flatMap((plan) => plan.features.map((f) => f.key)));
+    return [...mentioned].sort(
+      (a, b) =>
+        (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER) ||
+        a.localeCompare(b),
+    );
+  }, [plans, views]);
+
+  /* The plan row carries its own Bengali label from `publicPlans()`; the
+   * catalogue is preferred only because it is the same source the enforcement
+   * reads. Either way a bare key never reaches the screen. */
+  const nameOf = (key: string): string => {
+    const view = viewOf(key);
+    if (view) return view.label;
+    const fromPlan = plans
+      .flatMap((plan) => plan.features)
+      .find((feature) => feature.key === key && feature.label !== '');
+    return fromPlan?.label ?? featureLabel(key);
+  };
 
   const valueFor = (plan: CataloguePlan, key: string): string => {
     const row = plan.features.find((f) => f.key === key);
-    return row ? limitText(key, row.limitValue) : '—';
+    return row ? limitTextFor(viewOf(key), row.limitValue) : '—';
   };
 
   return (
@@ -313,7 +454,7 @@ function Catalogue({ plans, currentCode }: { plans: CataloguePlan[]; currentCode
             <dl className="border-rule mt-3 flex flex-col gap-1.5 border-t pt-3">
               {keys.map((key) => (
                 <div key={key} className="flex min-w-0 items-baseline justify-between gap-2">
-                  <dt className="text-ink-muted min-w-0 truncate text-xs">{featureLabel(key)}</dt>
+                  <dt className="text-ink-muted min-w-0 truncate text-xs">{nameOf(key)}</dt>
                   <dd className="text-ink shrink-0 text-xs">{valueFor(plan, key)}</dd>
                 </div>
               ))}
@@ -370,7 +511,7 @@ function Catalogue({ plans, currentCode }: { plans: CataloguePlan[]; currentCode
             {keys.map((key) => (
               <tr key={key}>
                 <th scope="row" className="text-ink px-4 py-2 text-left text-xs font-normal">
-                  {featureLabel(key)}
+                  {nameOf(key)}
                 </th>
                 {plans.map((plan) => (
                   <td key={plan.code} className="text-ink px-4 py-2 text-right text-xs">

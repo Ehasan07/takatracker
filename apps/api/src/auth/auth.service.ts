@@ -103,6 +103,9 @@ export class AuthService {
           icon: c.icon,
           sortOrder: c.sortOrder,
           isSystem: true,
+          /* Seeded, not derived: `poribohon` and `restaurant` are synonyms of
+           * the seeded names, and no transliteration reaches a synonym. */
+          searchAliases: [...c.searchAliases],
         })),
       });
 
@@ -360,6 +363,12 @@ export class AuthService {
         // null while unproven. Nothing gates on it — see AccountService — but
         // the client needs it to show the verification nag.
         emailVerifiedAt: true,
+        /* So the client can decide whether to draw the operator nav without
+         * probing an admin endpoint on every page load — which would log a
+         * guard warning for every ordinary user and drown the line that
+         * warning exists to produce. It authorises nothing: `SuperAdminGuard`
+         * re-reads this from the database on every admin request. */
+        isSuperAdmin: true,
         createdAt: true,
       },
     });

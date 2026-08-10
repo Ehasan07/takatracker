@@ -4,6 +4,7 @@ import {
   expandSimpleTransaction,
   reconciliationDelta,
   searchDocs,
+  searchAliasField,
   searchField,
   searchTokens,
   type EntryDraft,
@@ -419,7 +420,7 @@ export class TransactionsService {
     const [categories, persons] = await Promise.all([
       this.prisma.category.findMany({
         where: { workspaceId },
-        select: { id: true, name: true, nameBn: true },
+        select: { id: true, name: true, nameBn: true, searchAliases: true },
       }),
       this.prisma.person.findMany({
         where: { workspaceId },
@@ -434,6 +435,10 @@ export class TransactionsService {
       id: c.id,
       row: { id: c.id },
       fields: [searchField('nameBn', 'PRIMARY', c.nameBn), searchField('name', 'PRIMARY', c.name)],
+      /* Aliases too, or `?q=poribohon` finds the category on the categories
+       * screen and nothing in the ledger — the same word answering differently
+       * on two screens is worse than it not working on either. */
+      aliases: searchAliasField('aliases', 'SECONDARY', c.searchAliases),
     }));
     /* The same two category columns and the same one person column the relation
      * `ILIKE` searched, deliberately not one more. `phone`, `relation` and the

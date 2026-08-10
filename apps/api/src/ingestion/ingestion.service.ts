@@ -1,4 +1,3 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import {
   BadRequestException,
   Injectable,
@@ -20,7 +19,14 @@ import type { DraftStatus, IngestionChannel, TransactionSource } from '@prisma/c
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
 import { minorToNumber } from '../common/bigint-json';
+import {
+  INGEST_SECRET_HEADER,
+  INGEST_WORKSPACE_HEADER,
+  ingestWebhookSecretFor,
+  verifyIngestWebhookSecret,
+} from '../common/ingest-webhook';
 import { EntitlementsService } from '../entitlements/entitlements.service';
+import { UsageMeterService } from '../entitlements/usage-meter.service';
 import { CardRemindersService } from '../notifications/card-reminders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
@@ -81,18 +87,11 @@ const REGISTRY = createRegistry([]);
 
 // --- webhook authentication --------------------------------------------------
 
-/** Which workspace the forwarder is posting for. */
-export const INGEST_WORKSPACE_HEADER = 'x-hishab-workspace';
-
-/** The per-workspace shared secret. */
-export const INGEST_SECRET_HEADER = 'x-hishab-ingest-secret';
-
-/**
- * Domain separator for the derived secret. Bump the version if the derivation
- * ever changes: every workspace's webhook secret changes with it, and every
- * forwarder has to be reconfigured, so it must be a deliberate act.
- */
-const SECRET_PURPOSE = 'hishab.ingest.webhook.v1';
+/* The header names and the HMAC live in `common/ingest-webhook.ts` — the
+ * rate-limit guard needs the same answer and cannot reach into this module.
+ * Re-exported so the controller and every existing importer keep their import
+ * site unchanged. */
+export { INGEST_SECRET_HEADER, INGEST_WORKSPACE_HEADER } from '../common/ingest-webhook';
 
 /**
  * One message for every way authentication can fail — bad secret, unknown
@@ -214,6 +213,7 @@ export class IngestionService {
     private readonly prisma: PrismaService,
     private readonly accounts: AccountsService,
     private readonly entitlements: EntitlementsService,
+    private readonly meters: UsageMeterService,
     private readonly cardReminders: CardRemindersService,
     private readonly audit: AuditService,
   ) {}
@@ -246,52 +246,29 @@ export class IngestionService {
     workspaceId: string,
     root = process.env.INGESTION_WEBHOOK_SECRET,
   ): string | null {
-    if (!root) return null;
-    return createHmac('sha256', root)
-      .update(`${SECRET_PURPOSE}:${workspaceId}`)
-      .digest('base64url');
-  }
-
-  /**
-   * Constant time, always.
-   *
-   * `timingSafeEqual` throws on a length mismatch and returning early on length
-   * would leak it, so both sides are hashed first: the digests are always 32
-   * bytes and are equal exactly when the inputs are.
-   */
-  private static equalsInConstantTime(a: string, b: string): boolean {
-    const left = createHash('sha256').update(a, 'utf8').digest();
-    const right = createHash('sha256').update(b, 'utf8').digest();
-    return timingSafeEqual(left, right);
+    return ingestWebhookSecretFor(workspaceId, root);
   }
 
   /**
    * Checked before anything touches the database, so a wrong secret costs one
    * HMAC and never a query — there is no timing difference between a real
    * workspace id and an invented one.
+   *
+   * The comparison itself moved to `common/ingest-webhook.ts` because
+   * `WorkspaceThrottlerGuard` needs the same answer to decide whether the
+   * workspace header can be trusted as a rate-limit bucket, and a global guard
+   * cannot reach into this module. What stays here is the one warning worth
+   * emitting: a deployment with no root secret has the webhook closed, and
+   * somebody staring at 401s deserves to be told why. The guard calls the
+   * silent function so that warning happens once per refused request rather
+   * than twice.
    */
   verifyWebhookSecret(workspaceId: string | undefined, provided: string | undefined): boolean {
-    if (!workspaceId || !provided) return false;
-
-    const current = this.webhookSecretFor(workspaceId, process.env.INGESTION_WEBHOOK_SECRET);
-    if (!current) {
+    if (workspaceId && provided && !process.env.INGESTION_WEBHOOK_SECRET) {
       this.logger.warn('INGESTION_WEBHOOK_SECRET is not set — the ingestion webhook is closed');
       return false;
     }
-    const previous = this.webhookSecretFor(
-      workspaceId,
-      process.env.INGESTION_WEBHOOK_SECRET_PREVIOUS,
-    );
-
-    /* Bitwise or, not `||`: both comparisons run whatever the first one says, so
-     * the response time cannot reveal which secret matched. Whether a previous
-     * secret is configured at all is a property of the server, not of the
-     * attacker's guess, so branching on that is safe. */
-    const matchesCurrent = Number(IngestionService.equalsInConstantTime(provided, current));
-    const matchesPrevious = Number(
-      previous ? IngestionService.equalsInConstantTime(provided, previous) : false,
-    );
-    return (matchesCurrent | matchesPrevious) === 1;
+    return verifyIngestWebhookSecret(workspaceId, provided);
   }
 
   /** What the settings screen shows so a forwarder app can be pointed at us. */
@@ -337,6 +314,16 @@ export class IngestionService {
 
     const existing = await this.findByHash(workspaceId, bodyHash);
     if (existing) return existing;
+
+    /* The monthly ingest ceiling, checked only once the message is known to be
+     * new. Charging a retry against the quota would let a forwarder that lost
+     * one reply burn a month's allowance on a single message — and the whole
+     * point of the hash above is that a retry is free. */
+    await this.entitlements.assertWithinLimit(
+      workspaceId,
+      'ingest.messages.monthly.max',
+      workspace.timezone,
+    );
 
     const parsed = REGISTRY.parse({
       channel: input.channel,
@@ -385,6 +372,24 @@ export class IngestionService {
           },
           select: { id: true },
         });
+
+        /* Counted here, inside the same transaction as the message, and not
+         * afterwards. `ingest.messages.monthly.max` is the one intake limit
+         * that cannot be answered with a COUNT(*) later: retention pruning
+         * removes the rows, and a month a workspace has already been charged
+         * for would silently empty out. A meter that can drift is only worth
+         * having if it cannot drift here, so the count and the message land
+         * together or neither does.
+         *
+         * Nothing enforces this limit at the door yet — see the report. The
+         * number is now true, which is the prerequisite. */
+        await this.meters.increment(
+          workspaceId,
+          'ingest.messages.monthly.max',
+          1,
+          workspace.timezone,
+          { tx },
+        );
 
         return { messageId: message.id, draftId: draft.id };
       });

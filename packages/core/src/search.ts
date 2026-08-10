@@ -939,6 +939,37 @@ export const MIN_QUERY_LENGTH = 2;
  */
 export const MIN_B1_EXACT = 5;
 export const MIN_B1_PARTIAL = 4;
+/**
+ * The same rung, against an **alias**, needs nine. Measured, not guessed.
+ *
+ * `MIN_B1_EXACT` is calibrated for a row with two name fields. An alias set is
+ * a different object: the seeded tree carries 188 one-word aliases against 57
+ * distinct words of Bengali and English names, so opening the fold rung to them
+ * at five roughly quadruples the number of short keys a collapsed vowel can
+ * land on. Counted against the 234,289 distinct words of `/usr/share/dict/words`
+ * (three letters or more, `a-z` only), the whole-key fold rung on the seeded
+ * aliases collides with a word that is not itself an alias this many times:
+ *
+ * | gate | accidental collisions | example                 |
+ * | ---- | --------------------- | ----------------------- |
+ * |    5 |                   494 | `vivid` = `bibidh`      |
+ * |    6 |                   113 | `bookish` = `bikash`    |
+ * |    7 |                    34 | `carbine` = `korbani`   |
+ * |    8 |                     8 | `antirust` = `interest` |
+ * |    9 |                     0 |                         |
+ *
+ * At five it took the whole matcher's main-bucket rate against that corpus from
+ * 0.336% to 0.525%. Nine is where the measurement reaches zero, and it is not
+ * an arbitrary cliff: the words that need fold tolerance at all are the long
+ * Banglish ones whose vowels nobody agrees on — `poribohon` folds to
+ * `parabahan`, exactly nine — while `bus`, `uber` and `robi` are spelled one way
+ * by everybody and are already answered two rungs higher, at `A_EXACT`.
+ *
+ * It is a gate on the *query's* fold, so a user who adds a short alias of their
+ * own loses nothing they had: the exact and transliteration rungs above are
+ * untouched, and only the tolerance for a spelling they did not list is gated.
+ */
+export const MIN_ALIAS_B1_EXACT = 9;
 /** `b2(q)` is looser still, so it needs a longer query in every form. */
 export const MIN_B2 = 4;
 /**
@@ -1233,12 +1264,53 @@ export interface SearchAmount {
   readonly minor: number;
 }
 
+/**
+ * Extra whole words that should find a row — a category's `searchAliases`.
+ *
+ * **Not a field.** A field is indexed text and every rung of the ladder is
+ * allowed at it, right down to an unanchored fragment of its fold. An alias is
+ * a word somebody wrote down on purpose, so it is matched as a *whole word and
+ * nothing less*: exact, exact-after-transliteration, exact-after-folding, and
+ * then it stops. Two reasons, both measured.
+ *
+ * The first is that the partial rungs would buy nothing here. `restaurant` is
+ * already reached by its own exact spelling; letting `resta` prefix-match it
+ * only duplicates what the row's real name already does at a higher tier.
+ *
+ * The second is the false-positive budget. A seeded category carries ten
+ * aliases on average, so opening the substring and fold-fragment rungs to them
+ * would grow the searchable surface of the tree several-fold — and `A_SUBSTR`
+ * alone would hand `ant` to খাবার ও বাজার through `Restaurant`, and `roc` to it
+ * through `Grocery`. The rungs that produced every measured false positive
+ * against the English dictionary are exactly the partial ones; aliases never
+ * reach them. Even the one non-literal rung they do reach, the whole-key fold,
+ * carries a stricter gate than a name does — see `MIN_ALIAS_B1_EXACT`, which is
+ * the constant that cost the most measurement.
+ */
+export interface SearchAliases {
+  /** Reported as `matchedField`, so a hit says it came from an alias. */
+  readonly name: string;
+  /**
+   * **`SECONDARY` is the intended weight**, and the twenty points it costs are
+   * the whole ordering rule. An alias hit lands on `A_EXACT`, so it scores 1220
+   * — below a row whose own name *is* the query (1240, `A_EXACT` + `PRIMARY`)
+   * and above every partial match there is (`A_PREFIX` peaks at 1140). Somebody
+   * typing `restaurant` knows what they want, so it must not rank under a fuzzy
+   * transliteration; somebody typing a category's actual name wants that row
+   * first. Both hold, by arithmetic, at every field bonus and every penalty.
+   */
+  readonly weight: FieldWeight;
+  /** One key set per alias, empty aliases already dropped. */
+  readonly keys: readonly SearchKeys[];
+}
+
 export interface SearchDoc<T> {
   /** Stable identity, the last tie-break, so the order is total. */
   readonly id: string;
   readonly row: T;
   readonly fields: readonly SearchField[];
   readonly amounts?: readonly SearchAmount[];
+  readonly aliases?: SearchAliases;
   /**
    * The entity's own natural order, ascending — `sortOrder` for categories and
    * accounts, the epoch of `createdAt` for people, the negated epoch of
@@ -1253,6 +1325,24 @@ export function searchField(
   raw: string | null | undefined,
 ): SearchField {
   return { name, weight, keys: buildSearchKeys(raw) };
+}
+
+/**
+ * Build the alias candidate set for one row. Blank entries are dropped rather
+ * than indexed: an alias of `''` would carry an empty key that matches nothing
+ * and costs a comparison on every token of every query.
+ *
+ * Aliases are stored as the user wrote them and normalised here, so `Khabar O
+ * Bajar` and `khabar o bajar` are one key. De-duplication is the caller's job —
+ * it is the one that can refuse a duplicate with a message.
+ */
+export function searchAliasField(
+  name: string,
+  weight: FieldWeight,
+  values: readonly string[] | null | undefined,
+): SearchAliases {
+  const keys = (values ?? []).map((value) => buildSearchKeys(value)).filter((k) => k.text !== '');
+  return { name, weight, keys };
 }
 
 export interface SearchHit<T> {
@@ -1464,11 +1554,75 @@ function matchTokenAgainstField(
   return { main: null, suggestion: weakest };
 }
 
+/**
+ * The best rung one query token reaches against one row's **one-word** aliases.
+ *
+ * Three ways in, and no fourth:
+ *
+ *  - the token **is** the alias after normalisation — `uber`. `A_EXACT`.
+ *  - the two share a transliteration, which is the Bengali query `রিকশা`
+ *    reaching the Latin alias `Riksha`, and equally a Latin query reaching an
+ *    alias somebody typed in Bengali. `T_EXACT`. Symmetric, and free of any
+ *    false-positive cost in Latin: for two Latin words it degenerates to the
+ *    check above, because a Latin token's only "transliteration" is itself.
+ *  - the two share a whole `b1` key, which is the Banglish spelling nobody
+ *    agrees on: `poribahan` and `poribohon` fold to the same thing. `B1_EXACT`
+ *    — the same rung a fold identity against a *name* earns, because it is the
+ *    same evidence, and putting it higher would price a collapsed vowel as if
+ *    the user had written the word out.
+ *
+ * **A phrase alias matches as a phrase, and only there** — `Cash Out` is
+ * reached by typing `cash out`, never by typing `out`. Letting each word of a
+ * phrase satisfy a token on its own was measured against the English
+ * dictionary and it is where the noise came from: `out`, `send`, `current`,
+ * `flat` and `duty` each became a category, and `?q=out` would then scope the
+ * transaction filter to ব্যাংক চার্জ. A word worth matching alone is worth
+ * listing alone, which is why `Bhara`, `Bill` and `Charge` are each their own
+ * alias next to the phrases that contain them.
+ */
+function matchTokenAgainstAliases(token: PreparedToken, aliases: SearchAliases): TokenHit | null {
+  let best: TokenHit | null = null;
+
+  for (const keys of aliases.keys) {
+    if (keys.tokens.length !== 1) continue;
+    const aliasToken = keys.tokens[0] as string;
+    if (aliasToken.length < MIN_QUERY_LENGTH) continue;
+
+    const hit = (tier: SearchTier): TokenHit => ({
+      tier,
+      score: scoreFor(tier, aliases.weight, 0, 0),
+      field: aliases.name,
+      fieldLength: keys.text.length,
+    });
+
+    if (token.text === aliasToken) {
+      best = better(best, hit('A_EXACT'));
+      continue;
+    }
+    const forms = keys.latin[0] ?? [];
+    if (forms.some((form) => token.latin.includes(form))) {
+      best = better(best, hit('T_EXACT'));
+      continue;
+    }
+    if (token.b1.length < MIN_ALIAS_B1_EXACT) continue;
+    const folds = keys.b1[0] ?? [];
+    if (folds.some((fold) => token.b1All.includes(fold))) best = better(best, hit('B1_EXACT'));
+  }
+
+  return best;
+}
+
 interface DocEvaluation<T> {
   readonly main: SearchHit<T> | null;
   readonly suggestion: SearchHit<T> | null;
   /** Sum across tokens, the tie-break between two equally weak rows. */
   readonly sum: number;
+  /**
+   * Length of whatever produced the decisive hit — a field's text, or the one
+   * alias that matched. Carried out of here rather than looked up again by
+   * name, because an alias has no entry in `fields` to look up.
+   */
+  readonly length: number;
 }
 
 function evaluateDoc<T>(
@@ -1495,9 +1649,24 @@ function evaluateDoc<T>(
         },
         suggestion: null,
         sum: score,
+        length: 0,
       };
     }
   }
+
+  /* The whole query **is** one of the aliases, spaces and all.
+   *
+   * Satisfies the per-token AND on its own, because a multi-word alias may
+   * contain a word too short to be a token of anything — the `ও` of `Khabar O
+   * Bajar` — and no per-token rule should be allowed to lose a match the user
+   * typed out in full and exactly right.
+   *
+   * Merged at the end rather than returned here, unlike the amount probe above.
+   * Returning early would have made `transport` score 1220 through যাতায়াত's
+   * alias list instead of 1240 through যাতায়াত's own name: the same row and the
+   * same answer, but the wrong reason and a rank the next row could beat. */
+  const wholeQueryAlias =
+    doc.aliases === undefined ? null : wholeQueryAliasHit(doc.aliases, query.text);
 
   let mainMin: TokenHit | null = null;
   let mainSum = 0;
@@ -1534,6 +1703,16 @@ function evaluateDoc<T>(
       bestAny = better(better(bestAny, main), suggestion);
     }
 
+    /* Aliases produce main results only, whatever `allowSuggestions` says: an
+     * exact word is never a guess, and the callers that switch suggestions off
+     * — the loans list, the category resolution behind the transaction filter —
+     * are precisely the ones that most need `poribohon` to work. */
+    if (doc.aliases !== undefined) {
+      const alias = matchTokenAgainstAliases(token, doc.aliases);
+      bestMain = better(bestMain, alias);
+      bestAny = better(bestAny, alias);
+    }
+
     if (bestMain === null) allMain = false;
     else {
       mainSum += bestMain.score;
@@ -1551,15 +1730,21 @@ function evaluateDoc<T>(
     }
   }
 
+  /* The decisive token hit, or the whole-query alias where that did better.
+   * `better` is the same comparison every token already used, so the alias wins
+   * only where it genuinely scores higher — and a row whose own name is the
+   * query keeps its 1240. */
+  const decisive = better(allMain ? mainMin : null, wholeQueryAlias);
+
   const main =
-    allMain && mainMin !== null
+    decisive !== null
       ? {
           id: doc.id,
           row: doc.row,
-          score: mainMin.score,
-          tier: mainMin.tier,
+          score: decisive.score,
+          tier: decisive.tier,
           bucket: 'main' as const,
-          matchedField: mainMin.field,
+          matchedField: decisive.field,
         }
       : null;
 
@@ -1575,7 +1760,33 @@ function evaluateDoc<T>(
         }
       : null;
 
-  return { main, suggestion, sum: main !== null ? mainSum : anySum };
+  /* `sum` is per-token, so a whole-query alias that carried the row on its own
+   * contributes its score once per token — it did satisfy all of them. */
+  const aliasSum = wholeQueryAlias === null ? 0 : wholeQueryAlias.score * query.tokens.length;
+
+  return {
+    main,
+    suggestion,
+    sum: main === null ? anySum : Math.max(allMain ? mainSum : 0, aliasSum),
+    length: (main !== null ? decisive?.fieldLength : anyMin?.fieldLength) ?? 0,
+  };
+}
+
+/**
+ * The alias a whole query reproduces exactly, if any. Normalised on both sides,
+ * so `Khabar O Bajar` and `khabar o bajar` are the same query.
+ */
+function wholeQueryAliasHit(aliases: SearchAliases, queryText: string): TokenHit | null {
+  for (const keys of aliases.keys) {
+    if (keys.text !== queryText) continue;
+    return {
+      tier: 'A_EXACT',
+      score: scoreFor('A_EXACT', aliases.weight, 0, 0),
+      field: aliases.name,
+      fieldLength: keys.text.length,
+    };
+  }
+  return null;
 }
 
 interface Ranked<T> {
@@ -1647,7 +1858,7 @@ export function searchDocs<T>(
       mains.push({
         hit: evaluation.main,
         sum: evaluation.sum,
-        fieldLength: fieldLengthOf(doc, evaluation.main.matchedField),
+        fieldLength: evaluation.length,
         order,
       });
       return;
@@ -1656,7 +1867,7 @@ export function searchDocs<T>(
       suggestions.push({
         hit: evaluation.suggestion,
         sum: evaluation.sum,
-        fieldLength: fieldLengthOf(doc, evaluation.suggestion.matchedField),
+        fieldLength: evaluation.length,
         order,
       });
     }
@@ -1671,12 +1882,6 @@ export function searchDocs<T>(
     hits: rank(mains),
     suggestions: showSuggestions ? rank(suggestions) : [],
   };
-}
-
-function fieldLengthOf<T>(doc: SearchDoc<T>, name: string | null): number {
-  if (name === null) return 0;
-  for (const field of doc.fields) if (field.name === name) return field.keys.text.length;
-  return 0;
 }
 
 // --- what is deliberately not here --------------------------------------------

@@ -1,11 +1,13 @@
 import {
   BadgeCheck,
+  Building2,
   ChartColumn,
   Ellipsis,
   FileSpreadsheet,
   HandCoins,
   Inbox,
   LayoutDashboard,
+  LayoutGrid,
   NotebookText,
   PiggyBank,
   ScrollText,
@@ -216,6 +218,29 @@ export const ALL_DESTINATIONS: Destination[] = [
  * different idea. There is no আরও row here because there is nothing left for it
  * to hold.
  */
+/**
+ * The operator's own destination.
+ *
+ * Kept out of `ALL_DESTINATIONS` and `HUB_DESTINATIONS` on purpose, so the আরও
+ * hub's search can never surface it to somebody who is not an operator — the
+ * panel's whole design premise is that it does not advertise itself. It is
+ * appended to the sidebar only when `/auth/me` says `isSuperAdmin`.
+ */
+export const ADMIN_GROUP: Group = {
+  id: 'platform',
+  title: 'প্ল্যাটফর্ম',
+  items: [
+    { href: '/admin', label: 'প্ল্যাটফর্ম', icon: LayoutGrid, blurb: 'সব ওয়ার্কস্পেস ও সীমা' },
+    { href: '/admin/tenants', label: 'ওয়ার্কস্পেস', icon: Building2, blurb: 'গ্রাহকের তালিকা' },
+    {
+      href: '/admin/audit',
+      label: 'সব কার্যবিবরণী',
+      icon: ScrollText,
+      blurb: 'সব টেন্যান্ট জুড়ে',
+    },
+  ],
+};
+
 export const SIDEBAR_GROUPS: Group[] = [
   { id: 'primary', title: '', items: PRIMARY.filter((item) => item.href !== MORE_HREF) },
   ...GROUPS,
@@ -239,6 +264,12 @@ export const SIDEBAR_GROUPS: Group[] = [
 export const ROUTE_TITLES: Record<string, string> = {
   ...Object.fromEntries(ALL_DESTINATIONS.map((item) => [item.href, item.label])),
   [MORE_HREF]: 'আরও',
+  /* Deliberately different from each page's own `<h1>` ("প্ল্যাটফর্মের
+   * সারসংক্ষেপ", "সব ওয়ার্কস্পেস"), so the phone title bar never repeats a
+   * heading that is already on the screen. */
+  '/admin': 'প্ল্যাটফর্ম',
+  '/admin/tenants': 'ওয়ার্কস্পেস',
+  '/admin/audit': 'কার্যবিবরণী',
 };
 
 /**
