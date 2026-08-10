@@ -82,11 +82,15 @@ KEEP_PRE_MIGRATE=5
 PRE_MIGRATE_DAYS=30
 
 # --- verification floors ------------------------------------------------------
-# A truncated or empty pg_dump gzips to a few hundred bytes; a real Hishab dump
-# (schema + any data at all) is several kilobytes even on the first day. 2 KiB
-# separates "nothing came out" from "a real dump" without ever tripping on a
-# small but legitimate database.
-MIN_BYTES=2048
+# Only large enough to catch "nothing came out". The floor used to be 2 KiB on
+# the reasoning that a real dump is always several kilobytes — which was wrong
+# the first time it mattered: a freshly reset database dumps to 369 bytes, and
+# the check aborted a deploy over a dump that was perfectly correct.
+#
+# The real guard against a truncated dump is the trailer below, which pg_dump
+# writes only on success and which no partial file can carry. This floor exists
+# purely so a zero-byte or header-only file is caught with a clearer message.
+MIN_BYTES=128
 # Refuse to dump if the backup filesystem has less than 1 GiB free. This box is
 # shared: filling the disk would take down other people's projects too.
 MIN_FREE_KB=$((1024 * 1024))
