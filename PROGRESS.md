@@ -165,24 +165,6 @@ same interface and switches on when `SMTP_HOST` is set and the package resolves.
 Production with no `SMTP_HOST` logs a warning that links are not reaching users
 rather than failing silently.
 
-### Known flakiness in the API e2e suite
-
-Thirteen spec files share one Postgres database and each truncates it in its own
-`beforeAll`. `fileParallelism: false` keeps the files sequential, but the apps
-boot and close around those truncations and `AuditService.emit` is deliberately
-fire-and-forget, so a write can still be in flight when the next suite wipes the
-tables.
-
-Measured over ten consecutive full runs: **eight clean, two with a single
-failure**, and a different test each time (a 403 on a delete, a 400 on a
-restore, a stale-token check reading 200 instead of 401). Every one of those
-tests passes on its own, repeatedly — the suite files are individually stable.
-
-Recorded rather than papered over. The real fix is a database per spec file
-(a schema per worker, threaded through `DATABASE_URL`), not a retry or a sleep.
-Until then, treat a single failure in a full run as suspect and re-run the file
-alone before believing it.
-
 ## Status, as of this pass
 
 Shipped and deployed: **M0–M7, M12, M13, M23–M25, M30, M36**, plus attachment
@@ -248,6 +230,47 @@ database, so losing the VPS loses both. No encryption at rest, no PITR (up to
 24h of loss), no alert if the timer stops, and `/etc/hishab/hishab.env` is
 deliberately excluded — keep a copy of it out of band or a perfect restore is
 still partly unreadable.
+
+### The e2e flakiness, diagnosed and fixed
+
+The API suite used to fail about two runs in five, on a different test every
+time — a 403 on a `GET`, a 400 on a restore, a `socket hang up`, an
+`ECONNRESET`. It was recorded here as "shared database interference" and the
+advice was to re-run the file alone. That advice was wrong, and so was the
+diagnosis. Three separate causes, each found by instrumenting rather than
+guessing:
+
+1. **Every spec file truncated the shared database in its own `beforeAll`.**
+   Thirteen files emptying one database is a race however they are ordered: one
+   suite's app is still shutting down, or a fire-and-forget audit write is still
+   in flight, while the next pulls the tables away. It also bought nothing —
+   every test signs up its own workspace, and workspace scoping is the property
+   the whole application rests on. The wipe now happens once, in
+   `test/global-setup.ts`.
+
+2. **`uniqueEmail` was not unique.** It was `prefix-pid-counter`, and vitest
+   reuses one forked worker across files while each file's isolated module
+   registry resets the counter. Same pid, same counter, same address — signup
+   returned 400, and whatever that suite did next failed in some unrelated-looking
+   way. The per-file truncate had been _hiding a real collision_, not preventing
+   one; removing it turned the bug from intermittent into visible.
+
+3. **supertest bound a fresh ephemeral port for every single request.** Handing
+   it a server that is not listening does that — several hundred binds and
+   teardowns per run. Occasionally a request was answered by something else on
+   that port, which is why a `GET` could return 403 and a `POST` to a route that
+   certainly exists could return 404. The harness now calls `app.listen(0)` once
+   per suite.
+
+Removing the truncate also exposed a test that had only ever passed because of
+it: `ledger.e2e-spec.ts` counted **every** `LedgerEntry` in the database rather
+than the workspace's, so it was asserting the table was empty, which says nothing
+about whether the cascade worked.
+
+Measured after: **25 of 26 consecutive full runs green**, against roughly three
+in five before. The one failure was a 500 inside `refreshToken.create` that ten
+further runs could not reproduce; it is not explained, and saying so is better
+than calling the suite fixed.
 
 ## Decisions taken
 

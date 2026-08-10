@@ -219,10 +219,14 @@
    rather than replacing it, which is how the sheet once ended up a full width
    off-centre. The element also lives inside `.app-scroll`, which is
    `overflow-x: hidden`, so 14px of travel can never widen the document. */
+/* 2D, not translate3d. The 3D form forces a composited layer that survives the
+   animation, and a composited box measures 43.99998px where the layout box is
+   exactly 44 — which failed the 44px tap-target audit at 320px for a button
+   that was never actually too small. The movement looks identical. */
 @keyframes hishab-page-in {
   from {
     opacity: 0;
-    transform: translate3d(14px, 0, 0);
+    transform: translateX(14px);
   }
   to {
     opacity: 1;
@@ -233,7 +237,7 @@
 @keyframes hishab-page-back {
   from {
     opacity: 0;
-    transform: translate3d(-14px, 0, 0);
+    transform: translateX(-14px);
   }
   to {
     opacity: 1;

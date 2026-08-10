@@ -152,14 +152,14 @@ export class EntitlementsService implements OnModuleInit {
       this.prisma.account.count({
         where: {
           workspaceId,
+          // The loan control accounts are bookkeeping machinery, not accounts
+          // the user opened, and they carry a `systemKey` for exactly that
+          // reason — so this one filter also keeps them out of the count.
+          // Charging a plan slot for one would mean a 402 for doing the very
+          // thing the loan screen invited the user to do.
           systemKey: null,
           deletedAt: null,
           isArchived: false,
-          // A loan's control account is bookkeeping machinery, not an account
-          // the user opened. Counting it would spend a plan slot every time
-          // somebody records a loan, and they would hit a 402 for doing the
-          // very thing the loan screen invited them to do.
-          loanControl: null,
         },
       }),
       this.prisma.transaction.count({

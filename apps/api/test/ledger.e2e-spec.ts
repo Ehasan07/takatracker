@@ -566,6 +566,12 @@ describe('account deletion', () => {
     ]) {
       expect(await count).toBe(0);
     }
-    expect(await ctx.prisma.ledgerEntry.count()).toBe(0);
+    /* Scoped to this workspace. An unfiltered count passed only because every
+     * suite used to empty the database first; it was asserting that the whole
+     * table was empty, which says nothing about whether *this* workspace's
+     * entries were cascaded away. */
+    expect(await ctx.prisma.ledgerEntry.count({ where: { workspaceId: user.workspaceId } })).toBe(
+      0,
+    );
   });
 });

@@ -3,7 +3,6 @@ import { DEFAULT_CATEGORIES, SYSTEM_ACCOUNT_KEYS } from './categories.js';
 import {
   boundedDamerauLevenshtein,
   buildSearchKeys,
-  buildStoredSearchKeys,
   FIELD_BONUS,
   foldAny,
   foldLatin,
@@ -14,6 +13,9 @@ import {
   MAX_LENGTH_PENALTY,
   MAX_TOKENS_BRANCHED,
   maxDistanceFor,
+  MAX_UNIT_SPELLINGS,
+  MIN_B1_EXACT,
+  MIN_B_CONSONANTS,
   MIN_QUERY_LENGTH,
   normaliseSearchText,
   prepareQuery,
@@ -23,7 +25,6 @@ import {
   searchField,
   searchTokens,
   skeleton,
-  storedFoldNeedle,
   TIER_BASE,
   TIER_BUCKET,
   transliterateBengali,
@@ -426,6 +427,63 @@ describe('transliterateBengali — §2', () => {
     expect(keys.latin[MAX_TOKENS_BRANCHED]?.[0]).toBe('beton');
   });
 
+  it('never lets the unwritten inherent vowel lose a race to a second spelling', () => {
+    /* `ফ` has two base spellings and three ways to write the vowel that
+     * follows it. Crossed and capped at three, the list came out
+     * `fo pho fa` — and `f`, the spelling in `afroza`, `afsana` and `nasrin`,
+     * fell off the end. Twenty-two of the thirty-five consonants have a second
+     * base spelling, so this was 63% of them. The slot is reserved now. */
+    const twoBase = [
+      'ক',
+      'খ',
+      'ঘ',
+      'ঙ',
+      'চ',
+      'ছ',
+      'জ',
+      'ঝ',
+      'ঞ',
+      'ঠ',
+      'ঢ',
+      'থ',
+      'ধ',
+      'ফ',
+      'ভ',
+      'য',
+      'শ',
+      'ষ',
+      'স',
+      'ড়',
+      'ঢ়',
+    ];
+    for (const consonant of twoBase) {
+      // …ম forces the unit to be medial rather than word-final.
+      const forms = transliterateBengali(`${consonant}ম`);
+      const bare = forms.filter((f) => f.endsWith('m') && !/[aeiouw]m$/.test(f));
+      expect(bare.length, `${consonant}: ${forms.join(' ')}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('spells the names the dropped vowel used to hide', () => {
+    expect(transliterateBengali('আফরোজা')).toContain('afroja');
+    expect(transliterateBengali('আফসানা')).toContain('afsana');
+    expect(transliterateBengali('নাসরিন')).toContain('nasrin');
+    expect(transliterateBengali('তাসনিম')).toContain('tasnim');
+    // The most common name element in Bangladesh, in its standard spelling.
+    expect(transliterateBengali('ইসলাম')).toContain('islam');
+    expect(transliterateBengali('করিম')).toContain('krim');
+    expect(transliterateBengali('রিকশা')).toContain('riksha');
+  });
+
+  it('adds exactly one slot, and only where a vowel may go unwritten', () => {
+    // A written matra is written: খা is still three spellings, not four.
+    expect(transliterateBengali('খা')).toEqual(['kha', 'ka', 'khaa']);
+    expect(MAX_UNIT_SPELLINGS).toBe(MAX_ALTS_PER_UNIT + 1);
+    // Word-finally the vowel-less form is already the primary, so no slot.
+    expect(transliterateBengali('মন')[0]).toBe('mon');
+    expect(transliterateBengali('মন')).toContain('mono');
+  });
+
   it('is deterministic — same input, same array, every time', () => {
     for (const word of ['ব্যবসা', 'ইন্টারনেট', 'স্বাস্থ্য', 'খাবার', 'অন্যান্য']) {
       const a = transliterateBengali(word);
@@ -529,10 +587,13 @@ describe('the band invariant — §5.1', () => {
     'T_PREFIX',
     'B1_EXACT',
     'B1_PREFIX',
-    'B1_SUBSTR',
     'B2_EXACT',
     'B2_PREFIX',
   ];
+
+  /* `B1_SUBSTR` used to sit here, between B1-prefix and B2-exact. It is a
+   * suggestion now — an unanchored fragment of a folded name is a hint, not a
+   * result — so the main ladder is ten tiers and still exactly 100 apart. */
 
   const weights: readonly FieldWeight[] = ['PRIMARY', 'SECONDARY', 'FREE'];
 
@@ -577,10 +638,11 @@ describe('the band invariant — §5.1', () => {
     const bestSuggestion = Math.max(
       range('C_EXACT').max,
       range('C_PREFIX').max,
+      range('B1_SUBSTR').max,
       scoreFor('D_FUZZY', 'PRIMARY', 0, 0, 0),
     );
     expect(worstMain).toBeGreaterThan(bestSuggestion);
-    expect(worstMain).toBe(151);
+    expect(worstMain).toBe(251);
     expect(bestSuggestion).toBe(140);
   });
 
@@ -600,9 +662,14 @@ describe('the band invariant — §5.1', () => {
 
   it('agrees with itself about which bucket each tier is in', () => {
     for (const tier of MAIN) expect(TIER_BUCKET[tier]).toBe('main');
-    for (const tier of ['C_EXACT', 'C_PREFIX', 'D_FUZZY'] as const) {
+    for (const tier of ['C_EXACT', 'C_PREFIX', 'D_FUZZY', 'B1_SUBSTR'] as const) {
       expect(TIER_BUCKET[tier]).toBe('suggestion');
     }
+    // Every tier is in exactly one of the two lists, so nothing can be added
+    // to the enum and quietly land in neither.
+    expect(new Set([...MAIN, 'C_EXACT', 'C_PREFIX', 'D_FUZZY', 'B1_SUBSTR']).size).toBe(
+      Object.keys(TIER_BASE).length,
+    );
   });
 });
 
@@ -922,8 +989,13 @@ const WORKED: readonly Worked[] = [
     n: 39,
     typed: 'krim',
     where: 'people',
-    expect: { kind: 'suggestion', label: 'করিম', tier: 'C_EXACT' },
-    why: 'omitted vowel: krm = krm, three consonants passes the gate',
+    expect: { kind: 'first', label: 'করিম', tier: 'T_EXACT' },
+    why:
+      'Spec said C-exact, a suggestion, and so did this test — because `krim` was not a candidate ' +
+      'spelling of করিম. It was not one only because ক has two base spellings (k, c) and the cap ' +
+      'on one unit made the vowel-less `kr` lose to `co`. That was the bug, not the behaviour: ' +
+      '`krim` is how the name is written with the inherent vowel left out, `buildUnit` now reserves ' +
+      'that spelling a slot, and a spelling the user actually typed is a result, not a guess.',
   },
   {
     n: 40,
@@ -1127,16 +1199,20 @@ describe('§9 — the worked examples, verbatim', () => {
  * person to read the spec will hit exactly these.
  */
 describe('§9 — where the specification predicts something it does not produce', () => {
-  it('#17: House rent also matches, because both rows contain ভাড়া', () => {
-    // §9 says "Rental income only", reasoning that `bari` misses বাসা. True —
-    // but the AND is per *token* over the *whole row*, and `bari` folds to the
-    // same `bara` as ভাড়া, which House rent also has. Ranking is still right:
-    // Rental income is T-exact on both tokens, House rent only B1-exact on one.
+  it('#17: Rental income only, which is what §9 predicted after all', () => {
+    /* This test used to assert the opposite, and the opposite was the bug §9
+     * had spotted and this file had accepted. `bari` folds to `bara`; so does
+     * ভাড়া; so does বড়, বোরা, বীরা and most of a dictionary — four characters
+     * of `b1` carry two consonants and two collapsed vowel slots, and House
+     * rent was satisfying its half of the AND on that coincidence alone. At
+     * five characters (`MIN_B1_EXACT`) the coincidence is refused and §9's own
+     * prediction — "Rental income only" — is what comes out. */
     const result = searchDocs(categories, 'bari vara');
-    expect(result.hits.map((h) => [h.row.label, h.tier])).toEqual([
-      ['Rental income', 'T_EXACT'],
-      ['House rent', 'B1_EXACT'],
-    ]);
+    expect(result.hits.map((h) => [h.row.label, h.tier])).toEqual([['Rental income', 'T_EXACT']]);
+    // `vara` alone still reaches both rows: it is the AND that separates them.
+    expect(labels(categories, 'vara')).toContain('House rent');
+    // And the Banglish anyone would actually type for বাসা ভাড়া still works.
+    expect(labels(categories, 'basa bhara')[0]).toBe('House rent');
   });
 
   it('#48: `bus` finds Business, because the English name really does start with it', () => {
@@ -1178,15 +1254,57 @@ describe('the gates — §4.3, each justified by a verified false positive', () 
     expect(prepareQuery('ab').isFilter).toBe(true);
   });
 
-  it('B1-exact needs three characters: `jj` collapses to `j` and is refused', () => {
+  it('B1-exact needs five characters: `jj` collapses to `j` and is refused', () => {
     expect(foldLatin('jj')).toBe('j');
     expect(labels(categories, 'jj')).toEqual([]);
     expect(suggestionLabels(categories, 'jj')).toEqual([]);
   });
 
-  it('B1-prefix/substr needs four: `ss` collapses to `s` and cannot reach পোশাক', () => {
-    expect(foldLatin('ss')).toBe('s');
-    expect(labels(categories, 'ss')).not.toContain('Clothing');
+  it('B1-exact needs five characters because four is a coincidence', () => {
+    /* The gate was three. `water` and `other` both fold to `atar`, so
+     * `?q=water` returned অন্যান্য/Other expense at 640 — B1-exact, the tier
+     * that charges no length penalty because there is nothing left over to
+     * penalise. Four characters of b1 is two consonants and two collapsed
+     * vowel slots; the whole of English has to fit somewhere. */
+    expect(foldLatin('water')).toBe('atar');
+    expect(foldLatin('other')).toBe('atar');
+    expect(foldLatin('water')).toHaveLength(4);
+    expect(MIN_B1_EXACT).toBe(5);
+    expect(labels(categories, 'water')).toEqual([]);
+    // Five characters carrying two consonants is still allowed: `onnanyo` is a
+    // real spelling of অন্যান্য and the extra syllable is real information.
+    expect(foldLatin('onnanyo')).toBe('anana');
+    expect(labels(categories, 'onnanyo')[0]).toBe('Other income');
+  });
+
+  it('the partial B rungs count consonants, not characters', () => {
+    /* `a` at the b1 rung is not a vowel, it is the place a vowel used to be,
+     * so a length gate counts erased information as information. These four
+     * all cleared the old four-character gate and all named the wrong row. */
+    expect(MIN_B_CONSONANTS).toBe(3);
+    for (const [q, wrong] of [
+      ['uber', 'Food & groceries'], // abar ⊂ kabar a bajar
+      ['robi', 'Family & support'], // raba ⊂ parabar
+      ['dhaka', 'Education'], // daka ⊂ adakatan
+    ] as const) {
+      expect(skeleton(foldLatin(q)).length, q).toBeLessThan(MIN_B_CONSONANTS);
+      expect(labels(categories, q), q).not.toContain(wrong);
+      expect(labels(categories, q), q).toEqual([]);
+    }
+  });
+
+  it('B1-substr is a suggestion: an unanchored fragment is a hint, not a result', () => {
+    /* It was a main tier at 400, and it produced half of every false positive
+     * measured against the English dictionary. Demoted, not deleted: when
+     * nothing else matched, a fragment is still the best hint there is. */
+    expect(TIER_BUCKET.B1_SUBSTR).toBe('suggestion');
+    // `tarnet` — the middle of ইন্টারনেট, anchored to nothing at either end.
+    const result = searchDocs(categories, 'tarnet');
+    expect(result.hits).toEqual([]);
+    expect(result.suggestions.map((h) => [h.row.label, h.tier])).toContainEqual([
+      'Mobile & internet',
+      'B1_SUBSTR',
+    ]);
   });
 
   it('B2 needs four characters, which is the gate that stops `bus` reaching বাসা', () => {
@@ -1214,16 +1332,72 @@ describe('the gates — §4.3, each justified by a verified false positive', () 
     expect(forced.suggestions).toEqual([]);
   });
 
-  it('C and D can be switched off entirely, which is what transactions do', () => {
-    expect(searchDocs(people, 'krim', { allowSuggestions: false }).suggestions).toEqual([]);
-    expect(searchDocs(people, 'krim', { allowSuggestions: false }).hits).toEqual([]);
-    expect(searchDocs(people, 'krim').suggestions.length).toBeGreaterThan(0);
+  it('C and D can be switched off entirely, which is what the loans list does', () => {
+    /* This used to use `krim`, on the assumption that only C could reach করিম
+     * from a spelling with the inherent vowel left out. That assumption was
+     * the bug: `krim` is a candidate spelling now and lands in the main list.
+     * `korin` is the real thing this test is about — a genuine typo, one
+     * substitution away, which nothing but D can find. */
+    expect(searchDocs(people, 'korin', { allowSuggestions: false }).suggestions).toEqual([]);
+    expect(searchDocs(people, 'korin', { allowSuggestions: false }).hits).toEqual([]);
+    expect(searchDocs(people, 'korin').suggestions.length).toBeGreaterThan(0);
   });
 
   it('never fuzzy-matches digits — two loan numbers are not a typo apart', () => {
     const result = searchDocs(loans, 'L-0001');
     expect(result.hits.map((h) => h.row.label)).toEqual(['L-0001']);
     expect(result.suggestions).toEqual([]);
+  });
+});
+
+/**
+ * The loans list passes `allowSuggestions: false`, so for it a suggestion and a
+ * miss are the same thing: an empty screen. Every name below is written the way
+ * it is written in Latin script — with the inherent vowel left out — and every
+ * one of them returned nothing before the slot was reserved.
+ */
+describe('a name written without its inherent vowel is a result, not a guess', () => {
+  const NAMES = [
+    'আফরোজা',
+    'আফসানা',
+    'নাসরিন',
+    'তাসনিম',
+    'নুরুল ইসলাম',
+    'করিম',
+    'সালমা',
+    'কামরুল',
+    'শাহনাজ',
+    'বিলকিস',
+    'নাজমুল',
+    'মাহমুদ',
+    'আসলাম',
+  ] as const;
+
+  const roster: SearchDoc<Row>[] = NAMES.map((name, i) => ({
+    id: `p${i}`,
+    row: { label: name },
+    order: i,
+    fields: [field('name', 'PRIMARY', name)],
+  }));
+
+  it.each([
+    ['afroza', 'আফরোজা'],
+    ['afsana', 'আফসানা'],
+    ['nasrin', 'নাসরিন'],
+    ['tasnim', 'তাসনিম'],
+    ['nurul islam', 'নুরুল ইসলাম'],
+    ['islam', 'নুরুল ইসলাম'],
+    ['krim', 'করিম'],
+    ['salma', 'সালমা'],
+    ['kamrul', 'কামরুল'],
+    ['shahnaj', 'শাহনাজ'],
+    ['bilkis', 'বিলকিস'],
+    ['najmul', 'নাজমুল'],
+    ['mahmud', 'মাহমুদ'],
+    ['aslam', 'আসলাম'],
+  ])('%s finds %s with suggestions off', (typed, want) => {
+    const result = searchDocs(roster, typed, { allowSuggestions: false });
+    expect(result.hits[0]?.row.label).toBe(want);
   });
 });
 
@@ -1299,7 +1473,7 @@ describe('the cases §9 did not list', () => {
     const result = searchDocs(categories, 'ঞঞঞঞ');
     expect(result.hits).toEqual([]);
     expect(result.suggestions.every((h) => h.tier === 'D_FUZZY')).toBe(true);
-    expect(Math.max(...result.suggestions.map((h) => h.score))).toBeLessThan(151);
+    expect(Math.max(...result.suggestions.map((h) => h.score))).toBeLessThan(251);
   });
 
   it('an empty field never matches anything', () => {
@@ -1643,53 +1817,19 @@ describe('§8 — search is for finding; identity resolution is a different ques
   });
 });
 
-// --- §6.2 the materialised columns -----------------------------------------------------
-
-describe('§6.2 — the stored keys a transaction row carries', () => {
-  it('stores norm and the b2 fold, space-joined across every searchable field', () => {
-    const keys = buildStoredSearchKeys(['খাবার — বাজার', 'করিম', null, 'L-0001']);
-    expect(keys.searchNorm).toBe('খাবার বাজার করিম l 0001');
-    expect(keys.searchFold).toBe('kabar bajar karam l 0001');
-  });
-
-  it('is null, not empty, when there is nothing to index', () => {
-    expect(buildStoredSearchKeys([null, undefined, '', '   '])).toEqual({
-      searchNorm: null,
-      searchFold: null,
-    });
-  });
-
-  it('is what makes #21 reachable in SQL at all', () => {
-    // Postgres cannot transliterate. The only reason `?q=mobile` can find a
-    // transaction described মোবাইল রিচার্জ is that this column exists.
-    const stored = buildStoredSearchKeys(['মোবাইল রিচার্জ']);
-    const needle = storedFoldNeedle('mobile');
-    expect(needle).toBe('mabal');
-    expect(stored.searchFold?.includes(needle as string)).toBe(true);
-    // The plain ILIKE the clause keeps alongside it finds nothing, as expected.
-    expect('মোবাইল রিচার্জ'.toLowerCase().includes('mobile')).toBe(false);
-  });
-
-  it('gates the SQL needle at four characters, because ILIKE has no ranking', () => {
-    expect(storedFoldNeedle('bus')).toBeNull(); // b2 is `bas`, three characters
-    expect(storedFoldNeedle('a')).toBeNull(); // not a filter at all
-    expect(storedFoldNeedle('')).toBeNull();
-    expect(storedFoldNeedle('khabar')).toBe('kabar');
-    expect(storedFoldNeedle('করিম')).toBe('karam');
-  });
-
-  it('keeps every digit of a reference intact', () => {
-    const keys = buildStoredSearchKeys(['Ref L-0001 / TRX 1100']);
-    expect(keys.searchNorm).toBe('ref l 0001 trx 1100');
-    expect(keys.searchFold).toBe('rap l 0001 trks 1100');
-  });
-
-  it('produces identical columns for the two byte sequences of the same word', () => {
-    const composed = buildStoredSearchKeys(['মোবাইল']);
-    const decomposed = buildStoredSearchKeys(['মোবাইল']);
-    expect(composed).toEqual(decomposed);
-  });
-});
+/*
+ * §6.2 of the specification asked for two materialised columns on
+ * `Transaction` — `searchNorm` and `searchFold` — and `@hishab/core` used to
+ * export `buildStoredSearchKeys` and `storedFoldNeedle` to fill them. The
+ * tests that stood here proved those two functions worked. Nothing called
+ * them, and the design was rejected rather than merely postponed: a fold
+ * materialised onto a transaction row is a copy of the category and person
+ * names, and it goes stale the moment either is renamed, silently.
+ *
+ * `transactions.service.ts` resolves `?q=` against the category and person
+ * lists in memory and filters the ledger on the ids instead, which cannot
+ * drift because there is no copy. See the note at the foot of `search.ts`.
+ */
 
 // --- keys ---------------------------------------------------------------------------------
 

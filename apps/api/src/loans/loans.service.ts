@@ -62,12 +62,20 @@ import type {
 /**
  * Loans given and taken.
  *
- * The money never lives here. Every loan owns a control account — RECEIVABLE
- * when we lent, PAYABLE when we borrowed — and the disbursement is an ordinary
- * transfer between that control account and a cash or bank account.
- * `packages/core/src/reports.ts` classifies by `ACCOUNT_CLASS`, so the
+ * The money never lives here. The workspace has two control accounts — ঋণ পাওনা
+ * (RECEIVABLE) and ঋণ দেনা (PAYABLE), made on first use by
+ * `AccountsService.loanControlAccount` — and every disbursement and every
+ * repayment is an ordinary transfer between the matching one and a cash or bank
+ * account. `packages/core/src/reports.ts` classifies by `ACCOUNT_CLASS`, so the
  * principal lands on the balance sheet and in the cash flow statement and is
  * **never** counted as income or expense (spec §12).
+ *
+ * **Two accounts, not one per loan.** A chart of accounts has a single
+ * *Accounts receivable*; করিম and রহিম are rows in its subsidiary ledger, not
+ * accounts of their own. Ours is derived rather than stored — `findOne` walks
+ * one loan's payments and `personLedger` walks one person's — so a per-loan
+ * balance cannot drift from the control account it rolls up into, and the
+ * wallet screen never has to show ten accounts because somebody made ten loans.
  *
  * **Principal and interest part company on the way back.** §12 draws its line
  * around the loan, not around the interest, and every serious ledger —
@@ -155,7 +163,7 @@ export interface LoanView {
   /** The cash or bank account the principal moved through. */
   accountId: string;
   accountName: string;
-  /** The RECEIVABLE / PAYABLE control account this loan owns. */
+  /** The workspace's shared ঋণ পাওনা / ঋণ দেনা control account. */
   loanAccountId: string;
   loanAccountName: string;
   /** The disbursement transaction. */
@@ -256,9 +264,6 @@ const UPCOMING_WINDOW_DAYS = 30;
 
 /** A picker shows a handful of rows. The controller's `limit` raises this. */
 const DEFAULT_PEOPLE_RESULTS = 20;
-
-/** Control accounts sort below the accounts a user actually picks from. */
-const CONTROL_ACCOUNT_SORT_ORDER = 900;
 
 const pad = (value: number, width: number): string => String(value).padStart(width, '0');
 
@@ -793,6 +798,14 @@ export class LoansService {
     const loanDate = fromLocalDateString(input.loanDate, ctx.timezone);
     const principalMinor = input.principalMinor;
 
+    /* The workspace's one receivable or one payable, made on first use. Resolved
+     * before the write rather than inside it: it belongs to the workspace, not
+     * to this loan, so a loan that fails to save must not undo it. */
+    const controlAccountId = await this.accounts.loanControlAccount(
+      ctx.workspaceId,
+      input.direction,
+    );
+
     const created = await this.runWithLoanNumberGuard(() =>
       this.prisma.$transaction(async (tx) => {
         /* Resolving the person inside the same write is what lets someone
@@ -803,18 +816,7 @@ export class LoansService {
           existingPerson ??
           (await LoansService.resolvePerson(tx, ctx.workspaceId, personName, input.personPhone));
 
-        const control = await tx.account.create({
-          data: {
-            workspaceId: ctx.workspaceId,
-            name: `${person.name} — ধার #${loanNumber}`,
-            type: input.direction === 'LENT' ? 'RECEIVABLE' : 'PAYABLE',
-            currency: CURRENCY,
-            openingBalance: 0n,
-            sortOrder: CONTROL_ACCOUNT_SORT_ORDER,
-          },
-        });
-
-        const pair = disbursementPair(input.direction, cashAccount.id, control.id);
+        const pair = disbursementPair(input.direction, cashAccount.id, controlAccountId);
         const entries = entriesFor(pair, principalMinor);
 
         const transaction = await tx.transaction.create({
@@ -845,7 +847,7 @@ export class LoansService {
             loanDate,
             dueDate: input.dueDate ? fromLocalDateString(input.dueDate, ctx.timezone) : null,
             accountId: cashAccount.id,
-            loanAccountId: control.id,
+            loanAccountId: controlAccountId,
             transactionId: transaction.id,
             note: input.note,
             attachmentIds: input.attachmentIds,
@@ -1212,10 +1214,14 @@ export class LoansService {
    * leaving its disbursement on the books indefensible. A receivable nobody
    * will ever collect, or a payable nobody will ever be paid, would sit on the
    * balance sheet for good and quietly overstate net worth. So the
-   * disbursement is reversed and the control account archived, exactly as a
-   * delete would do. The difference is that the `Loan` row stays visible with
-   * status CANCELLED: the list still shows it, the number is not reissued, and
-   * anyone wondering what happened to L-0004 can see.
+   * disbursement is reversed, exactly as a delete would do — and that alone is
+   * enough now that the control account is shared: soft-deleting the
+   * disbursement takes this loan's principal back out of ঋণ পাওনা, while every
+   * other loan's principal stays in it. (Archiving the account, which is what
+   * the old per-loan shape did here, would now hide every live debt in the
+   * workspace.) The difference from a delete is that the `Loan` row stays
+   * visible with status CANCELLED: the list still shows it, the number is not
+   * reissued, and anyone wondering what happened to L-0004 can see.
    */
   async cancel(ctx: TenantContext, id: string): Promise<LoanDetail> {
     const loan = await this.requireLoan(ctx.workspaceId, id);
@@ -1232,10 +1238,6 @@ export class LoansService {
           data: { deletedAt: new Date() },
         });
       }
-      await tx.account.updateMany({
-        where: { id: loan.loanAccountId, workspaceId: ctx.workspaceId },
-        data: { isArchived: true },
-      });
       await tx.loan.update({ where: { id: loan.id }, data: { status: 'CANCELLED' } });
     });
 
@@ -1250,7 +1252,6 @@ export class LoansService {
         status: 'CANCELLED',
         loanNumber: loan.loanNumber,
         disbursementReversed: loan.transactionId,
-        loanAccountArchived: true,
       },
     });
 
@@ -1258,9 +1259,11 @@ export class LoansService {
   }
 
   /**
-   * Soft delete. The disbursement is reversed and the control account archived
-   * in the same write, so nothing is left claiming a receivable that no loan
-   * explains. Refused once any money has come back — that history is real.
+   * Soft delete. The disbursement is reversed in the same write, so nothing is
+   * left claiming a receivable that no loan explains — reversing it is what
+   * removes this loan's principal from the shared control account, and the
+   * account itself is left alone because every other loan still posts to it.
+   * Refused once any money has come back — that history is real.
    */
   async remove(ctx: TenantContext, id: string): Promise<{ id: string }> {
     const loan = await this.requireLoan(ctx.workspaceId, id);
@@ -1278,10 +1281,6 @@ export class LoansService {
           data: { deletedAt },
         });
       }
-      await tx.account.updateMany({
-        where: { id: loan.loanAccountId, workspaceId: ctx.workspaceId },
-        data: { isArchived: true },
-      });
       await tx.loan.update({ where: { id: loan.id }, data: { deletedAt } });
     });
 
@@ -1297,7 +1296,7 @@ export class LoansService {
         principalMinor: minorToNumber(loan.principalMinor),
         status: loan.status,
       },
-      after: { deleted: true, loanAccountArchived: true, transactionId: loan.transactionId },
+      after: { deleted: true, transactionId: loan.transactionId },
     });
 
     return { id: loan.id };
@@ -1406,9 +1405,12 @@ export class LoansService {
   }
 
   /**
-   * The account the money actually moves through. A control account is refused
-   * on purpose: booking a loan against another loan's receivable would balance
-   * arithmetically and mean nothing.
+   * The account the money actually moves through.
+   *
+   * `systemKey: null` already puts ঋণ পাওনা and ঋণ দেনা out of reach, so the
+   * type check below is about the user's *own* receivable and payable
+   * accounts: booking a loan against one of those would balance arithmetically
+   * and mean nothing, because no cash moved.
    */
   private async requireCashAccount(
     workspaceId: string,
@@ -1424,7 +1426,7 @@ export class LoansService {
     }
     if (account.type === 'RECEIVABLE' || account.type === 'PAYABLE') {
       throw new BadRequestException(
-        'ঋণের নিয়ন্ত্রণ অ্যাকাউন্ট বেছে নেওয়া যাবে না — নগদ, ব্যাংক বা মোবাইল ওয়ালেট অ্যাকাউন্ট নির্বাচন করুন',
+        'পাওনা বা দেনা অ্যাকাউন্টে টাকা রাখা হয় না — নগদ, ব্যাংক বা মোবাইল ওয়ালেট অ্যাকাউন্ট নির্বাচন করুন',
       );
     }
     return { id: account.id, name: account.name };
@@ -1608,12 +1610,21 @@ export class LoansService {
    * above it the transliteration and fold rungs reach করিম from `karim` and
    * from `korim`, which no `contains` ever could.
    *
-   * **Suggestions are off.** They are the C and D rungs — deliberate
-   * near-misses — and this endpoint hands back a bare `LoanView[]` with nowhere
-   * to mark a row as a guess. A filtered list of debts where some rows do not
-   * match the filter shows a wrong debt as a right one; the picker above can
-   * afford them because its shape can label them. It also spares every row the
-   * edit-distance work.
+   * **Suggestions are off, and re-checked.** They are the C, D and B1-substr
+   * rungs — deliberate near-misses — and this endpoint hands back a bare
+   * `LoanView[]` with nowhere to mark a row as a guess. A filtered list of
+   * debts where some rows do not match the filter shows a wrong debt as a right
+   * one; the picker above can afford them because its shape can label them. It
+   * also spares every row the edit-distance work.
+   *
+   * The setting was worth re-checking, because it used to be doing a second job
+   * badly. `afroza`, `nasrin`, `tasnim`, `krim`, `islam` — names written the
+   * ordinary way, with the inherent vowel left out — could only be reached by
+   * the C rung, so with suggestions off they returned **nothing at all**. That
+   * was a hole in the candidate set, not a case for turning guessing on: core's
+   * `buildUnit` now reserves the vowel-less spelling a slot and all of them
+   * arrive in the main bucket, at T-exact. Switching suggestions on would have
+   * papered over the hole and put a wrong loan on screen to do it.
    *
    * A query too short to be a filter comes back as the untouched list. That is
    * `filtered: false`, and it is deliberate: `5` used to return every loan with

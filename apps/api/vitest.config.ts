@@ -22,6 +22,18 @@ export default defineConfig({
     env: { DATABASE_URL },
     // Suites share one Postgres database; run them one at a time.
     fileParallelism: false,
+    // Wiped once, before anything runs — never between suites. See harness.ts.
+    globalSetup: ['./test/global-setup.ts'],
+    /* One fresh process per spec file.
+     *
+     * Each file boots a whole Nest application: a Prisma pool, a scheduler, an
+     * in-memory throttler store, and an HTTP server supertest talks to. Running
+     * thirteen of those one after another inside one reused worker accumulated
+     * open handles, and the symptom was an intermittent failure that landed on a
+     * different test each run — a 403, a socket hang up, an ECONNRESET. A file
+     * per process costs a few seconds and makes a green run mean something. */
+    pool: 'forks',
+    poolOptions: { forks: { isolate: true, singleFork: false, maxForks: 1, minForks: 1 } },
     hookTimeout: 30_000,
     testTimeout: 30_000,
   },

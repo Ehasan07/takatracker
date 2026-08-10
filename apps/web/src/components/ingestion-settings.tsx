@@ -221,6 +221,7 @@ export function IngestionSettings() {
           ) : null}
 
           <AndroidSteps />
+          <IphoneSteps />
         </>
       )}
     </section>
@@ -287,6 +288,104 @@ function CopyRow({
         {copied ? `${label} কপি হয়েছে` : ''}
       </span>
     </div>
+  );
+}
+
+/**
+ * The iPhone has no forwarder app worth trusting with bank SMS, so the route is
+ * Apple's own Shortcuts automation. It is fiddlier than Android's — four things
+ * have to be typed into one screen and none of them is discoverable — which is
+ * exactly why the steps below name the buttons.
+ *
+ * The mistake worth pre-empting: people paste a bare IP and port. The address
+ * here is HTTPS on the real hostname, because the secret travels in a header
+ * and plain HTTP would put it on the wire in the clear.
+ */
+function IphoneSteps() {
+  const steps: [string, React.ReactNode][] = [
+    [
+      'অটোমেশন খুলুন',
+      <>
+        Shortcuts অ্যাপ খুলুন → নিচে <em>Automation</em> → <em>+</em> → নিচে নেমে <em>Message</em>{' '}
+        বেছে নিন।
+      </>,
+    ],
+    [
+      'কখন চলবে',
+      <>
+        <em>Message Contains</em>-এ ব্যাংকের বার্তায় থাকে এমন একটি শব্দ দিন — যেমন <code>BDT</code>{' '}
+        বা <code>Tk</code>। ঘরটি খালি রাখলে অটোমেশন চালু হবে না। নিচে <em>Run Immediately</em> বেছে
+        নিন, নাহলে প্রতিবার হাতে অনুমতি দিতে হবে।
+      </>,
+    ],
+    [
+      'অ্যাকশন যোগ করুন',
+      <>
+        <em>Next</em> → <em>New Blank Automation</em> → খোঁজার ঘরে <em>Get Contents of URL</em> লিখে
+        সেটি যোগ করুন।
+      </>,
+    ],
+    [
+      'ঠিকানা',
+      <>
+        URL-এর ঘরে উপরের <strong>ঠিকানাটি</strong> বসান। কোনো IP বা পোর্ট নয় — ঠিকানাটি{' '}
+        <code>https://</code> দিয়ে শুরু হতে হবে, কারণ সিক্রেটটি হেডারে যায় এবং সাধারণ{' '}
+        <code>http</code>-এ সেটি খোলা তারে চলে যাবে।
+      </>,
+    ],
+    [
+      'Method ও হেডার',
+      <>
+        <em>Get Contents of</em>-এর পাশের তীরটিতে চাপ দিন। <em>Method</em> করুন <code>POST</code>।{' '}
+        <em>Headers</em>-এ উপরের দুই জোড়া নাম ও মান ছবহু বসান — একটি ওয়ার্কস্পেস আইডি, আরেকটি
+        সিক্রেট।
+      </>,
+    ],
+    [
+      'বার্তার ঘর',
+      <>
+        <em>Request Body</em> করুন <em>JSON</em>। তিনটি ঘর যোগ করুন — <code>channel</code> ={' '}
+        <code>SMS</code>, <code>sender</code> = বার্তা পাঠানো নম্বর, আর <code>body</code>-তে{' '}
+        <em>Shortcut Input</em> ভেরিয়েবলটি বসান (কীবোর্ডের উপরে <em>Shortcut Input</em> লেখা নীল
+        চিপটি)। ওই ভেরিয়েবলেই আসল বার্তাটি থাকে।
+      </>,
+    ],
+    [
+      'পরীক্ষা করুন',
+      <>
+        <em>Done</em> চাপুন। এবার নিজের নম্বরে <code>BDT 100 test</code> লিখে একটি বার্তা পাঠান —
+        সেটি <a href="/inbox">বার্তার ইনবক্সে</a> খসড়া হয়ে আসবে। একই বার্তা দুইবার এলে দ্বিতীয়বার
+        নতুন কিছু যোগ হবে না।
+      </>,
+    ],
+  ];
+
+  return (
+    <details className="border-rule mt-4 rounded-md border p-3">
+      <summary className="text-ink cursor-pointer text-sm font-medium">
+        আইফোনে কীভাবে সেট করবেন
+      </summary>
+      <ol className="mt-3 flex flex-col gap-3">
+        {steps.map(([title, body], index) => (
+          <li key={title} className="flex min-w-0 gap-3">
+            <span
+              aria-hidden
+              className="bg-greenbar text-ink-muted flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+            >
+              {'১২৩৪৫৬৭৮৯'[index] ?? String(index + 1)}
+            </span>
+            <div className="min-w-0">
+              <p className="text-ink text-sm font-medium">{title}</p>
+              <p className="text-ink-muted text-sm [&_code]:font-mono [&_code]:text-xs">{body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="text-ink-muted mt-3 text-xs">
+        আইফোনের অটোমেশন কেবল Messages অ্যাপে আসা বার্তাতেই চলে, আর ফোনটি আনলক থাকতে হয় না। WhatsApp
+        বা অন্য অ্যাপের বার্তা এভাবে পাঠানো যায় না।
+      </p>
+    </details>
   );
 }
 

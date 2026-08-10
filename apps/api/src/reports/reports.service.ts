@@ -141,10 +141,22 @@ export class ReportsService {
     );
   }
 
-  /** Assets, liabilities and net worth, always with the breakdown. */
+  /**
+   * Assets, liabilities and net worth, always with the breakdown.
+   *
+   * Deliberately **not** filtered on `systemKey`. What belongs on a balance
+   * sheet is decided by account class, and `buildBalanceSheet` already drops
+   * everything `ACCOUNT_CLASS` calls NOMINAL — which is exactly the three
+   * EQUITY nominal accounts the old `systemKey: null` was there to remove. The
+   * two loan control accounts also carry a `systemKey`, to keep them off the
+   * wallet list, but ঋণ পাওনা is an asset and ঋণ দেনা is a liability: filtering
+   * them out here would drop every loan in the workspace off the statement that
+   * is supposed to show debts. Hiding a screen and omitting a balance are
+   * different jobs, and only one of them belongs to `systemKey`.
+   */
   async balanceSheet(ctx: TenantContext): Promise<BalanceSheet> {
     const accounts = await this.prisma.account.findMany({
-      where: { workspaceId: ctx.workspaceId, systemKey: null, deletedAt: null },
+      where: { workspaceId: ctx.workspaceId, deletedAt: null },
       select: { id: true, name: true, type: true },
     });
     const balances = await this.accounts.balances(ctx.workspaceId);

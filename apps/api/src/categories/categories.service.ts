@@ -271,10 +271,14 @@ export class CategoriesService {
  * is a no-op on a script with no case, `unaccent` has no Bengali rules, and the
  * trigram similarity between `খাবার` and `khabar` is exactly zero because they
  * share no trigrams. `?q=khabar` finds `খাবার ও বাজার` only because the fold
- * runs here, in TypeScript, over the rows already in hand. If this list ever
- * grows past a few hundred rows per workspace the answer is to materialise the
- * fold into a column at write time (`buildStoredSearchKeys` in @hishab/core,
- * which is what transactions do) — not to swap the matcher for `contains`.
+ * runs here, in TypeScript, over the rows already in hand.
+ *
+ * This list is also what makes the *transaction* filter understand Banglish:
+ * `TransactionsService.buildSearchWhere` matches `?q=` against exactly these
+ * rows and then filters the ledger on the ids it gets back, because the ledger
+ * itself is far too large to fold in memory. So if this list ever grows past a
+ * few hundred rows per workspace, two endpoints slow down, not one — and the
+ * answer is still not `contains`, which cannot cross scripts at all.
  */
 function searchCategories(views: readonly CategoryView[], rawQuery: string): CategoryView[] {
   const docs: SearchDoc<CategoryView>[] = views.map((c) => ({

@@ -302,8 +302,12 @@ model Account {
   sortOrder           Int         @default(0)
   icon                String?
   color               String?
-  /// Set only on the hidden nominal accounts (SYSTEM_INCOME / SYSTEM_EXPENSE /
-  /// SYSTEM_EQUITY) that make the double entry balance. Never shown in the UI.
+  /// Set on the nominal accounts that make the double entry balance
+  /// (SYSTEM_INCOME / SYSTEM_EXPENSE / SYSTEM_EQUITY) and on the two loan
+  /// control accounts (SYSTEM_LOAN_RECEIVABLE / SYSTEM_LOAN_PAYABLE). All five
+  /// are kept off the wallet list and out of the plan's account limit. The
+  /// balance sheet does *not* filter on this: it sorts by account class, so the
+  /// loan control accounts appear there and the nominal ones do not.
   systemKey           String?
   /// Credit cards only. 1–31; a due day past the end of a short month is
   /// clamped to its last day, so the 31st is the 28th in February.
@@ -319,7 +323,10 @@ model Account {
   entries        LedgerEntry[]
   reminderCycles CardReminderCycle[]
   loansFunded    Loan[]              @relation("LoanCashAccount")
-  loanControl    Loan?               @relation("LoanControlAccount")
+  /// Many, not one: every LENT loan in the workspace posts to the same
+  /// SYSTEM_LOAN_RECEIVABLE account and every BORROWED one to the same
+  /// SYSTEM_LOAN_PAYABLE.
+  loanControlFor Loan[]              @relation("LoanControlAccount")
   loanPayments   LoanPayment[]
 
   @@unique([workspaceId, systemKey])
@@ -529,12 +536,18 @@ enum PaymentMethod {
 /// A loan given or taken.
 ///
 /// The money itself lives in the ordinary double-entry ledger, exactly as it
-/// would in QuickBooks: every loan owns a control account (RECEIVABLE when we
-/// lent, PAYABLE when we borrowed) and disbursement and repayment are plain
-/// transfers between that control account and a cash or bank account. So the
+/// would in QuickBooks: the workspace has *two* control accounts, ঋণ পাওনা
+/// (RECEIVABLE) and ঋণ দেনা (PAYABLE), and disbursement and repayment are plain
+/// transfers between the matching one and a cash or bank account. So the
 /// balance sheet, the cash flow statement and the running balance on the
 /// account statement all pick loans up with no special-casing, and no loan
 /// movement is ever counted as income or expense.
+///
+/// Two control accounts, not two hundred. What each person owes is the
+/// subsidiary ledger, and it is *derived*: `GET /loans/:id` and
+/// `GET /loans/people/:personId/ledger` compute it from these rows and their
+/// payments, so a per-loan balance can never disagree with the account it rolls
+/// up into.
 ///
 /// This table therefore holds only what the ledger cannot: the loan number, the
 /// counterparty, the agreed terms and the due date.
@@ -559,8 +572,13 @@ model Loan {
 
   /// The cash or bank account the principal moved through.
   accountId     String
-  /// The RECEIVABLE or PAYABLE control account this loan owns.
-  loanAccountId String  @unique
+  /// The workspace's shared RECEIVABLE (LENT) or PAYABLE (BORROWED) control
+  /// account that this loan's entries post to. Kept rather than re-derived from
+  /// `direction` on every read because it records where the money *actually*
+  /// went: it is the join the migration verified and the one that stays true if
+  /// a workspace ever gains a third control account. Not unique — the whole
+  /// point is that every loan of a direction shares one.
+  loanAccountId String
   /// The disbursement transaction, so the two can never drift apart.
   transactionId String?
 
@@ -579,6 +597,7 @@ model Loan {
   payments    LoanPayment[]
 
   @@unique([workspaceId, loanNumber])
+  @@index([workspaceId, loanAccountId])
   @@index([workspaceId, status])
   @@index([workspaceId, direction, status])
   @@index([workspaceId, personId])

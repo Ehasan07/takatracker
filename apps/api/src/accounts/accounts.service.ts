@@ -1,11 +1,45 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { SYSTEM_ACCOUNT_KEYS, type SystemAccounts } from '@hishab/core';
 import { type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
-import type { Account, AccountType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { Account, AccountType, LoanDirection } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { minorToNumber } from '../common/bigint-json';
+
+/**
+ * The workspace's two loan control accounts.
+ *
+ * Not in `@hishab/core`'s `SYSTEM_ACCOUNT_KEYS` with the three nominal ones,
+ * because these are not nominal: they hold real balances that belong on the
+ * balance sheet. They share the `systemKey` mechanism only for what it buys —
+ * one row per workspace enforced by `@@unique([workspaceId, systemKey])`, and
+ * exclusion from the wallet list and the plan's account limit.
+ */
+export const LOAN_CONTROL_ACCOUNT_KEYS = {
+  receivable: 'SYSTEM_LOAN_RECEIVABLE',
+  payable: 'SYSTEM_LOAN_PAYABLE',
+} as const;
+
+const LOAN_CONTROL_ACCOUNT_SEED: Record<
+  LoanDirection,
+  { systemKey: string; name: string; type: AccountType }
+> = {
+  LENT: {
+    systemKey: LOAN_CONTROL_ACCOUNT_KEYS.receivable,
+    name: 'ঋণ পাওনা',
+    type: 'RECEIVABLE',
+  },
+  BORROWED: {
+    systemKey: LOAN_CONTROL_ACCOUNT_KEYS.payable,
+    name: 'ঋণ দেনা',
+    type: 'PAYABLE',
+  },
+};
+
+/** Control accounts sort below the accounts a user actually picks from. */
+const CONTROL_ACCOUNT_SORT_ORDER = 900;
 
 export interface AccountWithBalance {
   id: string;
@@ -50,6 +84,65 @@ export class AccountsService {
     return { incomeAccountId: income, expenseAccountId: expense, equityAccountId: equity };
   }
 
+  /**
+   * The workspace's loan control account for one direction, made on first use.
+   *
+   * One RECEIVABLE (ঋণ পাওনা) and one PAYABLE (ঋণ দেনা) for the whole
+   * workspace, never one per loan. *Accounts receivable* is a single line in a
+   * chart of accounts; করিম and রহিম are rows in its subsidiary ledger, which
+   * here is `GET /loans/people/:personId/ledger` — derived from the payments,
+   * not stored. Ten loans must not mean ten accounts.
+   *
+   * Lazy rather than seeded at signup like the three nominal accounts, and lazy
+   * **per direction** rather than in pairs. Both halves matter: the balance
+   * sheet no longer filters on `systemKey`, so an unused ঋণ দেনা would print a
+   * ৳0 liability to somebody who has only ever lent money — bookkeeping
+   * machinery on a user's screen, which is the whole complaint this change
+   * exists to answer. The migration creates them per direction for the same
+   * reason.
+   */
+  async loanControlAccount(workspaceId: string, direction: LoanDirection): Promise<string> {
+    return this.ensureSystemAccount(workspaceId, LOAN_CONTROL_ACCOUNT_SEED[direction]);
+  }
+
+  private async ensureSystemAccount(
+    workspaceId: string,
+    seed: { systemKey: string; name: string; type: AccountType },
+  ): Promise<string> {
+    const where = { workspaceId, systemKey: seed.systemKey };
+    const existing = await this.prisma.account.findFirst({ where, select: { id: true } });
+    if (existing) return existing.id;
+
+    try {
+      /* Deliberately not inside the caller's `$transaction`: a loan that fails
+       * to save must not take the workspace's control account down with it,
+       * and the account is workspace-level machinery that is correct whether
+       * or not this particular loan lands. It also never passes through
+       * `entitlements.assertWithinLimit` — a plan slot is for an account the
+       * user opened, not for the bookkeeping behind the loan screen. */
+      const created = await this.prisma.account.create({
+        data: {
+          workspaceId,
+          name: seed.name,
+          type: seed.type,
+          systemKey: seed.systemKey,
+          sortOrder: CONTROL_ACCOUNT_SORT_ORDER,
+        },
+        select: { id: true },
+      });
+      return created.id;
+    } catch (err) {
+      /* Two loans recorded in the same instant both find nothing and both
+       * insert. `@@unique([workspaceId, systemKey])` picks a winner; the loser
+       * takes the winner's account rather than failing a loan over a race. */
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const won = await this.prisma.account.findFirst({ where, select: { id: true } });
+        if (won) return won.id;
+      }
+      throw err;
+    }
+  }
+
   /** Signed balance per account: opening balance plus every live ledger entry. */
   async balances(workspaceId: string): Promise<Map<string, number>> {
     const grouped = await this.prisma.ledgerEntry.groupBy({
@@ -79,6 +172,16 @@ export class AccountsService {
     return out;
   }
 
+  /**
+   * The wallet screen: the accounts the user actually opened.
+   *
+   * `systemKey: null` is what keeps bookkeeping machinery off it — the three
+   * nominal accounts and the two loan control accounts. Adding a receivable to
+   * a bank balance produces a number that means nothing, so the chart of
+   * accounts and the wallet are different screens; the control accounts show up
+   * on `GET /reports/balance-sheet`, where an asset and a liability are told
+   * apart.
+   */
   async list(workspaceId: string, includeArchived = false): Promise<AccountWithBalance[]> {
     const accounts = await this.prisma.account.findMany({
       where: {
@@ -171,17 +274,14 @@ export class AccountsService {
   ): Promise<AccountWithBalance> {
     const existing = await this.prisma.account.findFirst({
       where: { id, workspaceId, deletedAt: null },
-      include: { loanControl: { select: { loanNumber: true } } },
     });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
+    /* Covers the loan control accounts too, now that they are one shared pair
+     * per workspace carrying a `systemKey` rather than one account per loan.
+     * Renaming ঋণ পাওনা or retyping it to BANK would put every loan in the
+     * workspace on the wrong side of the balance sheet at once. */
     if (existing.systemKey)
       throw new BadRequestException('সিস্টেম অ্যাকাউন্ট সম্পাদনা করা যায় না');
-    // A loan owns its control account. Renaming or retyping it here would leave
-    // the loan screen describing something that no longer exists.
-    if (existing.loanControl)
-      throw new BadRequestException(
-        `এই অ্যাকাউন্টটি ঋণ #${existing.loanControl.loanNumber}-এর, ঋণের পাতা থেকে বদলাতে হবে`,
-      );
 
     /* Un-archiving adds an account back to the count, so it has to pass the same
      * limit `create` does. Without this, somebody at their ceiling could archive
@@ -236,18 +336,12 @@ export class AccountsService {
     id: string,
     actorUserId?: string,
   ): Promise<{ id: string; isArchived: boolean }> {
-    const existing = await this.prisma.account.findFirst({
-      where: { id, workspaceId },
-      include: { loanControl: { select: { loanNumber: true, status: true } } },
-    });
+    const existing = await this.prisma.account.findFirst({ where: { id, workspaceId } });
     if (!existing) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
+    /* Includes ঋণ পাওনা and ঋণ দেনা: they are shared by every loan in the
+     * workspace, so archiving one would hide every debt still owed. A loan is
+     * ended from the loan screen, which leaves the control account alone. */
     if (existing.systemKey) throw new BadRequestException('সিস্টেম অ্যাকাউন্ট আর্কাইভ করা যায় না');
-    // Archiving a live loan's control account would hide a debt that is still
-    // owed. Closing the loan archives it.
-    if (existing.loanControl && existing.loanControl.status === 'ACTIVE')
-      throw new BadRequestException(
-        `ঋণ #${existing.loanControl.loanNumber} এখনও চলমান, আগে সেটি শেষ বা বাতিল করুন`,
-      );
     await this.prisma.account.update({ where: { id }, data: { isArchived: true } });
     this.audit.emit({
       workspaceId,

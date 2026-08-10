@@ -3,8 +3,11 @@ import {
   assertBalanced,
   expandSimpleTransaction,
   reconciliationDelta,
+  searchDocs,
+  searchField,
   searchTokens,
   type EntryDraft,
+  type SearchDoc,
 } from '@hishab/core';
 import {
   fromLocalDateString,
@@ -334,9 +337,10 @@ export class TransactionsService {
     const tz = ctx.timezone;
 
     /* Built before the `where` so the unfiltered list path — the app's main
-     * screen — pays nothing for search: no tokenising, no extra predicates, no
-     * change to the plan the `[workspaceId, date desc]` index already serves. */
-    const search = query.q ? buildSearchWhere(ctx.workspaceId, query.q) : null;
+     * screen — pays nothing for search: no tokenising, no reference reads, no
+     * extra predicates, no change to the plan the `[workspaceId, date desc]`
+     * index already serves. `query.q` absent means not one line of this runs. */
+    const search = query.q ? await this.buildSearchWhere(ctx.workspaceId, query.q) : null;
 
     const where: Prisma.TransactionWhereInput = {
       workspaceId: ctx.workspaceId,
@@ -390,6 +394,65 @@ export class TransactionsService {
     }
 
     return { items, nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
+  }
+
+  /**
+   * The `?q=` filter, and the only place Banglish crosses into SQL.
+   *
+   * Two reads, in parallel, both workspace-scoped and both over a reference
+   * table a household counts in dozens. Neither filters `deletedAt`: a
+   * soft-deleted category still labels the historical rows it was attached to
+   * and `present()` still prints its name, so it has to stay findable by that
+   * name — the same rule the relation `ILIKE` this replaced followed.
+   *
+   * Each token is resolved separately so the AND across tokens keeps meaning
+   * what it meant: `করিম bhara` is "this person, and that word", and the person
+   * may be matched by id while the word is matched in the description.
+   */
+  private async buildSearchWhere(
+    workspaceId: string,
+    raw: string,
+  ): Promise<Prisma.TransactionWhereInput | null> {
+    const tokens = searchTokens(raw).slice(0, MAX_SEARCH_TOKENS);
+    if (tokens.length === 0) return null;
+
+    const [categories, persons] = await Promise.all([
+      this.prisma.category.findMany({
+        where: { workspaceId },
+        select: { id: true, name: true, nameBn: true },
+      }),
+      this.prisma.person.findMany({
+        where: { workspaceId },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    /* Keys are built once for the whole request and reused for every token —
+     * `searchDocs` never mutates a doc, and rebuilding them per token would be
+     * the only part of this that scaled badly. */
+    const categoryDocs: SearchDoc<{ id: string }>[] = categories.map((c) => ({
+      id: c.id,
+      row: { id: c.id },
+      fields: [searchField('nameBn', 'PRIMARY', c.nameBn), searchField('name', 'PRIMARY', c.name)],
+    }));
+    /* The same two category columns and the same one person column the relation
+     * `ILIKE` searched, deliberately not one more. `phone`, `relation` and the
+     * person note are all searchable data this endpoint has never covered, and
+     * widening what `q` reaches is a different decision from teaching it to
+     * cross scripts — `?q=17` should not return every transaction with someone
+     * whose phone number contains a seventeen. */
+    const personDocs: SearchDoc<{ id: string }>[] = persons.map((p) => ({
+      id: p.id,
+      row: { id: p.id },
+      fields: [searchField('name', 'PRIMARY', p.name)],
+    }));
+
+    const scopes = tokens.map((token) => ({
+      categoryIds: resolveIds(categoryDocs, token),
+      personIds: resolveIds(personDocs, token),
+    }));
+
+    return buildSearchWhereFor(workspaceId, tokens, scopes);
   }
 
   /**
@@ -617,10 +680,12 @@ function addOneDay(d: Date): Date {
  * How many tokens of `q` reach SQL.
  *
  * The schema caps `q` at 200 characters, which can tokenise into roughly a
- * hundred words, and each token costs six ILIKE branches — two of them across a
- * relation. The ceiling stops one search from planning six hundred predicates.
- * Dropped tokens would only ever have *narrowed* the result (tokens are ANDed),
- * so truncating widens slightly rather than hiding a row the user asked for.
+ * hundred words. Each token costs four ILIKE branches, up to two id-set
+ * branches — one of them across a relation — and one pass over the category and
+ * person lists in memory. The ceiling stops one search from planning several
+ * hundred predicates. Dropped tokens would only ever have *narrowed* the result
+ * (tokens are ANDed), so truncating widens slightly rather than hiding a row the
+ * user asked for.
  */
 const MAX_SEARCH_TOKENS = 8;
 
@@ -653,6 +718,32 @@ function needlesFor(token: string): string[] {
 }
 
 /**
+ * The category and person ids one query token resolves to, in memory.
+ *
+ * `filtered: false` means core decided the token was not a filter at all (one
+ * character, or nothing but punctuation) and handed back the whole list. Taking
+ * those ids would turn `?q=ও 5000` into "every category in the workspace", so
+ * the unfiltered answer is discarded rather than used.
+ */
+function resolveIds<T extends { id: string }>(
+  docs: readonly SearchDoc<T>[],
+  token: string,
+): string[] {
+  /* Suggestions off, for the reason the loans list has them off: this endpoint
+   * returns a bare page of transactions with nowhere to mark a row as a guess,
+   * and a ledger that quietly includes rows matching something adjacent to what
+   * was typed is wrong in the one place being wrong is unforgivable. */
+  const result = searchDocs(docs, token, { allowSuggestions: false });
+  return result.filtered ? result.hits.map((hit) => hit.id) : [];
+}
+
+/** What one query token can match, beyond the row's own text. */
+interface TokenScope {
+  readonly categoryIds: readonly string[];
+  readonly personIds: readonly string[];
+}
+
+/**
  * Translate `q` into a workspace-scoped `WHERE`: every token must appear
  * somewhere on the row, in any one of its searchable fields.
  *
@@ -668,57 +759,52 @@ function needlesFor(token: string): string[] {
  * §4.1 treats an empty normalisation as *no query*, and the two paths must not
  * disagree about it.
  *
- * ## What this cannot do
+ * ## Banglish, and where it comes from
  *
- * **Postgres cannot transliterate.** `khabar` will not find `খাবার` here, and no
- * amount of ILIKE will change that: the two strings share not one code point, so
- * neither is a substring of the other. `@hishab/core` bridges the scripts with a
- * five-rung fold (`transliterateBengali`, then `b1`/`b2`/`skel`), but that runs
- * in memory over a loaded list, and there are thousands of transactions — the
- * main screen cannot load them all. So this endpoint is the honest SQL subset:
- * script-preserving substring matching, nothing more. Banglish only finds a
- * Bengali row when something else bridges the gap for it.
+ * **Postgres cannot transliterate**, and no configuration makes it able to:
+ * `khabar` and `খাবার` share not one code point, so neither is a substring of
+ * the other and `pg_trgm` similarity between them is exactly zero. The bridge
+ * is `@hishab/core`'s five-rung fold, and that runs in TypeScript over a loaded
+ * list — which the ledger is not.
  *
- * Three smaller gaps follow from the same root:
+ * So the query is resolved against the two lists that *are* small enough to
+ * load: the workspace's categories and its people, a few dozen rows each,
+ * matched with the same `searchDocs` the pickers use. `khabar` becomes "the id
+ * of খাবার ও বাজার", and the SQL asks for transactions filed under that id —
+ * ORed with the script-preserving `ILIKE` over the row's own text, so nothing
+ * that matched before stops matching.
  *
+ * A **denormalised `searchFold` column on `Transaction`** was the other
+ * candidate and is the reason `buildStoredSearchKeys` exists in core. It is not
+ * built, and should not be: it copies the category and person names onto every
+ * transaction row, and the copy goes stale the moment somebody renames a
+ * category — with nothing on screen to say a row has become unsearchable. This
+ * way cannot drift, because there is no copy. It costs two small indexed reads
+ * on a search request and nothing at all on the unfiltered list.
+ *
+ * ## What it still cannot do
+ *
+ *  - **Free text stays script-bound.** A description reading `খাবার কিনলাম` on
+ *    an uncategorised row is not reachable from `khabar`; only the row's
+ *    category and counterparty cross scripts. Categorising is what makes a row
+ *    findable, which is also what makes it reportable.
  *  - **No ranking.** Rows come back newest-first, not best-match-first; the tier
  *    and score model in core has no SQL equivalent.
- *  - **No fuzziness.** A typo misses. `korim` finds nothing, and so does `karim`.
+ *  - **No fuzziness in the free text.** A typo in a description misses. A typo
+ *    in a category or person name misses too — suggestions are off here.
  *  - **No normalisation on the stored side.** The query is NFC-folded; a
  *    description typed on a keyboard that emits `ে`+`া` rather than `ো` is stored
  *    decomposed and stays invisible to a composed query.
- *
- * ## The smallest real fix — deliberately not built here
- *
- * Three options were on the table:
- *
- *  1. **A stored normalised + folded column on `Transaction`, maintained on
- *     write.** `buildStoredSearchKeys` in core already computes exactly the two
- *     values (`searchNorm`, `searchFold`), and `storedFoldNeedle` already turns a
- *     query into the matching needle. It needs a migration, a one-off backfill,
- *     and two lines in `create`/`update`.
- *  2. **A trigram GIN index.** Fixes the speed of `ILIKE '%x%'`, but not the
- *     script gap: Latin and Bengali trigrams share nothing, so `khabar` still
- *     misses `খাবার`.
- *  3. **Resolve Banglish to matching category and person ids first**, then filter
- *     on those ids. Cheap — categories and people are small enough to match in
- *     memory with `searchDocs` — but it only rescues rows that *point at* a
- *     matching category or person. A free-text `খাবার কিনলাম` with no category
- *     still misses.
- *
- * **Pick (1)**, with (2) as the index on top of it. It is the only one that
- * makes the row's own text findable across scripts, the fold is already written
- * and tested, and the cost is O(1) per write rather than per query. (3) is a
- * good complement later — it catches the categorised rows whose description says
- * nothing — but it is not a substitute.
  */
-function buildSearchWhere(workspaceId: string, raw: string): Prisma.TransactionWhereInput | null {
-  const tokens = searchTokens(raw).slice(0, MAX_SEARCH_TOKENS);
-  if (tokens.length === 0) return null;
-
+function buildSearchWhereFor(
+  workspaceId: string,
+  tokens: readonly string[],
+  scopes: readonly TokenScope[],
+): Prisma.TransactionWhereInput {
   return {
-    AND: tokens.map((token) => ({
-      OR: needlesFor(token).flatMap((needle) => {
+    AND: tokens.map((token, i) => {
+      const scope = scopes[i] ?? { categoryIds: [], personIds: [] };
+      const text = needlesFor(token).flatMap((needle) => {
         const contains = { contains: needle, mode: 'insensitive' } as const;
         return [
           { description: contains },
@@ -727,26 +813,25 @@ function buildSearchWhere(workspaceId: string, raw: string): Prisma.TransactionW
           /* Kept from the filter this replaced. A bank reference is how someone
            * finds the one transaction they have a receipt for. */
           { externalRef: contains },
-          /* Both relation hops repeat `workspaceId` even though they are only
-           * reachable from an already-scoped transaction. Search is exactly the
-           * endpoint where a missing tenant guard hands one person's
-           * counterparties to another, and the redundant predicate costs an
-           * index lookup that the join was doing anyway.
-           *
-           * Neither hop filters `deletedAt`: a soft-deleted category still
-           * labels the historical rows it was attached to, and `present()` still
-           * shows its name — so it has to stay findable by that name. */
-          { person: { workspaceId, name: contains } },
-          {
-            entries: {
-              some: {
-                workspaceId,
-                category: { workspaceId, OR: [{ name: contains }, { nameBn: contains }] },
-              },
-            },
-          },
         ];
-      }),
-    })),
+      });
+
+      /* Both id branches repeat `workspaceId` even though the ids came from a
+       * workspace-scoped read and the transaction is already scoped. Search is
+       * exactly the endpoint where a missing tenant guard hands one person's
+       * counterparties to another, and the redundant predicate costs an index
+       * lookup the join was doing anyway. */
+      const ids: Prisma.TransactionWhereInput[] = [];
+      if (scope.categoryIds.length > 0) {
+        ids.push({
+          entries: { some: { workspaceId, categoryId: { in: [...scope.categoryIds] } } },
+        });
+      }
+      if (scope.personIds.length > 0) {
+        ids.push({ personId: { in: [...scope.personIds] }, person: { workspaceId } });
+      }
+
+      return { OR: [...text, ...ids] };
+    }),
   };
 }

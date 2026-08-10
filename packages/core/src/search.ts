@@ -322,6 +322,11 @@ export function skeleton(b1: string): string {
 
 /** Deterministic caps, checked in the tests. See §2.2. */
 export const MAX_ALTS_PER_UNIT = 3;
+/**
+ * A unit that carries an **unwritten** inherent vowel keeps one spelling beyond
+ * the cost-ranked cap: the one with no vowel at all. See `buildUnit`.
+ */
+export const MAX_UNIT_SPELLINGS = MAX_ALTS_PER_UNIT + 1;
 export const MAX_UNITS_BRANCHED = 8;
 export const MAX_CANDIDATES_PER_TOKEN = 24;
 export const MAX_TOKENS_BRANCHED = 3;
@@ -476,8 +481,10 @@ const BA_PHALA: readonly string[] = ['', 'w', 'b'];
  * Word-final it is usually not written at all (`মন` → `mon`, `খাবার` →
  * `khabar`). Medially it is `o`, or `a`, or nothing (`বেতন` →
  * `beton`/`betan`/`betn`). The empty medial alternative is listed **last**
- * because it is the one that breaks the fold invariant of §2.2 — so a cap
- * truncation drops it first, and when it is dropped `skel` still catches the row.
+ * because it is the one that breaks the fold invariant of §2.2 — but it is
+ * never *dropped* for being last: `buildUnit` reserves it a slot of its own,
+ * because "the user did not write the vowel" is not a rare spelling, it is one
+ * of the three ordinary ones.
  */
 const INHERENT_FINAL: readonly string[] = ['', 'o'];
 const INHERENT_MEDIAL: readonly string[] = ['o', 'a', ''];
@@ -517,6 +524,23 @@ function rankAndCap(items: readonly Scored[], cap: number): string[] {
  * `vowelAlts === null` means the unit takes no vowel (an independent vowel
  * already has one, and `ং` `ঃ` `ঁ` `ৎ` never do). A base that already ends in a
  * vowel — a cluster like `ব্য` → `be` — takes none either.
+ *
+ * ## The reserved slot
+ *
+ * Crossing bases with vowels and capping the product treats "which consonant
+ * letter" and "did you write the vowel at all" as one question ranked on one
+ * scale. They are not one question. The second has three answers — `o`, `a`,
+ * nothing — and whole populations give the third; but on the crossed scale it
+ * costs `2 × VOWEL_ALT_COST` and so lost every race against a second consonant
+ * spelling. Twenty-two of the thirty-five consonants have one, so `ফ` kept
+ * `fo`/`pho`/`fa` and dropped `f`, and with it went `afroza`, `islam`,
+ * `nasrin`, `tasnim` and `riksha` — spellings that are not variants at all but
+ * the ordinary way the word is written in Latin script.
+ *
+ * So the vowel-less spelling is **reserved rather than ranked**: one extra
+ * slot, holding the primary base with no vowel. The other bases need no slot of
+ * their own — `f` and `ph` both fold to `p`, which is the §2.2 invariant doing
+ * precisely the job it exists for.
  */
 function buildUnit(bases: readonly string[], vowelAlts: readonly string[] | null): string[] {
   const items: Scored[] = [];
@@ -524,7 +548,23 @@ function buildUnit(bases: readonly string[], vowelAlts: readonly string[] | null
     const alts = vowelAlts === null || endsWithLatinVowel(base) ? [''] : vowelAlts;
     alts.forEach((v, vi) => items.push({ s: base + v, c: bi + vi * VOWEL_ALT_COST }));
   });
-  return rankAndCap(items, MAX_ALTS_PER_UNIT);
+  const ranked = rankAndCap(items, MAX_ALTS_PER_UNIT);
+
+  /* Only a unit whose vowel may go unwritten gets the slot, which in practice
+   * is the medial inherent vowel: word-finally the unwritten form is already
+   * the primary (`মন` → `mon`), and a written matra is written. */
+  const bare = bases[0];
+  if (
+    vowelAlts === null ||
+    !vowelAlts.includes('') ||
+    bare === undefined ||
+    bare === '' ||
+    endsWithLatinVowel(bare) ||
+    ranked.includes(bare)
+  ) {
+    return ranked;
+  }
+  return [...ranked, bare];
 }
 
 /** Cross two alternative lists, cheapest first. Used for conjunct consonants. */
@@ -883,11 +923,37 @@ export function buildSearchKeys(raw: string | null | undefined): SearchKeys {
 /** Below this many normalised characters a query is not a filter at all. */
 export const MIN_QUERY_LENGTH = 2;
 
-/** `b1(q)` must be at least this long before the B1 rung is allowed to fire. */
-export const MIN_B1_EXACT = 3;
+/**
+ * `b1(q)` must be at least this long before the B1-exact rung may fire.
+ *
+ * **Five, not three.** At `b1` every vowel is the single character `a`, so a key
+ * of length L carries at most ⌈L/2⌉ consonants: a four-character key carries
+ * two, and two consonants plus two collapsed vowel slots is a few hundred
+ * shapes for the whole of English to land in. `b1('water') === b1('other') ===
+ * 'atar'` is not bad luck, it is the pigeonhole principle — and it put
+ * `অন্যান্য` at the top of the list for `water`, at 640, looking certain.
+ * Five is the shortest key that *can* carry three consonants, and it is where a
+ * fold-level identity stops being a coincidence. Nothing short is lost: the
+ * shorter the token, the likelier the candidate set already enumerated the
+ * spelling the user typed, so short words are answered a rung higher, at T.
+ */
+export const MIN_B1_EXACT = 5;
 export const MIN_B1_PARTIAL = 4;
 /** `b2(q)` is looser still, so it needs a longer query in every form. */
 export const MIN_B2 = 4;
+/**
+ * How many consonants a fold key must carry before the *partial* B rungs — B1
+ * prefix and substring, and both B2 rungs — may fire.
+ *
+ * The same reasoning as `MIN_B1_EXACT`, applied where the match is not even a
+ * whole key: a length gate counts collapsed vowels as if they were information,
+ * and they are not. Counting consonants instead is exactly what the C rung
+ * already does with `MIN_C_CONSONANTS`, one rung further down the same ladder,
+ * and for the same reason. Measured against 86,032 English dictionary words and
+ * the seeded tree, this gate alone removes `uber` → খাবার ও বাজার, `robi` →
+ * পরিবার ও সহায়তা, `dhaka` → শিক্ষা and `water` → অন্যান্য.
+ */
+export const MIN_B_CONSONANTS = 3;
 /** `skel(q)` must carry this many consonants before the C rung is allowed. */
 export const MIN_C_CONSONANTS = 3;
 export const MIN_C_PREFIX_CONSONANTS = 4;
@@ -903,12 +969,12 @@ export type SearchTier =
   | 'T_PREFIX'
   | 'B1_EXACT'
   | 'B1_PREFIX'
-  | 'B1_SUBSTR'
   | 'B2_EXACT'
   | 'B2_PREFIX'
   | 'C_EXACT'
   | 'C_PREFIX'
-  | 'D_FUZZY';
+  | 'D_FUZZY'
+  | 'B1_SUBSTR';
 
 export type SearchBucket = 'main' | 'suggestion';
 
@@ -926,15 +992,15 @@ export const TIER_BASE: Readonly<Record<SearchTier, number>> = {
   T_PREFIX: 700,
   B1_EXACT: 600,
   B1_PREFIX: 500,
-  B1_SUBSTR: 400,
-  B2_EXACT: 300,
-  B2_PREFIX: 200,
+  B2_EXACT: 400,
+  B2_PREFIX: 300,
   // A separate scale, 10 points apart, that can never interleave with the main
   // results above: the best possible suggestion (100 + 40) still sits below the
-  // worst possible real match (200 − 49).
+  // worst possible real match (300 − 49).
   C_EXACT: 100,
   C_PREFIX: 90,
   D_FUZZY: 80,
+  B1_SUBSTR: 70,
 };
 
 export const TIER_BUCKET: Readonly<Record<SearchTier, SearchBucket>> = {
@@ -946,12 +1012,22 @@ export const TIER_BUCKET: Readonly<Record<SearchTier, SearchBucket>> = {
   T_PREFIX: 'main',
   B1_EXACT: 'main',
   B1_PREFIX: 'main',
-  B1_SUBSTR: 'main',
   B2_EXACT: 'main',
   B2_PREFIX: 'main',
   C_EXACT: 'suggestion',
   C_PREFIX: 'suggestion',
   D_FUZZY: 'suggestion',
+  /* **A suggestion, not a result.** Every other rung matches a whole key
+   * against a whole key, or anchors at a word boundary. This one asks whether
+   * the query's fold appears *anywhere inside* the row's folded name, which
+   * after the vowels have collapsed is close to asking whether a four-gram
+   * appears in a sentence: `uber` → `abar` sits inside `kabar a bajar`, `robi`
+   * → `raba` inside `parabar`, `dhaka` → `daka` inside `adakatan`. It supplied
+   * half of every false positive measured against the English dictionary and
+   * not one of the ninety-eight true matches in the recall suite. It stays,
+   * because a fragment is a real hint when nothing else matched — but it is a
+   * hint, and hints go in the bucket the client labels as hints. */
+  B1_SUBSTR: 'suggestion',
 };
 
 /** Exact tiers take no length penalty — there is nothing left over to penalise. */
@@ -1199,7 +1275,11 @@ export interface SearchResult<T> {
 }
 
 export interface SearchOptions {
-  /** Turn off C/D entirely — transactions never get them (§6.2). */
+  /**
+   * Turn the suggestion bucket off entirely. Set by every caller that returns a
+   * bare list with nowhere to mark a row as a guess — the loans list, and the
+   * category/person resolution behind the transaction filter.
+   */
   readonly allowSuggestions?: boolean;
   readonly suggestionThreshold?: number;
 }
@@ -1300,6 +1380,12 @@ function matchTokenAgainstField(
   }
 
   // --- B1 / B2: the folds -----------------------------------------------------
+  /* Every B rung below the whole-key identity is gated on consonants rather
+   * than characters, because `a` at this rung is not a vowel, it is the place
+   * where a vowel used to be. See `MIN_B_CONSONANTS`. */
+  const consonants = countConsonants(token.skel);
+  const partialB = consonants >= MIN_B_CONSONANTS;
+
   if (token.b1.length >= MIN_B1_EXACT) {
     for (const forms of keys.b1) {
       if (forms.some((f) => token.b1All.includes(f))) {
@@ -1307,7 +1393,7 @@ function matchTokenAgainstField(
       }
     }
   }
-  if (token.b1.length >= MIN_B1_PARTIAL) {
+  if (partialB && token.b1.length >= MIN_B1_PARTIAL) {
     let best: TokenHit | null = null;
     for (const forms of keys.b1) {
       for (const form of forms) {
@@ -1316,15 +1402,8 @@ function matchTokenAgainstField(
       }
     }
     if (best !== null) return { main: best, suggestion: null };
-
-    if (keys.b1Text.includes(token.b1)) {
-      return {
-        main: hit('B1_SUBSTR', keys.b1Text.length, token.b1.length),
-        suggestion: null,
-      };
-    }
   }
-  if (token.b2.length >= MIN_B2) {
+  if (partialB && token.b2.length >= MIN_B2) {
     for (const forms of keys.b2) {
       if (forms.includes(token.b2)) return { main: hit('B2_EXACT', 0, 0), suggestion: null };
     }
@@ -1340,8 +1419,7 @@ function matchTokenAgainstField(
 
   if (!allowSuggestions) return { main: null, suggestion: null };
 
-  // --- C / D: the suggestions bucket -----------------------------------------
-  const consonants = countConsonants(token.skel);
+  // --- C / D / B1-substr: the suggestions bucket ------------------------------
   if (consonants >= MIN_C_CONSONANTS) {
     for (const forms of keys.skel) {
       if (forms.includes(token.skel)) return { main: null, suggestion: hit('C_EXACT', 0, 0) };
@@ -1358,6 +1436,10 @@ function matchTokenAgainstField(
     if (best !== null) return { main: null, suggestion: best };
   }
 
+  /* The last two rungs score within ten points of each other, so neither may
+   * return early over the other: they are compared, not ordered. */
+  let weakest: TokenHit | null = null;
+
   /* Never fuzzy-match digits. `L-0001` and `L-0002` are one edit apart and are
    * two different loans; a typo tolerance that cannot tell them apart is the
    * same bug the digit exemption in the fold exists to prevent. */
@@ -1370,12 +1452,16 @@ function matchTokenAgainstField(
       const d = boundedDamerauLevenshtein(token.b1, form, budget);
       if (d < bestDistance) bestDistance = d;
     }
-    if (bestDistance <= budget) {
-      return { main: null, suggestion: hit('D_FUZZY', 0, 0, bestDistance) };
-    }
+    if (bestDistance <= budget) weakest = better(weakest, hit('D_FUZZY', 0, 0, bestDistance));
   }
 
-  return { main: null, suggestion: null };
+  /* B1-substr, the weakest rung there is: the query's fold appears somewhere
+   * inside the row's, aligned to nothing. See `TIER_BUCKET`. */
+  if (partialB && token.b1.length >= MIN_B1_PARTIAL && keys.b1Text.includes(token.b1)) {
+    weakest = better(weakest, hit('B1_SUBSTR', keys.b1Text.length, token.b1.length));
+  }
+
+  return { main: null, suggestion: weakest };
 }
 
 interface DocEvaluation<T> {
@@ -1593,59 +1679,27 @@ function fieldLengthOf<T>(doc: SearchDoc<T>, name: string | null): number {
   return 0;
 }
 
-// --- §6.2 stored keys for transactions ----------------------------------------
+// --- what is deliberately not here --------------------------------------------
 
-export interface StoredSearchKeys {
-  /** `norm()` of every searchable field, space-joined. Null when there is none. */
-  readonly searchNorm: string | null;
-  /**
-   * `trimFold()` of the transliterated same. The **B2** form is stored rather
-   * than B1 because transactions are not ranked, so only the loosest rung
-   * matters and one column is cheaper to index than two.
-   */
-  readonly searchFold: string | null;
-}
-
-/**
- * The two materialised columns a transaction row carries.
+/*
+ * **There is no `buildStoredSearchKeys`, and there should not be.**
  *
- * Postgres cannot transliterate and no configuration makes it able to:
- * `lower()` is a no-op on a script with no case, `unaccent` has no Bengali
- * rules, `pg_trgm` similarity between `খাবার` and `khabar` is exactly zero
- * because they share no trigrams, and there is no Bengali dictionary for
- * `to_tsvector`. So `?q=khabar` cannot find `খাবার — বাজার` unless the fold is
- * materialised at write time — not slowly, not partially, not at all.
+ * A pair of exported helpers used to live here — `buildStoredSearchKeys` and
+ * `storedFoldNeedle` — that computed a `searchNorm`/`searchFold` pair for a
+ * transaction row to carry in two materialised columns. They were thoroughly
+ * tested and called from nowhere, which is the worst state code can be in: it
+ * reads as a shipped feature, and a comment in `categories.service.ts` had
+ * already started citing it as "what transactions do". Transactions did not.
  *
- * It is **not** a generated column: the fold is a TypeScript function over a
- * sixty-entry grapheme table, and a PL/pgSQL copy of that table would drift.
- * The first symptom of the drift would be a row that is silently unsearchable
- * with nothing on screen to suggest anything is missing. One implementation,
- * here, called from every write path.
+ * The design was rejected, not merely unbuilt. Materialising the fold means
+ * copying the category name and the counterparty name onto every transaction
+ * row; the copy is correct exactly until somebody renames a category, and then
+ * it is silently wrong, with nothing on screen to say a row has stopped being
+ * findable. The fix would be a backfill nobody knows to run.
+ *
+ * `transactions.service.ts` does it the way that cannot drift: it resolves the
+ * query against the category and person lists — dozens of rows, already
+ * matched in memory by `searchDocs` — and filters the ledger on the ids that
+ * come back. Two small reads on a search, none at all on the unfiltered list,
+ * no schema change, no backfill, and no second copy of a name to go stale.
  */
-export function buildStoredSearchKeys(
-  parts: readonly (string | null | undefined)[],
-): StoredSearchKeys {
-  const joined = parts
-    .map((p) => (typeof p === 'string' ? p : ''))
-    .filter((p) => p !== '')
-    .join(' ');
-
-  const keys = buildSearchKeys(joined);
-  if (keys.text === '') return { searchNorm: null, searchFold: null };
-
-  return { searchNorm: keys.text, searchFold: trimFold(keys.b1Text) };
-}
-
-/**
- * The `searchFold` needle for a query, or null when it is too short to use.
- *
- * Gated at four characters for the same reason `B2` is: below that the fold
- * matches half the ledger, and unlike the in-memory tiers a SQL `ILIKE` has no
- * ranking to push the noise down.
- */
-export function storedFoldNeedle(rawQuery: string): string | null {
-  const query = prepareQuery(rawQuery);
-  if (!query.isFilter) return null;
-  const needle = query.tokens.map((t) => t.b2).join(' ');
-  return needle.length >= MIN_B2 ? needle : null;
-}
