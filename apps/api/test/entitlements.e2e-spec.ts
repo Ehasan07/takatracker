@@ -59,10 +59,17 @@ describe('entitlements', () => {
     expect(codes).toContain('FREE');
     expect(codes).toContain('PRO');
 
-    // v3 §B2: no public plan may ever unlock the SMS channel.
+    /* v3 §B2: no public plan may ever unlock the SMS channel.
+     *
+     * A plan that does not list the key at all satisfies that too — an unknown
+     * feature resolves to 0, deliberately, so a key nobody has priced is off
+     * everywhere rather than unlimited. Asserting the row exists would fail on
+     * any package created through the admin panel, which prices only what it
+     * means to sell, and would be testing the shape of the response rather than
+     * the rule. */
     for (const plan of res.body) {
       const sms = plan.features.find((f: { key: string }) => f.key === 'sms.channel');
-      expect(sms.limitValue).toBe(0);
+      expect(sms?.limitValue ?? 0).toBe(0);
     }
   });
 

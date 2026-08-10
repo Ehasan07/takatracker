@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Tag as TagIcon,
   Tags,
+  Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -148,6 +149,13 @@ export const GROUPS: Group[] = [
     id: 'data',
     title: 'তথ্য ও সরঞ্জাম',
     items: [
+      {
+        href: '/people',
+        label: 'মানুষজন',
+        icon: Users,
+        blurb: 'যাঁদের সাথে ধার-দেনা আছে — নাম, ফোন ও সম্পর্ক ঠিক করুন',
+        synonyms: 'people person contacts মানুষ ব্যক্তি পার্টি contact নাম ফোন',
+      },
       {
         href: '/mail',
         label: 'মেইল',

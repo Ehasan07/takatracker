@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { IngestionModule } from '../ingestion/ingestion.module';
 import { ImapMailProvider } from './imap.provider';
 import { MailAccountsController, MailMessagesController } from './mail-accounts.controller';
 import { MailAccountsService } from './mail-accounts.service';
@@ -11,18 +12,17 @@ import { GmailOAuthProvider, OutlookOAuthProvider } from './oauth.provider';
 /**
  * The mailbox connector.
  *
- * No imports: Prisma, audit and entitlements are all global modules, and this
- * module deliberately depends on nothing else in the application. Mail is read
- * and stored; it does not create transactions, touch the ledger, or reach into
- * ingestion. Turning a message into a `TransactionDraft` is the obvious next
- * step and it belongs on the ingestion side of that seam, where a human already
- * approves every draft before it becomes an entry.
+ * One import, and it is the seam this module was always going to grow. Prisma,
+ * audit and entitlements are global; `IngestionModule` is here because a synced
+ * message now becomes a `TransactionDraft` exactly as a forwarded SMS does —
+ * same parser registry, same dedup key, same review inbox, same audit action,
+ * same rule that **nothing becomes a transaction until a human accepts it**.
  *
- * ## Wiring
- *
- * TODO(main): `app.module.ts` is not edited by this change. Add
- * `MailAccountsModule` to its `imports` array — nothing else is needed, and
- * until then `/mail-accounts` and `/mail-messages` are not routed.
+ * The dependency points this way round on purpose. Ingestion knows nothing about
+ * mailboxes and must not: it is the shared pipeline, and every new source —
+ * SMS today, mail now, a bank's own webhook later — is a caller of it rather
+ * than a branch inside it. A second review queue for email would have avoided
+ * this import and been twice the code and a worse product.
  *
  * ## The three layers, and why they are separate providers
  *
@@ -39,6 +39,7 @@ import { GmailOAuthProvider, OutlookOAuthProvider } from './oauth.provider';
  * environment flag or a branch in production code.
  */
 @Module({
+  imports: [IngestionModule],
   controllers: [MailAccountsController, MailMessagesController],
   providers: [
     ImapMailProvider,

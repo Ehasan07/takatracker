@@ -143,23 +143,95 @@ export class AccountsService {
     }
   }
 
-  /** Signed balance per account: opening balance plus every live ledger entry. */
-  async balances(workspaceId: string): Promise<Map<string, number>> {
+  /**
+   * Signed balance per account: opening balance plus every live ledger entry.
+   *
+   * ## `before` — the same sum, stopped at a date
+   *
+   * Pass the instant the day *after* the as-of day begins in the workspace's
+   * timezone (`fromLocalDateString(nextDateKey(asOf), tz)`) and every entry
+   * dated strictly before it counts. That is the whole difference: opening
+   * balance plus history up to that moment, summed forwards.
+   *
+   * It is deliberately not "current balance minus everything since". The two
+   * agree only in a workspace where nothing was ever soft-deleted and nothing
+   * was ever back-dated, and this application supports both — subtracting
+   * backwards would credit a June sheet with a July deletion and miss a July
+   * entry dated in June. One summing convention, one place, so the wallet and
+   * the balance sheet can never quietly disagree.
+   *
+   * The map's keys are the accounts the books say were in use at `before` — see
+   * the account query below. Callers read the keyset for that rather than each
+   * re-deriving the rule.
+   */
+  async balances(workspaceId: string, before?: Date): Promise<Map<string, number>> {
     const grouped = await this.prisma.ledgerEntry.groupBy({
       by: ['accountId', 'direction'],
-      where: { workspaceId, transaction: { deletedAt: null } },
+      where: {
+        workspaceId,
+        transaction: {
+          /* Unfiltered by `before` on purpose. A transaction deleted *after* the
+           * as-of date is still deleted: the books say it never happened, not
+           * that it happened until March. The other reading — restore it for
+           * dates before the deletion — treats a correction as an event, so
+           * fixing a typo entered in January would silently rewrite what every
+           * month since then was worth. Deletion here is "this was never real",
+           * which is what the soft delete is for; something that really did
+           * happen and then stopped is a second transaction, not a deletion. */
+          deletedAt: null,
+          // The ledger date, not `createdAt`: a bill entered late still belongs
+          // to the day it was paid, which is what a balance sheet is asking.
+          ...(before ? { date: { lt: before } } : {}),
+        },
+      },
       _sum: { amountMinor: true },
     });
 
     const accounts = await this.prisma.account.findMany({
       where: { workspaceId },
-      select: { id: true, type: true, openingBalance: true },
+      select: { id: true, type: true, openingBalance: true, createdAt: true },
     });
 
-    const out = new Map<string, number>();
-    for (const acc of accounts) out.set(acc.id, minorToNumber(acc.openingBalance));
+    /* Which accounts a dated sheet lists.
+     *
+     * `isArchived` is not consulted, here or anywhere in this method: an account
+     * archived in July still held money in June and belongs on June's sheet.
+     * Nor is `deletedAt` — unchanged from before, and callers that care filter
+     * it themselves.
+     *
+     * An account opened after the day should not appear, and the only column
+     * that speaks to that is `createdAt`. But `createdAt` records when the
+     * *row* was inserted, not when the account was opened, and there is no
+     * column for the latter. Somebody who signs up in August and back-fills
+     * three months created every one of their accounts in August: on
+     * `createdAt` alone their June and July sheets come back empty, which is
+     * precisely the reader this endpoint exists for. So the rule is drawn to be
+     * unable to move a number — an account is dropped only when it is
+     * *certainly* zero on the day:
+     *
+     *   created after it, and no live entry by then, and no opening balance.
+     *
+     * That keeps a ৳0 ডিপিএস line off June's breakdown, which is what "should
+     * not appear" is really asking for, while a back-filled নগদ with June
+     * transactions and a গাড়ির ঋণ carrying an opening balance both stay where
+     * the reader expects them. The residue is an account genuinely opened in
+     * July with an opening balance: it shows that balance in June too. An
+     * `openingBalance` carries no date — it means "before this ledger begins" —
+     * so any date attached to it is invented, and the alternative invents a
+     * jump in net worth with no transaction behind it.
+     *
+     * Costs nothing: `grouped` is already the set of accounts with a live entry
+     * on or before the day. */
+    const usedByThen = new Set(grouped.map((row) => row.accountId));
+    const asOfThen = accounts.filter(
+      (a) =>
+        !before || a.createdAt < before || usedByThen.has(a.id) || a.openingBalance !== BigInt(0),
+    );
 
-    const typeById = new Map(accounts.map((a) => [a.id, a.type]));
+    const out = new Map<string, number>();
+    for (const acc of asOfThen) out.set(acc.id, minorToNumber(acc.openingBalance));
+
+    const typeById = new Map(asOfThen.map((a) => [a.id, a.type]));
     for (const row of grouped) {
       const type = typeById.get(row.accountId);
       if (!type) continue;

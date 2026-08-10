@@ -101,6 +101,87 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
 }
 
 /**
+ * The calendar day after `YYYY-MM-DD`, as a date key.
+ *
+ * A balance sheet "as at" a day needs that day's *exclusive* upper bound, and
+ * the honest way to reach it is the next day's local midnight — not
+ * `+86_400_000`, which is only a day where the offset never moves. So the shift
+ * happens on the key, in whole days, and the caller turns the key into an
+ * instant with `fromLocalDateString`; that is the same two-step
+ * `startOfNextMonth` uses, and it stays correct through a DST change.
+ *
+ * `Date.UTC` normalises the overflow — 2026-01-32 is 2026-02-01, 2026-12-32 is
+ * 2027-01-01 — so month ends and year ends need no special case.
+ */
+export function nextDateKey(date: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) throw new TypeError(`Expected YYYY-MM-DD, got ${JSON.stringify(date)}`);
+  const [, year, month, day] = m;
+  const next = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 1));
+  return next.toISOString().slice(0, 10);
+}
+
+/** The four figures a reader compares between two balance sheets. */
+export interface BalanceSheetTotals {
+  assetsMinor: number;
+  liabilitiesMinor: number;
+  netWorthMinor: number;
+  liquidMinor: number;
+}
+
+/**
+ * An earlier balance sheet's totals, and the movement since.
+ *
+ * The earlier figures ride along rather than only the difference: "নিট সম্পদ
+ * ৳১২,০০০ বেড়েছে" is a claim about two numbers, and a screen that has been
+ * handed only the delta cannot show what it grew *from* without asking again.
+ */
+export interface BalanceSheetComparison extends BalanceSheetTotals {
+  /** Current minus earlier, line by line. Negative means it went down. */
+  changeMinor: BalanceSheetTotals;
+  /**
+   * Net worth movement as a percentage of the earlier figure, one decimal.
+   * `null` when there is nothing to be a percentage of.
+   */
+  netWorthChangePercent: number | null;
+}
+
+/**
+ * What moved between two balance sheets. Both must already be built; this does
+ * no summing of its own, so the two sides can only disagree if the queries did.
+ *
+ * The percentage divides by the **absolute** value of the earlier net worth.
+ * Signed, a recovery from −৳১০,০০০ to −৳৫,০০০ would read as −50% — the number
+ * went up and the label would say it fell. `null` at zero rather than a
+ * fabricated 100%: growth from nothing has no percentage, and inventing one
+ * puts an infinity on somebody's first month.
+ */
+export function compareBalanceSheets(
+  current: BalanceSheetTotals,
+  earlier: BalanceSheetTotals,
+): BalanceSheetComparison {
+  const changeMinor: BalanceSheetTotals = {
+    assetsMinor: current.assetsMinor - earlier.assetsMinor,
+    liabilitiesMinor: current.liabilitiesMinor - earlier.liabilitiesMinor,
+    netWorthMinor: current.netWorthMinor - earlier.netWorthMinor,
+    liquidMinor: current.liquidMinor - earlier.liquidMinor,
+  };
+
+  const base = Math.abs(earlier.netWorthMinor);
+  return {
+    assetsMinor: earlier.assetsMinor,
+    liabilitiesMinor: earlier.liabilitiesMinor,
+    netWorthMinor: earlier.netWorthMinor,
+    liquidMinor: earlier.liquidMinor,
+    changeMinor,
+    // `Math.floor(x + 0.5)`, not `Math.round`, which is banned repo-wide —
+    // same arithmetic as `withShares` so both report the same way.
+    netWorthChangePercent:
+      base === 0 ? null : Math.floor((changeMinor.netWorthMinor / base) * 1000 + 0.5) / 10,
+  };
+}
+
+/**
  * Signed effect of one entry on its own account, for cash-flow work.
  * Debits add, credits subtract — see `signedEffect` in `ledger.ts` for why the
  * sign does not depend on the account type.

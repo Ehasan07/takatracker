@@ -3,17 +3,22 @@ import {
   buildBalanceSheet,
   buildCashFlow,
   buildTrend,
+  compareBalanceSheets,
   LIQUID_TYPES,
+  nextDateKey,
   rollUpToParents,
   topWithRest,
   withShares,
+  type AccountBalanceRow,
   type BalanceSheet,
+  type BalanceSheetComparison,
   type CashFlow,
   type CategoryNode,
   type CategoryTotal,
   type TrendPoint,
 } from '@hishab/core';
 import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
+import type { AccountType } from '@prisma/client';
 import { minorToNumber } from '../common/bigint-json';
 import { AccountsService } from '../accounts/accounts.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,6 +28,25 @@ import type { TenantContext } from '../transactions/transactions.service';
 export interface PeriodQuery {
   from: string;
   to: string;
+}
+
+/** What `GET /reports/balance-sheet` accepts. Both dates are YYYY-MM-DD. */
+export interface BalanceSheetQuery {
+  /** End of this local day. Absent means every entry on the books. */
+  asOf?: string;
+  /** An earlier day to measure the movement against. */
+  compareTo?: string;
+}
+
+/**
+ * A balance sheet that says which day it is true for.
+ *
+ * `asOf` and `comparison` are absent from the response when nothing was asked
+ * for, so the undated call returns exactly the object it always did.
+ */
+export interface DatedBalanceSheet extends BalanceSheet {
+  asOf: string;
+  comparison?: BalanceSheetComparison & { asOf: string };
 }
 
 /** One line of the by-tag report. `tagId: null` is the untagged bucket. */
@@ -353,7 +377,24 @@ export class ReportsService {
   }
 
   /**
-   * Assets, liabilities and net worth, always with the breakdown.
+   * Assets, liabilities and net worth **as at a day**, always with the
+   * breakdown.
+   *
+   * A balance sheet is a photograph, so it needs a date. Without `asOf` it can
+   * only answer "right now", which is why the reports screen has to label নিট
+   * সম্পদ আজকের হিসাবে and tell the reader its date range does not apply — and
+   * why *was I better off in June than I am now?*, the one question anybody
+   * actually asks of a balance sheet, had no answer at all. With `asOf` the
+   * answer is the position at the end of that day in the **workspace's**
+   * timezone, not the server's.
+   *
+   * Absent `asOf`, this is byte for byte what it always returned, including the
+   * absence of the `asOf` field. That is not quite the same as `asOf=<today>`:
+   * undated means *every entry on the books*, so a transaction dated next month
+   * counts, while a dated sheet stops at the day it names. Every existing
+   * caller keeps the answer it has been getting; the difference only shows in a
+   * workspace holding future-dated entries, and there the honest reading of
+   * "today" is the one that stops today.
    *
    * Deliberately **not** filtered on `systemKey`. What belongs on a balance
    * sheet is decided by account class, and `buildBalanceSheet` already drops
@@ -365,21 +406,74 @@ export class ReportsService {
    * is supposed to show debts. Hiding a screen and omitting a balance are
    * different jobs, and only one of them belongs to `systemKey`.
    */
-  async balanceSheet(ctx: TenantContext): Promise<BalanceSheet> {
+  async balanceSheet(
+    ctx: TenantContext,
+    query: BalanceSheetQuery = {},
+  ): Promise<BalanceSheet | DatedBalanceSheet> {
+    /* Fetched once and reused by both sides of a comparison: the rows carry
+     * only id, name and type, all of which are properties of the account today
+     * rather than of the date. Which of them existed on each date is decided
+     * per date, by `balances`. */
     const accounts = await this.prisma.account.findMany({
       where: { workspaceId: ctx.workspaceId, deletedAt: null },
       select: { id: true, name: true, type: true },
     });
-    const balances = await this.accounts.balances(ctx.workspaceId);
 
-    return buildBalanceSheet(
-      accounts.map((a) => ({
+    const [current, earlier] = await Promise.all([
+      this.balanceSheetLines(ctx, accounts, query.asOf),
+      query.compareTo
+        ? this.balanceSheetLines(ctx, accounts, query.compareTo)
+        : Promise.resolve(null),
+    ]);
+
+    const sheet = buildBalanceSheet(current);
+    if (!query.asOf && !query.compareTo) return sheet;
+
+    // A response that carries a comparison has to say what date it is a
+    // comparison *of*, even when the caller only named the earlier one.
+    const asOf = query.asOf ?? toLocalDateString(new Date(), ctx.timezone);
+    const dated: DatedBalanceSheet = { ...sheet, asOf };
+    if (!earlier || !query.compareTo) return dated;
+
+    return {
+      ...dated,
+      comparison: {
+        asOf: query.compareTo,
+        ...compareBalanceSheets(sheet, buildBalanceSheet(earlier)),
+      },
+    };
+  }
+
+  /**
+   * One balance-sheet row per account that existed on `asOf`, at its balance
+   * that day. `undefined` means no cut-off at all — the whole ledger.
+   *
+   * The as-of arithmetic lives entirely in `AccountsService.balances`; this
+   * only converts the day into the instant it ends. The keyset of that map is
+   * the authority on which accounts existed, so the rule is stated once rather
+   * than re-derived beside every query that needs it.
+   */
+  private async balanceSheetLines(
+    ctx: TenantContext,
+    accounts: readonly { id: string; name: string; type: AccountType }[],
+    asOf?: string,
+  ): Promise<AccountBalanceRow[]> {
+    /* The exclusive upper bound of the local day: midnight at the start of the
+     * next one, in the workspace's timezone. `nextDateKey` then
+     * `fromLocalDateString` rather than `+ 86_400_000`, so the boundary is a
+     * real local midnight even across an offset change. */
+    const before =
+      asOf === undefined ? undefined : fromLocalDateString(nextDateKey(asOf), ctx.timezone);
+    const balances = await this.accounts.balances(ctx.workspaceId, before);
+
+    return accounts
+      .filter((a) => balances.has(a.id))
+      .map((a) => ({
         id: a.id,
         name: a.name,
         type: a.type,
         balanceMinor: balances.get(a.id) ?? 0,
-      })),
-    );
+      }));
   }
 
   /**

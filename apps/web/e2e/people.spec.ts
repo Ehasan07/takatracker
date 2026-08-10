@@ -1,0 +1,139 @@
+import { expect, test, type Page } from '@playwright/test';
+
+/**
+ * The contacts screen: edit the person a loan created, find them by a Banglish
+ * spelling, and fold two spellings of one human back into one.
+ *
+ * The merge case is the one worth having a browser test for at all. The API
+ * suite proves no money moves; what this proves is that the screen names the
+ * right survivor, because a merge run the wrong way round is not undoable from
+ * the product and the only thing standing between the two directions is which
+ * name is in the `<select>`.
+ */
+
+const PASSWORD = 'hishab1234';
+
+let counter = 0;
+function uniqueEmail(): string {
+  counter += 1;
+  return `people-${Date.now()}-${counter}-${Math.trunc(performance.now())}@example.test`;
+}
+
+async function signup(page: Page): Promise<void> {
+  await page.goto('/signup');
+  await page.getByLabel('নাম').fill('মানুষ পরীক্ষা');
+  await page.getByLabel('ইমেইল').fill(uniqueEmail());
+  await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+  await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
+  await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
+async function saveSheet(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name, exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+}
+
+async function addCashAccount(page: Page): Promise<void> {
+  await page.goto('/accounts');
+  await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+  await page.getByLabel('নাম').fill('নগদ');
+  await saveSheet(page, 'সংরক্ষণ করুন');
+  await expect(page.locator('li').filter({ hasText: 'নগদ' }).first()).toBeVisible();
+}
+
+/** Lends money to `person`, creating them if the name is new. */
+async function lend(page: Page, person: string, amount: string): Promise<void> {
+  await page.goto('/loans');
+  await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet).toBeVisible();
+  await sheet.getByLabel('ধরন').selectOption('LENT');
+  await sheet.getByLabel('নাম', { exact: true }).fill(person);
+  await sheet.getByLabel('মূল টাকা (৳)').fill(amount);
+  await saveSheet(page, 'সংরক্ষণ করুন');
+}
+
+/** Scoped to the contacts list — the shell's navigation is listitems too. */
+const peopleList = (page: Page) => page.getByRole('list', { name: 'মানুষজন' });
+const personRow = (page: Page, name: string) =>
+  peopleList(page).getByRole('listitem').filter({ hasText: name });
+
+test.describe('people', () => {
+  test('shows the person a loan created, and lets the phone be fixed', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await lend(page, 'করিম', '50000');
+
+    await page.goto('/people');
+    const karim = personRow(page, 'করিম').first();
+    await expect(karim).toBeVisible();
+    // ৳50,000 owed to you — the same figure the party ledger prints.
+    await expect(karim).toContainText('50,000');
+    await expect(karim).toContainText('পাব');
+
+    await karim.getByRole('button', { name: 'সম্পাদনা' }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('ফোন').fill('+8801711223344');
+    await sheet.getByLabel('সম্পর্ক').fill('মামা');
+    await saveSheet(page, 'সংরক্ষণ করুন');
+
+    // Stored canonically whichever of its spellings was typed.
+    await expect(personRow(page, 'করিম').first()).toContainText('মামা');
+    await expect(personRow(page, 'করিম').first()).toContainText('০১৭১১২২৩৩৪৪');
+  });
+
+  test('finds করিম by typing karim', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await lend(page, 'করিম', '50000');
+    await lend(page, 'রহিম', '10000');
+
+    await page.goto('/people');
+    await page.getByLabel('মানুষ খুঁজুন').fill('karim');
+    // Debounced by 300ms, then answered by the server's transliterating matcher
+    // — filtering in the browser would find nothing, the two share no letters.
+    await expect(personRow(page, 'করিম').first()).toBeVisible();
+    await expect(personRow(page, 'রহিম')).toHaveCount(0);
+  });
+
+  test('folds two spellings of one person into the survivor you chose', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await lend(page, 'করিম', '50000');
+    await lend(page, 'করিম উদ্দিন', '30000');
+
+    await page.goto('/people');
+    await expect(peopleList(page).getByRole('listitem')).toHaveCount(2);
+
+    await personRow(page, 'করিম উদ্দিন').getByRole('button', { name: 'মিলিয়ে দিন' }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কার সাথে মিলবে').selectOption({ label: 'করিম' });
+    // The button names the survivor before it is pressed, because the two
+    // directions are not the same operation and only one of them is undoable.
+    await saveSheet(page, 'করিম-এর সাথে মিলিয়ে দিন');
+
+    const survivor = peopleList(page).getByRole('listitem');
+    await expect(survivor).toHaveCount(1);
+    await expect(survivor.first()).toContainText('করিম');
+    await expect(survivor.first()).toContainText('২টি ঋণ');
+    await expect(survivor.first()).toContainText('80,000');
+  });
+
+  test('refuses to remove somebody who still owes money', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await lend(page, 'করিম', '50000');
+
+    await page.goto('/people');
+    await personRow(page, 'করিম').getByRole('button', { name: 'সরান' }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByRole('button', { name: 'সরিয়ে ফেলুন' }).click();
+
+    // The count, not "this person has loans" — one of those is actionable.
+    await expect(sheet.getByRole('alert')).toContainText('১টি ঋণ');
+    await page.keyboard.press('Escape');
+    await expect(personRow(page, 'করিম')).toHaveCount(1);
+  });
+});

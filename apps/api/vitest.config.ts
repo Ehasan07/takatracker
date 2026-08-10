@@ -13,6 +13,15 @@ const DEFAULT_TEST_DATABASE_URL =
   'postgresql://hishab:hishab@localhost:5433/hishab_test?schema=public';
 const DATABASE_URL = process.env.DATABASE_URL || DEFAULT_TEST_DATABASE_URL;
 
+/* Written back onto the environment, not only into `test.env` below.
+ *
+ * `test.env` reaches the *workers*; `globalSetup` runs in vitest's own process,
+ * where it never applied — so the one-shot TRUNCATE opened a PrismaClient with
+ * no DATABASE_URL and the whole run died on `assertTestDatabase()` before a
+ * single test executed. A bare `pnpm test` only ever worked when the shell
+ * happened to export one. Both halves read the same value now. */
+process.env.DATABASE_URL = DATABASE_URL;
+
 export default defineConfig({
   test: {
     globals: true,

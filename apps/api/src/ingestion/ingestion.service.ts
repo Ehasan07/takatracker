@@ -25,7 +25,7 @@ import {
   ingestWebhookSecretFor,
   verifyIngestWebhookSecret,
 } from '../common/ingest-webhook';
-import { EntitlementsService } from '../entitlements/entitlements.service';
+import { EntitlementsService, FeatureLimitException } from '../entitlements/entitlements.service';
 import { UsageMeterService } from '../entitlements/usage-meter.service';
 import { CardRemindersService } from '../notifications/card-reminders.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,8 +48,8 @@ import type {
  * Messages in, drafts out.
  *
  * **Nothing a parser produces may reach the ledger without a human accepting
- * it.** That is not a guideline here, it is the shape of the module: the
- * webhook writes an `IngestionMessage` and a `TransactionDraft` and stops. The
+ * it.** That is not a guideline here, it is the shape of the module: an inbound
+ * message writes an `IngestionMessage` and a `TransactionDraft` and stops. The
  * only code path in this file that creates a `Transaction` is `accept`, which
  * is behind a JWT, takes the reviewer's own overrides, and stamps
  * `sourceDraftId` so the entry can always be traced back to the text that
@@ -70,6 +70,13 @@ import type {
  *    a conditional update inside the same transaction that creates the entry,
  *    so two taps on a slow connection produce one transaction and one Bengali
  *    error, not two entries.
+ *
+ * There are two doors in and they share everything behind them. `ingest` is the
+ * webhook's, reached by an SMS forwarder with a shared secret. `ingestFromWorker`
+ * is the mailbox sweep's, reached by no request at all. They run the same
+ * registry, write the same rows, charge the same meter and file the same audit
+ * action; the worker's door is only stricter about what it lets through and
+ * quieter about the refusals a sweep has to survive.
  */
 
 // --- the parser registry -----------------------------------------------------
@@ -127,6 +134,42 @@ export interface IngestResult {
   /** The draft this message produced, or the existing one on a replay. */
   draftId: string | null;
 }
+
+/**
+ * What a background worker hands in.
+ *
+ * The webhook's `WebhookBody` minus the parts that only exist because HTTP does
+ * — no headers, no secret, no zod. Declared here rather than imported from the
+ * controller so a worker never has to reach into the request layer to talk to
+ * this service; the two shapes are deliberately identical, and `ingestFromWorker`
+ * passes one straight through as the other.
+ */
+export interface WorkerMessage {
+  channel: IngestionChannel;
+  sender?: string;
+  /** ISO-8601. A future stamp is pulled back to now, as on the webhook. */
+  receivedAt?: string;
+  body: string;
+}
+
+/**
+ * Why a worker's message did or did not become a draft.
+ *
+ * A worker cannot be handed an exception for any of these — a sweep that threw
+ * on a suspended workspace would abandon every mailbox behind it — but it must
+ * still be able to tell them apart, because they mean very different things in a
+ * log line and only one of them is worth warning about.
+ */
+export type WorkerIngestOutcome =
+  | { outcome: 'drafted'; result: IngestResult }
+  /** Already ingested — same content, seen before. Nothing written. */
+  | { outcome: 'duplicate'; result: IngestResult }
+  /** The registry could not read money out of it. Deliberately not a draft. */
+  | { outcome: 'not_a_transaction' }
+  /** Deleted or suspended between the row being read and this call. */
+  | { outcome: 'workspace_inactive' }
+  /** `ingest.messages.monthly.max` is spent. The caller should stop trying. */
+  | { outcome: 'quota_reached' };
 
 export interface DraftMessageView {
   id: string;
@@ -438,6 +481,68 @@ export class IngestionService {
     });
 
     return { id: created.messageId, duplicate: false, draftId: created.draftId };
+  }
+
+  /**
+   * The same pipeline, entered from a background worker instead of the webhook.
+   *
+   * One inbox, one parser registry, one dedup key, one place a human says yes.
+   * A synced bank statement and a forwarded SMS produce the same
+   * `IngestionMessage`, the same `TransactionDraft`, the same
+   * `ingestion.message_received` audit row, and land in the same `/inbox` — and
+   * **neither reaches the ledger until somebody accepts the draft.** A second
+   * review queue for email would be twice the code and a worse product.
+   *
+   * Two things are different here, and both are about the caller being a sweep
+   * rather than a request:
+   *
+   *  - **It refuses more than the webhook does.** A forwarded SMS was already
+   *    chosen by a human's phone; a mailbox was not, and most of what is in one
+   *    is not money. The rule is that the registry must have genuinely *read*
+   *    both an amount and a direction out of the text — `evidence` carries only
+   *    what was read, never what was inferred, which is exactly the distinction
+   *    needed. Anything short of that would be a draft with nothing on it but a
+   *    number somebody has to go and check, and an inbox full of those is one
+   *    people stop opening. The check costs one extra parse, on a message that
+   *    has already survived the caller's own filter, and it gets sharper for
+   *    free the moment a real bank parser joins `REGISTRY`.
+   *  - **It does not throw for the two refusals a sweep must survive.** A
+   *    suspended workspace and a spent monthly quota are answers, not faults;
+   *    the caller logs them and carries on with the next mailbox. Everything
+   *    else — a database that is gone, a bug here — still throws, because a
+   *    worker silently swallowing those is how a feature stops working for a
+   *    week before anyone notices.
+   *
+   * `ingest.messages.monthly.max` is charged exactly as it is on the SMS path,
+   * inside the same transaction as the message. Synced mail is not a way around
+   * the plan limit that the person forwarding their SMS pays.
+   */
+  async ingestFromWorker(workspaceId: string, input: WorkerMessage): Promise<WorkerIngestOutcome> {
+    /* No `receivedOn`: the fallback date needs the workspace's timezone and this
+     * probe has not looked the workspace up yet. It does not matter — the two
+     * fields this gate reads, `evidence.amountMinor` and `evidence.direction`,
+     * are only ever populated from the message's own text. `ingest` below does
+     * the real parse, with the timezone, and that is the one that is stored. */
+    const probe = REGISTRY.parse({
+      channel: input.channel,
+      sender: input.sender,
+      body: input.body,
+    });
+    if (probe.evidence.amountMinor === undefined || probe.evidence.direction === undefined) {
+      return { outcome: 'not_a_transaction' };
+    }
+
+    try {
+      const result = await this.ingest(workspaceId, input);
+      return { outcome: result.duplicate ? 'duplicate' : 'drafted', result };
+    } catch (err) {
+      /* The workspace was deleted or suspended between the row that named it
+       * being read and this call. `ingest` answers that with the webhook's
+       * deliberately vague 401; from in here it simply means "not any more". */
+      if (err instanceof UnauthorizedException) return { outcome: 'workspace_inactive' };
+      if (err instanceof FeatureLimitException) return { outcome: 'quota_reached' };
+      throw err;
+    }
   }
 
   private async findByHash(workspaceId: string, bodyHash: string): Promise<IngestResult | null> {

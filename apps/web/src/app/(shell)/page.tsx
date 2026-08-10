@@ -4,11 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { formatLedgerDate, fromLocalDateString } from '@hishab/shared';
+import { useGreeting } from '@/components/account-menu';
+import { FirstRunCard } from '@/components/first-run-card';
 import { Money } from '@/components/money';
 import { SkeletonCard } from '@/components/skeleton';
 import { endpoints } from '@/lib/api';
 
 export default function DashboardPage() {
+  const { greeting, name } = useGreeting();
   const summary = useQuery({ queryKey: ['summary'], queryFn: endpoints.summary });
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const recent = useQuery({
@@ -33,11 +36,21 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
-      {/* On a phone the shell's navigation bar already names the screen. */}
-      <header className="flex items-baseline justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">ড্যাশবোর্ড</h1>
+      {/* On a phone the shell's navigation bar already names the screen, so the
+          greeting carries the phone header instead of a second "ড্যাশবোর্ড". */}
+      <header className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+        <div className="min-w-0">
+          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">ড্যাশবোর্ড</h1>
+          {greeting ? (
+            <p className="text-ink text-base font-medium md:text-sm md:font-normal">
+              {name ? `${greeting}, ${name}` : greeting}
+            </p>
+          ) : null}
+        </div>
         <p className="text-ink-muted text-sm">{formatLedgerDate(new Date())}</p>
       </header>
+
+      <FirstRunCard />
 
       {/* Single column on phones, two up from tablet */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

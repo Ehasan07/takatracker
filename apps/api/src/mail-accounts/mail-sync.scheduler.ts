@@ -129,6 +129,7 @@ export class MailSyncScheduler implements OnModuleInit, OnModuleDestroy {
       const ids = [...new Set([...requested, ...due])];
 
       let stored = 0;
+      let drafted = 0;
       let failed = 0;
 
       for (const id of ids) {
@@ -137,12 +138,18 @@ export class MailSyncScheduler implements OnModuleInit, OnModuleDestroy {
          * providers, and the work is not urgent enough to be worth it. */
         const result = await this.sync.syncAccount(id);
         stored += result.stored;
+        drafted += result.drafted;
         if (result.outcome !== 'ok' && result.outcome !== 'skipped') failed += 1;
       }
 
       if (stored > 0 || failed > 0) {
+        /* `drafted` is in the line because it is the number somebody will
+         * question first — "why is my inbox empty / full?" — and the ratio of
+         * it to `stored` is the only operational read on whether the
+         * eligibility rule in `mail-ingest.ts` is set anywhere near right. */
         this.logger.log(
-          `Mail sync: ${stored} message(s) stored across ${ids.length} mailbox(es), ${failed} failed`,
+          `Mail sync: ${stored} message(s) stored across ${ids.length} mailbox(es), ` +
+            `${drafted} draft(s) for review, ${failed} failed`,
         );
       }
     } catch (err) {

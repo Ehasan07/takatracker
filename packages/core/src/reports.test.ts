@@ -4,12 +4,15 @@ import {
   buildBalanceSheet,
   buildCashFlow,
   buildTrend,
+  compareBalanceSheets,
+  nextDateKey,
   rollUpToParents,
   shiftMonthKey,
   signedEffectFor,
   topWithRest,
   withShares,
   type AccountBalanceRow,
+  type BalanceSheetTotals,
   type CategoryTotal,
 } from './reports.js';
 
@@ -89,6 +92,86 @@ describe('balance sheet', () => {
     for (const [type, klass] of Object.entries(ACCOUNT_CLASS)) {
       expect(['ASSET', 'LIABILITY', 'NOMINAL'], type).toContain(klass);
     }
+  });
+});
+
+describe('day after', () => {
+  it('crosses a month, a year and a leap day without a special case', () => {
+    expect(nextDateKey('2026-06-15')).toBe('2026-06-16');
+    expect(nextDateKey('2026-06-30')).toBe('2026-07-01');
+    expect(nextDateKey('2026-12-31')).toBe('2027-01-01');
+    expect(nextDateKey('2024-02-28')).toBe('2024-02-29');
+    expect(nextDateKey('2026-02-28')).toBe('2026-03-01');
+  });
+
+  it('refuses anything that is not a ledger date', () => {
+    expect(() => nextDateKey('15-06-2026')).toThrow(TypeError);
+    expect(() => nextDateKey('2026-6-5')).toThrow(TypeError);
+  });
+});
+
+describe('balance sheet comparison', () => {
+  /**
+   * জুন থেকে আগস্ট, worked out by hand:
+   *
+   *   জুন    assets ৳500,000  liabilities ৳100,000  net ৳400,000  liquid ৳50,000
+   *   আগস্ট  assets ৳520,000  liabilities ৳ 88,000  net ৳432,000  liquid ৳62,000
+   *
+   *   net worth up ৳32,000 → 3,200,000 poisha, +8.0% of ৳400,000
+   *   liabilities down ৳12,000 → −1,200,000 poisha
+   */
+  const june: BalanceSheetTotals = {
+    assetsMinor: 50_000_000,
+    liabilitiesMinor: 10_000_000,
+    netWorthMinor: 40_000_000,
+    liquidMinor: 5_000_000,
+  };
+  const august: BalanceSheetTotals = {
+    assetsMinor: 52_000_000,
+    liabilitiesMinor: 8_800_000,
+    netWorthMinor: 43_200_000,
+    liquidMinor: 6_200_000,
+  };
+
+  it('reports the earlier figures alongside the movement', () => {
+    const cmp = compareBalanceSheets(august, june);
+    expect(cmp.netWorthMinor).toBe(40_000_000);
+    expect(cmp.changeMinor.netWorthMinor).toBe(3_200_000);
+    expect(cmp.changeMinor.liquidMinor).toBe(1_200_000);
+    expect(cmp.netWorthChangePercent).toBe(8);
+  });
+
+  it('makes paying a debt down read as a fall in liabilities', () => {
+    // A negative here is good news, and the screen has to be able to say so.
+    expect(compareBalanceSheets(august, june).changeMinor.liabilitiesMinor).toBe(-1_200_000);
+  });
+
+  it('does not invent a percentage out of nothing', () => {
+    const nothing: BalanceSheetTotals = {
+      assetsMinor: 0,
+      liabilitiesMinor: 0,
+      netWorthMinor: 0,
+      liquidMinor: 0,
+    };
+    // Growth from zero has no percentage; a fabricated 100% would be a lie on
+    // somebody's first month.
+    expect(compareBalanceSheets(august, nothing).netWorthChangePercent).toBeNull();
+  });
+
+  it('calls climbing out of debt a rise, not a fall', () => {
+    const inDebt: BalanceSheetTotals = { ...june, netWorthMinor: -1_000_000 };
+    const halfway: BalanceSheetTotals = { ...august, netWorthMinor: -500_000 };
+    const cmp = compareBalanceSheets(halfway, inDebt);
+    expect(cmp.changeMinor.netWorthMinor).toBe(500_000);
+    // Dividing by the signed −৳10,000 would print −50% for an improvement.
+    expect(cmp.netWorthChangePercent).toBe(50);
+  });
+
+  it('takes a whole sheet, so the comparison cannot re-sum it differently', () => {
+    const sheet = buildBalanceSheet(FIXTURE);
+    const cmp = compareBalanceSheets(sheet, buildBalanceSheet([]));
+    expect(cmp.changeMinor.netWorthMinor).toBe(sheet.netWorthMinor);
+    expect(cmp.netWorthChangePercent).toBeNull();
   });
 });
 

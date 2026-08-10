@@ -15,6 +15,7 @@ import { SavingsModule } from './savings/savings.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
 import { HealthController } from './health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PeopleModule } from './people/people.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
 import { TagsModule } from './tags/tags.module';
@@ -37,6 +38,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     SavingsModule,
     InsuranceModule,
     LoansModule,
+    PeopleModule,
     MailAccountsModule,
     ImportModule,
     AttachmentsModule,

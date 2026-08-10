@@ -19,6 +19,7 @@ import {
   parentOf,
   titleFor,
 } from './nav-model';
+import { AccountMenu } from './account-menu';
 import { OfflineBar } from './offline-bar';
 import { PageTransition } from './page-transition';
 import { PullToRefresh } from './pull-to-refresh';
@@ -289,7 +290,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="shrink-0 p-3">
+        <div className="shrink-0 space-y-2 p-3">
+          {/* Who is signed in, and the way out. Both were invisible: the shell
+              showed no name at all and logout lived at the foot of the settings
+              page, so there was nothing on screen to suggest an account even
+              existed. */}
+          <AccountMenu />
           <button
             type="button"
             onClick={openQuickAdd}

@@ -50,7 +50,11 @@
        *
        * Naming the API explicitly makes the browser suite test the code in the
        * working tree, which is the only thing it was ever supposed to prove. */
-      "dependsOn": ["^build", "@hishab/api#build"],
+      /* `build` (no caret) is this package's own — Playwright starts `next start`,
+       * which needs `.next` on disk and will not build it. Same trap as the API
+       * one below, one level closer to home: the suite failed with "could not
+       * find a production build" rather than testing anything. */
+      "dependsOn": ["build", "^build", "@hishab/api#build"],
       "cache": false
     },
     "lint": {},

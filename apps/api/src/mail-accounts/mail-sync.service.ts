@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { MailAccountStatus, MailFolder } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { IngestionService } from '../ingestion/ingestion.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MAIL_SYNC_FAILED } from './mail-audit';
 import { connectionConfigFor, openMailSecret } from './mail-credentials';
+import { mailIngestDecision, type SyncedMailMessage } from './mail-ingest';
 import {
   isMailProviderError,
   MailAuthError,
@@ -39,6 +41,17 @@ import { MailProviderFactory } from './mail-provider.factory';
  * from the `MailAccount` being synced and from nowhere else. There is no caller
  * to take it from — that is a property of running outside a request, not an
  * accident of this code.
+ *
+ * ## What happens after a message is stored
+ *
+ * It goes through the *same* ingestion pipeline a forwarded SMS does, as an
+ * `EMAIL`-channel message, and comes out as a `TransactionDraft` in the *same*
+ * `/inbox` — see `draftFrom`. It does not go anywhere near the ledger:
+ * **nothing a parser produces becomes a transaction until a human accepts the
+ * draft**, and there is no code path from this file to a `LedgerEntry`.
+ *
+ * Which messages are offered at all is `mail-ingest.ts`'s decision and a
+ * deliberately narrow one; the rest of a mailbox is stored and left alone.
  */
 
 /**
@@ -98,8 +111,36 @@ const MAX_ERROR_CHARS = 500;
 export interface AccountSyncResult {
   accountId: string;
   stored: number;
+  /** New `TransactionDraft` rows this run put in the review inbox. */
+  drafted: number;
   folders: number;
   outcome: 'ok' | 'auth_failed' | 'unavailable' | 'transient' | 'skipped';
+}
+
+/**
+ * The mutable part of one account's sweep, shared across its folder loop.
+ *
+ * A holder rather than fields on the service: `syncAccount` is re-entrant in
+ * principle — the scheduler serialises calls today, but nothing in this class
+ * depends on that, and instance state would be the thing that started depending
+ * on it.
+ */
+interface SweepState {
+  readonly workspaceId: string;
+  readonly mailAccountId: string;
+  /** The mailbox's own address, for spotting the user's own sent copies. */
+  readonly ownAddress: string;
+  /**
+   * Set once `ingest.messages.monthly.max` has answered no.
+   *
+   * Once a workspace is at its ceiling every remaining message in this sweep
+   * will hit the same wall, and each attempt costs an entitlement lookup and a
+   * usage aggregate. Stopping after the first refusal is what keeps a
+   * capped tenant from adding four hundred pointless queries to a sweep that
+   * is supposed to stay out of everybody's way.
+   */
+  quotaExhausted: boolean;
+  drafted: number;
 }
 
 @Injectable()
@@ -110,6 +151,7 @@ export class MailSyncService {
     private readonly prisma: PrismaService,
     private readonly providers: MailProviderFactory,
     private readonly audit: AuditService,
+    private readonly ingestion: IngestionService,
   ) {}
 
   /**
@@ -159,10 +201,18 @@ export class MailSyncService {
 
     /* Deleted, disabled or already failed between being queued and being
      * reached. Not an error: the queue is advisory and the row is the truth. */
-    if (!account) return { accountId, stored: 0, folders: 0, outcome: 'skipped' };
+    if (!account) return { accountId, stored: 0, drafted: 0, folders: 0, outcome: 'skipped' };
 
     const startedAt = new Date();
     const since = MailSyncService.resolveSince(account.syncSince, account.lastSyncAt, startedAt);
+
+    const sweep: SweepState = {
+      workspaceId: account.workspaceId,
+      mailAccountId: account.id,
+      ownAddress: account.email,
+      quotaExhausted: false,
+      drafted: 0,
+    };
 
     /* A holder rather than a bare `let`. The session is opened inside the async
      * closure below and closed in the `finally` outside it, and TypeScript's
@@ -201,7 +251,7 @@ export class MailSyncService {
             if (stored >= MAX_MESSAGES_PER_RUN) break;
             const room = Math.min(MAX_MESSAGES_PER_FOLDER, MAX_MESSAGES_PER_RUN - stored);
             const messages = await session.fetchSince(folder, since, room);
-            stored += await this.store(account.id, account.workspaceId, folder, messages);
+            stored += await this.store(sweep, folder, messages);
           }
 
           return { stored, folders: folders.length };
@@ -222,9 +272,9 @@ export class MailSyncService {
         data: { lastSyncAt: startedAt, lastError: null },
       });
 
-      return { accountId, stored, folders, outcome: 'ok' };
+      return { accountId, stored, drafted: sweep.drafted, folders, outcome: 'ok' };
     } catch (err) {
-      return await this.recordFailure(account, err);
+      return await this.recordFailure(account, err, sweep.drafted);
     } finally {
       /* Always, and it must not throw — a mail server that refuses LOGOUT has
        * still given us the messages, and losing them to a failed close would be
@@ -282,11 +332,11 @@ export class MailSyncService {
    * `externalId`, or a row that races another sweep, is skipped and logged.
    */
   private async store(
-    mailAccountId: string,
-    workspaceId: string,
+    sweep: SweepState,
     folder: MailFolder,
     messages: readonly FetchedMessage[],
   ): Promise<number> {
+    const { mailAccountId, workspaceId } = sweep;
     let stored = 0;
 
     for (const message of messages) {
@@ -315,10 +365,119 @@ export class MailSyncService {
           `Mail message ${folder}/${externalId} on account ${mailAccountId} was not stored: ` +
             `${(err as Error).message}`,
         );
+        // Not offered for a draft: it is not in the mailbox list either, so the
+        // user could not check a draft's working against it.
+        continue;
       }
+
+      /* The clamped values, not the provider's — the text a draft's evidence
+       * spans point into has to be the text the mail screen will show. */
+      await this.draftFrom(sweep, { folder, ...fields });
     }
 
     return stored;
+  }
+
+  /**
+   * Offer one stored message to the ingestion pipeline.
+   *
+   * The whole of "synced mail becomes a draft" is these twenty lines, and almost
+   * all of the interesting parts are somewhere else on purpose:
+   * `mail-ingest.ts` decides whether the message is even a candidate,
+   * `IngestionService.ingestFromWorker` decides whether the parser can read
+   * money out of it, and the review inbox decides whether it becomes a
+   * transaction. **Nothing here writes to the ledger and nothing here can.**
+   *
+   * ## Deduplication: the mail key and the ingestion key are different keys
+   *
+   * `MailMessage` is unique on `(mailAccountId, folder, externalId)` — a
+   * *storage* key, identifying one copy of a message in one mailbox. The IMAP
+   * UID it is built from is scoped to a mailbox, so the same Gmail message
+   * sitting in INBOX and in All Mail is two rows with two different
+   * `externalId`s.
+   *
+   * `IngestionMessage` is unique on `(workspaceId, bodyHash)` — a *meaning* key,
+   * derived by `bodyHashOf` from the channel, the sender and the text, and from
+   * nothing about where the copy was found. So both of those rows hash to the
+   * same value, the second call takes the pipeline's early return, and one
+   * message produces one draft. That is the answer to "INBOX and ARCHIVE must
+   * not become two drafts", and it is arrived at by *not* mixing the mail row's
+   * identity into the ingestion key rather than by any special case.
+   *
+   * The same property covers the other three ways a message arrives twice: the
+   * ten-minute re-read overlap on every sweep, a `UIDVALIDITY` bump that
+   * renumbers a whole mailbox, and two mailboxes in one workspace both receiving
+   * the same alert. All of them are content-identical and all of them collapse.
+   *
+   * What it costs, stated plainly: two genuinely different emails with byte-identical
+   * sender, subject and body in one workspace produce one draft. For a bank
+   * alert that means the same amount, the same date and the same masked account —
+   * indistinguishable to a reader as well as to us — and it is the same trade the
+   * SMS path already makes.
+   *
+   * ## Why this cannot slow or break the sweep
+   *
+   *  - The candidate check is pure string work and runs before any I/O, so most
+   *    of a mailbox never reaches the hash or the two queries behind it.
+   *  - A re-read message costs one indexed lookup and no write. Skipping even
+   *    that would need a "already ingested" flag on `MailMessage`, which is a
+   *    migration this change does not own — and the flag would be the worse
+   *    design anyway, because a row marked done whose draft failed to be written
+   *    is never retried, whereas the hash lookup self-heals on the next sweep.
+   *  - Every failure is caught here. A message that cannot be drafted is a log
+   *    line; the folder loop, the account and the sweep all carry on. The one
+   *    thing that stops early is the monthly quota, and only because continuing
+   *    would be pure waste.
+   */
+  private async draftFrom(sweep: SweepState, message: SyncedMailMessage): Promise<void> {
+    if (sweep.quotaExhausted) return;
+
+    const decision = mailIngestDecision(message, sweep.ownAddress);
+    if (!decision.eligible) {
+      this.logger.debug(
+        `Mail message in ${message.folder} on account ${sweep.mailAccountId} is not a draft ` +
+          `candidate: ${decision.reason}`,
+      );
+      return;
+    }
+
+    try {
+      const outcome = await this.ingestion.ingestFromWorker(sweep.workspaceId, {
+        channel: 'EMAIL',
+        sender: decision.candidate.sender ?? undefined,
+        body: decision.candidate.body,
+        receivedAt: decision.candidate.receivedAt.toISOString(),
+      });
+
+      switch (outcome.outcome) {
+        case 'drafted':
+          sweep.drafted += 1;
+          break;
+        case 'quota_reached':
+          sweep.quotaExhausted = true;
+          /* Warn, not error, and once per sweep. The mailbox keeps syncing —
+           * the messages are still stored and still readable — but this month
+           * they stop becoming drafts, which is the plan limit doing its job
+           * and not a fault. */
+          this.logger.warn(
+            `Workspace ${sweep.workspaceId} has reached its monthly ingest limit; ` +
+              `synced mail will not produce drafts until it resets`,
+          );
+          break;
+        case 'duplicate':
+        case 'not_a_transaction':
+        case 'workspace_inactive':
+          break;
+      }
+    } catch (err) {
+      /* One message that cannot be parsed, hashed or written must not cost the
+       * other one hundred and ninety-nine, let alone the twenty-four mailboxes
+       * queued behind this one. */
+      this.logger.warn(
+        `Mail message in ${message.folder} on account ${sweep.mailAccountId} could not be ` +
+          `turned into a draft: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -351,6 +510,9 @@ export class MailSyncService {
   private async recordFailure(
     account: { id: string; workspaceId: string; email: string; lastError: string | null },
     err: unknown,
+    /* Drafts written before the failure. They are real rows and a person will
+     * see them in the inbox, so the count is reported rather than zeroed. */
+    drafted: number,
   ): Promise<AccountSyncResult> {
     const known = isMailProviderError(err);
     const outcome: AccountSyncResult['outcome'] =
@@ -403,7 +565,7 @@ export class MailSyncService {
       });
     }
 
-    return { accountId: account.id, stored: 0, folders: 0, outcome };
+    return { accountId: account.id, stored: 0, drafted, folders: 0, outcome };
   }
 }
 

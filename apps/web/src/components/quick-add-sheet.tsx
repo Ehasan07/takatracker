@@ -15,6 +15,7 @@ import {
   QueuedOfflineError,
   type TransactionDto,
 } from '@/lib/api';
+import { CategoryChips, CategoryPicker } from './category-picker';
 import { NumericKeypad } from './numeric-keypad';
 import { Button } from './ui/button';
 import { Field, Input, Select, Textarea } from './ui/field';
@@ -86,8 +87,31 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setKind(editKind);
       setAmount(formatMinor(Math.abs(editing.amountMinor), { symbol: false }));
       setDate(editing.date);
-      setAccountId(editing.accountId ?? '');
-      setCounterAccountId(editing.counterAccountId ?? '');
+      /**
+       * Put a transfer's two sides back the way they were written.
+       *
+       * `TransactionsService.present()` puts the *focused* account first when
+       * the list was filtered by one, so that the sign it prints is the sign
+       * that account saw. A transfer found under its destination account
+       * therefore arrives inside out: `accountId` is the money's destination,
+       * `counterAccountId` its source. Loading that straight into "যে অ্যাকাউন্ট
+       * থেকে" would show the transfer backwards, and saving it — even saving it
+       * untouched, which is what attaching a receipt or fixing a typo does —
+       * would write it back reversed. The books would still balance, both
+       * accounts would still be named, and the money would have gone the other
+       * way with nothing on any screen saying so.
+       *
+       * The sign is the recovery, and it is exact rather than a guess: for a
+       * transfer `present()` returns `+magnitude` only through
+       * `computeTransferSign`, only for a focused account on the DEBIT side —
+       * the destination — which is the one and only case in which it swapped
+       * the pair. Unfocused, and focused on the source, it returns
+       * `-magnitude` and leaves the order alone. The receipt sheet in
+       * `(shell)/transactions/page.tsx` undoes the same swap the same way.
+       */
+      const flipped = editing.type === 'TRANSFER' && editing.amountMinor > 0;
+      setAccountId((flipped ? editing.counterAccountId : editing.accountId) ?? '');
+      setCounterAccountId((flipped ? editing.accountId : editing.counterAccountId) ?? '');
       setCategoryId(editing.categoryId ?? '');
       setDescription(editing.description ?? '');
       setNotes(editing.notes ?? '');
@@ -117,11 +141,13 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
    * required control refuses to submit — silently, with no visible error. */
   const effectiveAccountId = accountId || (accountList[0]?.id ?? '');
 
-  const relevantCategories = (categories.data ?? []).filter((c) =>
-    kind === 'INCOME' ? c.kind === 'INCOME' : c.kind === 'EXPENSE',
-  );
+  /* One stable array: both category controls memoise their grouping off it. */
+  const categoryList = React.useMemo(() => categories.data ?? [], [categories.data]);
+  /* A transfer carries no category, but the tab still has to name one of the two
+   * kinds the picker knows about. */
+  const categoryKind = kind === 'INCOME' ? 'INCOME' : 'EXPENSE';
 
-  /* Categories the user actually reaches for, most recent first. The full list
+  /* Categories the user actually reaches for, most recent first. The full tree
    * stays in the picker below; these chips are the accelerator. */
   const recentCategoryIds = React.useMemo(() => {
     const seen: string[] = [];
@@ -130,15 +156,6 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
     }
     return seen.slice(0, 6);
   }, [recent.data]);
-
-  const chipCategories = React.useMemo(() => {
-    const byId = new Map(relevantCategories.map((c) => [c.id, c]));
-    const picked = recentCategoryIds
-      .map((id) => byId.get(id))
-      .filter((c): c is (typeof relevantCategories)[number] => c !== undefined);
-    const rest = relevantCategories.filter((c) => !recentCategoryIds.includes(c.id));
-    return [...picked, ...rest].slice(0, 8);
-  }, [relevantCategories, recentCategoryIds]);
 
   const repeatable = ((recent.data?.items ?? []) as TaggedTxn[])
     .filter((t) => t.type === 'EXPENSE' || t.type === 'INCOME')
@@ -161,6 +178,13 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
     mutationFn: async () => {
       const amountMinor = parseMoneyToMinor(amount);
       if (amountMinor <= 0) throw new Error('পরিমাণ শূন্যের চেয়ে বেশি হতে হবে');
+      /* The <select> is `required`, so the browser normally refuses first. Said
+         again here in words, because native validation is a bubble that a
+         scrolled sheet can push off screen, and because an offline save is
+         queued rather than answered — a row parked without its খাত would come
+         back days later as an uncategorised entry nobody remembers. উপ-খাত is
+         optional; the id below is whichever of the two was chosen last. */
+      if (kind !== 'TRANSFER' && !categoryId) throw new Error('ক্যাটাগরি বেছে নিন');
 
       const body = {
         date,
@@ -242,6 +266,14 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
               onClick={() => {
                 haptic('tap');
                 setKind(tab.kind);
+                /* খরচের খাত must not survive a switch to আয়. The picker below
+                   only offers one kind, so a category left over from the other
+                   one shows as an unmatched value in the box — and the API
+                   checks only that the category exists, so saving it would file
+                   an income under an expense খাত and quietly bend the report.
+                   TRANSFER counts as EXPENSE here so that খরচ → ট্রান্সফার →
+                   খরচ, which shows no category in the middle, keeps it. */
+                if ((tab.kind === 'INCOME') !== (kind === 'INCOME')) setCategoryId('');
               }}
               className={
                 kind === tab.kind
@@ -295,27 +327,17 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
 
         {coarse ? <NumericKeypad value={amount} onChange={setAmount} /> : null}
 
-        {kind !== 'TRANSFER' && chipCategories.length > 0 ? (
-          <div className="chip-strip" aria-label="দ্রুত বাছাই">
-            {chipCategories.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => {
-                  haptic('tap');
-                  setCategoryId(c.id);
-                }}
-                aria-pressed={categoryId === c.id}
-                className={
-                  categoryId === c.id
-                    ? 'press bg-income min-h-9 rounded-full px-3 text-xs font-medium text-white'
-                    : 'press border-rule text-ink min-h-9 rounded-full border px-3 text-xs'
-                }
-              >
-                {c.nameBn ?? c.name}
-              </button>
-            ))}
-          </div>
+        {/* A chip writes the one id the two boxes below are derived from, so a
+            sub-category chip fills the parent in as well — the fast path and the
+            slow path cannot disagree. */}
+        {kind !== 'TRANSFER' ? (
+          <CategoryChips
+            categories={categoryList}
+            kind={categoryKind}
+            recentIds={recentCategoryIds}
+            value={categoryId}
+            onChange={setCategoryId}
+          />
         ) : null}
 
         <Field label="তারিখ" htmlFor="qa-date">
@@ -368,22 +390,14 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             </Select>
           </Field>
         ) : (
-          <Field label="ক্যাটাগরি" htmlFor="qa-category">
-            <Select
-              id="qa-category"
-              name="categoryId"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              required
-            >
-              <option value="">বেছে নিন</option>
-              {relevantCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nameBn ?? c.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <CategoryPicker
+            categories={categoryList}
+            kind={categoryKind}
+            value={categoryId}
+            onChange={setCategoryId}
+            idPrefix="qa"
+            unknownName={editing?.categoryName ?? null}
+          />
         )}
 
         {/* Directly under the category, because that is where the difference

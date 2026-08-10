@@ -11,6 +11,13 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
+  /** A ledger date or a 400 — never a guess. */
+  private date(name: string, value?: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (!ISO_DATE.test(value)) throw new BadRequestException(`${name} must be YYYY-MM-DD`);
+    return value;
+  }
+
   /** Defaults to the current month, so every report works with no arguments. */
   private period(user: AuthUser, from?: string, to?: string): PeriodQuery {
     if (from && !ISO_DATE.test(from)) throw new BadRequestException('from must be YYYY-MM-DD');
@@ -74,9 +81,36 @@ export class ReportsController {
     return this.reports.trend(user, count);
   }
 
+  /**
+   * `GET /v1/reports/balance-sheet` — the position at the end of a day.
+   *
+   * `asOf=YYYY-MM-DD` is that day, in the workspace's timezone. With no
+   * arguments the answer is today's, unchanged down to the shape of the object,
+   * so every caller that exists keeps working untouched.
+   *
+   * `compareTo=YYYY-MM-DD` adds an earlier day's totals and the movement since,
+   * under `comparison`. It is one request rather than two because the two dates
+   * answer **one** sentence on screen — "নিট সম্পদ গত মাসের চেয়ে ৳১২,০০০ বেশি"
+   * is false if half of it is stale — and because the second date costs one
+   * aggregate: the account list is fetched once and shared, and the difference
+   * is computed by `compareBalanceSheets` in @hishab/core, so no client has to
+   * reimplement poisha arithmetic to subtract two numbers. A client that would
+   * rather have them separately still can: two calls with different `asOf`.
+   *
+   * `from`/`to` are deliberately not accepted. A balance sheet has one date, and
+   * a range handed to a photograph would produce a number that looks like last
+   * March's and is today's.
+   */
   @Get('balance-sheet')
-  balanceSheet(@CurrentUser() user: AuthUser) {
-    return this.reports.balanceSheet(user);
+  balanceSheet(
+    @CurrentUser() user: AuthUser,
+    @Query('asOf') asOf?: string,
+    @Query('compareTo') compareTo?: string,
+  ) {
+    return this.reports.balanceSheet(user, {
+      asOf: this.date('asOf', asOf),
+      compareTo: this.date('compareTo', compareTo),
+    });
   }
 
   @Get('cash-flow')

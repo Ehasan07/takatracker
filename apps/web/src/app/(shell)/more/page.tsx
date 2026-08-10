@@ -5,6 +5,7 @@ import Link from 'next/link';
 import * as React from 'react';
 import { toBengaliDigits } from '@hishab/shared';
 import { ALL_DESTINATIONS, GROUPS, matchesQuery, type Destination } from '@/components/nav-model';
+import { AccountMenu } from '@/components/account-menu';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -33,6 +34,11 @@ export default function MorePage() {
         <h1 className="text-ink text-xl font-semibold sm:text-2xl">আরও</h1>
         <p className="text-ink-muted mt-1 text-sm">অ্যাপের সব পাতা এক জায়গায়।</p>
       </header>
+
+      {/* On a phone there is no sidebar, so this is the only place the signed-in
+          person and the way out can live. Logging out used to be reachable only
+          from the foot of the settings page. */}
+      <AccountMenu />
 
       <div className="relative">
         <Search
