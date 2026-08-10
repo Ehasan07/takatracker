@@ -38,6 +38,10 @@ export class TransactionsController {
    * query to reach a Bengali row — this is substring matching in Postgres, which
    * cannot transliterate. `buildSearchWhere` in the service states the full list
    * of limits and the fix that would lift them.
+   *
+   * `?tagId=` narrows to one tag and composes with everything else, so
+   * "পারিবারিক, last month, over ৳৫০০" is one request. A tag belonging to
+   * another workspace answers 404 rather than an empty page.
    */
   @Get()
   list(
@@ -74,6 +78,11 @@ export class TransactionsController {
     return this.transactions.create(user, body);
   }
 
+  /**
+   * `tagIds` omitted leaves the row's tags exactly as they were; `tagIds: []`
+   * clears them. Every other field on this body already behaves that way, and a
+   * client editing an amount must not strip labels it never mentioned.
+   */
   @Patch(':id')
   update(
     @CurrentUser() user: AuthUser,

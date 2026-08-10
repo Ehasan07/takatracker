@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { TagPicker } from '@/app/(shell)/tags/tag-picker';
+import type { TransactionTagDto } from '@/app/(shell)/tags/types';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
 import {
@@ -20,6 +22,15 @@ import { Sheet } from './ui/sheet';
 
 type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER';
 
+/**
+ * `TransactionView.tags` as the API returns it.
+ *
+ * Intersected in rather than declared on `TransactionDto`, the way the ledger
+ * screen already intersects `attachmentIds`: `@/lib/api` belongs to another
+ * change, and the picker below owns the tag domain either way.
+ */
+type TaggedTxn = TransactionDto & { tags?: TransactionTagDto[] };
+
 const TABS: { kind: Kind; label: string }[] = [
   { kind: 'EXPENSE', label: 'খরচ' },
   { kind: 'INCOME', label: 'আয়' },
@@ -30,7 +41,7 @@ export interface QuickAddSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Pass an existing transaction to edit it instead of creating a new one. */
-  editing?: TransactionDto | null;
+  editing?: TaggedTxn | null;
 }
 
 export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProps) {
@@ -54,6 +65,16 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   const [categoryId, setCategoryId] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [notes, setNotes] = React.useState('');
+  const [tagIds, setTagIds] = React.useState<string[]>([]);
+  /**
+   * Whether the row being edited actually told us its tags.
+   *
+   * `tagIds` omitted on a `PATCH` leaves them alone; `[]` clears them. Those are
+   * different requests and the difference matters: a row that arrived without a
+   * `tags` field — an older cached payload — would otherwise be saved with an
+   * empty picker and lose every label it had to an unrelated edit of the amount.
+   */
+  const [tagsKnown, setTagsKnown] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   // Load the sheet with the row being edited, or reset it for a new entry.
@@ -70,6 +91,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setCategoryId(editing.categoryId ?? '');
       setDescription(editing.description ?? '');
       setNotes(editing.notes ?? '');
+      setTagIds((editing.tags ?? []).map((tag) => tag.id));
+      setTagsKnown(editing.tags !== undefined);
     } else {
       setKind('EXPENSE');
       setAmount('');
@@ -78,6 +101,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setCategoryId('');
       setDescription('');
       setNotes('');
+      setTagIds([]);
+      setTagsKnown(true);
     }
     setError(null);
   }, [open, editing, today]);
@@ -115,17 +140,20 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
     return [...picked, ...rest].slice(0, 8);
   }, [relevantCategories, recentCategoryIds]);
 
-  const repeatable = (recent.data?.items ?? [])
+  const repeatable = ((recent.data?.items ?? []) as TaggedTxn[])
     .filter((t) => t.type === 'EXPENSE' || t.type === 'INCOME')
     .slice(0, 3);
 
-  const applyRepeat = (txn: TransactionDto): void => {
+  const applyRepeat = (txn: TaggedTxn): void => {
     haptic('select');
     setKind(txn.type === 'INCOME' ? 'INCOME' : 'EXPENSE');
     setAmount(formatMinor(Math.abs(txn.amountMinor), { symbol: false }));
     if (txn.accountId) setAccountId(txn.accountId);
     if (txn.categoryId) setCategoryId(txn.categoryId);
     setDescription(txn.description ?? '');
+    /* Last month's rent was for শ্বশুরবাড়ি and so is this one. Repeating a row
+       and then re-picking its tags by hand is the repeat not having worked. */
+    setTagIds((txn.tags ?? []).map((tag) => tag.id));
     setDate(today);
   };
 
@@ -144,6 +172,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         description: description || undefined,
         notes: notes || undefined,
         source: 'MANUAL' as const,
+        /* Sent whenever the picker holds the truth, empty list included — that
+           is how somebody takes the last tag off a row. Left out entirely when
+           the row arrived without its tags, so the server keeps what it has. */
+        tagIds: tagsKnown ? tagIds : undefined,
       };
 
       return api<TransactionDto>(editing ? `/transactions/${editing.id}` : '/transactions', {
@@ -353,6 +385,12 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             </Select>
           </Field>
         )}
+
+        {/* Directly under the category, because that is where the difference
+            has to be learned: one box asks what the money went on, the next
+            asks who it was for. A transfer has no category and can still be
+            tagged — গাড়ি is a tag whether the money was spent or moved. */}
+        <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
 
         <Field label="বিবরণ" htmlFor="qa-description">
           <Input

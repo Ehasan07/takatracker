@@ -10,6 +10,7 @@
  * Which endpoints take the range, and which do not:
  *
  *   by-category    from, to          — range
+ *   by-tag         from, to          — range
  *   cash-flow      from, to          — range
  *   category/:id   from, to          — range
  *   trend          months only       — always ends at the current month; the
@@ -23,6 +24,7 @@ import { periodQuery, type Period } from './range';
 import type {
   BalanceSheetDto,
   ByCategoryDto,
+  ByTagDto,
   CashFlowDto,
   DrilldownDto,
   Kind,
@@ -33,6 +35,8 @@ export const reportKeys = {
   all: ['reports'] as const,
   byCategory: (kind: Kind, period: Period) =>
     ['reports', 'by-category', kind, period.from, period.to] as const,
+  byTag: (kind: Kind, period: Period) =>
+    ['reports', 'by-tag', kind, period.from, period.to] as const,
   trend: (months: number) => ['reports', 'trend', months] as const,
   balanceSheet: () => ['reports', 'balance-sheet'] as const,
   cashFlow: (period: Period) => ['reports', 'cash-flow', period.from, period.to] as const,
@@ -42,6 +46,10 @@ export const reportKeys = {
 
 export function fetchByCategory(kind: Kind, period: Period): Promise<ByCategoryDto> {
   return api<ByCategoryDto>(`/reports/by-category?kind=${kind}&${periodQuery(period)}`);
+}
+
+export function fetchByTag(kind: Kind, period: Period): Promise<ByTagDto> {
+  return api<ByTagDto>(`/reports/by-tag?kind=${kind}&${periodQuery(period)}`);
 }
 
 export function fetchTrend(months: number): Promise<TrendPoint[]> {

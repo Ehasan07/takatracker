@@ -444,8 +444,19 @@ function keepHierarchy(
  * What is refused is only what cannot be repaired: a non-string entry, an alias
  * past `MAX_SEARCH_ALIAS_LENGTH`, or more than `MAX_SEARCH_ALIASES` of them.
  * Silently truncating a list somebody typed would be worse than saying no.
+ *
+ * `ownerLabel` names the thing the aliases hang off and exists only so the count
+ * refusal reads correctly for the tag list too — tags carry `searchAliases` for
+ * exactly the reason categories do, and reimplementing forty lines of splitting
+ * and de-duplication over there would have given the two screens two different
+ * ideas of what a pasted list means. It is passed already in the locative
+ * ("ক্যাটাগরিতে", "ট্যাগে") because Bengali picks that ending from the last
+ * sound of the noun, so gluing one on here would be wrong half the time.
  */
-export function parseSearchAliases(value: unknown): string[] | undefined {
+export function parseSearchAliases(
+  value: unknown,
+  ownerLabel = 'ক্যাটাগরিতে',
+): string[] | undefined {
   if (value === undefined || value === null) return undefined;
 
   const entries = typeof value === 'string' ? [value] : value;
@@ -475,7 +486,7 @@ export function parseSearchAliases(value: unknown): string[] | undefined {
 
   if (out.length > MAX_SEARCH_ALIASES) {
     throw new BadRequestException(
-      `একটি ক্যাটাগরিতে সর্বোচ্চ ${toBengaliDigits(String(MAX_SEARCH_ALIASES))}টি খোঁজার নাম রাখা যায়`,
+      `একটি ${ownerLabel} সর্বোচ্চ ${toBengaliDigits(String(MAX_SEARCH_ALIASES))}টি খোঁজার নাম রাখা যায়`,
     );
   }
 

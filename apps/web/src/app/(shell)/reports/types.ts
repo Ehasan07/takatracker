@@ -47,6 +47,58 @@ export interface BalanceSheetDto {
   liabilities: BalanceLine[];
 }
 
+/**
+ * One line of `GET /v1/reports/by-tag`.
+ *
+ * `tagId: null` is the untagged bucket. It is a real row the API emits even when
+ * it is zero, and it must not be filtered out or dressed up as a tag: it is the
+ * honest answer to "what is my tagging *not* covering", and hiding it lets
+ * somebody believe their tags cover the whole month when they cover a third.
+ */
+export interface TagReportRow {
+  tagId: string | null;
+  name: string;
+  color: string | null;
+  icon: string | null;
+  totalMinor: number;
+  transactionCount: number;
+  /** Of `TagReport.totalMinor`, not of the rows. Can add up to over 100. */
+  sharePercent: number;
+}
+
+/**
+ * `GET /v1/reports/by-tag?kind=&from=&to=` — the period cut by *who for* rather
+ * than *what on*.
+ *
+ * **The rows deliberately do not add up to the total.** A transaction carrying
+ * three tags appears on three rows, because ৳৫০০ of groceries tagged পারিবারিক
+ * and রমজান really is ৳৫০০ of family spending *and* ৳৫০০ of Ramadan spending;
+ * splitting it between them would make both answers false. So:
+ *
+ *   `totalMinor`       every transaction counted once — the headline, and the
+ *                      figure that agrees with by-category and the dashboard
+ *   `taggedMinor`      the part of it carrying at least one tag, once each
+ *   `untaggedMinor`    the rest, also present as a row
+ *   `attributedMinor`  what the per-tag rows add up to
+ *   `overlapMinor`     `attributedMinor − taggedMinor`, the double-counted part
+ *
+ * The panel prints the last two whenever they are non-zero. Without that, the
+ * first person to add the column up finds a number bigger than their month's
+ * spending and reports it as a bug.
+ */
+export interface ByTagDto {
+  kind: Kind;
+  from: string;
+  to: string;
+  totalMinor: number;
+  transactionCount: number;
+  taggedMinor: number;
+  untaggedMinor: number;
+  attributedMinor: number;
+  overlapMinor: number;
+  rows: TagReportRow[];
+}
+
 /** `GET /v1/reports/cash-flow?from=&to=` */
 export interface CashFlowDto {
   openingMinor: number;

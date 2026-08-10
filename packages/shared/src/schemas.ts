@@ -98,7 +98,6 @@ export const createTransactionSchema = z.object({
   notes: z.string().max(2000).optional(),
   payee: z.string().max(200).optional(),
   personId: cuid.optional(),
-  projectTag: z.string().max(60).optional(),
   externalRef: z.string().max(200).optional(),
   source: z.enum(TRANSACTION_SOURCES).default('MANUAL'),
   entries: z.array(ledgerEntrySchema).min(2, 'A transaction needs at least two entries'),
@@ -128,6 +127,9 @@ export const simpleTransactionSchema = z
      * belong to this entry. Loans have carried this since M12 — transactions
      * were the outlier, so a receipt attached to one silently vanished. */
     attachmentIds: z.array(cuid).max(10).optional(),
+    /* Tags, not a category. The category says *what* the money went on; a tag
+     * says who for or what project, and a transaction can carry several. */
+    tagIds: z.array(cuid).max(20).optional(),
   })
   .superRefine((val, ctx) => {
     if (val.type === 'TRANSFER') {
@@ -171,6 +173,7 @@ export const transactionQuerySchema = z.object({
    * schema answered 400 for every value — the two filters could not be used at
    * all. The integer check still applies after coercion, so a float is still
    * refused and no fractional poisha gets in. */
+  tagId: cuid.optional(),
   minAmount: z.coerce.number().int().safe().optional(),
   maxAmount: z.coerce.number().int().safe().optional(),
 });

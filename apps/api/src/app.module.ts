@@ -17,6 +17,7 @@ import { HealthController } from './health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
+import { TagsModule } from './tags/tags.module';
 import { ThrottleModule } from './throttle/throttle.module';
 import { TransactionsModule } from './transactions/transactions.module';
 
@@ -32,6 +33,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     AuthModule,
     AccountsModule,
     CategoriesModule,
+    TagsModule,
     SavingsModule,
     InsuranceModule,
     LoansModule,

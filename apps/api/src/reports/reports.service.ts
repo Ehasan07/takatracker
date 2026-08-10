@@ -17,6 +17,7 @@ import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
 import { minorToNumber } from '../common/bigint-json';
 import { AccountsService } from '../accounts/accounts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TagsService } from '../tags/tags.service';
 import type { TenantContext } from '../transactions/transactions.service';
 
 export interface PeriodQuery {
@@ -24,11 +25,68 @@ export interface PeriodQuery {
   to: string;
 }
 
+/** One line of the by-tag report. `tagId: null` is the untagged bucket. */
+export interface TagTotalRow {
+  tagId: string | null;
+  name: string;
+  color: string | null;
+  icon: string | null;
+  /** The `kind` side only — expenses on an expense report, income on an income one. */
+  totalMinor: number;
+  transactionCount: number;
+  /**
+   * Share of `totalMinor` on the report, **not** of the sum of these rows. See
+   * `TagReport.overlapMinor`: on a multi-tagged period these add up to more than
+   * a hundred, and that is the honest answer rather than a bug.
+   */
+  sharePercent: number;
+}
+
+export interface TagReport {
+  kind: 'INCOME' | 'EXPENSE';
+  from: string;
+  to: string;
+  /**
+   * What the period actually cost (or earned): **every transaction counted
+   * exactly once**, however many tags it carries. This is the figure that must
+   * agree with `by-category` and with the dashboard summary.
+   */
+  totalMinor: number;
+  transactionCount: number;
+  /** The part of `totalMinor` carrying at least one tag, each transaction once. */
+  taggedMinor: number;
+  /** The rest. Also present as a row, because a bucket nobody can see is a lie. */
+  untaggedMinor: number;
+  /**
+   * The sum of `rows[].totalMinor` over the real tags — what the per-tag lines
+   * add up to. Greater than `taggedMinor` whenever a transaction carries more
+   * than one tag.
+   */
+  attributedMinor: number;
+  /**
+   * `attributedMinor − taggedMinor`: money the rows report more than once.
+   *
+   * Named in the response on purpose. Somebody will eventually add the tag
+   * column up, get a bigger number than the month's spending, and "fix" it —
+   * either by dividing a transaction's amount between its tags, or by keeping
+   * only the first tag. Both are wrong: ৳৫০০ of groceries tagged পারিবারিক and
+   * রমজান is ৳৫০০ of family spending *and* ৳৫০০ of Ramadan spending, and
+   * halving it would make both answers false. The overlap is a real property of
+   * tagging, so it is measured and published rather than hidden.
+   */
+  overlapMinor: number;
+  rows: TagTotalRow[];
+}
+
+/** The Bengali label for the bucket of transactions carrying no tag at all. */
+const UNTAGGED_LABEL = 'ট্যাগবিহীন';
+
 @Injectable()
 export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounts: AccountsService,
+    private readonly tags: TagsService,
   ) {}
 
   /** `to` is inclusive for the user; the query uses a half-open range. */
@@ -108,6 +166,159 @@ export class ReportsService {
       totalMinor: node.rolledUpMinor,
     }));
     return { total, rows: withShares(topWithRest(parents, n)) };
+  }
+
+  /**
+   * The same period, cut by tag instead of by category.
+   *
+   * The category report answers "what did we spend it on?"; this one answers
+   * "who was it for?" — পারিবারিক, শ্বশুরবাড়ি, রমজান, গাড়ি. It is the reason
+   * tags exist at all: one grocery bill is a family expense this week and a
+   * business one the next, and a category that tried to record both would ruin
+   * every "what do we spend on food?" answer in the application.
+   *
+   * ## Two things the obvious version gets wrong
+   *
+   * **Double counting.** A transaction with three tags appears on three rows. So
+   * `rows` sum to more than the period's spending, and they *should* — each row
+   * is a true statement about that tag. What must not inflate is the headline:
+   * `totalMinor` counts every transaction exactly once, comes from its own
+   * aggregate rather than from adding the rows up, and is what `sharePercent` is
+   * a share of. The difference between the two is published as `overlapMinor`
+   * rather than quietly reconciled.
+   *
+   * **Untagged.** A report that lists only the tags a user created lets them
+   * believe those tags cover their whole month. They rarely do. The untagged
+   * bucket is a row like any other — sorted by amount, with its own share — and
+   * it is emitted even at zero, because "everything this month is tagged" is
+   * itself worth saying.
+   *
+   * `withShares` from @hishab/core is not reused here, and the reason is the
+   * denominator: it divides by the sum of the rows it is given, which is exactly
+   * the inflated figure above. `shareOfTotal` below applies the identical
+   * rounding so the two reports round the same way.
+   */
+  async byTag(
+    ctx: TenantContext,
+    kind: 'INCOME' | 'EXPENSE',
+    period: PeriodQuery,
+  ): Promise<TagReport> {
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const nominalId = kind === 'INCOME' ? system.incomeAccountId : system.expenseAccountId;
+    const date = this.range(period, ctx.timezone);
+
+    const [perTag, tags, totals] = await Promise.all([
+      /* Shared with `GET /tags` so the list and the report cannot drift apart. */
+      this.tags.tagTotals(ctx.workspaceId, date),
+      this.prisma.tag.findMany({
+        where: { workspaceId: ctx.workspaceId, deletedAt: null },
+        select: { id: true, name: true, nameBn: true, color: true, icon: true, sortOrder: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+      this.periodTotals(ctx.workspaceId, nominalId, date),
+    ]);
+
+    const rows: TagTotalRow[] = [];
+    for (const tag of tags) {
+      const found = perTag.get(tag.id);
+      if (!found) continue;
+      const totalMinor = kind === 'INCOME' ? found.incomeMinor : found.expenseMinor;
+      const transactionCount = kind === 'INCOME' ? found.incomeCount : found.expenseCount;
+      /* A tag used only on transfers has no nominal leg on either side, so it
+       * belongs on neither report. Omitted rather than printed as a zero line
+       * that the user cannot act on. */
+      if (totalMinor === 0 && transactionCount === 0) continue;
+      rows.push({
+        tagId: tag.id,
+        name: tag.nameBn ?? tag.name,
+        color: tag.color,
+        icon: tag.icon,
+        totalMinor,
+        transactionCount,
+        sharePercent: 0,
+      });
+    }
+
+    const attributedMinor = rows.reduce((sum, row) => sum + row.totalMinor, 0);
+    const taggedMinor = totals.totalMinor - totals.untaggedMinor;
+
+    rows.push({
+      tagId: null,
+      name: UNTAGGED_LABEL,
+      color: null,
+      icon: null,
+      totalMinor: totals.untaggedMinor,
+      transactionCount: totals.untaggedCount,
+      sharePercent: 0,
+    });
+
+    const ranked = rows
+      .map((row) => ({ ...row, sharePercent: shareOfTotal(row.totalMinor, totals.totalMinor) }))
+      .sort((a, b) => b.totalMinor - a.totalMinor);
+
+    return {
+      kind,
+      from: period.from,
+      to: period.to,
+      totalMinor: totals.totalMinor,
+      transactionCount: totals.transactionCount,
+      taggedMinor,
+      untaggedMinor: totals.untaggedMinor,
+      attributedMinor,
+      overlapMinor: attributedMinor - taggedMinor,
+      rows: ranked,
+    };
+  }
+
+  /**
+   * The period's real total and its untagged part, each transaction once.
+   *
+   * Deliberately a separate aggregate from the per-tag one rather than a sum of
+   * it: the whole point is a denominator that no amount of multi-tagging can
+   * inflate. `EXISTS` is evaluated once per ledger row against the
+   * `(workspaceId, tagId)` index, and is hoisted into a sub-select because a
+   * correlated subquery is not allowed inside an aggregate `FILTER`.
+   */
+  private async periodTotals(
+    workspaceId: string,
+    nominalId: string,
+    date: { gte: Date; lt: Date },
+  ): Promise<{
+    totalMinor: number;
+    transactionCount: number;
+    untaggedMinor: number;
+    untaggedCount: number;
+  }> {
+    const [row] = await this.prisma.$queryRaw<
+      { total: bigint; txn_count: number; untagged: bigint; untagged_count: number }[]
+    >`
+      SELECT COALESCE(SUM(x.amount), 0)::bigint AS total,
+             COUNT(DISTINCT x.tx_id)::int AS txn_count,
+             COALESCE(SUM(CASE WHEN x.is_tagged THEN 0 ELSE x.amount END), 0)::bigint AS untagged,
+             COUNT(DISTINCT CASE WHEN x.is_tagged THEN NULL ELSE x.tx_id END)::int AS untagged_count
+      FROM (
+        SELECT t."id" AS tx_id,
+               e."amountMinor" AS amount,
+               EXISTS (
+                 SELECT 1 FROM "TransactionTag" tt
+                 WHERE tt."transactionId" = t."id" AND tt."workspaceId" = ${workspaceId}
+               ) AS is_tagged
+        FROM "LedgerEntry" e
+        JOIN "Transaction" t ON t."id" = e."transactionId"
+        WHERE e."workspaceId" = ${workspaceId}
+          AND e."accountId" = ${nominalId}
+          AND t."deletedAt" IS NULL
+          AND t."date" >= ${date.gte}
+          AND t."date" < ${date.lt}
+      ) x
+    `;
+
+    return {
+      totalMinor: minorToNumber(BigInt(row?.total ?? 0n)),
+      transactionCount: Number(row?.txn_count ?? 0),
+      untaggedMinor: minorToNumber(BigInt(row?.untagged ?? 0n)),
+      untaggedCount: Number(row?.untagged_count ?? 0),
+    };
   }
 
   /**
@@ -297,4 +508,20 @@ export class ReportsService {
       items,
     };
   }
+}
+
+/**
+ * A row's share of a total that is **not** the sum of the rows.
+ *
+ * `withShares` in @hishab/core is the convention for this and is reused
+ * everywhere it fits; it does not fit here, on two counts. Its denominator is
+ * the sum of the rows it is handed, which for tags is inflated by every
+ * multi-tagged transaction, and its row type is keyed `categoryId`. What is
+ * copied exactly is the arithmetic: integer poisha in, one decimal out, and
+ * `Math.floor(x + 0.5)` rather than `Math.round`, which is banned repo-wide
+ * because money must never touch float rounding.
+ */
+function shareOfTotal(amountMinor: number, totalMinor: number): number {
+  if (totalMinor === 0) return 0;
+  return Math.floor((amountMinor / totalMinor) * 1000 + 0.5) / 10;
 }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   assertBalanced,
   expandSimpleTransaction,
@@ -38,6 +38,14 @@ export interface TenantContext {
   timezone: string;
 }
 
+/** A tag as it rides along on a transaction. Enough to render a chip, no more. */
+export interface TransactionTagView {
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
+}
+
 export interface TransactionView {
   id: string;
   date: string;
@@ -52,8 +60,16 @@ export interface TransactionView {
   accountName: string | null;
   counterAccountId: string | null;
   counterAccountName: string | null;
+  /**
+   * Exactly one category — *what* the money went on. The pair below is *who for*
+   * or *what project*, and there may be any number of those. Keeping the two
+   * apart is the whole reason `Tag` is a separate table: forcing পারিবারিক into
+   * the category would turn খাবার into two categories and corrupt every
+   * "what do we spend on food?" report in the application.
+   */
   categoryId: string | null;
   categoryName: string | null;
+  tags: TransactionTagView[];
   createdAt: string;
   balanceAfterMinor?: number;
 }
@@ -65,9 +81,57 @@ const txInclude = {
       category: { select: { id: true, name: true, nameBn: true } },
     },
   },
+  /* One extra left join on an indexed foreign key, on every read of a
+   * transaction. It is not optional: a client that can set tags has to be able
+   * to read them back, and a list screen that omitted them would show a
+   * transaction as untagged the moment it was saved. */
+  tags: {
+    include: {
+      tag: {
+        select: { id: true, name: true, nameBn: true, color: true, icon: true, sortOrder: true },
+      },
+    },
+  },
 } satisfies Prisma.TransactionInclude;
 
 type TxWithEntries = Prisma.TransactionGetPayload<{ include: typeof txInclude }>;
+
+/**
+ * What a create or update accepts, until `tagIds` reaches @hishab/shared.
+ *
+ * TODO(main): `simpleTransactionSchema` in packages/shared/src/schemas.ts does
+ * not carry `tagIds` and that file belongs to another change, so the field is
+ * added to the type here and parsed alongside the body in the controller. Add
+ *
+ *   tagIds: z.array(cuid).max(20).optional(),
+ *
+ * to that schema and this intersection collapses to nothing — it is written as
+ * an intersection rather than an `extends` precisely so that adding the field
+ * upstream with the same type is a no-op instead of a conflict.
+ */
+export type TransactionWriteInput = SimpleTransactionInput & { tagIds?: string[] };
+
+/**
+ * The list query, until `tagId` reaches @hishab/shared.
+ *
+ * TODO(main): add
+ *
+ *   tagId: cuid.optional(),
+ *
+ * to `transactionQuerySchema` and delete this type along with the extra
+ * `@Query('tagId')` parameter in the controller.
+ */
+export type ListTransactionsQuery = TransactionQuery & { tagId?: string };
+
+/**
+ * How many tags one transaction may carry.
+ *
+ * Generous, because the whole point of a tag is that a row can have several —
+ * capping it at three would reintroduce the constraint tags exist to remove. It
+ * is a cap at all because every id is a row in the join table and a write path
+ * with no ceiling is a write path somebody will paste a thousand ids into.
+ */
+export const MAX_TAGS_PER_TRANSACTION = 20;
 
 @Injectable()
 export class TransactionsService {
@@ -82,7 +146,12 @@ export class TransactionsService {
   /** Guard every referenced row belongs to the caller (spec §9). */
   private async assertOwnership(
     workspaceId: string,
-    input: { accountId: string; counterAccountId?: string | null; categoryId?: string | null },
+    input: {
+      accountId: string;
+      counterAccountId?: string | null;
+      categoryId?: string | null;
+      tagIds?: readonly string[];
+    },
   ): Promise<void> {
     const accountIds = [input.accountId, input.counterAccountId].filter(
       (v): v is string => typeof v === 'string',
@@ -99,9 +168,21 @@ export class TransactionsService {
       });
       if (cat !== 1) throw new NotFoundException('ক্যাটাগরি পাওয়া যায়নি');
     }
+    /* Every tag proved to be this workspace's *before* a single join row is
+     * written. `TransactionTag` carries its own `workspaceId`, so an unchecked
+     * id here would not just be a wrong label — it would be the one row in the
+     * schema whose tenancy column disagrees with the tag it points at, and every
+     * later query that trusts that column would inherit the mistake. */
+    const tagIds = normaliseTagIds(input.tagIds);
+    if (tagIds && tagIds.length > 0) {
+      const tags = await this.prisma.tag.count({
+        where: { id: { in: tagIds }, workspaceId, deletedAt: null },
+      });
+      if (tags !== tagIds.length) throw new NotFoundException('ট্যাগ পাওয়া যায়নি');
+    }
   }
 
-  async create(ctx: TenantContext, input: SimpleTransactionInput): Promise<TransactionView> {
+  async create(ctx: TenantContext, input: TransactionWriteInput): Promise<TransactionView> {
     /* Only creation is metered. Editing, deleting and restoring stay available
      * at the ceiling, because locking someone out of correcting their own books
      * is a worse outcome than letting the count drift. */
@@ -127,6 +208,8 @@ export class TransactionsService {
     // Belt and braces: the engine says it balances, the DB trigger will too.
     assertBalanced(entries);
 
+    const tagIds = normaliseTagIds(input.tagIds) ?? [];
+
     const created = await this.prisma.transaction.create({
       data: {
         workspaceId: ctx.workspaceId,
@@ -138,9 +221,16 @@ export class TransactionsService {
         payee: input.payee,
         externalRef: input.externalRef,
         source: input.source,
+        /* Receipts. The column and the schema field have both existed since the
+         * attachment picker shipped, but nothing wrote it — so a photographed
+         * receipt was uploaded, validated, and then silently dropped. */
+        attachmentIds: input.attachmentIds ?? [],
         entries: {
           create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
         },
+        ...(tagIds.length > 0
+          ? { tags: { create: tagIds.map((id) => toTagLinkData(id, ctx.workspaceId)) } }
+          : {}),
       },
       include: txInclude,
     });
@@ -183,7 +273,7 @@ export class TransactionsService {
   async update(
     ctx: TenantContext,
     id: string,
-    input: SimpleTransactionInput,
+    input: TransactionWriteInput,
   ): Promise<TransactionView> {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
@@ -212,8 +302,20 @@ export class TransactionsService {
     );
     assertBalanced(entries);
 
+    /* Absent leaves the tags alone; present replaces the whole set, including
+     * with an empty list. Every other field on this body behaves that way
+     * already — `description: undefined` is "unchanged", not "clear it" — and a
+     * client that edits an amount without sending `tagIds` must not silently
+     * strip a row's labels. */
+    const tagIds = normaliseTagIds(input.tagIds);
+
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.ledgerEntry.deleteMany({ where: { transactionId: id } });
+      if (tagIds !== undefined) {
+        await tx.transactionTag.deleteMany({
+          where: { transactionId: id, workspaceId: ctx.workspaceId },
+        });
+      }
       return tx.transaction.update({
         where: { id },
         data: {
@@ -222,10 +324,15 @@ export class TransactionsService {
           description: input.description,
           notes: input.notes,
           payee: input.payee,
+          // Omitted leaves the receipts alone; `[]` clears them, matching tags.
+          ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
           externalRef: input.externalRef,
           entries: {
             create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
           },
+          ...(tagIds && tagIds.length > 0
+            ? { tags: { create: tagIds.map((tagId) => toTagLinkData(tagId, ctx.workspaceId)) } }
+            : {}),
         },
         include: txInclude,
       });
@@ -307,6 +414,7 @@ export class TransactionsService {
       amountMinor: bigint;
       categoryId: string | null;
     }[];
+    tags?: { tagId: string }[];
   }): Prisma.InputJsonValue {
     return {
       date: row.date.toISOString().slice(0, 10),
@@ -319,6 +427,12 @@ export class TransactionsService {
         direction: e.direction,
         amountMinor: minorToNumber(e.amountMinor),
       })),
+      /* Included for the same reason the legs are: re-tagging a transaction
+       * changes no amount and no date, so without this an edit that moved a
+       * grocery bill from পারিবারিক to ব্যবসা would write two audit rows that
+       * are byte-for-byte identical. Sorted so a set that did not change never
+       * looks like it did just because Postgres returned it in another order. */
+      tagIds: (row.tags ?? []).map((t) => t.tagId).sort(),
     };
   }
 
@@ -333,7 +447,7 @@ export class TransactionsService {
 
   async list(
     ctx: TenantContext,
-    query: TransactionQuery,
+    query: ListTransactionsQuery,
   ): Promise<{ items: TransactionView[]; nextCursor: string | null }> {
     const tz = ctx.timezone;
 
@@ -343,12 +457,32 @@ export class TransactionsService {
      * index already serves. `query.q` absent means not one line of this runs. */
     const search = query.q ? await this.buildSearchWhere(ctx.workspaceId, query.q) : null;
 
+    /* A tag from another workspace answers 404, not an empty page. Filtering on
+     * an id that is not ours would return nothing either way — the `some` below
+     * is workspace-scoped — but "no transactions" and "no such tag" are
+     * different facts, and a client that cannot tell them apart shows an empty
+     * list where it should show an error. One indexed read, only when asked. */
+    if (query.tagId) {
+      const tag = await this.prisma.tag.count({
+        where: { id: query.tagId, workspaceId: ctx.workspaceId, deletedAt: null },
+      });
+      if (tag !== 1) throw new NotFoundException('ট্যাগ পাওয়া যায়নি');
+    }
+
     const where: Prisma.TransactionWhereInput = {
       workspaceId: ctx.workspaceId,
       deletedAt: null,
       ...(query.type ? { type: query.type } : {}),
       ...(query.source ? { source: query.source } : {}),
       ...(query.personId ? { personId: query.personId } : {}),
+      /* `workspaceId` repeated on the join even though the transaction is
+       * already scoped and the tag was just proved. The join table carries its
+       * own tenancy column and this is the query that reads it; a redundant
+       * predicate on an index the lookup uses anyway is the cheapest possible
+       * insurance against the one row that was written wrong. */
+      ...(query.tagId
+        ? { tags: { some: { tagId: query.tagId, workspaceId: ctx.workspaceId } } }
+        : {}),
       ...(query.from || query.to
         ? {
             date: {
@@ -400,11 +534,14 @@ export class TransactionsService {
   /**
    * The `?q=` filter, and the only place Banglish crosses into SQL.
    *
-   * Two reads, in parallel, both workspace-scoped and both over a reference
-   * table a household counts in dozens. Neither filters `deletedAt`: a
-   * soft-deleted category still labels the historical rows it was attached to
-   * and `present()` still prints its name, so it has to stay findable by that
-   * name — the same rule the relation `ILIKE` this replaced followed.
+   * Three reads, in parallel, all workspace-scoped and all over reference tables
+   * a household counts in dozens. Categories and people do not filter
+   * `deletedAt`: a soft-deleted category still labels the historical rows it was
+   * attached to and `present()` still prints its name, so it has to stay
+   * findable by that name — the same rule the relation `ILIKE` this replaced
+   * followed. **Tags are different and are filtered**: deleting a tag detaches
+   * it from every transaction, so a dead tag labels nothing, matches nothing,
+   * and indexing it would be work spent to find zero rows.
    *
    * Each token is resolved separately so the AND across tokens keeps meaning
    * what it meant: `করিম bhara` is "this person, and that word", and the person
@@ -417,7 +554,7 @@ export class TransactionsService {
     const tokens = searchTokens(raw).slice(0, MAX_SEARCH_TOKENS);
     if (tokens.length === 0) return null;
 
-    const [categories, persons] = await Promise.all([
+    const [categories, persons, tags] = await Promise.all([
       this.prisma.category.findMany({
         where: { workspaceId },
         select: { id: true, name: true, nameBn: true, searchAliases: true },
@@ -425,6 +562,10 @@ export class TransactionsService {
       this.prisma.person.findMany({
         where: { workspaceId },
         select: { id: true, name: true },
+      }),
+      this.prisma.tag.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true, nameBn: true, searchAliases: true },
       }),
     ]);
 
@@ -451,10 +592,22 @@ export class TransactionsService {
       row: { id: p.id },
       fields: [searchField('name', 'PRIMARY', p.name)],
     }));
+    /* Tags, resolved exactly like categories and for the same reason. `?q=রমজান`
+     * has to reach the ledger, not only the tag screen — and `?q=romjan` has to
+     * reach it too, which no `ILIKE` can do because the two spellings share no
+     * code points. Aliases included, so a household that wrote `shoshur` on
+     * শ্বশুরবাড়ি keeps finding those rows. */
+    const tagDocs: SearchDoc<{ id: string }>[] = tags.map((t) => ({
+      id: t.id,
+      row: { id: t.id },
+      fields: [searchField('nameBn', 'PRIMARY', t.nameBn), searchField('name', 'PRIMARY', t.name)],
+      aliases: searchAliasField('aliases', 'SECONDARY', t.searchAliases),
+    }));
 
     const scopes = tokens.map((token) => ({
       categoryIds: resolveIds(categoryDocs, token),
       personIds: resolveIds(personDocs, token),
+      tagIds: resolveIds(tagDocs, token),
     }));
 
     return buildSearchWhereFor(workspaceId, tokens, scopes);
@@ -666,9 +819,71 @@ export class TransactionsService {
       counterAccountName: tx.type === 'TRANSFER' ? (counter?.account.name ?? null) : null,
       categoryId: category?.id ?? null,
       categoryName: category ? (category.nameBn ?? category.name) : null,
+      /* Sorted here rather than in the query. Prisma can order an included
+       * relation by a field of *its* relation, but doing so turns one join into
+       * an ordered subquery on the main list screen; a handful of chips per row
+       * sorts for free in memory. The user's own arrangement first, then the
+       * name, so the chips on two transactions carrying the same tags always
+       * appear in the same order. */
+      tags: [...tx.tags]
+        .sort(
+          (a, b) =>
+            a.tag.sortOrder - b.tag.sortOrder ||
+            (a.tag.nameBn ?? a.tag.name).localeCompare(b.tag.nameBn ?? b.tag.name, 'bn'),
+        )
+        .map((link) => ({
+          id: link.tag.id,
+          name: link.tag.nameBn ?? link.tag.name,
+          color: link.tag.color,
+          icon: link.tag.icon,
+        })),
       createdAt: tx.createdAt.toISOString(),
     };
   }
+}
+
+/**
+ * A join row, built the way `toEntryData` builds a ledger leg: through the
+ * relations rather than the raw columns, so `TransactionTag.workspaceId` can
+ * only ever be a workspace that exists, and is the one the caller was proved to
+ * be in.
+ */
+function toTagLinkData(
+  tagId: string,
+  workspaceId: string,
+): Prisma.TransactionTagCreateWithoutTransactionInput {
+  return {
+    tag: { connect: { id: tagId } },
+    workspace: { connect: { id: workspaceId } },
+  };
+}
+
+/**
+ * Trim, drop blanks and de-duplicate a submitted tag list, or `undefined` when
+ * the field was absent — which is what leaves an existing set alone.
+ *
+ * De-duplication is not tidiness: `(transactionId, tagId)` is the primary key of
+ * the join, so the same id twice in one body is a 500 from Postgres rather than
+ * a 400 from us. The cap is refused rather than truncated, for the reason the
+ * alias cap is: silently keeping twenty of the thirty labels somebody sent is
+ * worse than saying no.
+ */
+function normaliseTagIds(value: readonly string[] | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const id = raw.trim();
+    if (id === '' || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  if (out.length > MAX_TAGS_PER_TRANSACTION) {
+    throw new BadRequestException(
+      `একটি লেনদেনে সর্বোচ্চ ${toBengaliDigits(String(MAX_TAGS_PER_TRANSACTION))}টি ট্যাগ দেওয়া যায়`,
+    );
+  }
+  return out;
 }
 
 function computeTransferSign(tx: TxWithEntries, accountId: string, magnitude: number): number {
@@ -746,6 +961,7 @@ function resolveIds<T extends { id: string }>(
 interface TokenScope {
   readonly categoryIds: readonly string[];
   readonly personIds: readonly string[];
+  readonly tagIds: readonly string[];
 }
 
 /**
@@ -808,7 +1024,7 @@ function buildSearchWhereFor(
 ): Prisma.TransactionWhereInput {
   return {
     AND: tokens.map((token, i) => {
-      const scope = scopes[i] ?? { categoryIds: [], personIds: [] };
+      const scope = scopes[i] ?? { categoryIds: [], personIds: [], tagIds: [] };
       const text = needlesFor(token).flatMap((needle) => {
         const contains = { contains: needle, mode: 'insensitive' } as const;
         return [
@@ -834,6 +1050,9 @@ function buildSearchWhereFor(
       }
       if (scope.personIds.length > 0) {
         ids.push({ personId: { in: [...scope.personIds] }, person: { workspaceId } });
+      }
+      if (scope.tagIds.length > 0) {
+        ids.push({ tags: { some: { workspaceId, tagId: { in: [...scope.tagIds] } } } });
       }
 
       return { OR: [...text, ...ids] };

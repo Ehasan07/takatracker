@@ -42,7 +42,15 @@
       "cache": false
     },
     "test:e2e": {
-      "dependsOn": ["^build"],
+      /* `^build` is the *web* package's own dependencies, which do not include
+       * the API — so Playwright's webServer was starting `node dist/main.js`
+       * against whatever build happened to be sitting on disk. A run could
+       * exercise an API from days ago and still report green, and one did:
+       * a new module's routes 404'd because dist predated them.
+       *
+       * Naming the API explicitly makes the browser suite test the code in the
+       * working tree, which is the only thing it was ever supposed to prove. */
+      "dependsOn": ["^build", "@hishab/api#build"],
       "cache": false
     },
     "lint": {},

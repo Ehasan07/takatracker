@@ -51,6 +51,7 @@ import {
   reportKeys,
 } from './queries';
 import { RangeBar } from './range-bar';
+import { TagPanel } from './tag-panel';
 import {
   MAX_TREND_MONTHS,
   bnDate,
@@ -169,6 +170,21 @@ function ReportsBody({ today }: { today: Date }) {
 
   const byCategory = kind === 'EXPENSE' ? expense : income;
   const rangeText = periodLabel(range);
+
+  /* One `kind` in the URL, a handle on each panel that answers by it. Distinct
+     accessible names, because two controls called the same thing on one screen
+     is a control nobody can refer to. */
+  const kindSelect = (label: string): React.ReactNode => (
+    <Select
+      aria-label={label}
+      value={kind}
+      onChange={(e) => navigate(range, e.target.value === 'INCOME' ? 'INCOME' : 'EXPENSE')}
+      className="w-auto"
+    >
+      <option value="EXPENSE">খরচ</option>
+      <option value="INCOME">আয়</option>
+    </Select>
+  );
   const asOfText = `আজকের হিসাবে · ${bnDate(isoOf(today))}`;
   const comparison = comparisonLabel(range);
 
@@ -323,17 +339,7 @@ function ReportsBody({ today }: { today: Date }) {
         <Panel
           title="খাতভিত্তিক হিসাব"
           scope={rangeText}
-          action={
-            <Select
-              aria-label="আয় না খরচ"
-              value={kind}
-              onChange={(e) => navigate(range, e.target.value === 'INCOME' ? 'INCOME' : 'EXPENSE')}
-              className="w-auto"
-            >
-              <option value="EXPENSE">খরচ</option>
-              <option value="INCOME">আয়</option>
-            </Select>
-          }
+          action={kindSelect('খাতভিত্তিক হিসাবে আয় না খরচ')}
         >
           {byCategory.isError ? (
             <QueryError
@@ -452,6 +458,16 @@ function ReportsBody({ today }: { today: Date }) {
             </div>
           )}
         </Panel>
+
+        {/* The same money, cut by who it was for rather than what it went on.
+            Directly after the category split, because the pair of them is the
+            only place the difference between the two is visible at all. */}
+        <TagPanel
+          kind={kind}
+          period={range}
+          rangeText={rangeText}
+          action={kindSelect('ট্যাগভিত্তিক হিসাবে আয় না খরচ')}
+        />
 
         {/* Cash flow */}
         <Panel title="নগদ প্রবাহ" scope={rangeText}>

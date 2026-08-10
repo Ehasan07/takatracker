@@ -104,7 +104,19 @@ const ALREADY_APPLIED = 'এই খসড়াটি আগেই লেনদ�
 
 const CURRENCY = 'BDT';
 
-const APP_URL = process.env.API_PUBLIC_URL ?? `http://localhost:${process.env.API_PORT ?? 4000}`;
+/**
+ * Where a forwarder app should POST.
+ *
+ * Its own variable, not `API_PUBLIC_URL`, because the two are deliberately
+ * different hosts: `sms.takatracker.com` serves this one route and answers 404
+ * to everything else, so the secret a phone carries cannot reach `/auth/login`
+ * or `/export/full` if that phone is lost. Falls back to the general API URL so
+ * a deployment that has not split them still works.
+ */
+const APP_URL =
+  process.env.INGEST_PUBLIC_URL ??
+  process.env.API_PUBLIC_URL ??
+  `http://localhost:${process.env.API_PORT ?? 4000}`;
 
 // --- views -------------------------------------------------------------------
 

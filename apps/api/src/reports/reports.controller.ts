@@ -42,6 +42,32 @@ export class ReportsController {
       : this.reports.byParentCategory(user, kind, period);
   }
 
+  /**
+   * `GET /v1/reports/by-tag` — the same period as `by-category`, cut by *who
+   * for* rather than *what on*.
+   *
+   * `kind` is narrowed the way `by-category` narrows it — anything that is not
+   * `INCOME` is an expense report — so the two endpoints answer a malformed
+   * parameter identically rather than one refusing and the other defaulting.
+   *
+   * The response deliberately does **not** balance: `rows` sum to more than
+   * `totalMinor` whenever a transaction carries more than one tag, and the
+   * difference is reported as `overlapMinor`. See `ReportsService.byTag`.
+   */
+  @Get('by-tag')
+  byTag(
+    @CurrentUser() user: AuthUser,
+    @Query('kind') kind?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.byTag(
+      user,
+      kind === 'INCOME' ? 'INCOME' : 'EXPENSE',
+      this.period(user, from, to),
+    );
+  }
+
   @Get('trend')
   trend(@CurrentUser() user: AuthUser, @Query('months') months?: string) {
     const count = Math.min(36, Math.max(1, Number(months) || 12));

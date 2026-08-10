@@ -37,9 +37,19 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { useCoarsePointer, useMediaQuery } from '@/hooks/use-device';
-import { api, endpoints, type AccountDto, type CategoryDto, type TransactionDto } from '@/lib/api';
+import {
+  api,
+  ApiError,
+  endpoints,
+  type AccountDto,
+  type CategoryDto,
+  type TransactionDto,
+} from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { TagDot } from '../tags/parts';
+import { fetchTags, tagKeys } from '../tags/queries';
+import { tagName, type TagDto, type TransactionTagDto } from '../tags/types';
 
 /**
  * The khata.
@@ -103,8 +113,16 @@ const SOURCE_LABEL: Record<string, string> = {
  * or update body (`simpleTransactionSchema`) nor returns it from `present()`.
  * Reading it optionally costs nothing and means receipts light up on this
  * screen the moment those two lines land, with no change here.
+ *
+ * `tags` is the same intersection for the opposite reason: the API *does*
+ * return it on every transaction, but `TransactionDto` in `@/lib/api` has not
+ * caught up and that file belongs to another change. Optional, so a payload
+ * replayed from the offline queue that predates tagging still types.
  */
-type LedgerTxn = TransactionDto & { attachmentIds?: string[] };
+type LedgerTxn = TransactionDto & {
+  attachmentIds?: string[];
+  tags?: TransactionTagDto[];
+};
 
 const attachmentsOf = (txn: LedgerTxn): string[] => txn.attachmentIds ?? [];
 
@@ -116,11 +134,13 @@ const labelOf = (txn: TransactionDto): string => txn.description || txn.category
  * Every name here is a real `transactionQuerySchema` parameter, spelled the way
  * the server spells it, so the URL and the request are the same vocabulary.
  *
- * `minAmount`/`maxAmount` are deliberately absent. The schema types them as
- * `z.number()` with no `z.coerce`, and a query string only ever delivers
- * strings, so the API answers 400 to any value at all — see the note in the
- * handover. Adding the controls before that is fixed would break the list
- * rather than filter it.
+ * `minAmount`/`maxAmount` are still absent, but no longer for the reason
+ * originally written here: the schema has since gained `z.coerce` on both, so
+ * they would work. Adding the two controls is a change of its own.
+ *
+ * `tagId` is here rather than in component state for the same reason as the
+ * rest — "পারিবারিক, last month" has to survive a reload and be sendable to
+ * somebody else — and because the by-tag report links straight into it.
  */
 const FILTER_KEYS = [
   'q',
@@ -128,6 +148,7 @@ const FILTER_KEYS = [
   'to',
   'accountId',
   'categoryId',
+  'tagId',
   'type',
   'source',
   'personId',
@@ -142,6 +163,7 @@ const CHIP_KEYS: readonly FilterKey[] = [
   'to',
   'accountId',
   'categoryId',
+  'tagId',
   'type',
   'source',
   'personId',
@@ -212,6 +234,10 @@ function TransactionsScreen() {
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
+  /* Names for the chips a row carries and for the tag filter. Unfiltered and
+     shared with the tag screen's own cache, so opening the khata after /tags
+     costs nothing. */
+  const tags = useQuery({ queryKey: tagKeys.list(''), queryFn: () => fetchTags('') });
 
   const apiFilters = React.useMemo(() => {
     const out: Record<string, string> = {};
@@ -318,6 +344,58 @@ function TransactionsScreen() {
   const unfiltered = activeCount === 0;
   const shown = items.length;
 
+  /**
+   * `?tagId=` answers 404 for a tag this workspace does not have, rather than an
+   * empty page — which is the right call, and puts a dead id in a bookmarked
+   * URL one refetch away from a bare "could not load the ledger". A tag that was
+   * merged or deleted while somebody was filtered by it is the ordinary way to
+   * get here, so it is named and the fix is one tap.
+   */
+  const deadTagFilter =
+    filters.tagId !== '' &&
+    transactions.error instanceof ApiError &&
+    transactions.error.status === 404;
+
+  /**
+   * One tag row, and the tap that filters the khata by it.
+   *
+   * Chips are on their own line rather than inside the row's button: a button
+   * inside a button is invalid, and the alternative — plain text — would show
+   * the tags while making the obvious gesture do nothing. Only tagged rows pay
+   * the extra line.
+   */
+  const tagChips = (txn: LedgerTxn): React.ReactNode => {
+    if (!txn.tags || txn.tags.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-1 px-3 pb-2">
+        {txn.tags.map((tag) => {
+          const on = filters.tagId === tag.id;
+          return (
+            <button
+              key={tag.id}
+              type="button"
+              aria-pressed={on}
+              aria-label={on ? `${tag.name} ট্যাগের ছাঁকনি সরান` : `${tag.name} ট্যাগ দিয়ে ছাঁকুন`}
+              onClick={() => {
+                haptic('tap');
+                setFilters({ tagId: on ? '' : tag.id });
+              }}
+              className={cn(
+                'press flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 text-xs md:min-h-8',
+                on
+                  ? 'border-income bg-income/15 text-ink font-medium'
+                  : 'border-rule bg-surface text-ink-muted hover:bg-greenbar',
+              )}
+            >
+              <TagDot color={tag.color} className="h-2 w-2" />
+              <span className="max-w-32 truncate">{tag.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       {/* The phone gets its title from the shell's navigation bar. */}
@@ -333,12 +411,33 @@ function TransactionsScreen() {
         setFilters={setFilters}
         accounts={accounts.data ?? []}
         categories={categories.data ?? []}
+        tags={tags.data ?? []}
         activeCount={activeCount}
         panelOpen={panelOpen}
         onPanelToggle={() => setPanelOpen((open) => !open)}
       />
 
-      {transactions.isError ? (
+      {deadTagFilter ? (
+        <div
+          role="alert"
+          className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+        >
+          <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
+          <p className="text-ink text-sm">এই ট্যাগটি আর নেই।</p>
+          <p className="text-ink-muted text-xs">
+            ট্যাগটি মুছে ফেলা হয়েছে বা অন্য ট্যাগের সাথে মিলিয়ে দেওয়া হয়েছে। ছাঁকনিটি সরিয়ে
+            পুরো খাতা দেখুন।
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-1"
+            onClick={() => setFilters({ tagId: '' })}
+          >
+            ছাঁকনিটি সরান
+          </Button>
+        </div>
+      ) : transactions.isError ? (
         <LedgerError onRetry={() => void transactions.refetch()} />
       ) : transactions.isLoading ? (
         <div className="rounded-card border-rule bg-surface overflow-hidden border">
@@ -422,6 +521,13 @@ function TransactionsScreen() {
                       </div>
                     );
 
+                    const body = (
+                      <>
+                        {row}
+                        {tagChips(txn)}
+                      </>
+                    );
+
                     return (
                       <li key={txn.id} className="ledger-row border-rule border-b last:border-b-0">
                         <SwipeRow
@@ -439,7 +545,7 @@ function TransactionsScreen() {
                             onAction: () => remove.mutate(txn),
                           }}
                         >
-                          {row}
+                          {body}
                         </SwipeRow>
                       </li>
                     );
@@ -477,6 +583,8 @@ function TransactionsScreen() {
                 <TransactionDetail
                   txn={detail}
                   actions={rowActions(detail)}
+                  activeTagId={filters.tagId}
+                  onFilterTag={(id) => setFilters({ tagId: id })}
                   onReceipts={() => setReceiptsFor(detail)}
                 />
               ) : (
@@ -500,6 +608,13 @@ function TransactionsScreen() {
           <TransactionDetail
             txn={detail}
             actions={rowActions(detail)}
+            activeTagId={filters.tagId}
+            onFilterTag={(id) => {
+              // Filtering is a change to the list behind this sheet; stay to
+              // watch it happen and the sheet is covering the answer.
+              setDetailOpen(false);
+              setFilters({ tagId: id });
+            }}
             onReceipts={() => {
               setDetailOpen(false);
               setReceiptsFor(detail);
@@ -541,6 +656,7 @@ function FilterBar({
   setFilters,
   accounts,
   categories,
+  tags,
   activeCount,
   panelOpen,
   onPanelToggle,
@@ -549,6 +665,7 @@ function FilterBar({
   setFilters: (patch: Partial<FilterState>) => void;
   accounts: AccountDto[];
   categories: CategoryDto[];
+  tags: TagDto[];
   activeCount: number;
   panelOpen: boolean;
   onPanelToggle: () => void;
@@ -620,6 +737,13 @@ function FilterBar({
     return hit ? (hit.nameBn ?? hit.name) : id;
   };
 
+  /* A tag arrived at from the by-tag report may be filtering the list before
+     the tag list itself has loaded, so the id stands in for one render. */
+  const tagLabel = (id: string): string => {
+    const hit = tags.find((t) => t.id === id);
+    return hit ? tagName(hit) : 'ট্যাগ';
+  };
+
   const chipLabel = (key: FilterKey): string => {
     const value = filters[key];
     switch (key) {
@@ -631,6 +755,8 @@ function FilterBar({
         return nameOf(accounts, value);
       case 'categoryId':
         return categoryName(value);
+      case 'tagId':
+        return `ট্যাগ: ${tagLabel(value)}`;
       case 'type':
         return TYPE_LABEL[value] ?? value;
       case 'source':
@@ -743,6 +869,26 @@ function FilterBar({
             ))}
           </Select>
         </Field>
+        {/* Only when there are tags to choose from. An empty dropdown next to
+            ক্যাটাগরি is the fastest way to teach somebody that tags are a
+            second, broken category list. */}
+        {tags.length > 0 ? (
+          <Field label="ট্যাগ" htmlFor="fl-tag" className="sm:col-span-2 lg:col-span-1">
+            <Select
+              id="fl-tag"
+              value={filters.tagId}
+              onChange={(e) => setFilters({ tagId: e.target.value })}
+            >
+              <option value="">সব ট্যাগ</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tagName(tag)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+
         <Field label="ধরন" htmlFor="fl-type" className="sm:col-span-2 lg:col-span-1">
           <Select
             id="fl-type"
@@ -772,7 +918,14 @@ function FilterBar({
           </Select>
         </Field>
 
-        <div className="flex items-end sm:col-span-2 lg:col-span-3">
+        {/* Fills whatever is left of the four-column row, so adding the tag
+            select above does not push the presets onto a line of their own. */}
+        <div
+          className={cn(
+            'flex items-end sm:col-span-2',
+            tags.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3',
+          )}
+        >
           <div className="chip-strip w-full">
             {presets.map(([label, from, to]) => (
               <button
@@ -923,10 +1076,14 @@ function LedgerError({ onRetry }: { onRetry: () => void }) {
 function TransactionDetail({
   txn,
   actions,
+  activeTagId,
+  onFilterTag,
   onReceipts,
 }: {
   txn: LedgerTxn;
   actions: React.ReactNode;
+  activeTagId: string;
+  onFilterTag: (id: string) => void;
   onReceipts: () => void;
 }) {
   const receipts = attachmentsOf(txn);
@@ -963,6 +1120,48 @@ function TransactionDetail({
       <div>
         <dt className="text-ink-muted text-xs">ক্যাটাগরি</dt>
         <dd className="text-ink">{txn.categoryName ?? '—'}</dd>
+      </div>
+      {/* Beside the category on purpose: one line says what the money went on,
+          the next says who it was for. */}
+      <div>
+        <dt className="text-ink-muted text-xs">ট্যাগ</dt>
+        <dd className="mt-1">
+          {txn.tags && txn.tags.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {txn.tags.map((tag) => {
+                const on = activeTagId === tag.id;
+                return (
+                  <li key={tag.id}>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      aria-label={
+                        on ? `${tag.name} ট্যাগের ছাঁকনি সরান` : `${tag.name} ট্যাগ দিয়ে ছাঁকুন`
+                      }
+                      onClick={() => {
+                        haptic('tap');
+                        onFilterTag(on ? '' : tag.id);
+                      }}
+                      className={cn(
+                        'press flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-xs md:min-h-9',
+                        on
+                          ? 'border-income bg-income/15 text-ink font-medium'
+                          : 'border-rule bg-surface text-ink hover:bg-greenbar',
+                      )}
+                    >
+                      <TagDot color={tag.color} className="h-2 w-2" />
+                      <span className="max-w-40 truncate">{tag.name}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-ink-muted text-xs">
+              কোনো ট্যাগ নেই — সম্পাদনা করে কার জন্য খরচ তা লিখে রাখতে পারেন।
+            </p>
+          )}
+        </dd>
       </div>
       {txn.notes ? (
         <div>

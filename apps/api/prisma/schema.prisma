@@ -307,6 +307,8 @@ model Workspace {
   ingestionMessages IngestionMessage[]
   transactionDrafts TransactionDraft[]
   mailMessages      MailMessage[]
+  tags              Tag[]
+  transactionTags   TransactionTag[]
   savingsPlans SavingsPlan[]
   savingsInstallments SavingsInstallment[]
   policies     InsurancePolicy[]
@@ -1131,6 +1133,63 @@ model TransactionDraft {
   @@index([workspaceId, status, createdAt(sort: Desc)])
 }
 
+/**
+ * A label a user puts on a transaction, orthogonal to its category.
+ *
+ * The category answers *what* the money went on — খাবার ও বাজার. A tag answers
+ * *who for* or *what project* — পারিবারিক, শ্বশুরবাড়ি, রমজান, গাড়ি. The same
+ * grocery bill can be a family expense one week and a business one the next,
+ * and forcing that into the category would corrupt every spending report to
+ * record something the category was never about.
+ *
+ * A transaction has exactly one category and as many tags as it needs, which is
+ * the whole reason this is a separate table rather than another column.
+ */
+model Tag {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  /// Optional Bengali name, so a tag typed in English still reads well.
+  nameBn      String?
+  /// Extra words that should find this tag — the same reasoning as categories:
+  /// transliteration reaches `poribar` from পরিবার, but never `family`.
+  searchAliases String[] @default([])
+  color       String?
+  icon        String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, sortOrder])
+}
+
+/**
+ * The join between a transaction and its tags.
+ *
+ * An explicit table rather than an implicit many-to-many so it can carry
+ * `workspaceId` — every other join in this schema is guarded that way, and a
+ * tag row that could point across tenants would be the one place the boundary
+ * did not hold.
+ */
+model TransactionTag {
+  transactionId String
+  tagId         String
+  workspaceId   String
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  @@index([workspaceId, tagId])
+}
+
 enum TransactionType {
   INCOME
   EXPENSE
@@ -1167,7 +1226,6 @@ model Transaction {
   notes         String?
   payee         String?
   personId      String?
-  projectTag    String?
   attachmentIds String[]          @default([])
   source        TransactionSource @default(MANUAL)
   sourceDraftId String?
@@ -1184,6 +1242,7 @@ model Transaction {
   person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
   importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   entries     LedgerEntry[]
+  tags        TransactionTag[]
 
   @@unique([workspaceId, clientId])
   @@index([workspaceId, date(sort: Desc)])
