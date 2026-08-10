@@ -14,8 +14,10 @@ import {
   TENANT_REACTIVATED,
   TENANT_SUSPENDED,
   TENANT_VIEWED,
+  fileAgainst,
   type AdminActor,
 } from './admin-audit';
+import { BYTES_PER_MB, limitOf, periodKeyFor, toMb, type Limits } from './tenant-usage';
 import type {
   AssignPlanInput,
   ListTenantsQuery,
@@ -34,34 +36,6 @@ const NEAR_LIMIT_RATIO = 0.8;
 const OVERVIEW_SCAN_CAP = 2_000;
 
 const SIGNUP_WINDOW_DAYS = 30;
-
-const BYTES_PER_MB = 1024 * 1024;
-
-/* `Math.round` is banned repo-wide (money is integer poisha). This is not
- * money, but two decimals read better than a float tail either way. */
-const toMb = (bytes: number): number => Number((bytes / BYTES_PER_MB).toFixed(2));
-
-/**
- * Resolved ceilings, keyed by feature.
- *
- * Deliberately a plain `ReadonlyMap<string, …>` rather than `@hishab/core`'s
- * `Entitlements`. The catalogue is becoming open — features created at runtime
- * cannot be in a compiled union — so this module treats a feature key as what
- * it is in the database: a string.
- */
-type Limits = ReadonlyMap<string, number | null>;
-
-/**
- * The ceiling for one key, as the enforcer sees it.
- *
- * `null` is unlimited, `0` is switched off, and a key the map has never heard
- * of is **also** off. That last case is not pedantry: the catalogue is open, so
- * a feature a super admin creates this afternoon is on nobody's plan yet, and
- * reading a missing key as "unlimited" would hand every tenant in the system an
- * uncapped feature the moment it was saved.
- */
-const limitOf = (limits: Limits, key: string): number | null =>
-  limits.has(key) ? (limits.get(key) ?? null) : 0;
 
 /** What the admin screens are told about one sellable feature. */
 export interface FeatureDescriptor {
@@ -871,24 +845,9 @@ export class AdminService {
 
   // --- internals -------------------------------------------------------------
 
-  /**
-   * Where a cross-tenant action is recorded.
-   *
-   * `AuditEvent.workspaceId` is not nullable and is a foreign key, so there is
-   * no such thing as a row belonging to no tenant. Anything about one tenant is
-   * filed against that tenant. Anything about the platform — the tenant list,
-   * the overview, an unfiltered audit query — is filed against the
-   * **operator's own** workspace: the only workspace they have standing in, and
-   * the one place a review of "what did this operator do?" reads back complete.
-   */
+  /** See `fileAgainst` in admin-audit.ts, which the package editor shares. */
   private fileAgainst(actor: AdminActor, workspaceId?: string) {
-    return {
-      workspaceId: workspaceId ?? actor.workspaceId,
-      actorUserId: actor.id,
-      actorType: 'SUPPORT' as const,
-      ip: actor.ip,
-      userAgent: actor.userAgent,
-    };
+    return fileAgainst(actor, workspaceId);
   }
 
   private async requireWorkspace(workspaceId: string) {
@@ -1159,13 +1118,6 @@ const countedUsage = (
     default:
       return null;
   }
-};
-
-/** `'lifetime'`, `'2026-08'` or `'2026-08-10'` — the buckets `UsageMeter` uses. */
-const periodKeyFor = (period: MeterPeriod, timezone: string, now: Date): string => {
-  if (period === 'MONTHLY') return toLocalDateString(now, timezone).slice(0, 7);
-  if (period === 'DAILY') return toLocalDateString(now, timezone);
-  return 'lifetime';
 };
 
 const periodKeysFor = (catalogue: FeatureDescriptor[], timezone: string, now: Date): string[] => [

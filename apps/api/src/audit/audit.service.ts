@@ -77,6 +77,16 @@ export const AUDIT_ACTIONS = [
   'admin.overview_viewed',
   'admin.audit_viewed',
   'admin.plan_assigned',
+  'admin.plan_created',
+  'admin.plan_updated',
+  'admin.plan_features_updated',
+  'admin.plan_retired',
+  /* Its own string, not the inverse of retire. Filing "back on sale" under
+   * `plan_retired` names an event as its own opposite, and folding it into
+   * `plan_updated` buries it among price edits. */
+  'admin.plan_unretired',
+  'admin.feature_created',
+  'admin.feature_updated',
   'admin.feature_overridden',
   'admin.tenant_suspended',
   'admin.tenant_reactivated',

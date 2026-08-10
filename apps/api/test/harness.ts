@@ -133,6 +133,14 @@ export const TEST_TABLES = [
   'TelegramConnection',
   'CardReminderCycle',
   'WorkspaceFeatureOverride',
+  /* The plan catalogue is truncated too, now that boot only seeds what is
+   * missing rather than overwriting it every time. Without this, a test that
+   * edits FREE would leave that edit behind for every later run — and the
+   * suite would pass or fail depending on what somebody did yesterday. */
+  'PlanFeature',
+  'Plan',
+  'UsageMeter',
+  'Feature',
   'Workspace',
   'RefreshToken',
   'User',

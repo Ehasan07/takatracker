@@ -66,29 +66,44 @@ export class FeatureCatalogueService {
    * every time the process restarted, which is the exact failure this whole
    * change exists to prevent. Retiring a feature is `isActive: false`, set by a
    * human, so plans that already grant it keep it and nothing new sells it.
+   *
+   * ## What a boot is allowed to overwrite
+   *
+   * Only `kind` and `period`, and only because the code is the authority on
+   * both: `kind` decides how every number stored under this key is *read* (a
+   * LIMIT of 3 is a ceiling, a FLAG of 3 is "on"), and `period` decides which
+   * meter bucket a usage write lands in. A deployment that changes either has
+   * changed the behaviour, and the row has to follow or the row is a lie.
+   *
+   * Everything else — both labels, the unit, the category, the sort order,
+   * `isActive` — is created once and then left alone, because
+   * `PATCH /admin/features/:key` lets an operator edit exactly those fields.
+   * Re-syncing them here would ship an edit form whose edits quietly revert at
+   * the next deploy, which is the same trap this change removes from
+   * `PlanFeature`. The cost is that correcting a Bengali typo in
+   * `DEFAULT_FEATURES` no longer reaches an install that has already booted —
+   * it is a `PATCH` there, by someone who can see what the label currently says.
    */
   async seed(): Promise<void> {
     for (const definition of DEFAULT_FEATURES) {
-      const row = {
-        // Column names are English-first; the product is Bengali-first. See
-        // CatalogueFeature above.
-        label: definition.labelEn,
-        labelBn: definition.label,
-        kind: definition.kind,
-        // The column is NOT NULL; a definition that omits the unit means "a
-        // plain count", which is what every renderer already falls back to.
-        unit: definition.unit ?? 'count',
-        period: definition.period,
-        category: definition.category,
-        sortOrder: definition.sortOrder,
-      };
-
       await this.prisma.feature.upsert({
         where: { key: definition.key },
-        // `isActive` is only ever set on create. If an operator retired a
-        // shipped feature by hand, a redeploy must not quietly sell it again.
-        create: { key: definition.key, isActive: definition.isActive, ...row },
-        update: row,
+        create: {
+          key: definition.key,
+          // Column names are English-first; the product is Bengali-first. See
+          // CatalogueFeature above.
+          label: definition.labelEn,
+          labelBn: definition.label,
+          kind: definition.kind,
+          // The column is NOT NULL; a definition that omits the unit means "a
+          // plain count", which is what every renderer already falls back to.
+          unit: definition.unit ?? 'count',
+          period: definition.period,
+          category: definition.category,
+          isActive: definition.isActive,
+          sortOrder: definition.sortOrder,
+        },
+        update: { kind: definition.kind, period: definition.period },
       });
     }
 

@@ -269,6 +269,8 @@ export const ROUTE_TITLES: Record<string, string> = {
    * heading that is already on the screen. */
   '/admin': 'প্ল্যাটফর্ম',
   '/admin/tenants': 'ওয়ার্কস্পেস',
+  '/admin/plans': 'প্যাকেজ',
+  '/admin/features': 'ফিচার',
   '/admin/audit': 'কার্যবিবরণী',
 };
 

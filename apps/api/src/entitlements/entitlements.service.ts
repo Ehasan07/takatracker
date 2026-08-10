@@ -35,7 +35,7 @@ const BYTES_PER_MB = 1_048_576;
  * counter can. A message that has been through retention pruning leaves nothing
  * to count, so the month's intake has to have been recorded when it happened.
  */
-const METERED_FEATURE_KEYS: readonly string[] = ['ingest.messages.monthly.max'];
+export const METERED_FEATURE_KEYS: readonly string[] = ['ingest.messages.monthly.max'];
 
 /**
  * 402, with enough detail for the client to say "you have used all 5 of your
@@ -107,11 +107,35 @@ export class EntitlementsService implements OnModuleInit {
   ) {}
 
   /**
-   * The defaults are upserted at boot rather than frozen into a migration, so a
-   * fresh install works and every environment converges on the same starting
-   * catalogue. What boot does *not* do is decide what exists: the `Feature` and
-   * `Plan` tables do that, and a package a super admin assembles at runtime is
-   * never touched by this method.
+   * Seed the shipped defaults **if they are absent**, and otherwise leave them
+   * alone.
+   *
+   * ## Why the plans are seed-if-absent and the features are not
+   *
+   * This used to upsert `Plan` and `PlanFeature` on every boot and delete any
+   * `PlanFeature` whose key was not in `DEFAULT_PLANS`. That made the code the
+   * permanent owner of FREE and PRO — so the moment the admin panel could set a
+   * limit, a limit set on FREE at 09:00 was gone at the next deploy, silently,
+   * with no error and nothing in a log to explain why a customer's ceiling had
+   * moved back. A price list that reverts itself is worse than no editor at all.
+   *
+   * The rule now is: **the code says what a fresh install starts with, and the
+   * database owns it from then on.** Nothing here overwrites or deletes a `Plan`
+   * or a `PlanFeature` row that already exists. Changing what a shipped tier
+   * includes on an install that has already booted is therefore an operator
+   * action through `/admin/plans`, not a pull request — which is correct, since
+   * that install's operator may have repriced it deliberately.
+   *
+   * `Feature` is treated differently, and the difference is not an oversight.
+   * A `PlanFeature` row is a *commercial decision* — what this business charges
+   * for what — and the operator is the authority on it. A `Feature` row is a
+   * *description of something the code implements*: its `key` is named in
+   * `AccountsService.create`, its `kind` decides how every stored number under
+   * that key is read, its `period` decides which meter bucket a write lands in.
+   * A build that ships a new sellable feature must be able to put it in the
+   * catalogue, or it could never be sold at all. So features are still upserted
+   * — see `FeatureCatalogueService.seed`, which is careful to sync only the
+   * fields the code owns and never the ones the admin screen can edit.
    */
   async onModuleInit(): Promise<void> {
     // Features first, unconditionally: `PlanFeature.featureKey` is a foreign
@@ -120,6 +144,10 @@ export class EntitlementsService implements OnModuleInit {
     await this.catalogue.seed();
 
     for (const definition of DEFAULT_PLANS) {
+      /* `upsert` with an empty `update` rather than a `findUnique` then a
+       * `create`: the empty update makes "leave it exactly as it is" the
+       * outcome of the same single statement that creates it, so two API
+       * instances booting together cannot race into a unique-constraint crash. */
       const plan = await this.prisma.plan.upsert({
         where: { code: definition.code },
         create: {
@@ -130,33 +158,27 @@ export class EntitlementsService implements OnModuleInit {
           isPublic: definition.isPublic,
           sortOrder: definition.sortOrder,
         },
-        update: {
-          name: definition.name,
-          priceMinor: BigInt(definition.priceMinor),
-          interval: definition.interval,
-          isPublic: definition.isPublic,
-          sortOrder: definition.sortOrder,
-        },
+        update: {},
       });
 
       for (const [featureKey, limitValue] of Object.entries(definition.features)) {
         await this.prisma.planFeature.upsert({
           where: { planId_featureKey: { planId: plan.id, featureKey } },
           create: { planId: plan.id, featureKey, limitValue },
-          update: { limitValue },
+          /* Empty for the same reason as above, and it is the whole point of
+           * this change: a limit an operator has already set is a fact about
+           * this deployment, not a drift from the source tree. */
+          update: {},
         });
       }
 
-      /* A key removed from the definition must disappear from the database too,
-       * or a retired limit would keep being enforced. This only ever runs
-       * against the two code-owned plans the loop iterates — a plan created at
-       * runtime is never pruned, because nothing in the build claims to know
-       * what it should contain. The trade is that FREE and PRO are owned by
-       * this file: a feature added to them by hand is gone at the next deploy,
-       * and a bespoke grant belongs on a Custom plan or an override. */
-      await this.prisma.planFeature.deleteMany({
-        where: { planId: plan.id, featureKey: { notIn: Object.keys(definition.features) } },
-      });
+      /* No prune. A key the operator removed from FREE through
+       * `PUT /admin/plans/FREE/features` must stay removed, and a key they
+       * added must stay added; a `deleteMany` here could only ever undo one of
+       * the two. The cost is that dropping a feature from `DEFAULT_PLANS` no
+       * longer withdraws it from installs that have already booted — that is
+       * now `PUT /admin/plans/:code/features`, which is the same act performed
+       * by whoever is entitled to perform it and leaves an audit row saying so. */
     }
 
     // Workspaces created before plans existed land on the free tier.
