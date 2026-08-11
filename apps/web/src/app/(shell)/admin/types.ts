@@ -550,3 +550,43 @@ export function toEnvelope(raw: unknown): ImpersonationEnvelope {
     banner: str(row.banner),
   };
 }
+
+// --- a tenant's money, and the platform's ------------------------------------
+
+export interface AdminAccount {
+  id: string;
+  name: string;
+  type: string;
+  /** What the user typed for their own recognition. Never a full number. */
+  accountNumberMasked: string | null;
+  institution: string | null;
+  isArchived: boolean;
+  balanceMinor: number;
+}
+
+export interface TenantFinance {
+  currency: string;
+  accounts: AdminAccount[];
+  netWorthMinor: number;
+  assetsMinor: number;
+  liabilitiesMinor: number;
+  savings: { count: number; paidInMinor: number };
+  insurance: { count: number; premiumPaidMinor: number };
+  loans: { lentOutstandingMinor: number; borrowedOutstandingMinor: number; count: number };
+}
+
+export interface CategorySlice {
+  name: string;
+  kind: 'INCOME' | 'EXPENSE';
+  totalMinor: number;
+  transactionCount: number;
+  /** How many workspaces contributed — the number that says "is this typical?" */
+  workspaceCount: number;
+}
+
+export interface CategoryAnalytics {
+  slices: CategorySlice[];
+  workspacesCounted: number;
+  currencyNote: string;
+  currencies: { currency: string; workspaces: number }[];
+}

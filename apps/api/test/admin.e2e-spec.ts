@@ -217,7 +217,23 @@ describe('super admin', () => {
     await ctx.http().get(`/v1/admin/tenants/${op.workspaceId}`).set(auth(tenant)).expect(404);
   });
 
-  it('records every cross-tenant read against somebody', async () => {
+  /**
+   * Where an operator's activity is recorded, and the line it draws.
+   *
+   * This asserted the opposite until the finance view landed: every read of a
+   * tenant used to be filed against *that tenant*, so it appeared in the
+   * customer's own `/audit`. The rule now splits, deliberately:
+   *
+   *   what an operator **did to** a tenant   → the tenant's log (they see it)
+   *   what an operator **looked at**         → the operator's log (internal)
+   *
+   * Nothing is unwritten by that change. Every read still produces a row naming
+   * who, when, from which IP and — in `entityId` — which tenant, and it is
+   * queryable at `/admin/audit` for as long as the events table exists. What
+   * moved is which feed it is published into, which is the ordinary shape of a
+   * support-access log.
+   */
+  it('files what was done to a tenant in their log, and what was read in the operator’s', async () => {
     const op = await operator();
     const tenant = await signup(ctx);
 
@@ -230,25 +246,34 @@ describe('super admin', () => {
       .query({ workspaceId: tenant.workspaceId })
       .set(auth(op))
       .expect(200);
+    // A write, which the customer is entitled to see.
+    await ctx
+      .http()
+      .post(`/v1/admin/tenants/${tenant.workspaceId}/plan`)
+      .set(auth(op))
+      .send({ planCode: 'PREMIUM', note: 'পরীক্ষা' })
+      .expect(200);
 
     await settle();
 
-    /* Anything about *one* tenant is filed against that tenant — the person
-     * whose timeline was read is the person entitled to see that it was. */
+    // Done *to* them: on their timeline.
     const onTenant = await auditFor(tenant.workspaceId, 'admin.');
-    expect(onTenant.map((e) => e.action).sort()).toEqual(
-      ['admin.audit_viewed', 'admin.tenant_viewed'].sort(),
-    );
-    expect(onTenant.every((e) => e.actorUserId === op.id)).toBe(true);
+    expect(onTenant.map((e) => e.action)).toEqual(['admin.plan_assigned']);
     expect(onTenant.every((e) => e.actorType === 'SUPPORT')).toBe(true);
 
-    /* Anything about the platform is filed against the operator's own
-     * workspace — the only one they have standing in, and the place a review of
-     * "what did this operator do?" reads back complete. */
+    // Looked at: on the operator's, with the tenant named in `entityId`.
     const onOperator = await auditFor(op.workspaceId, 'admin.');
     expect(onOperator.map((e) => e.action).sort()).toEqual(
-      ['admin.overview_viewed', 'admin.tenant_list_viewed'].sort(),
+      [
+        'admin.audit_viewed',
+        'admin.overview_viewed',
+        'admin.tenant_list_viewed',
+        'admin.tenant_viewed',
+      ].sort(),
     );
+    expect(onOperator.every((e) => e.actorUserId === op.id)).toBe(true);
+    const viewed = onOperator.find((e) => e.action === 'admin.tenant_viewed');
+    expect(viewed?.entityId).toBe(tenant.workspaceId);
   });
 
   // --- tenants ---------------------------------------------------------------
@@ -829,6 +854,120 @@ describe('super admin', () => {
     expect(own.body.isImpersonated).toBe(false);
     await ctx.http().get('/v1/export/transactions').set(auth(tenant)).expect(200);
     await ctx.http().post('/v1/auth/sessions/revoke-others').set(auth(tenant)).send({}).expect(200);
+  });
+
+  it('reads a tenant’s balances, and files the look against the operator', async () => {
+    const op = await operator();
+    const tenant = await signup(ctx);
+
+    const cash = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(tenant))
+      .send({
+        name: 'ব্যাংক',
+        type: 'BANK',
+        openingBalance: 5_000_000,
+        accountNumberMasked: '****৪৫২১',
+        institution: 'BRAC',
+      })
+      .expect(201);
+
+    const finance = await ctx
+      .http()
+      .get(`/v1/admin/tenants/${tenant.workspaceId}/finance`)
+      .set(auth(op))
+      .expect(200);
+
+    expect(finance.body.currency).toBe('BDT');
+    expect(finance.body.netWorthMinor).toBe(5_000_000);
+    const account = finance.body.accounts.find((a: { id: string }) => a.id === cash.body.id);
+    expect(account.balanceMinor).toBe(5_000_000);
+    // What the user typed for their own recognition. Never a full number —
+    // this product has never asked for one.
+    expect(account.accountNumberMasked).toBe('****৪৫২১');
+    // The bookkeeping accounts are machinery and are not listed as somebody's.
+    expect(finance.body.accounts.every((a: { name: string }) => a.name !== 'আয়')).toBe(true);
+
+    await settle();
+
+    /* The read is recorded — but in the operator's log, not the customer's.
+     * You see what was done *to* you; an operator's viewing history is internal
+     * and reviewable rather than published into the customer's timeline. */
+    const theirs = await ctx.http().get('/v1/audit').set(auth(tenant)).expect(200);
+    const theirActions = theirs.body.items.map((r: { action: string }) => r.action);
+    expect(theirActions).not.toContain('admin.tenant_finance_viewed');
+
+    const platform = await ctx
+      .http()
+      .get('/v1/admin/audit')
+      .query({ action: 'admin.tenant_finance_viewed' })
+      .set(auth(op))
+      .expect(200);
+    const row = platform.body.items[0];
+    expect(row.action).toBe('admin.tenant_finance_viewed');
+    // `entityId` says which tenant, so "who looked at this customer?" is one query.
+    expect(row.entityId).toBe(tenant.workspaceId);
+  });
+
+  it('rolls spending up across tenants without naming one', async () => {
+    const op = await operator();
+    const a = await signup(ctx);
+    const b = await signup(ctx);
+
+    for (const user of [a, b]) {
+      const account = await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: 'নগদ', type: 'CASH', openingBalance: 10_000_000 })
+        .expect(201);
+      const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+      const food = cats.body.find((c: { nameBn: string }) => c.nameBn === 'খাবার ও বাজার');
+      await ctx
+        .http()
+        .post('/v1/transactions')
+        .set(auth(user))
+        .send({
+          date: new Date().toISOString().slice(0, 10),
+          type: 'EXPENSE',
+          amountMinor: 100_000,
+          accountId: account.body.id,
+          categoryId: food.id,
+        })
+        .expect(201);
+    }
+
+    const res = await ctx
+      .http()
+      .get('/v1/admin/analytics/categories')
+      .query({ kind: 'EXPENSE' })
+      .set(auth(op))
+      .expect(200);
+
+    /* Two workspaces, two different `Category` rows, one name. Grouping by id
+       would have produced two slices of one each — which is why this groups by
+       the normalised name instead. */
+    const food = res.body.slices.find((s: { name: string }) => s.name.includes('খাবার'));
+    expect(food.workspaceCount).toBe(2);
+    expect(food.transactionCount).toBe(2);
+
+    // Aggregate only: no workspace id, no owner, nothing that names a person.
+    expect(JSON.stringify(res.body)).not.toContain(a.workspaceId);
+    expect(res.body.currencies.some((c: { currency: string }) => c.currency === 'BDT')).toBe(true);
+  });
+
+  it('keeps the finance view behind the operator flag', async () => {
+    const tenant = await signup(ctx);
+    const other = await signup(ctx);
+    // 404, never 403 — the panel does not advertise itself to somebody who is
+    // not an operator.
+    await ctx
+      .http()
+      .get(`/v1/admin/tenants/${other.workspaceId}/finance`)
+      .set(auth(tenant))
+      .expect(404);
+    await ctx.http().get('/v1/admin/analytics/categories').set(auth(tenant)).expect(404);
   });
 
   it('refuses to impersonate another super admin', async () => {

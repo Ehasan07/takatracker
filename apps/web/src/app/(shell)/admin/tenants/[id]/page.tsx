@@ -46,6 +46,7 @@ import { adminKeys, fetchTenant, isNotHere } from '../../queries';
 import type { TenantDetail, TenantFeature, TenantOverride } from '../../types';
 import { ImpersonateSheet, PlanSheet, StatusSheet } from './actions';
 import { OverrideSheet } from './override-sheet';
+import { FinancePanel } from './finance-panel';
 
 export default function AdminTenantPage() {
   const params = useParams<{ id: string }>();
@@ -186,6 +187,8 @@ export default function AdminTenantPage() {
           />
         </dl>
       </section>
+
+      <FinancePanel workspaceId={id} />
 
       <section className="rounded-card border-rule bg-surface border p-4">
         <h2 className="text-ink text-base font-semibold">আকার</h2>

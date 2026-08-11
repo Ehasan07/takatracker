@@ -158,6 +158,16 @@ const featureMapSchema = z
   .record(limitValueSchema)
   .refine((map) => Object.keys(map).length <= 200, { message: 'একসাথে এত ফিচার দেওয়া যাবে না' });
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+const categoryAnalyticsQuerySchema = z.object({
+  from: z.string().regex(ISO_DAY).optional(),
+  to: z.string().regex(ISO_DAY).optional(),
+  kind: z.enum(['INCOME', 'EXPENSE']).optional(),
+  planCode: z.string().trim().max(40).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 const createPlanSchema = z.object({
   code: planCodeSchema,
   name: z.string().trim().min(1).max(120),
@@ -311,6 +321,41 @@ export class AdminController {
     @Param('workspaceId') workspaceId: string,
   ) {
     return this.admin.tenantDetail(actorFrom(user, req), workspaceId);
+  }
+
+  /**
+   * `GET /v1/admin/tenants/:id/finance` — a tenant's balances and positions.
+   *
+   * Its own route rather than more fields on `tenantDetail`, for two reasons
+   * that are really one: an operator opening a plan page should not read
+   * somebody's bank balances as a side effect, and the audit row for "looked at
+   * the money" has to be distinguishable from "looked at the plan". A separate
+   * route makes both true by construction.
+   */
+  @Get('tenants/:workspaceId/finance')
+  tenantFinance(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.admin.tenantFinance(actorFrom(user, req), workspaceId);
+  }
+
+  /**
+   * `GET /v1/admin/analytics/categories` — spending across every tenant.
+   *
+   * Aggregate only: names of categories and their totals, never a row, never a
+   * workspace id. It answers "what does the customer base spend on" without
+   * opening anybody's books.
+   */
+  @Get('analytics/categories')
+  categoryAnalytics(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Query(zodPipe(categoryAnalyticsQuerySchema))
+    query: z.infer<typeof categoryAnalyticsQuerySchema>,
+  ) {
+    return this.admin.categoryAnalytics(actorFrom(user, req), query);
   }
 
   @Post('tenants/:workspaceId/plan')

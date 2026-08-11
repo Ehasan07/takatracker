@@ -6,6 +6,8 @@ import { AuditService, type AuditAction } from '../audit/audit.service';
 import { FeatureCatalogueService } from '../entitlements/feature-catalogue.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminAnalyticsService, type CategoryAnalyticsQuery } from './admin-analytics.service';
+import { AdminFinanceService } from './admin-finance.service';
 import {
   AUDIT_VIEWED,
   FEATURE_OVERRIDDEN,
@@ -14,8 +16,11 @@ import {
   TENANT_LIST_VIEWED,
   TENANT_REACTIVATED,
   TENANT_SUSPENDED,
+  TENANT_FINANCE_VIEWED,
   TENANT_VIEWED,
+  ANALYTICS_VIEWED,
   fileAgainst,
+  fileRead,
   type AdminActor,
 } from './admin-audit';
 import { BYTES_PER_MB, limitOf, periodKeyFor, toMb, type Limits } from './tenant-usage';
@@ -119,7 +124,53 @@ export class AdminService {
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
     private readonly features: FeatureCatalogueService,
+    private readonly finance: AdminFinanceService,
+    private readonly analytics: AdminAnalyticsService,
   ) {}
+
+  /**
+   * A tenant's money, and a row in the operator's log saying who looked.
+   *
+   * The audit write is `await`ed rather than emitted. Everywhere else in this
+   * file a fire-and-forget row is the right trade — an audit failure must not
+   * take a user's request down with it. Here the row *is* the accountability:
+   * if it cannot be written, the read should not happen, because an unlogged
+   * look at somebody's balances is exactly the thing this design exists to make
+   * impossible.
+   */
+  async tenantFinance(actor: AdminActor, workspaceId: string) {
+    const workspace = await this.prisma.workspace.findFirst({
+      where: { id: workspaceId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!workspace) throw new NotFoundException('ওয়ার্কস্পেস পাওয়া যায়নি');
+
+    await this.audit.record({
+      ...fileRead(actor, workspace.id),
+      action: TENANT_FINANCE_VIEWED,
+      entityId: workspace.id,
+      after: { tenant: workspace.name, operator: actor.email },
+    });
+
+    return this.finance.forWorkspace(workspace.id);
+  }
+
+  /** Aggregate spending across every tenant. No workspace is named. */
+  async categoryAnalytics(actor: AdminActor, query: CategoryAnalyticsQuery) {
+    const [result, currencies] = await Promise.all([
+      this.analytics.byCategory(query),
+      this.analytics.byCurrency(),
+    ]);
+
+    this.audit.emit({
+      ...fileRead(actor),
+      action: ANALYTICS_VIEWED,
+      entity: 'Platform',
+      after: { ...query, slices: result.slices.length },
+    });
+
+    return { ...result, currencies };
+  }
 
   // --- tenants ---------------------------------------------------------------
 
@@ -214,9 +265,8 @@ export class AdminService {
     }));
 
     this.audit.emit({
-      ...this.fileAgainst(actor),
+      ...fileRead(actor),
       action: TENANT_LIST_VIEWED,
-      entity: 'Workspace',
       after: {
         q: q ?? null,
         status: query.status ?? null,
@@ -354,11 +404,11 @@ export class AdminService {
     });
 
     this.audit.emit({
-      workspaceId: workspace.id,
-      actorUserId: actor.id,
-      actorType: 'SUPPORT',
+      /* A read, so it is filed against the operator rather than the customer
+       * — `entityId` below still says which workspace was opened, so the log
+       * answers "who looked at this tenant?" as one query. See `fileRead`. */
+      ...fileRead(actor, workspace.id),
       action: TENANT_VIEWED,
-      entity: 'Workspace',
       entityId: workspace.id,
       ip: actor.ip,
       userAgent: actor.userAgent,
@@ -750,7 +800,7 @@ export class AdminService {
     );
 
     this.audit.emit({
-      ...this.fileAgainst(actor),
+      ...fileRead(actor),
       action: OVERVIEW_VIEWED,
       entity: 'Platform',
       after: { tenantsScanned: tenants.length, truncated },
@@ -812,10 +862,9 @@ export class AdminService {
     const page = hasMore ? rows.slice(0, limit) : rows;
 
     this.audit.emit({
-      /* Filed against the tenant when the query names one — the person whose
-       * timeline was read is the person entitled to see that it was. An
-       * unscoped read falls back to the operator's own workspace. */
-      ...this.fileAgainst(actor, query.workspaceId),
+      /* A read, like the two above: filed against the operator, with the
+       * tenant named in `entityId` when the query scoped to one. */
+      ...fileRead(actor, query.workspaceId),
       action: AUDIT_VIEWED,
       entity: 'AuditEvent',
       after: {

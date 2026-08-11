@@ -49,6 +49,15 @@ export const FEATURE_UPDATED: AuditAction = 'admin.feature_updated';
 export const IMPERSONATION_STARTED: AuditAction = 'support.impersonation_started';
 export const IMPERSONATION_ENDED: AuditAction = 'support.impersonation_ended';
 
+/* Its own action, not `admin.tenant_viewed`.
+ *
+ * Reading somebody's balances, their account list and their net worth is a
+ * wider thing than opening their plan page, and filing both under one name
+ * would make "who has looked at this customer's money?" unanswerable — which
+ * is the one question this row exists to answer. */
+export const TENANT_FINANCE_VIEWED: AuditAction = 'admin.tenant_finance_viewed';
+export const ANALYTICS_VIEWED: AuditAction = 'admin.analytics_viewed';
+
 /**
  * Who is doing the looking.
  *
@@ -65,14 +74,30 @@ export interface AdminActor {
 }
 
 /**
- * Where a cross-tenant action is recorded.
+ * Where a cross-tenant action is recorded, and the line this module draws.
  *
- * `AuditEvent.workspaceId` is not nullable and is a foreign key, so there is no
- * such thing as a row belonging to no tenant. Anything about one tenant is filed
- * against that tenant. Anything about the platform — the tenant list, the
- * overview, a package edit — is filed against the **operator's own** workspace:
- * the only workspace they have standing in, and the one place a review of "what
- * did this operator do?" reads back complete.
+ * `AuditEvent.workspaceId` is not nullable and is a foreign key, so every row
+ * belongs to some workspace. Which one is a product decision, not a technical
+ * one, and it splits in two:
+ *
+ * **Things done *to* a tenant** — a plan reassigned, a limit overridden, an
+ * account suspended — are filed against **that tenant**. They change what the
+ * customer can do, the customer can see the effect, and their own
+ * `/audit` screen is where they should be able to read why. `fileAgainst` with
+ * an explicit workspace id.
+ *
+ * **What an operator *looked at*** is filed against the **operator's own**
+ * workspace. The record is complete and reviewable — every read still writes a
+ * row naming who, when, from which IP, and now which tenant (`entityId`) — it
+ * simply is not published into the customer's feed. That is the ordinary shape
+ * of a support-access log, and it is a deliberate change from the previous
+ * behaviour, where `admin.tenant_viewed` appeared in the customer's own
+ * timeline.
+ *
+ * The distinction to hold on to: **you see what was done to you; the operator's
+ * viewing history is internal but recorded.** Nothing here deletes an audit
+ * row or makes one unwritten — an operator's reads remain queryable at
+ * `/admin/audit` for as long as the events table exists.
  */
 export const fileAgainst = (actor: AdminActor, workspaceId?: string) => ({
   workspaceId: workspaceId ?? actor.workspaceId,
@@ -80,4 +105,21 @@ export const fileAgainst = (actor: AdminActor, workspaceId?: string) => ({
   actorType: 'SUPPORT' as const,
   ip: actor.ip,
   userAgent: actor.userAgent,
+});
+
+/**
+ * A read, filed against the operator rather than the tenant.
+ *
+ * `entityId` carries which workspace was looked at, so the log still answers
+ * "who opened this customer?" — it is one query on `entityId` instead of one
+ * on `workspaceId`.
+ */
+export const fileRead = (actor: AdminActor, tenantWorkspaceId?: string) => ({
+  workspaceId: actor.workspaceId,
+  actorUserId: actor.id,
+  actorType: 'SUPPORT' as const,
+  ip: actor.ip,
+  userAgent: actor.userAgent,
+  entity: 'Workspace',
+  ...(tenantWorkspaceId ? { entityId: tenantWorkspaceId } : {}),
 });

@@ -66,6 +66,12 @@ export const adminKeys = {
   tenants: (filters: TenantFilters) => ['admin', 'tenants', filters] as const,
   tenant: (id: string) => ['admin', 'tenant', id] as const,
   audit: (filters: AuditFilters) => ['admin', 'audit', filters] as const,
+  /* Its own key rather than part of `tenant(id)`. Opening a tenant's plan page
+   * must not read their balances as a side effect — the two are separate
+   * requests because they are separate audit rows. */
+  finance: (id: string) => ['admin', 'tenant', id, 'finance'] as const,
+  analytics: (filters: Record<string, string | undefined>) =>
+    ['admin', 'analytics', filters] as const,
 };
 
 /**

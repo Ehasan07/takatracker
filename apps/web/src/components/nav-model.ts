@@ -257,6 +257,12 @@ export const ADMIN_GROUP: Group = {
     { href: '/admin', label: 'প্ল্যাটফর্ম', icon: LayoutGrid, blurb: 'সব ওয়ার্কস্পেস ও সীমা' },
     { href: '/admin/tenants', label: 'ওয়ার্কস্পেস', icon: Building2, blurb: 'গ্রাহকের তালিকা' },
     {
+      href: '/admin/analytics',
+      label: 'বিশ্লেষণ',
+      icon: ChartColumn,
+      blurb: 'খাত অনুযায়ী, সব টেন্যান্ট মিলিয়ে',
+    },
+    {
       href: '/admin/audit',
       label: 'সব কার্যবিবরণী',
       icon: ScrollText,
@@ -295,6 +301,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   '/admin/tenants': 'ওয়ার্কস্পেস',
   '/admin/plans': 'প্যাকেজ',
   '/admin/features': 'ফিচার',
+  '/admin/analytics': 'বিশ্লেষণ',
   '/admin/audit': 'কার্যবিবরণী',
 };
 

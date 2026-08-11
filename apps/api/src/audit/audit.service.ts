@@ -82,6 +82,11 @@ export const AUDIT_ACTIONS = [
   'mail.sync_failed',
   'admin.tenant_list_viewed',
   'admin.tenant_viewed',
+  /* Distinct from `tenant_viewed` on purpose: reading somebody's balances and
+   * account list is wider than opening their plan page, and one name for both
+   * would make "who looked at this customer's money?" unanswerable. */
+  'admin.tenant_finance_viewed',
+  'admin.analytics_viewed',
   'admin.overview_viewed',
   'admin.audit_viewed',
   'admin.plan_assigned',

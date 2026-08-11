@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AccountsModule } from '../accounts/accounts.module';
+import { AdminAnalyticsService } from './admin-analytics.service';
 import { AdminCatalogueService } from './admin-catalogue.service';
+import { AdminFinanceService } from './admin-finance.service';
 import { AdminImpersonationService } from './admin-impersonation.service';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
@@ -26,8 +29,17 @@ import { SuperAdminGuard } from './super-admin.guard';
  * behaviour of any other route.
  */
 @Module({
-  imports: [AuthModule],
+  /* `AccountsModule` for one thing: `AccountsService.balances`, so an operator
+   * and a customer read the same number rather than two implementations of it. */
+  imports: [AuthModule, AccountsModule],
   controllers: [AdminController],
-  providers: [AdminService, AdminCatalogueService, AdminImpersonationService, SuperAdminGuard],
+  providers: [
+    AdminService,
+    AdminCatalogueService,
+    AdminImpersonationService,
+    AdminFinanceService,
+    AdminAnalyticsService,
+    SuperAdminGuard,
+  ],
 })
 export class AdminModule {}
