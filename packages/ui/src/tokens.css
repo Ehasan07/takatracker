@@ -7,15 +7,37 @@
   --hishab-surface: #ffffff;
   --hishab-greenbar: #f1f5ec;
   --hishab-rule: #d6ded0;
+  /* Brand. Blue, because that is what a finance product is: every bank, every
+     ledger app and every payment network the world over signals trust in blue,
+     and a green primary reads as "money in" rather than as the product. */
+  --hishab-brand: #045cb4;
+  --hishab-brand-strong: #034a92;
+  --hishab-brand-soft: #1c75bc;
+  --hishab-brand-tint: #eaf2fb;
+  --hishab-brand-contrast: #ffffff;
+
+  /* Money keeps its own two colours, and they are not the brand's.
+     Green is money in, red is money out — the one convention a person reads
+     without being taught, and the reason the primary had to move off green
+     rather than the income colour moving onto blue. */
   --hishab-income: #1f6f4a;
-  --hishab-expense: #a8342a;
+  --hishab-expense: #d32029;
   --hishab-brass: #8e6c18;
 
   --hishab-radius-sm: 4px;
   --hishab-radius-md: 8px;
   --hishab-radius-lg: 12px;
 
-  --hishab-font-sans: 'Noto Sans Bengali', 'Hind Siliguri', ui-sans-serif, system-ui, sans-serif;
+  /* Bengali first in the stack, Latin second.
+   *
+   * A Bengali face is asked for the whole string and simply has no glyphs for
+   * Latin letters, so the browser falls through to the next family for them —
+   * which is exactly the behaviour wanted here, and is why the order is this
+   * way round rather than the other. `next/font` sets both variables; the
+   * literal names after them are the fallback for a build where it has not. */
+  --hishab-font-sans:
+    var(--font-bengali), var(--font-latin), 'Anek Bangla', 'Bai Jamjuree', 'Noto Sans Bengali',
+    'Hind Siliguri', ui-sans-serif, system-ui, sans-serif;
   --hishab-font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
 
   --hishab-touch-min: 44px;
@@ -31,13 +53,28 @@
   --hishab-surface: #16201c;
   --hishab-greenbar: #1a241f;
   --hishab-rule: #2c3a33;
+  --hishab-brand: #4d9ae8;
+  --hishab-brand-strong: #7ab6f0;
+  --hishab-brand-soft: #4d9ae8;
+  /* A tint, not a wash: on a dark ground the brand block has to sit *above*
+     the surface, so this is lighter than --hishab-surface rather than paler
+     than white. */
+  --hishab-brand-tint: #14293f;
+  --hishab-brand-contrast: #071018;
+
   --hishab-income: #63c295;
-  --hishab-expense: #e58b80;
+  --hishab-expense: #f0827d;
   --hishab-brass: #d6ac4e;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
+    --hishab-brand: #4d9ae8;
+    --hishab-brand-strong: #7ab6f0;
+    --hishab-brand-soft: #4d9ae8;
+    --hishab-brand-tint: #14293f;
+    --hishab-brand-contrast: #071018;
+
     --hishab-ink: #e8efe7;
     --hishab-ink-muted: #9aab9f;
     --hishab-paper: #101614;
@@ -45,7 +82,7 @@
     --hishab-greenbar: #1a241f;
     --hishab-rule: #2c3a33;
     --hishab-income: #63c295;
-    --hishab-expense: #e58b80;
+    --hishab-expense: #f0827d;
     --hishab-brass: #d6ac4e;
   }
 }

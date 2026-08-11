@@ -22,7 +22,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           links and a keyboard user should be able to step over it. */}
       <a
         href="#main"
-        className="bg-income sr-only rounded-md px-4 text-white focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center"
+        className="bg-brand text-brand-contrast sr-only rounded-md px-4 focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center"
       >
         মূল অংশে যান
       </a>

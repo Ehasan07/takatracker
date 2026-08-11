@@ -481,6 +481,41 @@ export const CONTENT_BN: SiteContent = {
   ui: UI_BN,
 };
 
+/**
+ * Where to find the company, and how to reach a person.
+ *
+ * A finance product that lists no phone number and no address is one a
+ * Bangladeshi visitor will not put their bank statements into — the hotline is
+ * not decoration, it is the single strongest trust signal on the page. The
+ * channels are here for the same reason: an audience that lives on WhatsApp and
+ * Telegram reads "support" as "a channel I can join", not "a form".
+ */
+export const CONTACT = {
+  hotline: '09642500400',
+  /** `tel:` needs no spaces or dashes; the label carries the readable form. */
+  hotlineHref: 'tel:09642500400',
+  telegram: 'https://t.me/mydupno',
+  whatsapp: 'https://whatsapp.com/channel/0029Vad8kdII1rccGZGzcD1G',
+} as const;
+
+export const SOCIAL: { label: string; href: string }[] = [
+  { label: 'Facebook', href: 'https://www.facebook.com/mydupno' },
+  { label: 'X', href: 'https://twitter.com/mydupno' },
+  { label: 'Instagram', href: 'https://instagram.com/mydupno' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/company/13453653' },
+];
+
+/**
+ * The SSLCommerz invoice a premium subscription is paid through.
+ *
+ * A hosted invoice link rather than an integration: no card details reach this
+ * application, there is no PCI surface to get wrong, and the page that takes
+ * the money is the payment provider's own. What it does *not* do is tell us who
+ * paid — so premium is still enabled by hand from the admin panel, and the
+ * pricing page says so rather than implying the plan switches itself on.
+ */
+export const PAYMENT_URL = 'https://invoice.sslcommerz.com/invoice-form?refer=5EB8FA123F7FD';
+
 export const SITE = {
   /* The product's name, not the Bengali word. `হিসাব` still appears all over
      this file meaning "accounts" or "reckoning" — that is the language, and it

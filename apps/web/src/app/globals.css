@@ -11,6 +11,12 @@
   --color-surface: var(--hishab-surface);
   --color-greenbar: var(--hishab-greenbar);
   --color-rule: var(--hishab-rule);
+  --color-brand: var(--hishab-brand);
+  --color-brand-strong: var(--hishab-brand-strong);
+  --color-brand-soft: var(--hishab-brand-soft);
+  --color-brand-tint: var(--hishab-brand-tint);
+  --color-brand-contrast: var(--hishab-brand-contrast);
+
   --color-income: var(--hishab-income);
   --color-expense: var(--hishab-expense);
   --color-brass: var(--hishab-brass);

@@ -118,7 +118,7 @@ function VerifyView() {
   if (outcome === 'verified') {
     return (
       <OutcomeCard
-        icon={<CheckCircle2 className="text-income h-10 w-10" aria-hidden />}
+        icon={<CheckCircle2 className="text-brand h-10 w-10" aria-hidden />}
         title="ইমেইল যাচাই হয়ে গেছে"
         body="ধন্যবাদ। পাসওয়ার্ড ভুলে গেলে বা নিরাপত্তার দরকারে এখন এই ঠিকানাতেই আমরা যোগাযোগ করতে পারব।"
       >
@@ -132,7 +132,7 @@ function VerifyView() {
   if (outcome === 'already') {
     return (
       <OutcomeCard
-        icon={<Info className="text-income h-10 w-10" aria-hidden />}
+        icon={<Info className="text-brand h-10 w-10" aria-hidden />}
         title="এই লিংকটি আগেই ব্যবহার হয়েছে"
         body="কিছু ভুল হয়নি — আপনার ইমেইল আগেই যাচাই হয়ে গেছে। নতুন করে কিছু করতে হবে না।"
       >
@@ -180,7 +180,7 @@ function VerifyView() {
         </p>
       ) : null}
       <p className="text-ink-muted text-center text-sm">
-        <Link href="/login" className="text-income font-medium underline">
+        <Link href="/login" className="text-brand font-medium underline">
           লগইনে ফিরে যান
         </Link>
       </p>

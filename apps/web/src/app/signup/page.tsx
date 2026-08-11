@@ -145,7 +145,7 @@ export default function SignupPage() {
             {locale === 'en'
               ? 'So we can show you the right steps to put the app on your home screen.'
               : 'হোম স্ক্রিনে অ্যাপটি বসানোর সঠিক ধাপগুলো দেখানোর জন্য।'}{' '}
-            <Link href="/guide" className="text-income underline">
+            <Link href="/guide" className="text-brand underline">
               {locale === 'en' ? 'See the guide' : 'নির্দেশনা দেখুন'}
             </Link>
           </p>
@@ -176,7 +176,7 @@ export default function SignupPage() {
 
         <p className="text-ink-muted text-center text-sm">
           আগে থেকেই অ্যাকাউন্ট আছে?{' '}
-          <Link href="/login" className="text-income font-medium underline">
+          <Link href="/login" className="text-brand font-medium underline">
             লগইন করুন
           </Link>
         </p>

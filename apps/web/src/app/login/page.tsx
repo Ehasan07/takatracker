@@ -69,7 +69,7 @@ function LoginForm() {
 
       <p className="text-ink-muted text-center text-sm">
         অ্যাকাউন্ট নেই?{' '}
-        <Link href="/signup" className="text-income font-medium underline">
+        <Link href="/signup" className="text-brand font-medium underline">
           নতুন অ্যাকাউন্ট খুলুন
         </Link>
       </p>

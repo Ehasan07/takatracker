@@ -87,7 +87,7 @@ function Hero({ hero, ui, isBn }: { hero: Hero; ui: UiStrings; isBn: boolean }) 
   return (
     <section className="border-rule border-b">
       <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-        <p className="text-income text-xs font-medium sm:text-sm">{hero.eyebrow}</p>
+        <p className="text-brand text-xs font-medium sm:text-sm">{hero.eyebrow}</p>
         {/* The only `<h1>` on the page, and it carries the product's claim
             rather than its name — a crawler and a first-time reader both need
             the sentence, not the brand. */}
@@ -100,14 +100,14 @@ function Hero({ hero, ui, isBn }: { hero: Hero; ui: UiStrings; isBn: boolean }) 
         <div className="mt-7 flex flex-wrap items-center gap-3">
           <Link
             href="/signup"
-            className="press bg-income inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium text-white hover:opacity-90"
+            className="press bg-brand text-brand-contrast inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium hover:opacity-90"
           >
             {hero.primaryCta}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <Link
             href={isBn ? '/pricing' : '/en/pricing'}
-            className="press border-rule bg-surface text-ink hover:bg-greenbar inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
           >
             {hero.secondaryCta}
           </Link>
@@ -120,11 +120,11 @@ function Hero({ hero, ui, isBn }: { hero: Hero; ui: UiStrings; isBn: boolean }) 
 
 function ProofStrip({ proof, label }: { proof: SiteContent['proof']; label: string }) {
   return (
-    <section aria-label={label} className="border-rule bg-greenbar border-b">
+    <section aria-label={label} className="border-rule bg-brand-tint border-b">
       <div className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4">
         {proof.map((item) => (
           <div key={item.value}>
-            <p className="text-income text-lg font-semibold sm:text-xl">{item.value}</p>
+            <p className="text-brand text-lg font-semibold sm:text-xl">{item.value}</p>
             <p className="text-ink-muted mt-1 text-xs sm:text-sm">{item.label}</p>
           </div>
         ))}
@@ -144,7 +144,7 @@ function Steps({ steps, ui, isBn }: { steps: SiteContent['steps']; ui: UiStrings
           <li key={step.title} className="rounded-card border-rule bg-surface border p-5">
             <span
               aria-hidden
-              className="bg-greenbar text-income flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold"
+              className="bg-brand-tint text-brand flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold"
             >
               {numerals[index]}
             </span>
@@ -172,7 +172,7 @@ function Features({
         <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.featuresHeading}</h2>
         <p className="text-ink-muted mt-2 max-w-2xl">
           {ui.featuresBlurb[0]}
-          <a href={`${home}#coming`} className="text-income underline">
+          <a href={`${home}#coming`} className="text-brand underline">
             {ui.comingHeading}
           </a>
           {ui.featuresBlurb[1]}
@@ -193,7 +193,7 @@ function Features({
                     className="rounded-card border-rule bg-surface border p-4"
                   >
                     <h4 className="text-ink flex items-start gap-2 text-sm font-medium">
-                      <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                      <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                       <span>
                         {feature.title}
                         <span className="text-ink-muted block text-xs font-normal">
@@ -223,7 +223,7 @@ function Features({
 function LedgerNote({ ui }: { ui: UiStrings }) {
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
-      <div className="rounded-card border-income/30 bg-greenbar border p-6 sm:p-8">
+      <div className="rounded-card border-brand/30 bg-brand-tint border p-6 sm:p-8">
         <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.ledgerHeading}</h2>
         <div className="mt-4 grid gap-6 md:grid-cols-2">
           <div>
@@ -235,7 +235,7 @@ function LedgerNote({ ui }: { ui: UiStrings }) {
             <ul className="mt-2 space-y-2">
               {ui.ledgerResults.map((line) => (
                 <li key={line} className="text-ink-muted flex items-start gap-2 text-sm">
-                  <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                   {line}
                 </li>
               ))}
@@ -301,21 +301,21 @@ function Faq({ faq, heading }: { faq: SiteContent['faq']; heading: string }) {
 
 function ClosingCta({ hero, ui }: { hero: Hero; ui: UiStrings }) {
   return (
-    <section className="border-rule bg-greenbar border-t">
+    <section className="border-rule bg-brand-tint border-t">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 text-center sm:px-6">
         <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.closingHeading}</h2>
         <p className="text-ink-muted mx-auto mt-3 max-w-xl">{ui.closingBody}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Link
             href="/signup"
-            className="press bg-income inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium text-white hover:opacity-90"
+            className="press bg-brand text-brand-contrast inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium hover:opacity-90"
           >
             {hero.primaryCta}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <Link
             href="/login"
-            className="press border-rule bg-surface text-ink hover:bg-greenbar inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
           >
             {ui.closingSecondary}
           </Link>

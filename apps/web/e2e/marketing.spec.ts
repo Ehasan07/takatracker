@@ -224,6 +224,43 @@ test.describe('the public site', () => {
     await expect(page.getByRole('table')).toContainText('Unlimited');
   });
 
+  test('carries the brand, the hotline and a way to pay', async ({ page }) => {
+    await page.goto('/');
+    // The brand's own fonts, self-hosted — no request to a Google domain.
+    const families = await page.evaluate(() =>
+      getComputedStyle(document.body).fontFamily.toLowerCase(),
+    );
+    expect(families).toContain('anek');
+    expect(families).toContain('jamjuree');
+
+    /* Blue is the primary. Green is money coming in and has to stay that, so
+       the two must not be the same colour — this asserts the separation rather
+       than a hex, which a designer is free to tune. */
+    const brand = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--hishab-brand').trim(),
+    );
+    const income = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--hishab-income').trim(),
+    );
+    expect(brand).not.toBe('');
+    expect(brand).not.toBe(income);
+
+    // A finance product with no phone number is one nobody trusts their bank
+    // statements to.
+    await expect(page.getByRole('link', { name: /09642500400/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Facebook' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'LinkedIn' })).toBeVisible();
+
+    await page.goto('/pricing');
+    const pay = page.getByRole('link', { name: /পেমেন্ট করুন/ });
+    await expect(pay).toBeVisible();
+    // Hosted invoice, opened safely — `noopener` or the new tab keeps a live
+    // handle back into this one.
+    await expect(pay).toHaveAttribute('href', /invoice\.sslcommerz\.com/);
+    await expect(pay).toHaveAttribute('rel', /noopener/);
+    await expect(pay).toHaveAttribute('rel', /noreferrer/);
+  });
+
   test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
     for (const path of ['/', '/pricing', '/guide', '/en', '/en/pricing']) {
       await page.goto(path);

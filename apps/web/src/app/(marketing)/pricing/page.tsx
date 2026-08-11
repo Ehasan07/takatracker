@@ -1,7 +1,7 @@
 import { ArrowRight, Check, Minus } from 'lucide-react';
 import Link from 'next/link';
 import { formatMinor } from '@hishab/shared';
-import { CONTENT_BN, type SiteContent } from '../content';
+import { CONTACT, CONTENT_BN, PAYMENT_URL, type SiteContent } from '../content';
 import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from '../seo';
 
 /**
@@ -120,6 +120,8 @@ interface Copy {
   premiumCta: string;
   premiumBadge: string;
   premiumNote: string;
+  payNow: string;
+  helpLabel: string;
   sideBySide: string;
   tableWhat: string;
   tableCaption: string;
@@ -164,7 +166,9 @@ const COPY: Record<'bn' | 'en', Copy> = {
     premiumCta: 'ফ্রি দিয়ে শুরু করুন',
     premiumBadge: 'সব সীমাহীন',
     premiumNote:
-      'সবাই ফ্রি দিয়েই শুরু করেন। প্রিমিয়ামে যেতে চাইলে অ্যাপ থেকে যোগাযোগ করুন — অনলাইন পেমেন্ট এখনো চালু হয়নি।',
+      'পেমেন্টের পর আমরা আপনার অ্যাকাউন্টে প্রিমিয়াম চালু করে দেব — ইনভয়েসটি কে দিয়েছেন সেটি স্বয়ংক্রিয়ভাবে মিলিয়ে নেওয়ার ব্যবস্থা এখনো হয়নি, তাই কাজটি হাতে হয়।',
+    payNow: 'বিকাশ / কার্ডে পেমেন্ট করুন',
+    helpLabel: 'সাহায্য দরকার?',
     sideBySide: 'পাশাপাশি',
     tableWhat: 'কী',
     tableCaption: 'প্যাকেজ অনুযায়ী সীমা',
@@ -205,7 +209,9 @@ const COPY: Record<'bn' | 'en', Copy> = {
     premiumCta: 'Start on the free plan',
     premiumBadge: 'Everything unlimited',
     premiumNote:
-      'Everyone starts on the free plan. To move to premium, get in touch from inside the app — online payment is not live yet.',
+      'After paying we switch premium on for your account — matching an invoice to an account automatically is not built yet, so it is done by hand.',
+    payNow: 'Pay by bKash or card',
+    helpLabel: 'Need help?',
     sideBySide: 'Side by side',
     tableWhat: 'What',
     tableCaption: 'Limits by plan',
@@ -256,12 +262,12 @@ export async function Pricing({ content, locale }: { content: SiteContent; local
           ))}
         </div>
 
-        <div className="rounded-card border-rule bg-greenbar mt-6 border p-5">
+        <div className="rounded-card border-rule bg-brand-tint mt-6 border p-5">
           <h2 className="text-ink text-sm font-medium">{t.alwaysHeading}</h2>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {t.always.map((line) => (
               <li key={line} className="text-ink-muted flex items-start gap-2 text-sm">
-                <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 {line}
               </li>
             ))}
@@ -306,13 +312,13 @@ function PlanCard({
   return (
     <div
       className={`rounded-card bg-surface border p-6 ${
-        highlight ? 'border-income shadow-sm' : 'border-rule'
+        highlight ? 'border-brand shadow-sm' : 'border-rule'
       }`}
     >
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-ink text-xl font-semibold">{free ? t.freeName : plan.name}</h2>
         {highlight ? (
-          <span className="bg-greenbar text-income rounded-full px-2 py-0.5 text-xs font-medium">
+          <span className="bg-brand-tint text-brand rounded-full px-2 py-0.5 text-xs font-medium">
             {t.premiumBadge}
           </span>
         ) : null}
@@ -341,7 +347,7 @@ function PlanCard({
           return (
             <li key={row.key} className="flex items-start gap-2 text-sm">
               {on ? (
-                <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               ) : (
                 <Minus className="text-ink-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               )}
@@ -359,15 +365,36 @@ function PlanCard({
         href="/signup"
         className={`press mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-medium ${
           highlight
-            ? 'bg-income text-white hover:opacity-90'
-            : 'border-rule bg-surface text-ink hover:bg-greenbar border'
+            ? 'bg-brand text-brand-contrast hover:opacity-90'
+            : 'border-rule bg-surface text-ink hover:bg-brand-tint border'
         }`}
       >
         {free ? t.freeCta : t.premiumCta}
         <ArrowRight className="h-4 w-4" aria-hidden />
       </Link>
       {highlight ? (
-        <p className="text-ink-muted mt-2 text-center text-xs">{t.premiumNote}</p>
+        <>
+          {/* The invoice is hosted by SSLCommerz, so no card detail ever
+              reaches this application and there is no PCI surface here to get
+              wrong. What the link cannot do is tell us who paid — so the note
+              says premium is switched on by hand rather than implying the plan
+              flips itself the moment the payment clears. */}
+          <a
+            href={PAYMENT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="press border-brand text-brand hover:bg-brand-tint mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-md border text-sm font-medium"
+          >
+            {t.payNow}
+          </a>
+          <p className="text-ink-muted mt-2 text-center text-xs">{t.premiumNote}</p>
+          <p className="text-ink-muted mt-1 text-center text-xs">
+            {t.helpLabel}{' '}
+            <a href={CONTACT.hotlineHref} className="text-brand underline">
+              {CONTACT.hotline}
+            </a>
+          </p>
+        </>
       ) : null}
     </div>
   );

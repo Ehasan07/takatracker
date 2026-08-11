@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 import { Languages } from 'lucide-react';
-import { CONTENT_BN, SITE } from './content';
+import { CONTACT, CONTENT_BN, SITE, SOCIAL } from './content';
 import { CONTENT_EN } from './content.en';
 
 /** Which language this page is in, decided by the URL rather than a cookie. */
@@ -35,7 +35,7 @@ export function MarketingHeader() {
         >
           <span
             aria-hidden
-            className="bg-income flex h-7 w-7 items-center justify-center rounded-md text-sm font-bold text-white"
+            className="bg-brand text-brand-contrast flex h-7 w-7 items-center justify-center rounded-md text-sm font-bold"
           >
             ৳
           </span>
@@ -47,7 +47,7 @@ export function MarketingHeader() {
             <Link
               key={item.href}
               href={item.href}
-              className="press text-ink-muted hover:text-ink hover:bg-greenbar inline-flex min-h-11 items-center rounded-md px-3 text-sm"
+              className="press text-ink-muted hover:text-ink hover:bg-brand-tint inline-flex min-h-11 items-center rounded-md px-3 text-sm"
             >
               {item.label}
             </Link>
@@ -63,7 +63,7 @@ export function MarketingHeader() {
             href={ui.otherLocaleHref}
             hrefLang={ui.otherLocaleHref === '/en' ? 'en' : 'bn'}
             aria-label={ui.otherLocaleLabel}
-            className="press text-ink-muted hover:text-ink hover:bg-greenbar inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm"
+            className="press text-ink-muted hover:text-ink hover:bg-brand-tint inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm"
           >
             <Languages className="h-4 w-4" aria-hidden />
             {/* The label is hidden below 400px and the icon carries it there.
@@ -74,13 +74,13 @@ export function MarketingHeader() {
           </Link>
           <Link
             href="/login"
-            className="press text-ink hover:bg-greenbar hidden min-h-11 items-center rounded-md px-3 text-sm font-medium sm:inline-flex"
+            className="press text-ink hover:bg-brand-tint hidden min-h-11 items-center rounded-md px-3 text-sm font-medium sm:inline-flex"
           >
             {ui.login}
           </Link>
           <Link
             href="/signup"
-            className="press bg-income inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-white hover:opacity-90"
+            className="press bg-brand text-brand-contrast inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium hover:opacity-90"
           >
             {ui.startFree}
           </Link>
@@ -90,7 +90,7 @@ export function MarketingHeader() {
             aria-expanded={open}
             aria-controls="marketing-menu"
             aria-label={open ? 'মেনু বন্ধ করুন' : 'মেনু খুলুন'}
-            className="press text-ink hover:bg-greenbar -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-md md:hidden"
+            className="press text-ink hover:bg-brand-tint -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-md md:hidden"
           >
             {open ? (
               <X className="h-5 w-5" aria-hidden />
@@ -127,13 +127,13 @@ export function MarketingFooter() {
   const pathname = usePathname();
   const { nav: NAV } = contentFor(pathname);
   return (
-    <footer className="border-rule bg-greenbar mt-16 border-t">
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-3">
+    <footer className="border-rule bg-brand-tint mt-16 border-t">
+      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
         <div>
           <p className="text-ink flex items-center gap-2 font-semibold">
             <span
               aria-hidden
-              className="bg-income flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white"
+              className="bg-brand text-brand-contrast flex h-6 w-6 items-center justify-center rounded text-xs font-bold"
             >
               ৳
             </span>
@@ -158,6 +158,40 @@ export function MarketingFooter() {
                 </Link>
               </li>
             ))}
+          </ul>
+        </nav>
+
+        <nav aria-label="যোগাযোগ">
+          <h2 className="text-ink text-sm font-medium">যোগাযোগ</h2>
+          <ul className="mt-1">
+            <li>
+              <a
+                href={CONTACT.hotlineHref}
+                className="press text-ink hover:text-brand inline-flex min-h-11 items-center text-sm font-medium"
+              >
+                হটলাইন {CONTACT.hotline}
+              </a>
+            </li>
+            <li>
+              <a
+                href={CONTACT.telegram}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+              >
+                টেলিগ্রাম চ্যানেল
+              </a>
+            </li>
+            <li>
+              <a
+                href={CONTACT.whatsapp}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+              >
+                হোয়াটসঅ্যাপ চ্যানেল
+              </a>
+            </li>
           </ul>
         </nav>
 
@@ -193,9 +227,25 @@ export function MarketingFooter() {
       </div>
 
       <div className="border-rule border-t">
-        <p className="text-ink-muted mx-auto w-full max-w-6xl px-4 py-4 text-xs sm:px-6">
-          © {SITE.name} · takatracker.com
-        </p>
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
+          <p className="text-ink-muted text-xs">© {SITE.name} · takatracker.com</p>
+          <nav aria-label="সোশ্যাল" className="ml-auto flex flex-wrap items-center gap-x-3">
+            {SOCIAL.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                /* `noopener` is the security half and `noreferrer` the privacy
+                   half; a target="_blank" without the first hands the opened
+                   page a live `window.opener` back into this one. */
+                target="_blank"
+                rel="noopener noreferrer"
+                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-xs"
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        </div>
       </div>
     </footer>
   );

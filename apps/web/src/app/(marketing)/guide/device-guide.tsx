@@ -49,8 +49,8 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
             onClick={() => setKind(g.kind)}
             className={`press inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium ${
               g.kind === kind
-                ? 'border-income bg-income text-white'
-                : 'border-rule bg-surface text-ink hover:bg-greenbar'
+                ? 'border-brand bg-brand text-brand-contrast'
+                : 'border-rule bg-surface text-ink hover:bg-brand-tint'
             }`}
           >
             {g.label}
@@ -71,7 +71,7 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
           >
             <span
               aria-hidden
-              className="bg-greenbar text-income flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+              className="bg-brand-tint text-brand flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
             >
               {['১', '২', '৩', '৪', '৫'][index]}
             </span>
@@ -84,7 +84,7 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
         ))}
       </ol>
 
-      <div className="rounded-card border-rule bg-greenbar mt-6 border p-5">
+      <div className="rounded-card border-rule bg-brand-tint mt-6 border p-5">
         <h3 className="text-ink text-sm font-medium">বসানোর পর কী বদলায়</h3>
         <ul className="mt-2 space-y-1">
           {[
@@ -99,7 +99,7 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
         </ul>
         <Link
           href="/signup"
-          className="press bg-income mt-4 inline-flex min-h-11 items-center rounded-md px-5 text-sm font-medium text-white hover:opacity-90"
+          className="press bg-brand text-brand-contrast mt-4 inline-flex min-h-11 items-center rounded-md px-5 text-sm font-medium hover:opacity-90"
         >
           ফ্রি অ্যাকাউন্ট খুলুন
         </Link>

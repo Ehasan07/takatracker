@@ -146,8 +146,8 @@ export function StepArt({ art }: { art: NonNullable<Step['art']> }) {
     </>
   );
 
-  const highlight = 'fill-[var(--hishab-income)]';
-  const faint = 'fill-[var(--hishab-greenbar)]';
+  const highlight = 'fill-[var(--hishab-brand)]';
+  const faint = 'fill-[var(--hishab-brand-tint)]';
 
   return (
     <svg
@@ -170,12 +170,12 @@ export function StepArt({ art }: { art: NonNullable<Step['art']> }) {
             cx="60"
             cy="172"
             r="13"
-            className="fill-none stroke-[var(--hishab-income)]"
+            className="fill-none stroke-[var(--hishab-brand)]"
             strokeWidth="2"
           />
           <path
             d="M60 166v12M60 166l-4 4M60 166l4 4M53 176v4h14v-4"
-            className="stroke-[var(--hishab-income)]"
+            className="stroke-[var(--hishab-brand)]"
             strokeWidth="2"
             fill="none"
             strokeLinecap="round"
@@ -191,7 +191,7 @@ export function StepArt({ art }: { art: NonNullable<Step['art']> }) {
             cx="99"
             cy="28"
             r="11"
-            className="fill-none stroke-[var(--hishab-income)]"
+            className="fill-none stroke-[var(--hishab-brand)]"
             strokeWidth="2"
           />
           <circle cx="99" cy="23" r="1.6" className={highlight} />
@@ -209,7 +209,7 @@ export function StepArt({ art }: { art: NonNullable<Step['art']> }) {
             cx="90"
             cy="28"
             r="11"
-            className="fill-none stroke-[var(--hishab-income)]"
+            className="fill-none stroke-[var(--hishab-brand)]"
             strokeWidth="2"
           />
           <rect
@@ -218,12 +218,12 @@ export function StepArt({ art }: { art: NonNullable<Step['art']> }) {
             width="10"
             height="8"
             rx="1.5"
-            className="fill-none stroke-[var(--hishab-income)]"
+            className="fill-none stroke-[var(--hishab-brand)]"
             strokeWidth="1.6"
           />
           <path
             d="M90 25v5M90 30l-2.2-2.2M90 30l2.2-2.2"
-            className="stroke-[var(--hishab-income)]"
+            className="stroke-[var(--hishab-brand)]"
             strokeWidth="1.6"
             fill="none"
             strokeLinecap="round"

@@ -59,13 +59,13 @@ export default function ForgotPage() {
 
       {sent ? (
         <div className="flex flex-col items-center gap-3 text-center">
-          <MailCheck className="text-income h-10 w-10" aria-hidden />
+          <MailCheck className="text-brand h-10 w-10" aria-hidden />
           <h2 className="text-ink text-lg font-semibold">দেখে নিন আপনার ইমেইল</h2>
           <p role="status" className="text-ink-muted text-sm">
             এই ঠিকানায় যদি কোনো অ্যাকাউন্ট থেকে থাকে, তাহলে পাসওয়ার্ড বদলানোর একটি লিংক পাঠানো
             হয়েছে। লিংকটি এক ঘণ্টা কাজ করবে। ইনবক্সে না পেলে স্প্যাম ফোল্ডারও দেখুন।
           </p>
-          <p className="text-ink-muted bg-greenbar rounded-md p-3 text-xs">
+          <p className="text-ink-muted bg-brand-tint rounded-md p-3 text-xs">
             অ্যাকাউন্ট আছে কি নেই — আমরা দুই ক্ষেত্রেই একই কথা বলি। তা না হলে যে কেউ এই পাতায়
             ঠিকানা লিখে লিখে জেনে নিতে পারত কার হিসাব এখানে আছে।
           </p>
@@ -75,7 +75,7 @@ export default function ForgotPage() {
             </Button>
             <button
               type="button"
-              className="press text-income min-h-11 text-sm underline"
+              className="press text-brand min-h-11 text-sm underline"
               onClick={() => setSent(false)}
             >
               অন্য একটি ঠিকানা দিন
@@ -110,7 +110,7 @@ export default function ForgotPage() {
 
           <p className="text-ink-muted text-center text-sm">
             মনে পড়ে গেছে?{' '}
-            <Link href="/login" className="text-income font-medium underline">
+            <Link href="/login" className="text-brand font-medium underline">
               লগইন করুন
             </Link>
           </p>

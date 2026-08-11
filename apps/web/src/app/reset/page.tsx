@@ -18,7 +18,7 @@ const REDIRECT_SECONDS = 6;
 
 const STRENGTH_LABEL = ['খুব দুর্বল', 'দুর্বল', 'মোটামুটি', 'ভালো', 'শক্ত'] as const;
 
-const STRENGTH_TONE = ['bg-expense', 'bg-expense', 'bg-brass', 'bg-income', 'bg-income'] as const;
+const STRENGTH_TONE = ['bg-expense', 'bg-expense', 'bg-brass', 'bg-brand', 'bg-brand'] as const;
 
 /**
  * A rough, honest score out of four. It is advice, not a gate — the only hard
@@ -143,10 +143,10 @@ function ResetForm() {
   if (done) {
     return (
       <div className="flex flex-col items-center gap-3 text-center">
-        <CheckCircle2 className="text-income h-10 w-10" aria-hidden />
+        <CheckCircle2 className="text-brand h-10 w-10" aria-hidden />
         <h2 className="text-ink text-lg font-semibold">পাসওয়ার্ড বদলে গেছে</h2>
         <p role="status" className="text-ink flex items-start gap-2 text-sm">
-          <ShieldCheck className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <ShieldCheck className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             নিরাপত্তার জন্য <strong>অন্য সব ডিভাইস থেকে লগআউট করে দেওয়া হয়েছে</strong>
             {revoked !== null && revoked > 0
@@ -205,7 +205,7 @@ function ResetForm() {
       {/* Strength is said in words as well as shown as a bar — colour and
           length are never the only signal. */}
       <div id="reset-strength" className="flex flex-col gap-1.5">
-        <div className="bg-greenbar border-rule h-2 overflow-hidden rounded-full border">
+        <div className="bg-brand-tint border-rule h-2 overflow-hidden rounded-full border">
           <div
             className={cn('h-full rounded-full transition-all', STRENGTH_TONE[score])}
             style={{ width: password === '' ? '0%' : `${20 * (score + 1)}%` }}

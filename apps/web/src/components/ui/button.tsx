@@ -10,10 +10,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-income text-white hover:opacity-90',
+        /* Brand blue, not the income green it used to be. A primary button is
+           the *product* speaking; green is what the ledger says about money
+           coming in, and using one colour for both made "save" look like a
+           credit. */
+        primary: 'bg-brand text-brand-contrast hover:bg-brand-strong',
         danger: 'bg-expense text-white hover:opacity-90',
-        outline: 'border border-rule bg-surface text-ink hover:bg-greenbar',
-        ghost: 'text-ink hover:bg-greenbar',
+        outline: 'border border-rule bg-surface text-ink hover:bg-brand-tint',
+        ghost: 'text-ink hover:bg-brand-tint',
       },
       size: {
         // 44px minimum touch target everywhere (spec §5, §10).
