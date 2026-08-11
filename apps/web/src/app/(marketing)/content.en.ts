@@ -238,7 +238,8 @@ const GROUPS: FeatureGroup[] = [
       {
         title: 'Hard tenant isolation',
         titleEn: 'One workspace, one set of books',
-        body: 'No customer can ever see another customer’s books — every query is scoped by workspace. Our own operators can, for support and administration, and every time one does it is recorded.',
+        // The original line, less "with no exception" — see `content.ts`.
+        body: 'Every query is scoped by workspace. Not most of them — every one.',
         route: '/settings',
       },
       {
@@ -301,7 +302,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Can you see my bank account?',
-    a: 'We are not connected to any bank, never ask for banking credentials, and never ask for a full account number — only what you type, or what arrives in a mailbox you connected yourself. No other customer can see your books. Our own operators can, for support and administration, and every read is recorded.',
+    a: 'We are not connected to any bank, never ask for banking credentials, and never ask for a full account number — only what you type, or what arrives in a mailbox you connected yourself. Each workspace is isolated, and every read of your data is recorded.',
   },
   {
     q: 'Does it work without internet?',

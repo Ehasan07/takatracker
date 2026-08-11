@@ -283,6 +283,7 @@ model Workspace {
   currency     String          @default("BDT")
   /// Which language this workspace's screens, categories and reports render in.
   locale       String          @default("bn")
+  translations WorkspaceTranslation[]
   /// Defines the ledger day. All date arithmetic resolves against this.
   timezone     String          @default("Asia/Dhaka")
   trialEndsAt  DateTime?
@@ -1269,6 +1270,24 @@ model Transaction {
 enum EntryDirection {
   DEBIT
   CREDIT
+}
+
+/// A workspace's own corrections to the interface's wording. See the migration.
+model WorkspaceTranslation {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  /// 'bn' or 'en' — a correction is per language.
+  locale          String
+  key             String
+  value           String
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, locale, key])
+  @@index([workspaceId, locale])
 }
 
 model LedgerEntry {

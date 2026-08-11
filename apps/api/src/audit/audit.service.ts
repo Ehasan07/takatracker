@@ -27,6 +27,8 @@ export const AUDIT_ACTIONS = [
   'person.updated',
   'person.deleted',
   'person.merged',
+  'translation.changed',
+  'translation.reset',
   'tag.created',
   'tag.updated',
   'tag.deleted',

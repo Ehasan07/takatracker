@@ -11,6 +11,7 @@ import { api, type EntitlementsDto } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { bnNum, featureLabel, featureOf, PlanPrice, QueryError, unitSuffix } from './parts';
 import { fetchCatalogue, planKeys, type CataloguePlan } from './queries';
+import { CONTACT, PAYMENT_URL } from '@/app/(marketing)/content';
 
 /**
  * The snapshot, plus the field that replaced the guesswork.
@@ -145,17 +146,48 @@ export default function PlansPage() {
       </header>
 
       {/* First thing on the screen, because somebody who arrived here did so by
-          being refused something. Telling them to buy what cannot be bought
-          would waste the one visit that mattered. */}
-      <div className="rounded-card border-brass/40 bg-brass/10 border p-3.5">
+          being refused something — so the next step has to be visible without
+          scrolling.
+
+          This used to say purchasing did not exist and the prices were a draft.
+          Both stopped being true when the invoice link went live, and a page
+          that tells somebody they cannot buy what they are trying to buy is
+          worse than no page. What is still true, and is said instead, is that
+          the invoice cannot tell us who paid — so the switch is by hand. */}
+      <div className="rounded-card border-brand/40 bg-brand-tint border p-3.5">
         <p className="text-ink flex items-start gap-2 text-sm">
-          <Info className="text-brass mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <Info className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            <span className="font-medium">এখনই প্ল্যান বদলানোর কোনো উপায় নেই।</span> কেনাকাটার
-            ব্যবস্থা এখনও তৈরি হয়নি, তাই এই পাতায় কোথাও &ldquo;কিনুন&rdquo; বোতাম নেই। নিচের
-            দামগুলোও চূড়ান্ত নয় — কেবল খসড়া।
+            <span className="font-medium">প্রিমিয়াম নিতে চাইলে</span> নিচের বোতাম থেকে পেমেন্ট করুন
+            — বিকাশ, নগদ বা কার্ডে। পেমেন্টের পর আমরা আপনার অ্যাকাউন্টে প্রিমিয়াম চালু করে দেব;
+            ইনভয়েস থেকে কে দিয়েছেন তা স্বয়ংক্রিয়ভাবে মেলানোর ব্যবস্থা এখনো হয়নি, তাই কাজটি হাতে
+            হয়। দরকার হলে হটলাইন{' '}
+            <a href={CONTACT.hotlineHref} className="text-brand underline">
+              {CONTACT.hotline}
+            </a>
+            ।
           </span>
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            href={PAYMENT_URL}
+            target="_blank"
+            /* `noopener` is the security half — without it the payment page
+               keeps a live handle back into this one. */
+            rel="noopener noreferrer"
+            className="press bg-brand text-brand-contrast hover:bg-brand-strong inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium"
+          >
+            প্রিমিয়াম কিনুন — মাসে ৳৩৫০
+          </a>
+          <a
+            href={CONTACT.whatsapp}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+          >
+            হোয়াটসঅ্যাপে জানান
+          </a>
+        </div>
       </div>
 
       {snapshot.isError ? (
@@ -170,7 +202,7 @@ export default function PlansPage() {
         <div>
           <h2 className="text-ink text-base font-semibold">স্তরগুলো</h2>
           <p className="text-ink-muted text-xs">
-            তুলনার জন্য দেওয়া। এখান থেকে কিছু কেনা বা বদলানো যায় না।
+            আপনার প্ল্যান কী দেয় আর প্রিমিয়ামে কী বাড়ে, পাশাপাশি।
           </p>
         </div>
 

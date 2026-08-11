@@ -239,7 +239,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="shrink-0 px-4 pb-2 pt-4">
           <Link href="/" className="text-ink text-lg font-semibold">
-            হিসাব
+            Taka Tracker
           </Link>
           <p className="text-ink-muted text-xs">takatracker.com</p>
         </div>

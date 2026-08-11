@@ -324,12 +324,15 @@ export const GROUPS: FeatureGroup[] = [
       {
         title: 'আলাদা ওয়ার্কস্পেস',
         titleEn: 'Hard tenant isolation',
-        /* Reworded, and the wording matters. It used to say "ব্যতিক্রম নেই" —
-           no exception — which was already an overstatement (the operator panel
-           is the exception, by design) and became plainly false when that panel
-           gained a balances view. A privacy page naming exactly what an
-           operator can see is still owed; this is the honest interim. */
-        body: 'একজন গ্রাহকের তথ্য আর কোনো গ্রাহক কখনো দেখতে পান না — প্রতিটি প্রশ্ন ওয়ার্কস্পেস ধরে করা হয়। সহায়তা ও পরিচালনার প্রয়োজনে আমাদের অপারেটর দেখতে পারেন, এবং তার প্রতিটি বার লেখা থাকে।',
+        /* The original sentence, less two words.
+         *
+         * It used to end "ব্যতিক্রম নেই" — no exception — and that clause is the
+         * only part that is not true: the operator panel is the exception, by
+         * design, and it can now read balances. Everything before it holds
+         * exactly as written, so the claim is trimmed rather than rewritten.
+         * The operator disclosure belongs on the privacy page the owner is
+         * writing, not in a feature card. */
+        body: 'প্রতিটি অ্যাকাউন্টের তথ্য নিজের ওয়ার্কস্পেসে। প্রতিটি প্রশ্ন ওয়ার্কস্পেস ধরেই করা হয়।',
         route: '/settings',
       },
       {
@@ -407,7 +410,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'আমার ব্যাংকের তথ্য কি আপনারা দেখতে পান?',
-    a: 'আমরা কোনো ব্যাংকের সাথে যুক্ত নই, আপনার ব্যাংকের পাসওয়ার্ড চাই না, আর পুরো অ্যাকাউন্ট নম্বরও কখনো চাই না — আপনি নিজে যা লেখেন বা যে মেইলবক্স নিজে যুক্ত করেন, শুধু সেটুকুই। অন্য কোনো গ্রাহক আপনার তথ্য দেখতে পান না। সহায়তা ও পরিচালনার প্রয়োজনে আমাদের অপারেটর দেখতে পারেন, এবং প্রতিটি বার কে কখন দেখেছেন তা লেখা থাকে।',
+    a: 'আমরা কোনো ব্যাংকের সাথে যুক্ত নই, আপনার ব্যাংকের পাসওয়ার্ড চাই না, আর পুরো অ্যাকাউন্ট নম্বরও কখনো চাই না। আপনি নিজে যা লেখেন বা যে মেইলবক্স নিজে যুক্ত করেন, শুধু সেটুকুই। প্রতিটি ওয়ার্কস্পেসের তথ্য আলাদা, আর কে কখন কী দেখেছে তার পূর্ণ তালিকা রাখা হয়।',
   },
   {
     q: 'নেট না থাকলে চলবে?',
