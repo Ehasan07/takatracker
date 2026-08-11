@@ -3,24 +3,37 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
+import { CURRENCIES, DEFAULT_CURRENCY, currencyLabel, type Locale } from '@hishab/shared';
 import { api, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Field, Input } from '@/components/ui/field';
+import { Field, Input, Select } from '@/components/ui/field';
 
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [locale, setLocale] = React.useState<Locale>('bn');
+  const [currency, setCurrency] = React.useState(DEFAULT_CURRENCY);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
+
+  /* Asked once, here, rather than left to a settings screen nobody opens.
+   *
+   * The currency in particular has to be answered before the first entry: it
+   * decides how many minor units a stored integer represents, so changing it
+   * after the books have amounts in them would reinterpret every one of them.
+   * Asking at signup is the only moment the question is free. */
 
   const onSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setError(null);
     setPending(true);
     try {
-      await api('/auth/signup', { method: 'POST', body: { name, email, password } });
+      await api('/auth/signup', {
+        method: 'POST',
+        body: { name, email, password, locale, currency },
+      });
       router.push('/');
       router.refresh();
     } catch (err) {
@@ -42,6 +55,18 @@ export default function SignupPage() {
       </header>
 
       <form className="flex flex-col gap-4" onSubmit={(e) => void onSubmit(e)}>
+        <Field label="ভাষা / Language" htmlFor="locale">
+          <Select
+            id="locale"
+            name="locale"
+            value={locale}
+            onChange={(e) => setLocale(e.target.value === 'en' ? 'en' : 'bn')}
+          >
+            <option value="bn">বাংলা</option>
+            <option value="en">English</option>
+          </Select>
+        </Field>
+
         <Field label="নাম" htmlFor="name">
           <Input
             id="name"
@@ -64,6 +89,26 @@ export default function SignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
+        </Field>
+
+        <Field label={locale === 'en' ? 'Currency' : 'কারেন্সি'} htmlFor="currency">
+          <Select
+            id="currency"
+            name="currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+          >
+            {CURRENCIES.map((info) => (
+              <option key={info.code} value={info.code}>
+                {info.symbol} — {currencyLabel(info, locale)}
+              </option>
+            ))}
+          </Select>
+          <p className="text-ink-muted mt-1 text-xs">
+            {locale === 'en'
+              ? 'Your books are kept in this currency. It cannot be changed once you have entries.'
+              : 'আপনার খাতা এই কারেন্সিতেই থাকবে। এন্ট্রি বসানোর পর এটি আর বদলানো যাবে না।'}
+          </p>
         </Field>
 
         <Field label="পাসওয়ার্ড" htmlFor="password">

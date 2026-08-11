@@ -9,6 +9,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { METHODS } from './labels';
 import { invalidateLoanData } from './queries';
 import type { LoanDirection, PaymentMethod } from './types';
@@ -53,13 +54,15 @@ export function PaymentSheet({
     }
   }, [defaultAccountId]);
 
+  /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
+  const { currency } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: () =>
       api(`/loans/${loanId}/payments`, {
         method: 'POST',
         body: {
           date: form.date,
-          amountMinor: parseMoneyToMinor(form.amount || '0'),
+          amountMinor: parseMoneyToMinor(form.amount || '0', currency),
           method: form.method,
           accountId: form.accountId,
           referenceNumber: form.referenceNumber.trim() || undefined,

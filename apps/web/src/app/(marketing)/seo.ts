@@ -113,7 +113,7 @@ export function softwareApplicationJsonLd(priceYearlyMinor: number): Record<stri
         name: 'প্রিমিয়াম',
         price,
         priceCurrency: 'BDT',
-        description: 'Everything unlimited, billed yearly.',
+        description: 'Everything unlimited, billed monthly.',
       },
     ],
     publisher: { '@type': 'Organization', name: SITE.nameEn, url: SITE.url },

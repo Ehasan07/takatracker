@@ -77,6 +77,16 @@ export class AuthService {
           name: input.name,
           ownerUserId: created.id,
           timezone: input.timezone,
+          /* The workspace's own copy of both choices.
+           *
+           * `User.locale` is the person's preference; this is the *books'*. A
+           * shared workspace has to render its categories and reports one way
+           * for everybody rather than flickering between two members'
+           * settings, and the currency is a property of the ledger itself —
+           * changing it after entries exist would reinterpret every stored
+           * integer, which is why it is asked for once, at signup. */
+          locale: input.locale,
+          currency: input.currency,
           planId: freePlan?.id ?? null,
           memberships: { create: { userId: created.id, role: 'OWNER' } },
         },
@@ -392,7 +402,16 @@ export class AuthService {
       where: { workspaceId_userId: { workspaceId, userId } },
       include: {
         workspace: {
-          select: { id: true, name: true, currency: true, timezone: true, status: true },
+          select: {
+            id: true,
+            name: true,
+            currency: true,
+            /* The books' language, not the reader's. Every screen with a
+             * category name or a report heading on it renders from this. */
+            locale: true,
+            timezone: true,
+            status: true,
+          },
         },
       },
     });

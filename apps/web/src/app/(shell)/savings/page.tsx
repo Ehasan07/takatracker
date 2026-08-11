@@ -12,6 +12,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
 interface Projection {
   installmentCount: number;
@@ -83,9 +84,11 @@ const labelOf = (pairs: readonly (readonly [string, string])[], value: string): 
   pairs.find(([v]) => v === value)?.[1] ?? value;
 
 /** Taka typed by a human into integer poisha. Null when it cannot be read. */
-function toMinor(text: string): number | null {
+/* Takes the currency rather than reading it: this is a module-level helper
+   and a hook cannot live here. The callers all have it. */
+function toMinor(text: string, currency: string): number | null {
   try {
-    return parseMoneyToMinor(text.trim() || '0');
+    return parseMoneyToMinor(text.trim() || '0', currency);
   } catch {
     return null;
   }
@@ -537,6 +540,8 @@ function PlanSheet({
     setError(null);
   }, [open, plan]);
 
+  /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
+  const { currency } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       plan
@@ -564,15 +569,15 @@ function PlanSheet({
           e.preventDefault();
           setError(null);
 
-          const installmentMinor = toMinor(form.installment);
-          const principalMinor = toMinor(form.principal);
+          const installmentMinor = toMinor(form.installment, currency);
+          const principalMinor = toMinor(form.principal, currency);
           if (installmentMinor === null || principalMinor === null) {
             setError('টাকার অঙ্কটি বোঝা যায়নি।');
             return;
           }
           /* 8.25% is 825 basis points — the same two-decimal scaling the money
              parser does, and it reads Bengali digits, which Number() cannot. */
-          const profitRateBps = toMinor(form.rate);
+          const profitRateBps = toMinor(form.rate, currency);
           if (profitRateBps === null) {
             setError('মুনাফার হারটি বোঝা যায়নি।');
             return;

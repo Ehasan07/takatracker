@@ -208,8 +208,10 @@ model Plan {
   id         String          @id @default(cuid())
   code       String          @unique
   name       String
-  /// Integer poisha, like every other amount in the system.
+  /// Integer minor units, like every other amount in the system.
   priceMinor BigInt          @default(0)
+  /// The same bundle billed yearly, usually at a discount. Null = monthly only.
+  priceYearlyMinor BigInt?
   currency   String          @default("BDT")
   interval   BillingInterval @default(MONTHLY)
   isPublic   Boolean         @default(true)
@@ -277,6 +279,8 @@ model Workspace {
   status       WorkspaceStatus @default(ACTIVE)
   /// Base currency for every amount in this workspace.
   currency     String          @default("BDT")
+  /// Which language this workspace's screens, categories and reports render in.
+  locale       String          @default("bn")
   /// Defines the ledger day. All date arithmetic resolves against this.
   timezone     String          @default("Asia/Dhaka")
   trialEndsAt  DateTime?

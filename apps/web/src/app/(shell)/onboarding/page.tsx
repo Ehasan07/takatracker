@@ -15,6 +15,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { useKeyboardInset } from '@/hooks/use-device';
 import { api, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import {
   ACCOUNT_SUGGESTIONS,
@@ -80,6 +81,8 @@ function invalidateAccountData(queryClient: QueryClient): void {
 }
 
 export default function OnboardingPage() {
+  /* The books' currency decides how many minor units a typed amount is worth. */
+  const { currency } = useWorkspaceSettings();
   const router = useRouter();
   const queryClient = useQueryClient();
   const keyboardInset = useKeyboardInset();
@@ -179,7 +182,7 @@ export default function OnboardingPage() {
             body: {
               name: row.name.trim(),
               type: row.type,
-              openingBalance: row.opening.trim() ? parseMoneyToMinor(row.opening) : 0,
+              openingBalance: row.opening.trim() ? parseMoneyToMinor(row.opening, currency) : 0,
             },
           });
           savedKeys.push(row.key);
@@ -233,7 +236,7 @@ export default function OnboardingPage() {
     for (const row of rows) {
       if (!row.opening.trim()) continue;
       try {
-        parseMoneyToMinor(row.opening);
+        parseMoneyToMinor(row.opening, currency);
       } catch {
         setSaveError(`“${row.name}” — অঙ্কটা বোঝা যায়নি। যেমন: ১২৫০ বা 1250.50`);
         return;

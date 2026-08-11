@@ -12,6 +12,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
 interface Premium {
   id: string;
@@ -52,9 +53,11 @@ const STATUSES = [
 const freqLabel = (v: string): string => FREQUENCIES.find(([k]) => k === v)?.[1] ?? v;
 
 /** Taka typed by a human into integer poisha. Null when it cannot be read. */
-function toMinor(text: string): number | null {
+/* Takes the currency rather than reading it: this is a module-level helper
+   and a hook cannot live here. The callers all have it. */
+function toMinor(text: string, currency: string): number | null {
   try {
-    return parseMoneyToMinor(text.trim() || '0');
+    return parseMoneyToMinor(text.trim() || '0', currency);
   } catch {
     return null;
   }
@@ -417,6 +420,8 @@ function PolicySheet({
     setError(null);
   }, [open, policy]);
 
+  /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
+  const { currency } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       policy
@@ -444,8 +449,8 @@ function PolicySheet({
           e.preventDefault();
           setError(null);
 
-          const sumAssuredMinor = toMinor(form.sumAssured);
-          const premiumMinor = toMinor(form.premium);
+          const sumAssuredMinor = toMinor(form.sumAssured, currency);
+          const premiumMinor = toMinor(form.premium, currency);
           if (sumAssuredMinor === null || premiumMinor === null) {
             setError('টাকার অঙ্কটি বোঝা যায়নি।');
             return;

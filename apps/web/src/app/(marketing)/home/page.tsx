@@ -48,7 +48,7 @@ export default function LandingPage() {
       <script
         type="application/ld+json"
         // Static, server-rendered, and escaped in `jsonLdScript`.
-        dangerouslySetInnerHTML={{ __html: jsonLdScript(softwareApplicationJsonLd(120_000)) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(softwareApplicationJsonLd(35_000)) }}
       />
       <script
         type="application/ld+json"

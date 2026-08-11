@@ -339,7 +339,7 @@ export const COMING: { title: string; body: string }[] = [
  */
 export const FAQ: { q: string; a: string }[] = [
   {
-    q: 'হিসাব কি সত্যিই ফ্রি?',
+    q: 'Taka Tracker কি সত্যিই ফ্রি?',
     a: 'হ্যাঁ। ফ্রি প্যাকেজ আজীবন ফ্রি — কোনো ট্রায়াল নয়, শেষে কার্ড চাওয়া হয় না। দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনাদার-পাওনাদার। শুধু রসিদের ছবি প্রিমিয়ামে।',
   },
   {
@@ -364,7 +364,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'টাকা কীভাবে দেব?',
-    a: 'প্রিমিয়াম বছরে ৳১২০০। এই মুহূর্তে অনলাইন পেমেন্ট চালু হয়নি — প্রিমিয়াম নিতে চাইলে যোগাযোগ করুন, আমরা আপনার অ্যাকাউন্টে চালু করে দেব।',
+    a: 'প্রিমিয়াম মাসে ৳৩৫০, অথবা বছরে ৳৩৬০০ (৳৬০০ সাশ্রয়)। এই মুহূর্তে অনলাইন পেমেন্ট চালু হয়নি — প্রিমিয়াম নিতে চাইলে যোগাযোগ করুন, আমরা আপনার অ্যাকাউন্টে চালু করে দেব।',
   },
 ];
 
@@ -377,8 +377,11 @@ export const NAV: { href: string; label: string }[] = [
 ];
 
 export const SITE = {
-  name: 'হিসাব',
-  nameEn: 'Hishab — Taka Tracker',
+  /* The product's name, not the Bengali word. `হিসাব` still appears all over
+     this file meaning "accounts" or "reckoning" — that is the language, and it
+     is the reason the name works. The brand itself is the domain. */
+  name: 'Taka Tracker',
+  nameEn: 'Taka Tracker',
   url: 'https://takatracker.com',
   tagline: 'বাংলাদেশের জন্য ডাবল-এন্ট্রি ব্যক্তিগত হিসাবের সফটওয়্যার',
 } as const;

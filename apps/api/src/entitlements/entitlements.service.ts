@@ -92,6 +92,10 @@ export interface CataloguePlanView {
   code: string;
   name: string;
   priceMinor: number;
+  /** Null when the plan is sold monthly only. */
+  priceYearlyMinor: number | null;
+  /** ISO 4217. The catalogue is priced in one currency, whatever a workspace keeps its books in. */
+  currency: string;
   interval: string;
   features: { key: string; label: string; limitValue: number | null }[];
 }
@@ -154,6 +158,8 @@ export class EntitlementsService implements OnModuleInit {
           code: definition.code,
           name: definition.name,
           priceMinor: BigInt(definition.priceMinor),
+          priceYearlyMinor:
+            definition.priceYearlyMinor == null ? null : BigInt(definition.priceYearlyMinor),
           interval: definition.interval,
           isPublic: definition.isPublic,
           sortOrder: definition.sortOrder,
@@ -405,6 +411,11 @@ export class EntitlementsService implements OnModuleInit {
       code: plan.code,
       name: plan.name,
       priceMinor: Number(plan.priceMinor),
+      /* Null when the plan is sold monthly only. The pricing page prints a
+       * yearly column when it is a number and hides it when it is not, rather
+       * than inventing twelve-times-the-monthly. */
+      priceYearlyMinor: plan.priceYearlyMinor == null ? null : Number(plan.priceYearlyMinor),
+      currency: plan.currency,
       interval: plan.interval,
       features: plan.features
         .slice()

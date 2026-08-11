@@ -58,6 +58,9 @@ function parsePrice(typed: string): number | null {
   const text = typed.trim();
   if (text === '') return null;
   try {
+    /* The catalogue is priced in one currency for everybody — deliberately not
+       the operator's own workspace currency, which has nothing to do with what
+       the product costs. */
     const minor = parseMoneyToMinor(text);
     return minor >= 0 ? minor : null;
   } catch {

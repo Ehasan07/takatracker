@@ -19,8 +19,8 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'হিসাব — Taka Tracker',
-    short_name: 'হিসাব',
+    name: 'Taka Tracker',
+    short_name: 'Taka Tracker',
     description: 'আয়, খরচ, ধার-দেনা ও সঞ্চয়ের ব্যক্তিগত হিসাব।',
     start_url: '/',
     scope: '/',
@@ -58,7 +58,7 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: '1280x800',
         type: 'image/png',
         form_factor: 'wide',
-        label: 'ডেস্কটপে হিসাব',
+        label: 'ডেস্কটপে Taka Tracker',
       },
     ],
     /* Four is what a long-press menu shows on Android. Each one lands on a

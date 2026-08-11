@@ -237,6 +237,19 @@ describe('entitlements', () => {
     await ctx.http().get('/v1/entitlements').expect(401);
   });
 
+  it('quotes premium monthly and yearly, and free at neither', async () => {
+    const res = await ctx.http().get('/v1/entitlements/plans').expect(200);
+    const premium = res.body.find((p: { code: string }) => p.code === 'PREMIUM');
+    const free = res.body.find((p: { code: string }) => p.code === 'FREE');
+
+    // ৳350 a month, ৳3600 a year — ten months' price for twelve.
+    expect(premium.priceMinor).toBe(35_000);
+    expect(premium.priceYearlyMinor).toBe(360_000);
+    // Free is free at any cadence, so there is no yearly figure to print.
+    expect(free.priceMinor).toBe(0);
+    expect(free.priceYearlyMinor).toBeNull();
+  });
+
   it('keeps limits per workspace', async () => {
     const restricted = await signup(ctx);
     const roomy = await signup(ctx);

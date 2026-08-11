@@ -15,6 +15,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { INTEREST_TYPES, directionLabel, statusLabel } from './labels';
 import { invalidateLoanData } from './queries';
 import type { LoanDetail, LoanInterestType } from './types';
@@ -40,9 +41,11 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  *
  * Never `Math.trunc(Number(x) * 100)`: that turns 0.29 into 28.
  */
-function minorOrNull(text: string): number | null {
+/* Takes the currency rather than reading it: this is a module-level helper
+   and a hook cannot live here. The callers all have it. */
+function minorOrNull(text: string, currency: string): number | null {
   try {
-    return parseMoneyToMinor(text.trim() || '0');
+    return parseMoneyToMinor(text.trim() || '0', currency);
   } catch {
     return null;
   }
@@ -107,6 +110,10 @@ export function EditLoanSheet({
   onSaved: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
+  /* The books' currency decides how many minor units a typed amount is worth —
+     100 for taka, 1 for yen, 1000 for a dinar. Read at the top of the component
+     because the derived figures below need it before the save handler does. */
+  const { currency } = useWorkspaceSettings();
   const { loan, person, payments } = detail;
 
   const [form, setForm] = React.useState<EditForm>(() => seedForm(detail));
@@ -140,9 +147,11 @@ export function EditLoanSheet({
     [payments],
   );
 
-  const principalMinor = minorOrNull(form.principal);
-  const interestMinor = form.interestType === 'FIXED' ? minorOrNull(form.interest) : 0;
-  const interestRateBps = form.interestType === 'PERCENT' ? minorOrNull(form.rate) : 0;
+  const principalMinor = minorOrNull(form.principal, currency);
+  const interestMinor = form.interestType === 'FIXED' ? minorOrNull(form.interest, currency) : 0;
+  /* Basis points, not money: 12.5% is 1250 whatever the books are kept in.
+     `'BDT'` here means "×100", not "taka". */
+  const interestRateBps = form.interestType === 'PERCENT' ? minorOrNull(form.rate, 'BDT') : 0;
 
   const dueBeforeLoan = Boolean(form.dueDate) && form.dueDate < form.loanDate;
 
@@ -191,12 +200,16 @@ export function EditLoanSheet({
         method: 'PATCH',
         body: {
           // Taka typed by a human becomes poisha here, truncated, never rounded.
-          principalMinor: parseMoneyToMinor(form.principal || '0'),
+          principalMinor: parseMoneyToMinor(form.principal || '0', currency),
           interestType: form.interestType,
           interestMinor:
-            form.interestType === 'FIXED' ? parseMoneyToMinor(form.interest || '0') : 0,
+            form.interestType === 'FIXED' ? parseMoneyToMinor(form.interest || '0', currency) : 0,
           // 825 basis points is "৮.২৫" — hundredths again, so the same parser.
           interestRateBps:
+            /* Deliberately *not* the workspace currency. A rate is basis
+               points — 12.5% is 1250 — and it is ×100 whatever money the books
+               are kept in. Passing `currency` here would make a percentage on a
+               yen workspace a hundredth of itself. */
             form.interestType === 'PERCENT' ? parseMoneyToMinor(form.rate || '0') : 0,
           loanDate: form.loanDate,
           // Explicit null is how the contract clears a due date; undefined keeps it.

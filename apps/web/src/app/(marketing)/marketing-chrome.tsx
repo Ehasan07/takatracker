@@ -28,7 +28,7 @@ export function MarketingHeader() {
             aria-hidden
             className="bg-income flex h-7 w-7 items-center justify-center rounded-md text-sm font-bold text-white"
           >
-            হ
+            ৳
           </span>
           <span className="text-ink">{SITE.name}</span>
         </Link>
@@ -107,7 +107,7 @@ export function MarketingFooter() {
               aria-hidden
               className="bg-income flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-white"
             >
-              হ
+              ৳
             </span>
             {SITE.name}
           </p>

@@ -101,3 +101,51 @@ describe('allocateMinor', () => {
     expect(sumMinor(parts)).toBe(-1000);
   });
 });
+
+describe('currencies that are not taka', () => {
+  /**
+   * The bug this whole module was rewritten to prevent.
+   *
+   * A yen has no minor unit: ¥500 is stored as 500, not 50,000. Under the old
+   * hardcoded divisor of 100 every yen figure on every screen — and in every
+   * export, and in every report — was a hundred times too large, and the error
+   * was invisible because it was consistent.
+   */
+  it('stores a yen as a whole yen and prints it without decimals', () => {
+    expect(parseMoneyToMinor('500', 'JPY')).toBe(500);
+    expect(formatMinor(500, { currency: 'JPY' })).toBe('¥500');
+    // The fraction is dropped, not rounded — the same rule taka applies to a
+    // third decimal place, applied where the cut comes earlier.
+    expect(parseMoneyToMinor('500.7', 'JPY')).toBe(500);
+  });
+
+  it('gives a Kuwaiti dinar its thousand fils', () => {
+    expect(parseMoneyToMinor('1.234', 'KWD')).toBe(1234);
+    expect(formatMinor(1234, { currency: 'KWD', symbol: false })).toBe('1.234');
+    // Two typed decimals still mean what they say: 1.23 dinar is 1230 fils.
+    expect(parseMoneyToMinor('1.23', 'KWD')).toBe(1230);
+  });
+
+  it('groups in lakhs for taka and in thousands for dollars', () => {
+    expect(formatMinor(184_620_000, { currency: 'BDT' })).toBe('৳18,46,200.00');
+    expect(formatMinor(184_620_000, { currency: 'USD' })).toBe('$1,846,200.00');
+  });
+
+  it('strips the active currency’s own symbol, metacharacters and all', () => {
+    // `$` is a regex metacharacter; an unescaped one used to leave the marker
+    // in the string, which then failed the digits check and threw.
+    expect(parseMoneyToMinor('$1,234.56', 'USD')).toBe(123456);
+    expect(parseMoneyToMinor('S/ 80', 'PEN')).toBe(8000);
+    expect(parseMoneyToMinor('د.ك 1.500', 'KWD')).toBe(1500);
+  });
+
+  it('still reads taka typed into a workspace that is not on taka', () => {
+    // A mistake about the currency, not about the number. Losing the entry
+    // would be the worse answer.
+    expect(parseMoneyToMinor('৳500', 'USD')).toBe(50000);
+  });
+
+  it('falls back to taka for a code it has never heard of', () => {
+    expect(formatMinor(50000, { currency: 'ZZZ' })).toBe('৳500.00');
+  });
+});

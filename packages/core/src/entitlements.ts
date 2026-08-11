@@ -337,8 +337,18 @@ export interface OverrideRow extends PlanFeatureRow {
 export interface PlanDefinition {
   code: string;
   name: string;
-  /** Integer poisha, like every other amount in the system. */
+  /** Integer minor units, like every other amount in the system. */
   priceMinor: number;
+  /**
+   * The same bundle billed yearly, usually cheaper than twelve months of the
+   * monthly price. Null means the plan is sold monthly only.
+   *
+   * One plan with two prices rather than two plans, because a plan is a bundle
+   * of entitlements and the billing cadence is a property of the subscription.
+   * Splitting PREMIUM in two would make "is this workspace on premium?" a
+   * two-value question in every entitlement check, for no gain.
+   */
+  priceYearlyMinor?: number | null;
   interval: 'MONTHLY' | 'YEARLY';
   isPublic: boolean;
   sortOrder: number;
@@ -352,7 +362,7 @@ export interface PlanDefinition {
  *
  * Two tiers, because two is what is being sold. `FREE` is what every website
  * signup lands on — see `DEFAULT_PLAN_CODE` — and it is free for good rather
- * than a trial that expires. `PREMIUM` lifts every ceiling for ৳১২০০ a year.
+ * than a trial that expires. `PREMIUM` lifts every ceiling for ৳৩৫০ a month, or ৳৩৬০০ paid yearly.
  *
  * Boot upserts with an empty `update`, so these values create a plan and never
  * overwrite one. An install where an operator has already edited a limit
@@ -397,9 +407,13 @@ export const DEFAULT_PLANS: readonly PlanDefinition[] = [
   {
     code: 'PREMIUM',
     name: 'প্রিমিয়াম',
-    /** ৳১২০০ a year, in poisha like every other amount in the system. */
-    priceMinor: 120_000,
-    interval: 'YEARLY',
+    /** ৳৩৫০ a month, in poisha like every other amount in the system. */
+    priceMinor: 35_000,
+    /** ৳৩৬০০ a year against ৳৩৫০ × ১২ = ৳৪২০০, so paying up front saves ৳৬০০
+     *  — about fourteen percent, and worth something rather than being the
+     *  same number twelve times. */
+    priceYearlyMinor: 360_000,
+    interval: 'MONTHLY',
     isPublic: true,
     sortOrder: 20,
     features: {

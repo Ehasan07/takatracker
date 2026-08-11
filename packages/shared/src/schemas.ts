@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_CURRENCY, isSupportedCurrency } from './currency.js';
 import {
   ACCOUNT_TYPES,
   CATEGORY_KINDS,
@@ -28,6 +29,20 @@ export const signupSchema = z.object({
   name: z.string().min(1).max(120),
   phone: z.string().max(30).optional(),
   locale: z.enum(LOCALES).default('bn'),
+  /**
+   * ISO 4217, chosen on the signup form.
+   *
+   * Validated against the catalogue rather than as a bare three-letter string:
+   * the code decides how many minor units are in a major one, so an unknown
+   * value would be stored, silently fall back to taka's 100 at render time, and
+   * make every figure in that workspace wrong by a factor nobody could see.
+   */
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine(isSupportedCurrency, 'এই কারেন্সিটি সমর্থিত নয়')
+    .default(DEFAULT_CURRENCY),
   timezone: z.string().default('Asia/Dhaka'),
 });
 export type SignupInput = z.infer<typeof signupSchema>;

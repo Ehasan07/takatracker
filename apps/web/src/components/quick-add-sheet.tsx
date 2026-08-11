@@ -8,6 +8,7 @@ import { fetchPeople } from '@/app/(shell)/people/queries';
 import { TagPicker } from '@/app/(shell)/tags/tag-picker';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import {
   api,
   endpoints,
@@ -177,9 +178,11 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
     setDate(today);
   };
 
+  /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
+  const { currency } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: async () => {
-      const amountMinor = parseMoneyToMinor(amount);
+      const amountMinor = parseMoneyToMinor(amount, currency);
       if (amountMinor <= 0) throw new Error('পরিমাণ শূন্যের চেয়ে বেশি হতে হবে');
       /* The <select> is `required`, so the browser normally refuses first. Said
          again here in words, because native validation is a bubble that a
@@ -239,7 +242,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
 
   const previewMinor = (() => {
     try {
-      return amount ? parseMoneyToMinor(amount) : 0;
+      return amount ? parseMoneyToMinor(amount, currency) : 0;
     } catch {
       return 0;
     }

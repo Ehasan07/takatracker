@@ -8,6 +8,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { DIRECTIONS, INTEREST_TYPES } from './labels';
 import { fetchLoans, invalidateLoanData, loanKeys } from './queries';
 import type { LoanDirection, LoanInterestType, LoanPerson } from './types';
@@ -84,6 +85,8 @@ export function AddLoanSheet({
     if (firstAccountId) setForm((f) => (f.accountId ? f : { ...f, accountId: firstAccountId }));
   }, [firstAccountId]);
 
+  /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
+  const { currency } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: () =>
       api('/loans', {
@@ -97,14 +100,18 @@ export function AddLoanSheet({
             : { personId: form.personId }),
           direction: form.direction,
           // Taka typed by a human becomes poisha here, truncated, never rounded.
-          principalMinor: parseMoneyToMinor(form.principal || '0'),
+          principalMinor: parseMoneyToMinor(form.principal || '0', currency),
           interestType: form.interestType,
           interestMinor:
-            form.interestType === 'FIXED' ? parseMoneyToMinor(form.interest || '0') : 0,
+            form.interestType === 'FIXED' ? parseMoneyToMinor(form.interest || '0', currency) : 0,
           /* Basis points are hundredths of a percent, so the same parser: "৮.২৫"
              is 825. `Math.trunc(Number(x) * 100)` would look equivalent and is
              not — it reads 0.29 as 28, because 0.29 has no exact binary form. */
           interestRateBps:
+            /* Deliberately *not* the workspace currency. A rate is basis
+               points — 12.5% is 1250 — and it is ×100 whatever money the books
+               are kept in. Passing `currency` here would make a percentage on a
+               yen workspace a hundredth of itself. */
             form.interestType === 'PERCENT' ? parseMoneyToMinor(form.rate || '0') : 0,
           loanDate: form.loanDate,
           dueDate: form.dueDate || undefined,

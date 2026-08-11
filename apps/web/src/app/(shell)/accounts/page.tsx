@@ -21,6 +21,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
 import { api, ApiError, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { UsageMeter } from '@/components/usage-meter';
@@ -525,6 +526,8 @@ function EditAccountSheet({
   onClose: () => void;
   onArchive: (account: AccountDto) => void;
 }) {
+  /* The books' currency decides how many minor units a typed amount is worth. */
+  const { currency } = useWorkspaceSettings();
   const queryClient = useQueryClient();
   const [form, setForm] = React.useState<AccountForm>(() => toForm(null));
   const [error, setError] = React.useState<string | null>(null);
@@ -577,7 +580,7 @@ function EditAccountSheet({
           if (!account) return;
           let openingBalance: number;
           try {
-            openingBalance = parseMoneyToMinor(form.opening || '0');
+            openingBalance = parseMoneyToMinor(form.opening || '0', currency);
           } catch {
             setError('প্রারম্ভিক জেরের অঙ্কটি বোঝা যায়নি।');
             return;
@@ -817,6 +820,8 @@ function AddAccountSheet({
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
+  /* The books' currency decides how many minor units a typed amount is worth. */
+  const { currency } = useWorkspaceSettings();
   const [name, setName] = React.useState('');
   const [type, setType] = React.useState('CASH');
   const [openingBalance, setOpeningBalance] = React.useState('');
@@ -830,7 +835,7 @@ function AddAccountSheet({
         body: {
           name,
           type,
-          openingBalance: openingBalance ? parseMoneyToMinor(openingBalance) : 0,
+          openingBalance: openingBalance ? parseMoneyToMinor(openingBalance, currency) : 0,
           // Only a card has a payment due day; sending it for cash would be noise.
           dueDayOfMonth: type === 'CREDIT_CARD' && dueDay ? Number(dueDay) : undefined,
         },
@@ -931,6 +936,8 @@ function ReconcileSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  /* The books' currency decides how many minor units a typed amount is worth. */
+  const { currency } = useWorkspaceSettings();
   const [actual, setActual] = React.useState('');
   const [result, setResult] = React.useState<string | null>(null);
 
@@ -945,7 +952,7 @@ function ReconcileSheet({
         method: 'POST',
         body: {
           date: toLocalDateString(new Date()),
-          actualBalanceMinor: parseMoneyToMinor(actual),
+          actualBalanceMinor: parseMoneyToMinor(actual, currency),
         },
       }),
     onSuccess: (data) => {

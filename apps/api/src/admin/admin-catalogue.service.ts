@@ -201,6 +201,8 @@ export class AdminCatalogueService {
             code: input.code,
             name: input.name,
             priceMinor: BigInt(input.priceMinor),
+            priceYearlyMinor:
+              input.priceYearlyMinor == null ? null : BigInt(input.priceYearlyMinor),
             interval: input.interval,
             isPublic: input.isPublic,
             sortOrder: input.sortOrder,
@@ -241,6 +243,8 @@ export class AdminCatalogueService {
         code: created.code,
         name: created.name,
         priceMinor: Number(created.priceMinor),
+        priceYearlyMinor:
+          created.priceYearlyMinor == null ? null : Number(created.priceYearlyMinor),
         interval: created.interval,
         isPublic: created.isPublic,
         sortOrder: created.sortOrder,
@@ -267,6 +271,14 @@ export class AdminCatalogueService {
     const data = {
       ...(input.name === undefined ? {} : { name: input.name }),
       ...(input.priceMinor === undefined ? {} : { priceMinor: BigInt(input.priceMinor) }),
+      /* Omitted leaves the yearly price alone; an explicit `null` withdraws it,
+       * which is how a plan stops being sold by the year. */
+      ...(input.priceYearlyMinor === undefined
+        ? {}
+        : {
+            priceYearlyMinor:
+              input.priceYearlyMinor === null ? null : BigInt(input.priceYearlyMinor),
+          }),
       ...(input.interval === undefined ? {} : { interval: input.interval }),
       ...(input.isPublic === undefined ? {} : { isPublic: input.isPublic }),
       ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
@@ -287,6 +299,7 @@ export class AdminCatalogueService {
         code: plan.code,
         name: plan.name,
         priceMinor: Number(plan.priceMinor),
+        priceYearlyMinor: plan.priceYearlyMinor == null ? null : Number(plan.priceYearlyMinor),
         interval: plan.interval,
         isPublic: plan.isPublic,
         sortOrder: plan.sortOrder,
@@ -294,6 +307,8 @@ export class AdminCatalogueService {
       after: {
         name: updated.name,
         priceMinor: Number(updated.priceMinor),
+        priceYearlyMinor:
+          updated.priceYearlyMinor == null ? null : Number(updated.priceYearlyMinor),
         interval: updated.interval,
         isPublic: updated.isPublic,
         sortOrder: updated.sortOrder,
@@ -911,6 +926,7 @@ export class AdminCatalogueService {
       code: plan.code,
       name: plan.name,
       priceMinor: Number(plan.priceMinor),
+      priceYearlyMinor: plan.priceYearlyMinor == null ? null : Number(plan.priceYearlyMinor),
       currency: plan.currency,
       interval: plan.interval,
       isPublic: plan.isPublic,

@@ -13,6 +13,54 @@ describe('auth', () => {
     await ctx.app.close();
   });
 
+  it('remembers the language and the currency chosen at signup', async () => {
+    const email = uniqueEmail();
+    const res = await ctx
+      .http()
+      .post('/v1/auth/signup')
+      .send({ email, password: 'hishab1234', name: 'Yen User', locale: 'en', currency: 'JPY' })
+      .expect(201);
+
+    const me = await ctx
+      .http()
+      .get('/v1/auth/me')
+      .set({ Authorization: `Bearer ${res.body.accessToken}` })
+      .expect(200);
+
+    /* The currency is a property of the ledger, not a display preference: it
+       decides how many minor units a stored integer represents. A yen has
+       none, so 500 means ¥500 — under the old hardcoded 100 it would have
+       rendered as ¥5. */
+    expect(me.body.workspace.currency).toBe('JPY');
+    expect(me.body.workspace.locale).toBe('en');
+  });
+
+  it('refuses a currency the catalogue has never heard of', async () => {
+    /* Not pedantry. An unknown code would be stored, silently fall back to
+       taka's 100 at render time, and make every figure in that workspace wrong
+       by a factor nobody could see. */
+    await ctx
+      .http()
+      .post('/v1/auth/signup')
+      .send({ email: uniqueEmail(), password: 'hishab1234', name: 'x', currency: 'ZZZ' })
+      .expect(400);
+  });
+
+  it('defaults to taka and Bangla when neither is given', async () => {
+    const res = await ctx
+      .http()
+      .post('/v1/auth/signup')
+      .send({ email: uniqueEmail(), password: 'hishab1234', name: 'x' })
+      .expect(201);
+    const me = await ctx
+      .http()
+      .get('/v1/auth/me')
+      .set({ Authorization: `Bearer ${res.body.accessToken}` })
+      .expect(200);
+    expect(me.body.workspace.currency).toBe('BDT');
+    expect(me.body.workspace.locale).toBe('bn');
+  });
+
   it('signs up, seeds categories and system accounts, and returns tokens', async () => {
     const email = uniqueEmail('signup');
     const res = await ctx

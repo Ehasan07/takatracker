@@ -1,6 +1,6 @@
 import { ArrowRight, Check, Minus } from 'lucide-react';
 import Link from 'next/link';
-import { allocateMinor, formatMinor } from '@hishab/shared';
+import { formatMinor, toBengaliDigits } from '@hishab/shared';
 import { FAQ } from '../content';
 import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from '../seo';
 
@@ -23,7 +23,7 @@ import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from
 export const metadata = pageMetadata({
   title: 'দাম ও প্যাকেজ — হিসাব | Pricing',
   description:
-    'ফ্রি প্যাকেজ আজীবন ফ্রি — দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনা-পাওনা। প্রিমিয়াম বছরে ৳১২০০, সব সীমাহীন। Free forever plan and a ৳1200/year premium plan.',
+    'ফ্রি প্যাকেজ আজীবন ফ্রি — দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনা-পাওনা। প্রিমিয়াম মাসে ৳৩৫০ বা বছরে ৳৩৬০০, সব সীমাহীন। Free forever plan, or ৳350/month (৳3600/year) for everything unlimited.',
   path: '/pricing',
   keywords: [
     'personal finance app price bangladesh',
@@ -48,6 +48,8 @@ interface PlanView {
   code: string;
   name: string;
   priceMinor: number;
+  /** Null when the plan is sold monthly only. */
+  priceYearlyMinor: number | null;
   interval: 'MONTHLY' | 'YEARLY';
   features: PlanFeature[];
 }
@@ -57,6 +59,7 @@ const FALLBACK: PlanView[] = [
     code: 'FREE',
     name: 'ফ্রি',
     priceMinor: 0,
+    priceYearlyMinor: null,
     interval: 'MONTHLY',
     features: [
       { key: 'accounts.max', label: 'অ্যাকাউন্ট', limitValue: 2 },
@@ -68,8 +71,9 @@ const FALLBACK: PlanView[] = [
   {
     code: 'PREMIUM',
     name: 'প্রিমিয়াম',
-    priceMinor: 120_000,
-    interval: 'YEARLY',
+    priceMinor: 35_000,
+    priceYearlyMinor: 360_000,
+    interval: 'MONTHLY',
     features: [
       { key: 'accounts.max', label: 'অ্যাকাউন্ট', limitValue: null },
       { key: 'transactions.monthly.max', label: 'মাসিক লেনদেন', limitValue: null },
@@ -89,6 +93,30 @@ async function fetchPlans(): Promise<PlanView[]> {
   } catch {
     return FALLBACK;
   }
+}
+
+/**
+ * How many months the yearly price gives away, stated only when it is a whole
+ * number of them.
+ *
+ * "১০ মাসের দামে ১২ মাস" is a claim, so it is derived from the two prices
+ * rather than written down: if somebody edits either in the admin panel the
+ * sentence follows, and if the discount stops being a round number of months
+ * the page says the plainer thing instead of rounding in its own favour.
+ */
+function monthsSaved(plan: PlanView): string {
+  const yearly = plan.priceYearlyMinor ?? 0;
+  const monthly = plan.priceMinor;
+  const twelve = monthly * 12;
+  if (monthly <= 0 || yearly <= 0 || yearly >= twelve) return 'বছরে একবার';
+
+  const saved = twelve - yearly;
+  // Exact integer division, and only when it comes out whole.
+  if (saved % monthly === 0) {
+    const months = saved / monthly;
+    return `${toBengaliDigits(String(months))} মাস ফ্রি`;
+  }
+  return `৳${formatMinor(saved, { symbol: false, decimals: false, bengaliNumerals: true })} সাশ্রয়`;
 }
 
 /** ৳১,২০০ — a price is read, not reconciled, so no decimals and no symbol here. */
@@ -207,24 +235,20 @@ function PlanCard({ plan, highlight }: { plan: PlanView; highlight: boolean }) {
 
       <p className="text-ink mt-4 text-3xl font-semibold">
         {free ? 'ফ্রি' : `৳${takaFrom(plan.priceMinor)}`}
-        {!free ? (
-          <span className="text-ink-muted text-base font-normal">
-            {plan.interval === 'YEARLY' ? ' / বছর' : ' / মাস'}
-          </span>
-        ) : null}
+        {!free ? <span className="text-ink-muted text-base font-normal"> / মাস</span> : null}
       </p>
-      <p className="text-ink-muted mt-1 text-sm">
-        {free
-          ? 'আজীবন ফ্রি। কার্ড লাগবে না।'
-          : /* `allocateMinor` rather than a divide: it splits integer poisha
-               into twelve whole shares and distributes the remainder, so the
-               figure quoted is one twelfth of what is actually charged. */
-            `মাসে প্রায় ৳${formatMinor(allocateMinor(plan.priceMinor, 12)[0] ?? 0, {
-              symbol: false,
-              decimals: false,
-              bengaliNumerals: true,
-            })} — বছরে একবার।`}
-      </p>
+      {free ? (
+        <p className="text-ink-muted mt-1 text-sm">আজীবন ফ্রি। কার্ড লাগবে না।</p>
+      ) : plan.priceYearlyMinor != null ? (
+        <p className="text-ink-muted mt-1 text-sm">
+          অথবা বছরে{' '}
+          <strong className="text-ink font-medium">৳{takaFrom(plan.priceYearlyMinor)}</strong>{' '}
+          {/* The saving, computed rather than asserted: twelve months at the
+              monthly price, less the yearly price. `allocateMinor` splits
+              integer poisha into whole shares, so no float touches a price. */}
+          — {`${monthsSaved(plan)} মাস ফ্রি`}
+        </p>
+      ) : null}
 
       <ul className="mt-5 space-y-2">
         {COMPARED.map((row) => {

@@ -161,8 +161,10 @@ const featureMapSchema = z
 const createPlanSchema = z.object({
   code: planCodeSchema,
   name: z.string().trim().min(1).max(120),
-  /** Integer poisha, like every other amount in the system. */
+  /** Integer minor units, like every other amount in the system. */
   priceMinor: z.number().int().min(0).max(1_000_000_000_000).default(0),
+  /** The same bundle billed yearly. Omit or null for a monthly-only plan. */
+  priceYearlyMinor: z.number().int().min(0).max(1_000_000_000_000).nullish(),
   interval: z.enum(BILLING_INTERVALS).default('MONTHLY'),
   /**
    * Defaults to **not** public. A package half-built in a form must not appear
@@ -184,6 +186,9 @@ const updatePlanSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
     priceMinor: z.number().int().min(0).max(1_000_000_000_000).optional(),
+    /* `nullish` rather than `optional`: an operator has to be able to withdraw
+     * a yearly price, and omitting the field means "leave it alone". */
+    priceYearlyMinor: z.number().int().min(0).max(1_000_000_000_000).nullish(),
     interval: z.enum(BILLING_INTERVALS).optional(),
     isPublic: z.boolean().optional(),
     sortOrder: z.number().int().min(0).max(10_000).optional(),

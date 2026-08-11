@@ -108,8 +108,10 @@ test.describe('the public site', () => {
 
     const free = page.locator('h2', { hasText: 'ফ্রি' }).first();
     await expect(free).toBeVisible();
-    // ৳1200/year, in Bengali numerals, read off the plan the server enforces.
-    await expect(page.getByText('৳১,২০০').first()).toBeVisible();
+    // ৳350/month and ৳3600/year, in Bengali numerals, read off the plan the
+    // server enforces rather than typed into this page.
+    await expect(page.getByText('৳৩৫০').first()).toBeVisible();
+    await expect(page.getByText('৳৩,৬০০').first()).toBeVisible();
     await expect(page.getByText('আজীবন ফ্রি').first()).toBeVisible();
 
     // The comparison table names both tiers and the two ceilings that differ.

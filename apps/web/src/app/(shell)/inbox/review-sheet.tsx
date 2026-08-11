@@ -18,6 +18,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { useIsDesktop } from '@/hooks/use-device';
 import { ApiError, endpoints, type CategoryDto } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import { originOf, type FieldOrigin } from './evidence';
 import { bnDateTime, bnNum, channelLabel, DIRECTIONS, REJECT_REASONS, statusLabel } from './labels';
@@ -217,6 +218,8 @@ function ReviewForm({
     (e: { target: { value: string } }): void =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  /* The books' currency decides how many minor units a typed amount is worth. */
+  const { currency } = useWorkspaceSettings();
   const accept = useMutation({
     mutationFn: (body: AcceptDraftBody) => acceptDraft(draft.id, body),
     onSuccess: (saved) => {
@@ -255,7 +258,7 @@ function ReviewForm({
     let amountMinor: number;
     try {
       // Taka typed by a human becomes poisha here, truncated, never rounded.
-      amountMinor = parseMoneyToMinor(form.amount);
+      amountMinor = parseMoneyToMinor(form.amount, currency);
     } catch (err) {
       setError(err instanceof MoneyParseError ? 'টাকার পরিমাণ বোঝা গেল না' : 'টাকার পরিমাণ দিন');
       return;
