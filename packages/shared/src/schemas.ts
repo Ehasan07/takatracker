@@ -161,8 +161,32 @@ export const simpleTransactionSchema = z
      * "nobody" as well as "unchanged": omitted leaves the row's person alone,
      * `null` detaches it. Same rule as `tagIds` and `attachmentIds`. */
     personId: cuid.nullish(),
+    /* What the money actually was, when it was not the workspace's own.
+     *
+     * `amountMinor` above stays in the workspace's currency — the ledger, the
+     * balances and the reports are all single-currency and stay that way. These
+     * two record the original beside it, so a ৳11,000 line can still say it was
+     * $100. The rate is the ratio of the two and is never stored: a rate is the
+     * one number here that cannot be an integer. */
+    fxCurrency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .refine(isSupportedCurrency, 'এই কারেন্সিটি সমর্থিত নয়')
+      .nullish(),
+    fxAmountMinor: positiveMinorAmount.nullish(),
   })
   .superRefine((val, ctx) => {
+    /* Both or neither. One without the other is a half-recorded fact: a
+     * currency with no amount says nothing, and an amount with no currency is a
+     * number whose units are unknown — which is worse than not recording it. */
+    if ((val.fxCurrency == null) !== (val.fxAmountMinor == null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['fxAmountMinor'],
+        message: 'মূল মুদ্রা আর মূল অঙ্ক — দুটোই দিতে হবে, অথবা কোনোটিই নয়',
+      });
+    }
     if (val.type === 'TRANSFER') {
       if (!val.counterAccountId) {
         ctx.addIssue({

@@ -78,6 +78,10 @@ export interface TransactionView {
    */
   personId: string | null;
   personName: string | null;
+  /** ISO 4217 the money was actually in, or null when it was the workspace's own. */
+  fxCurrency: string | null;
+  /** The amount in `fxCurrency`. The rate is `amountMinor / fxAmountMinor`. */
+  fxAmountMinor: number | null;
   tags: TransactionTagView[];
   /**
    * Receipt ids, in the order they were attached.
@@ -238,6 +242,10 @@ export class TransactionsService {
         payee: input.payee,
         // Who the money was with. Until now only the loan module wrote this.
         personId: input.personId ?? null,
+        /* The original, when the money was not the workspace's own currency.
+         * `amountMinor` above is already converted; these two are the receipt. */
+        fxCurrency: input.fxCurrency ?? null,
+        fxAmountMinor: input.fxAmountMinor == null ? null : BigInt(input.fxAmountMinor),
         externalRef: input.externalRef,
         source: input.source,
         /* Receipts. The column and the schema field have both existed since the
@@ -350,6 +358,14 @@ export class TransactionsService {
            * `personId: input.personId` would look identical and behave the
            * same, but the reader could not tell which of the two was meant. */
           ...(input.personId === undefined ? {} : { personId: input.personId }),
+          /* Both move together or neither does — the schema already refuses a
+           * half-pair, so writing them as one keeps that true through an edit. */
+          ...(input.fxCurrency === undefined && input.fxAmountMinor === undefined
+            ? {}
+            : {
+                fxCurrency: input.fxCurrency ?? null,
+                fxAmountMinor: input.fxAmountMinor == null ? null : BigInt(input.fxAmountMinor),
+              }),
           externalRef: input.externalRef,
           entries: {
             create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
@@ -845,6 +861,8 @@ export class TransactionsService {
       categoryName: category ? (category.nameBn ?? category.name) : null,
       personId: tx.personId,
       personName: tx.person?.name ?? null,
+      fxCurrency: tx.fxCurrency,
+      fxAmountMinor: tx.fxAmountMinor == null ? null : minorToNumber(tx.fxAmountMinor),
       attachmentIds: tx.attachmentIds,
       /* Sorted here rather than in the query. Prisma can order an included
        * relation by a field of *its* relation, but doing so turns one join into

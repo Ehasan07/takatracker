@@ -16,6 +16,14 @@ export interface AuthUser {
   role: MembershipRole;
   timezone: string;
   /**
+   * The workspace's ISO 4217 code — what its books are kept in.
+   *
+   * Rides along for the same reason `timezone` does: the membership row is
+   * already being read to authorise the request, so every handler that needs to
+   * know what a stored integer *means* gets it without a second query.
+   */
+  currency: string;
+  /**
    * The operator's user id when this request is a support session, otherwise
    * null.
    *

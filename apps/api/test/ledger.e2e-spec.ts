@@ -386,6 +386,87 @@ describe('ledger', () => {
     expect(cleared.body.attachmentIds).toEqual([]);
   });
 
+  it('records what the money was when it was not taka', async () => {
+    /* The ledger stays single-currency: the amount, the entries and every
+       balance are in the workspace's own money. These two columns are the
+       receipt saying the ৳11,000 was actually $100 — and the rate is their
+       ratio rather than a stored number, because a rate is the one figure here
+       that cannot be an integer. */
+    const created = await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 1_100_000, // ৳11,000
+        accountId: cashId,
+        categoryId: foodCategoryId,
+        fxCurrency: 'USD',
+        fxAmountMinor: 10_000, // $100.00
+        description: 'বিদেশি খরচ',
+      })
+      .expect(201);
+
+    expect(created.body.fxCurrency).toBe('USD');
+    expect(created.body.fxAmountMinor).toBe(10_000);
+    // 1,100,000 poisha / 10,000 cents = 110 taka per dollar.
+    expect(Math.abs(created.body.amountMinor) / created.body.fxAmountMinor).toBe(110);
+
+    // The books moved by the converted figure, not the original.
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    const cash = accounts.body.find((a: { id: string }) => a.id === cashId);
+    expect(typeof cash.balanceMinor).toBe('number');
+
+    // Clearing it on an edit sets both back to null, never one of the two.
+    const cleared = await ctx
+      .http()
+      .patch(`/v1/transactions/${created.body.id}`)
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 1_100_000,
+        accountId: cashId,
+        categoryId: foodCategoryId,
+        fxCurrency: null,
+        fxAmountMinor: null,
+      })
+      .expect(200);
+    expect(cleared.body.fxCurrency).toBeNull();
+    expect(cleared.body.fxAmountMinor).toBeNull();
+  });
+
+  it('refuses half a currency pair, and a currency it does not know', async () => {
+    const base = {
+      date: today,
+      type: 'EXPENSE',
+      amountMinor: 50_000,
+      accountId: cashId,
+      categoryId: foodCategoryId,
+    };
+    /* A currency with no amount says nothing; an amount with no currency is a
+       number whose units are unknown, which is worse than not recording it. */
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...base, fxCurrency: 'USD' })
+      .expect(400);
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...base, fxAmountMinor: 100 })
+      .expect(400);
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...base, fxCurrency: 'ZZZ', fxAmountMinor: 100 })
+      .expect(400);
+  });
+
   it('summarises the month with income, expense and net', async () => {
     const res = await ctx.http().get('/v1/transactions/summary').set(auth(user)).expect(200);
     expect(res.body.incomeMinor).toBeGreaterThan(0);

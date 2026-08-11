@@ -17,6 +17,7 @@ import {
   type TransactionDto,
 } from '@/lib/api';
 import { CategoryChips, CategoryPicker } from './category-picker';
+import { FxField, convert, type FxValue } from './fx-field';
 import { NumericKeypad } from './numeric-keypad';
 import { Button } from './ui/button';
 import { Field, Input, Select, Textarea } from './ui/field';
@@ -69,6 +70,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   const [notes, setNotes] = React.useState('');
   const [tagIds, setTagIds] = React.useState<string[]>([]);
   const [personId, setPersonId] = React.useState('');
+  /* Null for the overwhelming majority of entries, which are in the
+     workspace's own money and never open the section. */
+  const [fx, setFx] = React.useState<FxValue | null>(null);
+  const [fxRate, setFxRate] = React.useState('');
   /**
    * Whether the row being edited actually told us its tags.
    *
@@ -120,6 +125,19 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setTagIds((editing.tags ?? []).map((tag) => tag.id));
       setTagsKnown(editing.tags !== undefined);
       setPersonId(editing.personId ?? '');
+      setFx(
+        editing.fxCurrency && editing.fxAmountMinor
+          ? { currency: editing.fxCurrency, amountMinor: editing.fxAmountMinor }
+          : null,
+      );
+      /* Derived from the two stored figures rather than stored itself — see
+         the migration. `amountMinor` is signed for display, so its magnitude
+         is what the rate was applied to. */
+      setFxRate(
+        editing.fxCurrency && editing.fxAmountMinor
+          ? String(Math.abs(editing.amountMinor) / editing.fxAmountMinor)
+          : '',
+      );
     } else {
       setKind('EXPENSE');
       setAmount('');
@@ -131,6 +149,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setTagIds([]);
       setTagsKnown(true);
       setPersonId('');
+      setFx(null);
+      setFxRate('');
     }
     setError(null);
   }, [open, editing, today]);
@@ -182,7 +202,14 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   const { currency } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: async () => {
-      const amountMinor = parseMoneyToMinor(amount, currency);
+      /* When the money was in another currency, the amount written to the
+         books is the conversion at the rate the user confirmed — not the
+         figure in the amount box, which is left showing what they typed. */
+      const converted = fx ? convert(fx.amountMinor, fx.currency, fxRate, currency) : null;
+      if (fx && (converted === null || converted <= 0)) {
+        throw new Error('রেট বা মূল অঙ্ক ঠিক নেই');
+      }
+      const amountMinor = converted ?? parseMoneyToMinor(amount, currency);
       if (amountMinor <= 0) throw new Error('পরিমাণ শূন্যের চেয়ে বেশি হতে হবে');
       /* The <select> is `required`, so the browser normally refuses first. Said
          again here in words, because native validation is a bubble that a
@@ -210,6 +237,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
            leaves the row's person alone, which would make "কেউ না" impossible
            to save. Sent on a create too, where the two mean the same thing. */
         personId: personId || null,
+        /* Both or neither — the server refuses a half-pair, and an edit that
+           cleared the section has to say so rather than leave the old one. */
+        fxCurrency: fx ? fx.currency : null,
+        fxAmountMinor: fx ? fx.amountMinor : null,
       };
 
       return api<TransactionDto>(editing ? `/transactions/${editing.id}` : '/transactions', {
@@ -417,6 +448,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
 
         <PersonField value={personId} onChange={setPersonId} />
+
+        <FxField value={fx} onChange={setFx} rate={fxRate} onRateChange={setFxRate} />
 
         <Field label="বিবরণ" htmlFor="qa-description">
           <Input

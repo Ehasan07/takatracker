@@ -1221,6 +1221,10 @@ enum TransactionSource {
   RECURRING
 }
 
+/// A transaction whose money was originally in another currency records both:
+/// `amountMinor` in the workspace's currency (what the books are kept in) and
+/// `fxAmountMinor` in `fxCurrency` (what was actually spent). The rate is the
+/// ratio, so nothing float-shaped is ever stored.
 model Transaction {
   id            String            @id @default(cuid())
   workspaceId   String
@@ -1231,6 +1235,10 @@ model Transaction {
   description   String?
   notes         String?
   payee         String?
+  /// ISO 4217 of the money as it was actually spent. Null = the workspace's own.
+  fxCurrency    String?
+  /// The amount in `fxCurrency`, integer minor units of *that* currency.
+  fxAmountMinor BigInt?
   personId      String?
   attachmentIds String[]          @default([])
   source        TransactionSource @default(MANUAL)

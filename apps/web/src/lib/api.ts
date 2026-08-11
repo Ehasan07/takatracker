@@ -206,6 +206,10 @@ export interface TransactionDto {
   tags: TransactionTagDto[];
   /** Receipt ids, in the order they were attached. */
   attachmentIds: string[];
+  /** ISO 4217 the money was actually in, or null when it was the workspace's own. */
+  fxCurrency: string | null;
+  /** The amount in `fxCurrency`. The rate is `|amountMinor| / fxAmountMinor`. */
+  fxAmountMinor: number | null;
   createdAt: string;
   balanceAfterMinor?: number;
 }

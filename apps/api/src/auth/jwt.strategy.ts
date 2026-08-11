@@ -77,7 +77,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       where: { workspaceId_userId: { workspaceId: payload.ws, userId: payload.sub } },
       include: {
         user: { select: { id: true, email: true, tokenVersion: true } },
-        workspace: { select: { id: true, status: true, deletedAt: true, timezone: true } },
+        workspace: {
+          select: { id: true, status: true, deletedAt: true, timezone: true, currency: true },
+        },
       },
     });
 
@@ -105,6 +107,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       workspaceId: membership.workspace.id,
       role: membership.role,
       timezone: membership.workspace.timezone,
+      currency: membership.workspace.currency,
       /* Read from the token, so it cannot be lost by a client that drops the
        * envelope. `impBy` without `imp` is treated as no session at all: the
        * pair is minted together and one without the other is not a shape this
