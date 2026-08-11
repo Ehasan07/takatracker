@@ -176,8 +176,56 @@ test.describe('the public site', () => {
     await expect(page.getByText('$', { exact: false }).first()).toBeVisible();
   });
 
+  test('the English site is a real page, not a translated shell', async ({ page }) => {
+    await page.goto('/en');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Know where every taka');
+
+    const html = await page.content();
+    // Written English, not a literal rendering of the Bengali phrasing.
+    expect(html).toContain('Debts, the way accountants do them');
+    expect(html).toContain('Double-entry ledger');
+    expect(html).toContain('"@type":"FAQPage"');
+    // No Bengali body copy leaking through from the other content object.
+    expect(html).not.toContain('শুরু করতে তিনটি ধাপ');
+
+    // hreflang in both directions, with Bengali as the default.
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      'https://takatracker.com/en',
+    );
+    await expect(page.locator('link[hreflang="bn-BD"]')).toHaveAttribute(
+      'href',
+      'https://takatracker.com',
+    );
+    await expect(page.locator('link[hreflang="x-default"]')).toHaveAttribute(
+      'href',
+      'https://takatracker.com',
+    );
+
+    // The switch is a link a crawler can follow, both ways.
+    await page.getByRole('link', { name: 'বাংলা' }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('আপনার টাকা কোথায় যায়');
+    await page.getByRole('link', { name: 'English' }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Know where every taka');
+    // `<html lang>` follows, and follows back — see `en/layout.tsx`.
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await page.getByRole('link', { name: 'বাংলা' }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'bn');
+  });
+
+  test('English pricing quotes the same numbers the API enforces', async ({ page }) => {
+    await page.goto('/en/pricing');
+    await expect(page.getByRole('heading', { level: 1, name: 'Pricing' })).toBeVisible();
+    // Latin numerals here, Bengali on the other page — same underlying poisha.
+    await expect(page.getByText('৳350').first()).toBeVisible();
+    await expect(page.getByText('৳3,600').first()).toBeVisible();
+    await expect(page.getByText('saved', { exact: false }).first()).toBeVisible();
+    await expect(page.getByRole('table')).toContainText('Unlimited');
+  });
+
   test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
-    for (const path of ['/', '/pricing', '/guide']) {
+    for (const path of ['/', '/pricing', '/guide', '/en', '/en/pricing']) {
       await page.goto(path);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

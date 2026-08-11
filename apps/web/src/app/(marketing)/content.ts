@@ -31,10 +31,64 @@ export interface FeatureGroup {
 }
 
 /**
+ * Everything a marketing page renders, in one language.
+ *
+ * The Bengali and English pages are the *same* components fed two of these, so
+ * a section added to one cannot quietly be missing from the other — the type
+ * would not compile. `content.en.ts` is the second one.
+ */
+export interface Hero {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  /** A second line in the *other* language, for the search engine's benefit. */
+  subtitleEn: string;
+  primaryCta: string;
+  secondaryCta: string;
+}
+
+export interface SiteContent {
+  hero: Hero;
+  proof: { value: string; label: string }[];
+  steps: { title: string; body: string }[];
+  groups: FeatureGroup[];
+  coming: { title: string; body: string }[];
+  faq: { q: string; a: string }[];
+  nav: { href: string; label: string }[];
+  ui: UiStrings;
+}
+
+/** The handful of strings that belong to the page furniture rather than a section. */
+export interface UiStrings {
+  featuresHeading: string;
+  featuresBlurb: [string, string];
+  stepsHeading: string;
+  stepsBlurb: string;
+  comingHeading: string;
+  comingBlurb: string;
+  faqHeading: string;
+  ledgerHeading: string;
+  ledgerBodyA: string;
+  ledgerBodyB: string;
+  ledgerResultHeading: string;
+  ledgerResults: string[];
+  ledgerFootnote: string;
+  closingHeading: string;
+  closingBody: string;
+  closingSecondary: string;
+  heroNote: string;
+  proofLabel: string;
+  login: string;
+  startFree: string;
+  otherLocaleLabel: string;
+  otherLocaleHref: string;
+}
+
+/**
  * The pitch, in one sentence each, for the three things somebody decides in
  * the first ten seconds: what is it, who is it for, why not a spreadsheet.
  */
-export const HERO = {
+export const HERO: Hero = {
   eyebrow: 'বাংলাদেশের জন্য তৈরি ব্যক্তিগত হিসাবের সফটওয়্যার',
   title: 'আপনার টাকা কোথায় যায়, শেষ পয়সাটা পর্যন্ত',
   /* English rides in the subtitle rather than the headline. A Bengali speaker
@@ -46,7 +100,7 @@ export const HERO = {
   subtitleEn: 'A double-entry personal finance app for Bangladesh. Web and mobile, in Bangla.',
   primaryCta: 'ফ্রি অ্যাকাউন্ট খুলুন',
   secondaryCta: 'দাম দেখুন',
-} as const;
+};
 
 /**
  * Numbers a visitor can check, not numbers we wish were true.
@@ -376,6 +430,56 @@ export const NAV: { href: string; label: string }[] = [
   { href: '/#coming', label: 'আসছে' },
   { href: '/#faq', label: 'প্রশ্ন' },
 ];
+
+/** The Bengali page's furniture. `content.en.ts` holds the English one. */
+export const UI_BN: UiStrings = {
+  featuresHeading: 'যা যা আছে',
+  featuresBlurb: [
+    'নিচের প্রতিটি জিনিস আজই ব্যবহার করা যায়। যেগুলো এখনো তৈরি হয়নি সেগুলো ',
+    ' অংশে আলাদা করে রাখা।',
+  ],
+  stepsHeading: 'শুরু করতে তিনটি ধাপ',
+  stepsBlurb: 'প্রথম দিনেই পুরো বছরের হিসাব বসাতে হবে না। আজ থেকে লিখতে শুরু করলেই যথেষ্ট।',
+  comingHeading: 'আসছে',
+  comingBlurb:
+    'এগুলো এখনো তৈরি হয়নি। এই তালিকা এখানে আছে যাতে সাইন আপ করার সময় আপনি জানেন কোনটা পাচ্ছেন আর কোনটা পাচ্ছেন না।',
+  faqHeading: 'সাধারণ প্রশ্ন',
+  ledgerHeading: 'কেন এটা আর দশটা খরচের অ্যাপ নয়',
+  ledgerBodyA:
+    'বেশিরভাগ অ্যাপ একটা তালিকা রাখে: তারিখ, টাকা, খাত। তালিকা যোগ করলে যা পাওয়া যায় সেটা মোট খরচ — কিন্তু "আমার হাতে এখন কত আছে" বা "নিট সম্পদ কত" এর উত্তর ওখানে নেই, কারণ টাকাটা কোথা থেকে এল সেটা লেখা হয়নি।',
+  ledgerBodyB:
+    'Taka Tracker প্রতিটি লেনদেনের দুই দিকই লেখে। ৫০০ টাকার বাজার মানে খাবার খাতে ৫০০ ডেবিট আর নগদ থেকে ৫০০ ক্রেডিট। দুই দিক সমান না হলে ডাটাবেজ লেখাটাই নেয় না।',
+  ledgerResultHeading: 'এর ফলে যা হয়',
+  ledgerResults: [
+    'প্রতিটি অ্যাকাউন্টের ব্যালেন্স নিজে থেকেই ঠিক থাকে',
+    'স্থিতিপত্র বানানো যায় — সম্পদ, দায়, নিট সম্পদ',
+    'ধার আয় বা খরচে ঢুকে রিপোর্ট নষ্ট করে না',
+    'টাকা কোথাও হারায় না — গেলে কোথায় গেল সেটা লেখা আছে',
+  ],
+  ledgerFootnote:
+    'QuickBooks আর Zoho Books ব্যবসার জন্য এই নিয়মেই চলে। পার্থক্য হলো, এখানে আপনাকে ডেবিট-ক্রেডিট দেখতেই হবে না — পর্দায় শুধু আয়, খরচ আর ট্রান্সফার।',
+  closingHeading: 'আজ থেকেই শুরু হোক',
+  closingBody:
+    'অ্যাকাউন্ট খুলতে এক মিনিট। প্রথম খরচটা লিখতে দশ সেকেন্ড। মাস শেষে টাকা কোথায় গেছে তার উত্তরটা আপনার কাছে থাকবে।',
+  closingSecondary: 'আগের অ্যাকাউন্টে ঢুকুন',
+  heroNote: 'কার্ড লাগবে না · ফ্রি প্যাকেজ আজীবন ফ্রি · যেকোনো সময় সব তথ্য নামিয়ে নিতে পারবেন',
+  proofLabel: 'কেন বিশ্বাস করবেন',
+  login: 'লগইন',
+  startFree: 'ফ্রি শুরু করুন',
+  otherLocaleLabel: 'English',
+  otherLocaleHref: '/en',
+};
+
+export const CONTENT_BN: SiteContent = {
+  hero: HERO,
+  proof: [...PROOF],
+  steps: [...STEPS],
+  groups: GROUPS,
+  coming: [...COMING],
+  faq: [...FAQ],
+  nav: [...NAV],
+  ui: UI_BN,
+};
 
 export const SITE = {
   /* The product's name, not the Bengali word. `হিসাব` still appears all over

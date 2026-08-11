@@ -1,0 +1,383 @@
+import type { FeatureGroup, Hero, SiteContent, UiStrings } from './content';
+
+/**
+ * The English site, written rather than translated.
+ *
+ * Machine translation is the right answer for the *app*, where a user can
+ * correct anything wrong on their own screen. It is the wrong answer here: this
+ * page is read once, by somebody deciding whether to trust a stranger with
+ * their bank statements, and a sentence that is grammatical but slightly off is
+ * the exact thing that loses them. So the claims are the same claims and the
+ * words are their own.
+ *
+ * It also is not a mirror of the Bengali page's *phrasing*. "দেনাদার-পাওনাদার"
+ * is one word in Bengali and "the people who owe you and the people you owe" in
+ * English; translating it literally would produce something no English speaker
+ * would type into a search box.
+ *
+ * Typed against `SiteContent`, so a section added to the Bengali page and
+ * forgotten here is a compile error rather than a blank space on one of them.
+ */
+
+const HERO: Hero = {
+  eyebrow: 'Double-entry personal finance, built for Bangladesh',
+  title: 'Know where every taka went — down to the last poisha',
+  subtitle:
+    'Income, expenses, money lent and borrowed, DPS savings and insurance in one ledger. Built on double-entry bookkeeping, so the books cannot disagree with themselves.',
+  subtitleEn: 'Free forever plan. Works offline. Installs to your phone from the browser.',
+  primaryCta: 'Create a free account',
+  secondaryCta: 'See pricing',
+};
+
+const PROOF: { value: string; label: string }[] = [
+  { value: 'Double-entry', label: 'Both sides of every transaction, debit and credit' },
+  { value: 'Integer money', label: 'Every amount is whole minor units — no rounding drift' },
+  { value: '140+ currencies', label: 'Yen, dinar, dollar — each with its own real precision' },
+  { value: 'Works offline', label: 'Entries queue when the network goes and send themselves back' },
+];
+
+const STEPS: { title: string; body: string }[] = [
+  {
+    title: 'Say where your money is',
+    body: 'Bank, mobile wallet, cash in hand, credit card — enter each one once with its balance. Two minutes.',
+  },
+  {
+    title: 'Write things down the easy way',
+    body: 'Type in the app, or send it to Telegram. Bank messages become drafts that wait for you — nothing reaches your books unless you say so.',
+  },
+  {
+    title: 'Get an answer at month end',
+    body: 'Where it went, who owes you, who you owe, how it compares with last month. The reports do the arithmetic.',
+  },
+];
+
+const GROUPS: FeatureGroup[] = [
+  {
+    id: 'ledger',
+    heading: 'A ledger, not a list',
+    headingEn: 'Double-entry bookkeeping',
+    blurb:
+      'Most expense apps keep a list. This keeps books — where each amount came from and where it went, both written down.',
+    features: [
+      {
+        title: 'Double-entry ledger',
+        titleEn: 'Debits equal credits, enforced',
+        body: 'Every transaction balances. Not by convention — by a database constraint. An unbalanced entry cannot be written at all.',
+        route: '/transactions',
+      },
+      {
+        title: 'Accounts and balances',
+        titleEn: 'Bank, wallet, cash, credit card',
+        body: 'From an opening balance to today’s figure, kept current by the entries themselves rather than by you.',
+        route: '/accounts',
+      },
+      {
+        title: 'Categories and sub-categories',
+        titleEn: 'A tree, not a flat list',
+        body: 'Twenty-one categories seeded, as many sub-categories under them as you need. Reports roll children up into the parent.',
+        route: '/categories',
+      },
+      {
+        title: 'Tags',
+        titleEn: 'Who for, not what on',
+        body: 'The category says what the money went on; a tag says who for or which project. One transaction can carry several.',
+        route: '/tags',
+      },
+      {
+        title: 'Reconciliation',
+        titleEn: 'Match the bank',
+        body: 'Type the real balance and the difference is booked as an adjustment. Your books and your statement stop drifting apart.',
+        route: '/accounts',
+      },
+    ],
+  },
+  {
+    id: 'loans',
+    heading: 'Debts, the way accountants do them',
+    headingEn: 'Loans and party ledger',
+    blurb:
+      'Who owes you, who you owe, what is left on each instalment. The rule QuickBooks and Zoho Books follow: a loan is never income and never an expense.',
+    features: [
+      {
+        title: 'Money lent and borrowed',
+        titleEn: 'Two directions, kept apart',
+        body: 'Borrowing is a liability, lending is an asset. Both move your cash; neither touches your income or expense reports.',
+        route: '/loans',
+      },
+      {
+        title: 'Instalments with a running balance',
+        titleEn: 'Interest handled properly',
+        body: 'What is left after each payment, with interest separated out. Interest stops accruing on the day the debt was cleared, not the next morning.',
+        route: '/loans',
+      },
+      {
+        title: 'Party ledger',
+        titleEn: 'One person, one page',
+        body: 'Every loan with the same person on a single running balance. "What is between us" is one number, before you pick up the phone.',
+        route: '/loans',
+      },
+      {
+        title: 'Statements and CSV export',
+        titleEn: 'Cut by date, hand it over',
+        body: 'Filter to any window, download a CSV Excel opens correctly, print a clean page.',
+        route: '/loans',
+      },
+      {
+        title: 'Contacts',
+        titleEn: 'Fixable, and mergeable',
+        body: 'Correct a name, a phone or a relationship. Typed the same person twice? Merge them, and their history stops being in two halves.',
+        route: '/people',
+      },
+    ],
+  },
+  {
+    id: 'planning',
+    heading: 'Savings, insurance, cards',
+    headingEn: 'What is due, and when',
+    blurb:
+      'Money does not only come and go; some of it accumulates. Remembering what falls due is the software’s job.',
+    features: [
+      {
+        title: 'DPS and savings schemes',
+        titleEn: 'Instalments, term, profit',
+        body: 'How much has gone in and how much is left, on each scheme’s own page.',
+        route: '/savings',
+      },
+      {
+        title: 'Insurance policies',
+        titleEn: 'Premiums and renewals',
+        body: 'When the premium is due, how much, which one is outstanding. Policy number and term in one place.',
+        route: '/insurance',
+      },
+      {
+        title: 'Credit-card reminders',
+        titleEn: 'Before the due date',
+        body: 'A Telegram nudge before the bill. Pay it and that cycle’s reminders stop on their own.',
+        route: '/settings',
+      },
+    ],
+  },
+  {
+    id: 'insight',
+    heading: 'Reports and search',
+    headingEn: 'Answers, not just numbers',
+    blurb: 'Collecting figures is easy. Answering a question with them is the hard part.',
+    features: [
+      {
+        title: 'Income, expense and cash flow',
+        titleEn: 'By month, category or account',
+        body: 'Compare with last month in one click.',
+        route: '/reports',
+      },
+      {
+        title: 'Balance sheet, as of any date',
+        titleEn: 'Assets, liabilities, net worth',
+        body: 'Today’s position, or the 30th of June’s. Both dates and the movement between them in one request.',
+        route: '/reports',
+      },
+      {
+        title: 'Reporting by tag',
+        titleEn: 'Slice it your way',
+        body: 'Only family spending, only the business. Whatever you tagged, you can total.',
+        route: '/reports',
+      },
+      {
+        title: 'Bangla, English and Banglish search',
+        titleEn: 'karim finds করিম',
+        body: 'Type it however you type it. The matcher transliterates, so three spellings find one person.',
+        route: '/transactions',
+      },
+    ],
+  },
+  {
+    id: 'input',
+    heading: 'Less typing',
+    headingEn: 'Getting data in',
+    blurb:
+      'People stop keeping books because writing them down is tiring, not because they stopped caring.',
+    features: [
+      {
+        title: 'Telegram entry',
+        titleEn: 'Send it and forget it',
+        body: 'Message the bot and it becomes a draft. "rickshaw 60" on the bus; one tap when you get home.',
+        route: '/settings',
+      },
+      {
+        title: 'Draft inbox',
+        titleEn: 'Nothing lands unreviewed',
+        body: 'Whatever arrives waits as a draft. It does not reach your books until you say so.',
+        route: '/inbox',
+      },
+      {
+        title: 'Mailbox connector',
+        titleEn: 'Read your statements in-app',
+        body: 'Connect a mailbox and read bank letters here. Read only — it never sends and never deletes.',
+        route: '/mail',
+      },
+      {
+        title: 'CSV import and backup',
+        titleEn: 'Bring the old spreadsheet',
+        body: 'Map your columns and import. Download your whole ledger any day you like.',
+        route: '/import',
+      },
+      {
+        title: 'Receipt attachments',
+        titleEn: 'Photograph the paper',
+        body: 'Attach a receipt to a transaction. Unlimited on premium.',
+        route: '/transactions',
+      },
+    ],
+  },
+  {
+    id: 'trust',
+    heading: 'Your data, yours',
+    headingEn: 'Privacy and control',
+    blurb:
+      'Personal finance means bank statements, salaries and what you owe. There is no casual way to handle that.',
+    features: [
+      {
+        title: 'Hard tenant isolation',
+        titleEn: 'One workspace, one set of books',
+        body: 'Every query is scoped by workspace. Not most of them — every one, with no exception.',
+        route: '/settings',
+      },
+      {
+        title: 'Audit trail',
+        titleEn: 'Who changed what, when',
+        body: 'The full list, and you can read it yourself.',
+        route: '/audit',
+      },
+      {
+        title: 'Session control',
+        titleEn: 'See and revoke devices',
+        body: 'Which devices are signed in, and one tap to sign any of them out.',
+        route: '/settings',
+      },
+      {
+        title: 'Export without friction',
+        titleEn: 'Leave whenever you like',
+        body: 'Your whole ledger as CSV. Nobody holds your data hostage to keep you.',
+        route: '/import',
+      },
+    ],
+  },
+];
+
+const COMING: { title: string; body: string }[] = [
+  {
+    title: 'Reading bank SMS directly',
+    body: 'Drafts straight from bKash, Nagad and bank messages. The pipeline is built; the per-bank templates are not.',
+  },
+  {
+    title: 'Android and iOS store apps',
+    body: 'Today it installs to your home screen from the browser and works offline. A store listing is the next step.',
+  },
+  {
+    title: 'AI monthly review',
+    body: '"Where did it go, what could come down" — over your own books, in your own words.',
+  },
+  {
+    title: 'Recurring transactions',
+    body: 'Rent, salary, instalments — entered once, then automatic.',
+  },
+  {
+    title: 'Family members',
+    body: 'Several people on one set of books, with separate permissions.',
+  },
+  {
+    title: 'Receipt OCR',
+    body: 'Photograph a receipt and have the amount and date fill themselves in.',
+  },
+];
+
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: 'Is Taka Tracker really free?',
+    a: 'Yes. The free plan is free for good — not a trial, and no card at the end. Two accounts, unlimited transactions, unlimited debtors and creditors. Only receipt attachments are held back for premium.',
+  },
+  {
+    q: 'What is double-entry, and do I need it?',
+    a: 'Double-entry means both sides of every amount are written down — where it came from and where it went. You never have to learn debits and credits; the screens never show them. What you get is books that cannot silently disagree with themselves.',
+  },
+  {
+    q: 'Can you see my bank account?',
+    a: 'We are not connected to any bank and never ask for banking credentials. Only what you type, or what arrives in a mailbox you connected yourself. Each workspace is isolated, and every read of your data is recorded.',
+  },
+  {
+    q: 'Does it work without internet?',
+    a: 'Yes. Add it to your home screen and it opens like an app; with no connection, entries queue and send themselves when the network returns. Step-by-step instructions for iPhone and Android are at takatracker.com/guide.',
+  },
+  {
+    q: 'Which currency can I use?',
+    a: 'Any of more than 140, chosen when you sign up. Each is handled at its own real precision — a yen has no minor unit, a Kuwaiti dinar has a thousand fils, and the arithmetic respects both rather than assuming everything has cents.',
+  },
+  {
+    q: 'Do loans count as income or expense?',
+    a: 'Never. Money borrowed is a liability and money lent is an asset — both move your cash, neither touches income or expense. Only the interest is. QuickBooks and Zoho Books follow the same rule.',
+  },
+  {
+    q: 'Can I bring in an old spreadsheet?',
+    a: 'Yes. Map your CSV columns and import. If it comes out wrong, the whole batch can be reverted at once.',
+  },
+  {
+    q: 'How do I pay?',
+    a: 'Premium is ৳350 a month or ৳3600 a year, saving ৳600. Online payment is not live yet — contact us and we will enable premium on your account.',
+  },
+];
+
+const NAV: { href: string; label: string }[] = [
+  { href: '/en#features', label: 'Features' },
+  { href: '/en/pricing', label: 'Pricing' },
+  { href: '/guide', label: 'Install' },
+  { href: '/en#coming', label: 'Roadmap' },
+  { href: '/en#faq', label: 'FAQ' },
+];
+
+const UI: UiStrings = {
+  featuresHeading: 'What it does',
+  featuresBlurb: [
+    'Everything below works today. What does not exist yet is kept separately, under ',
+    '.',
+  ],
+  stepsHeading: 'Three steps to start',
+  stepsBlurb: 'You do not have to back-fill a year on day one. Starting from today is enough.',
+  comingHeading: 'Coming',
+  comingBlurb:
+    'These are not built yet. The list is here so that when you sign up you know what you are getting and what you are not.',
+  faqHeading: 'Questions',
+  ledgerHeading: 'Why this is not another expense app',
+  ledgerBodyA:
+    'Most apps keep a list: date, amount, category. Add the list up and you get total spending — but not "how much do I have right now" or "what am I worth", because where the money came from was never written down.',
+  ledgerBodyB:
+    'Taka Tracker writes both sides. A ৳500 grocery run is ৳500 debited to food and ৳500 credited from cash. If the two sides are not equal, the database refuses the write.',
+  ledgerResultHeading: 'Which means',
+  ledgerResults: [
+    'Every account balance stays correct on its own',
+    'You get a real balance sheet — assets, liabilities, net worth',
+    'Loans cannot leak into income and ruin a report',
+    'Money never disappears; if it moved, where it went is written down',
+  ],
+  ledgerFootnote:
+    'QuickBooks and Zoho Books run business books on exactly this rule. The difference here is that you never have to see a debit or a credit — the screens say income, expense and transfer.',
+  closingHeading: 'Start today',
+  closingBody:
+    'A minute to open an account, ten seconds for the first expense. At the end of the month the answer is yours to read.',
+  closingSecondary: 'Sign in to an existing account',
+  heroNote: 'No card required · Free plan free for good · Export everything whenever you like',
+  proofLabel: 'Why trust it',
+  login: 'Sign in',
+  startFree: 'Start free',
+  otherLocaleLabel: 'বাংলা',
+  otherLocaleHref: '/',
+};
+
+export const CONTENT_EN: SiteContent = {
+  hero: HERO,
+  proof: PROOF,
+  steps: STEPS,
+  groups: GROUPS,
+  coming: COMING,
+  faq: FAQ,
+  nav: NAV,
+  ui: UI,
+};

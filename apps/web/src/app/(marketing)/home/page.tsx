@@ -1,6 +1,6 @@
 import { ArrowRight, Check } from 'lucide-react';
 import Link from 'next/link';
-import { COMING, FAQ, GROUPS, HERO, PROOF, STEPS } from '../content';
+import { CONTENT_BN, type Hero, type SiteContent, type UiStrings } from '../content';
 import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from '../seo';
 
 /**
@@ -25,6 +25,8 @@ export const metadata = pageMetadata({
   description:
     'আয়, খরচ, ধার-দেনা, ডিপিএস ও বীমার হিসাব এক জায়গায় — সম্পূর্ণ বাংলায়। ডাবল-এন্ট্রি হিসাবরক্ষণের উপর তৈরি, অফলাইনেও চলে। ফ্রি প্যাকেজ আজীবন ফ্রি। A free double-entry personal finance app for Bangladesh, on web and mobile.',
   path: '/',
+  locale: 'bn',
+  alternatePath: '/en',
   keywords: [
     'personal finance app',
     'personal finance app bangladesh',
@@ -43,6 +45,20 @@ export const metadata = pageMetadata({
 });
 
 export default function LandingPage() {
+  return <Landing content={CONTENT_BN} locale="bn" />;
+}
+
+/**
+ * The landing page's body, fed a language.
+ *
+ * Rendered by `/` in Bengali and `/en` in English from the same components, so
+ * a section can never exist on one page and quietly not on the other — the
+ * `SiteContent` type would not compile.
+ */
+export function Landing({ content, locale }: { content: SiteContent; locale: 'bn' | 'en' }) {
+  const { hero, proof, steps, groups, coming, faq, ui } = content;
+  const isBn = locale === 'bn';
+  const home = isBn ? '/' : '/en';
   return (
     <>
       <script
@@ -52,63 +68,61 @@ export default function LandingPage() {
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLdScript(faqJsonLd()) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(faqJsonLd(faq)) }}
       />
 
-      <Hero />
-      <ProofStrip />
-      <Steps />
-      <Features />
-      <LedgerNote />
-      <Coming />
-      <Faq />
-      <ClosingCta />
+      <Hero hero={hero} ui={ui} isBn={isBn} />
+      <ProofStrip proof={proof} label={ui.proofLabel} />
+      <Steps steps={steps} ui={ui} isBn={isBn} />
+      <Features groups={groups} ui={ui} home={home} />
+      <LedgerNote ui={ui} />
+      <Coming coming={coming} ui={ui} />
+      <Faq faq={faq} heading={ui.faqHeading} />
+      <ClosingCta hero={hero} ui={ui} />
     </>
   );
 }
 
-function Hero() {
+function Hero({ hero, ui, isBn }: { hero: Hero; ui: UiStrings; isBn: boolean }) {
   return (
     <section className="border-rule border-b">
       <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-        <p className="text-income text-xs font-medium sm:text-sm">{HERO.eyebrow}</p>
+        <p className="text-income text-xs font-medium sm:text-sm">{hero.eyebrow}</p>
         {/* The only `<h1>` on the page, and it carries the product's claim
             rather than its name — a crawler and a first-time reader both need
             the sentence, not the brand. */}
         <h1 className="text-ink mt-3 max-w-3xl text-3xl font-semibold leading-tight sm:text-4xl md:text-5xl">
-          {HERO.title}
+          {hero.title}
         </h1>
-        <p className="text-ink-muted mt-4 max-w-2xl text-base sm:text-lg">{HERO.subtitle}</p>
-        <p className="text-ink-muted mt-2 max-w-2xl text-sm">{HERO.subtitleEn}</p>
+        <p className="text-ink-muted mt-4 max-w-2xl text-base sm:text-lg">{hero.subtitle}</p>
+        <p className="text-ink-muted mt-2 max-w-2xl text-sm">{hero.subtitleEn}</p>
 
         <div className="mt-7 flex flex-wrap items-center gap-3">
           <Link
             href="/signup"
             className="press bg-income inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium text-white hover:opacity-90"
           >
-            {HERO.primaryCta}
+            {hero.primaryCta}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <Link
-            href="/pricing"
+            href={isBn ? '/pricing' : '/en/pricing'}
             className="press border-rule bg-surface text-ink hover:bg-greenbar inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
           >
-            {HERO.secondaryCta}
+            {hero.secondaryCta}
           </Link>
         </div>
-        <p className="text-ink-muted mt-3 text-sm">
-          কার্ড লাগবে না · ফ্রি প্যাকেজ আজীবন ফ্রি · যেকোনো সময় সব তথ্য নামিয়ে নিতে পারবেন
-        </p>
+        <p className="text-ink-muted mt-3 text-sm">{ui.heroNote}</p>
       </div>
     </section>
   );
 }
 
-function ProofStrip() {
+function ProofStrip({ proof, label }: { proof: SiteContent['proof']; label: string }) {
   return (
-    <section aria-label="কেন বিশ্বাস করবেন" className="border-rule bg-greenbar border-b">
+    <section aria-label={label} className="border-rule bg-greenbar border-b">
       <div className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 lg:grid-cols-4">
-        {PROOF.map((item) => (
+        {proof.map((item) => (
           <div key={item.value}>
             <p className="text-income text-lg font-semibold sm:text-xl">{item.value}</p>
             <p className="text-ink-muted mt-1 text-xs sm:text-sm">{item.label}</p>
@@ -119,21 +133,20 @@ function ProofStrip() {
   );
 }
 
-function Steps() {
+function Steps({ steps, ui, isBn }: { steps: SiteContent['steps']; ui: UiStrings; isBn: boolean }) {
+  const numerals = isBn ? ['১', '২', '৩'] : ['1', '2', '3'];
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
-      <h2 className="text-ink text-2xl font-semibold sm:text-3xl">শুরু করতে তিনটি ধাপ</h2>
-      <p className="text-ink-muted mt-2 max-w-2xl">
-        প্রথম দিনেই পুরো বছরের হিসাব বসাতে হবে না। আজ থেকে লিখতে শুরু করলেই যথেষ্ট।
-      </p>
+      <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.stepsHeading}</h2>
+      <p className="text-ink-muted mt-2 max-w-2xl">{ui.stepsBlurb}</p>
       <ol className="mt-8 grid gap-4 md:grid-cols-3">
-        {STEPS.map((step, index) => (
+        {steps.map((step, index) => (
           <li key={step.title} className="rounded-card border-rule bg-surface border p-5">
             <span
               aria-hidden
               className="bg-greenbar text-income flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold"
             >
-              {['১', '২', '৩'][index]}
+              {numerals[index]}
             </span>
             <h3 className="text-ink mt-3 font-medium">{step.title}</h3>
             <p className="text-ink-muted mt-1 text-sm">{step.body}</p>
@@ -144,21 +157,29 @@ function Steps() {
   );
 }
 
-function Features() {
+function Features({
+  groups,
+  ui,
+  home,
+}: {
+  groups: SiteContent['groups'];
+  ui: UiStrings;
+  home: string;
+}) {
   return (
     <section id="features" className="border-rule scroll-mt-16 border-y">
       <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">যা যা আছে</h2>
+        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.featuresHeading}</h2>
         <p className="text-ink-muted mt-2 max-w-2xl">
-          নিচের প্রতিটি জিনিস আজই ব্যবহার করা যায়। যেগুলো এখনো তৈরি হয়নি সেগুলো{' '}
-          <a href="#coming" className="text-income underline">
-            আসছে
-          </a>{' '}
-          অংশে আলাদা করে রাখা।
+          {ui.featuresBlurb[0]}
+          <a href={`${home}#coming`} className="text-income underline">
+            {ui.comingHeading}
+          </a>
+          {ui.featuresBlurb[1]}
         </p>
 
         <div className="mt-10 space-y-12">
-          {GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.id}>
               <h3 className="text-ink text-lg font-semibold sm:text-xl">
                 {group.heading}
@@ -199,44 +220,27 @@ function Features() {
  * claim a competitor cannot copy in a sprint, and because a visitor who does
  * not know the term will otherwise read it as jargon and skip the product.
  */
-function LedgerNote() {
+function LedgerNote({ ui }: { ui: UiStrings }) {
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
       <div className="rounded-card border-income/30 bg-greenbar border p-6 sm:p-8">
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">
-          কেন এটা আর দশটা খরচের অ্যাপ নয়
-        </h2>
+        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.ledgerHeading}</h2>
         <div className="mt-4 grid gap-6 md:grid-cols-2">
           <div>
-            <p className="text-ink-muted text-sm">
-              বেশিরভাগ অ্যাপ একটা তালিকা রাখে: তারিখ, টাকা, খাত। তালিকা যোগ করলে যা পাওয়া যায় সেটা
-              মোট খরচ — কিন্তু "আমার হাতে এখন কত আছে" বা "নিট সম্পদ কত" এর উত্তর ওখানে নেই, কারণ
-              টাকাটা <em>কোথা থেকে</em> এল সেটা লেখা হয়নি।
-            </p>
-            <p className="text-ink-muted mt-3 text-sm">
-              হিসাব প্রতিটি লেনদেনের দুই দিকই লেখে। ৫০০ টাকার বাজার মানে খাবার খাতে ৫০০ ডেবিট আর নগদ
-              থেকে ৫০০ ক্রেডিট। দুই দিক সমান না হলে ডাটাবেজ লেখাটাই নেয় না।
-            </p>
+            <p className="text-ink-muted text-sm">{ui.ledgerBodyA}</p>
+            <p className="text-ink-muted mt-3 text-sm">{ui.ledgerBodyB}</p>
           </div>
           <div>
-            <p className="text-ink text-sm font-medium">এর ফলে যা হয়</p>
+            <p className="text-ink text-sm font-medium">{ui.ledgerResultHeading}</p>
             <ul className="mt-2 space-y-2">
-              {[
-                'প্রতিটি অ্যাকাউন্টের ব্যালেন্স নিজে থেকেই ঠিক থাকে',
-                'স্থিতিপত্র বানানো যায় — সম্পদ, দায়, নিট সম্পদ',
-                'ধার আয় বা খরচে ঢুকে রিপোর্ট নষ্ট করে না',
-                'টাকা কোথাও হারায় না — গেলে কোথায় গেল সেটা লেখা আছে',
-              ].map((line) => (
+              {ui.ledgerResults.map((line) => (
                 <li key={line} className="text-ink-muted flex items-start gap-2 text-sm">
                   <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                   {line}
                 </li>
               ))}
             </ul>
-            <p className="text-ink-muted mt-3 text-xs">
-              QuickBooks আর Zoho Books ব্যবসার জন্য এই নিয়মেই চলে। পার্থক্য হলো, এখানে আপনাকে
-              ডেবিট-ক্রেডিট দেখতেই হবে না — পর্দায় শুধু আয়, খরচ আর ট্রান্সফার।
-            </p>
+            <p className="text-ink-muted mt-3 text-xs">{ui.ledgerFootnote}</p>
           </div>
         </div>
       </div>
@@ -244,17 +248,14 @@ function LedgerNote() {
   );
 }
 
-function Coming() {
+function Coming({ coming, ui }: { coming: SiteContent['coming']; ui: UiStrings }) {
   return (
     <section id="coming" className="border-rule scroll-mt-16 border-y">
       <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">আসছে</h2>
-        <p className="text-ink-muted mt-2 max-w-2xl">
-          এগুলো এখনো তৈরি হয়নি। এই তালিকা এখানে আছে যাতে সাইন আপ করার সময় আপনি জানেন কোনটা পাচ্ছেন
-          আর কোনটা পাচ্ছেন না।
-        </p>
+        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.comingHeading}</h2>
+        <p className="text-ink-muted mt-2 max-w-2xl">{ui.comingBlurb}</p>
         <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {COMING.map((item) => (
+          {coming.map((item) => (
             <li key={item.title} className="rounded-card border-rule border border-dashed p-4">
               <h3 className="text-ink text-sm font-medium">{item.title}</h3>
               <p className="text-ink-muted mt-1 text-sm">{item.body}</p>
@@ -266,12 +267,12 @@ function Coming() {
   );
 }
 
-function Faq() {
+function Faq({ faq, heading }: { faq: SiteContent['faq']; heading: string }) {
   return (
     <section id="faq" className="mx-auto w-full max-w-3xl scroll-mt-16 px-4 py-14 sm:px-6 sm:py-16">
-      <h2 className="text-ink text-2xl font-semibold sm:text-3xl">সাধারণ প্রশ্ন</h2>
+      <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{heading}</h2>
       <div className="mt-8 space-y-3">
-        {FAQ.map((item) => (
+        {faq.map((item) => (
           /* `<details>`, not a JavaScript accordion: it opens with the script
              still loading, a crawler reads the answer whether or not it is
              expanded, and browser find-in-page reaches inside it. */
@@ -298,28 +299,25 @@ function Faq() {
   );
 }
 
-function ClosingCta() {
+function ClosingCta({ hero, ui }: { hero: Hero; ui: UiStrings }) {
   return (
     <section className="border-rule bg-greenbar border-t">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 text-center sm:px-6">
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">আজ থেকেই শুরু হোক</h2>
-        <p className="text-ink-muted mx-auto mt-3 max-w-xl">
-          অ্যাকাউন্ট খুলতে এক মিনিট। প্রথম খরচটা লিখতে দশ সেকেন্ড। মাস শেষে টাকা কোথায় গেছে তার
-          উত্তরটা আপনার কাছে থাকবে।
-        </p>
+        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{ui.closingHeading}</h2>
+        <p className="text-ink-muted mx-auto mt-3 max-w-xl">{ui.closingBody}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Link
             href="/signup"
             className="press bg-income inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium text-white hover:opacity-90"
           >
-            ফ্রি অ্যাকাউন্ট খুলুন
+            {hero.primaryCta}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <Link
             href="/login"
             className="press border-rule bg-surface text-ink hover:bg-greenbar inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
           >
-            আগের অ্যাকাউন্টে ঢুকুন
+            {ui.closingSecondary}
           </Link>
         </div>
       </div>

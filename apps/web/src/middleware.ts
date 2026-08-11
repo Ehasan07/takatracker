@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
   '/home',
   '/pricing',
   '/guide',
+  '/en',
 ];
 
 /**

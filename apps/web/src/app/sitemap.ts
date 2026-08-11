@@ -23,6 +23,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: SITE.url, lastModified, changeFrequency: 'weekly', priority: 1 },
     { url: `${SITE.url}/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
     { url: `${SITE.url}/guide`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    /* The English pages are separate URLs with their own content, so they are
+       listed rather than left for the hreflang tags alone to surface. */
+    { url: `${SITE.url}/en`, lastModified, changeFrequency: 'weekly', priority: 0.9 },
+    { url: `${SITE.url}/en/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${SITE.url}/signup`, lastModified, changeFrequency: 'yearly', priority: 0.6 },
     { url: `${SITE.url}/login`, lastModified, changeFrequency: 'yearly', priority: 0.4 },
   ];

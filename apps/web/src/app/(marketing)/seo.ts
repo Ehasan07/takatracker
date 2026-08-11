@@ -26,8 +26,13 @@ export function pageMetadata(input: {
   description: string;
   path: string;
   keywords?: string[];
+  /** `bn` unless the page is under `/en`. Drives `og:locale` and `hreflang`. */
+  locale?: 'bn' | 'en';
+  /** The same page in the other language, if there is one. */
+  alternatePath?: string;
 }): Metadata {
   const url = `${SITE.url}${input.path}`;
+  const locale = input.locale ?? 'bn';
   return {
     /* Absolute, so the root layout's `%s · Taka Tracker` template does not run.
      * A public page writes its own full title — the landing page already opens
@@ -39,14 +44,28 @@ export function pageMetadata(input: {
     /* One canonical per page. The landing page is reachable at `/` through a
      * middleware rewrite and at `/home` directly; both point here, so the two
      * URLs are one document as far as a crawler is concerned. */
-    alternates: { canonical: url },
+    alternates: {
+      canonical: url,
+      /* `hreflang` in both directions, plus `x-default` pointing at Bengali.
+       * Without it the two pages read as duplicates of each other and a crawler
+       * picks one to keep — usually the wrong one for half the audience. */
+      ...(input.alternatePath
+        ? {
+            languages: {
+              'bn-BD': locale === 'bn' ? url : `${SITE.url}${input.alternatePath}`,
+              en: locale === 'en' ? url : `${SITE.url}${input.alternatePath}`,
+              'x-default': locale === 'bn' ? url : `${SITE.url}${input.alternatePath}`,
+            },
+          }
+        : {}),
+    },
     openGraph: {
       type: 'website',
       url,
       siteName: SITE.name,
       title: input.title,
       description: input.description,
-      locale: 'bn_BD',
+      locale: locale === 'en' ? 'en' : 'bn_BD',
       images: [{ url: OG_IMAGE, width: 512, height: 512, alt: SITE.name }],
     },
     twitter: {
@@ -124,11 +143,12 @@ export function softwareApplicationJsonLd(priceYearlyMinor: number): Record<stri
   };
 }
 
-export function faqJsonLd(): Record<string, unknown> {
+/** Takes the questions rather than importing them: the English page has its own. */
+export function faqJsonLd(faq: { q: string; a: string }[] = FAQ): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: FAQ.map((item) => ({
+    mainEntity: faq.map((item) => ({
       '@type': 'Question',
       name: item.q,
       acceptedAnswer: { '@type': 'Answer', text: item.a },

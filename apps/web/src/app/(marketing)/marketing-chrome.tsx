@@ -2,8 +2,15 @@
 
 import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import * as React from 'react';
-import { NAV, SITE } from './content';
+import { Languages } from 'lucide-react';
+import { CONTENT_BN, SITE } from './content';
+import { CONTENT_EN } from './content.en';
+
+/** Which language this page is in, decided by the URL rather than a cookie. */
+export const contentFor = (pathname: string) =>
+  pathname === '/en' || pathname.startsWith('/en/') ? CONTENT_EN : CONTENT_BN;
 
 /**
  * The public header.
@@ -14,6 +21,8 @@ import { NAV, SITE } from './content';
  * JavaScript still downloading.
  */
 export function MarketingHeader() {
+  const pathname = usePathname();
+  const { nav: NAV, ui } = contentFor(pathname);
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -46,17 +55,34 @@ export function MarketingHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* The switch is a plain link to the other language's URL rather than
+              a cookie or a client-side toggle: the two pages are separate
+              documents with their own `hreflang`, and a crawler has to be able
+              to follow it. */}
+          <Link
+            href={ui.otherLocaleHref}
+            hrefLang={ui.otherLocaleHref === '/en' ? 'en' : 'bn'}
+            aria-label={ui.otherLocaleLabel}
+            className="press text-ink-muted hover:text-ink hover:bg-greenbar inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm"
+          >
+            <Languages className="h-4 w-4" aria-hidden />
+            {/* The label is hidden below 400px and the icon carries it there.
+                A 320px phone has room for the logo, the switch, the signup
+                button and the menu — and not for a fourth word, which pushed
+                the header 10px wider than the viewport. */}
+            <span className="hidden min-[400px]:inline">{ui.otherLocaleLabel}</span>
+          </Link>
           <Link
             href="/login"
             className="press text-ink hover:bg-greenbar hidden min-h-11 items-center rounded-md px-3 text-sm font-medium sm:inline-flex"
           >
-            লগইন
+            {ui.login}
           </Link>
           <Link
             href="/signup"
             className="press bg-income inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-white hover:opacity-90"
           >
-            ফ্রি শুরু করুন
+            {ui.startFree}
           </Link>
           <button
             type="button"
@@ -81,7 +107,7 @@ export function MarketingHeader() {
           aria-label="মোবাইল"
           className="border-rule bg-paper border-t px-4 pb-3 md:hidden"
         >
-          {[...NAV, { href: '/login', label: 'লগইন' }].map((item) => (
+          {[...NAV, { href: '/login', label: ui.login }].map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -98,6 +124,8 @@ export function MarketingHeader() {
 }
 
 export function MarketingFooter() {
+  const pathname = usePathname();
+  const { nav: NAV } = contentFor(pathname);
   return (
     <footer className="border-rule bg-greenbar mt-16 border-t">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-3">

@@ -1,7 +1,7 @@
 import { ArrowRight, Check, Minus } from 'lucide-react';
 import Link from 'next/link';
-import { formatMinor, toBengaliDigits } from '@hishab/shared';
-import { FAQ } from '../content';
+import { formatMinor } from '@hishab/shared';
+import { CONTENT_BN, type SiteContent } from '../content';
 import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from '../seo';
 
 /**
@@ -25,6 +25,8 @@ export const metadata = pageMetadata({
   description:
     'ফ্রি প্যাকেজ আজীবন ফ্রি — দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনা-পাওনা। প্রিমিয়াম মাসে ৳৩৫০ বা বছরে ৳৩৬০০, সব সীমাহীন। Free forever plan, or ৳350/month (৳3600/year) for everything unlimited.',
   path: '/pricing',
+  locale: 'bn',
+  alternatePath: '/en/pricing',
   keywords: [
     'personal finance app price bangladesh',
     'free expense tracker bangladesh',
@@ -96,39 +98,35 @@ async function fetchPlans(): Promise<PlanView[]> {
 }
 
 /**
- * How many months the yearly price gives away, stated only when it is a whole
- * number of them.
- *
- * "১০ মাসের দামে ১২ মাস" is a claim, so it is derived from the two prices
- * rather than written down: if somebody edits either in the admin panel the
- * sentence follows, and if the discount stops being a round number of months
- * the page says the plainer thing instead of rounding in its own favour.
- */
-function monthsSaved(plan: PlanView): string {
-  const yearly = plan.priceYearlyMinor ?? 0;
-  const monthly = plan.priceMinor;
-  const twelve = monthly * 12;
-  if (monthly <= 0 || yearly <= 0 || yearly >= twelve) return 'বছরে একবার';
-
-  const saved = twelve - yearly;
-  // Exact integer division, and only when it comes out whole.
-  if (saved % monthly === 0) {
-    const months = saved / monthly;
-    return `${toBengaliDigits(String(months))} মাস ফ্রি`;
-  }
-  return `৳${formatMinor(saved, { symbol: false, decimals: false, bengaliNumerals: true })} সাশ্রয়`;
-}
-
-/** ৳১,২০০ — a price is read, not reconciled, so no decimals and no symbol here. */
-const takaFrom = (minor: number): string =>
-  formatMinor(minor, { symbol: false, decimals: false, bengaliNumerals: true });
-
-/**
  * Features whose ceiling is worth printing, in the order somebody compares
  * them. Anything the catalogue carries that is not listed here is machinery,
  * not a selling point — printing all twelve rows would bury the four that
  * decide the purchase.
  */
+interface Copy {
+  heading: string;
+  blurb: string;
+  alwaysHeading: string;
+  always: string[];
+  compared: { key: string; label: string; note?: string }[];
+  unlimited: string;
+  off: string;
+  soon: string;
+  perMonth: string;
+  orYearly: string;
+  freeName: string;
+  freeNote: string;
+  freeCta: string;
+  premiumCta: string;
+  premiumBadge: string;
+  premiumNote: string;
+  sideBySide: string;
+  tableWhat: string;
+  tableCaption: string;
+  megabytes: string;
+  bengaliNumerals: boolean;
+}
+
 const COMPARED: { key: string; label: string; note?: string }[] = [
   { key: 'accounts.max', label: 'অ্যাকাউন্ট (ব্যাংক, বিকাশ, নগদ, কার্ড)' },
   { key: 'transactions.monthly.max', label: 'লেনদেন' },
@@ -140,17 +138,88 @@ const COMPARED: { key: string; label: string; note?: string }[] = [
   { key: 'ai.reports.enabled', label: 'AI পর্যালোচনা', note: 'আসছে' },
 ];
 
-/** Everything, on every plan, whatever the tier says. */
-const ALWAYS: string[] = [
-  'ডাবল-এন্ট্রি খাতা ও স্থিতিপত্র',
-  'সীমাহীন দেনাদার-পাওনাদার ও ঋণের হিসাব',
-  'ডিপিএস, সঞ্চয় ও বীমা',
-  'ক্যাটাগরি, সাব-ক্যাটাগরি ও ট্যাগ',
-  'রিপোর্ট, খোঁজ ও কার্যবিবরণী',
-  'অফলাইনে কাজ করা ও ফোনে ইনস্টল',
-];
+const COPY: Record<'bn' | 'en', Copy> = {
+  bn: {
+    heading: 'দাম',
+    blurb:
+      'দুটি প্যাকেজ, লুকানো কিছু নেই। ফ্রিটা সত্যিই ফ্রি — ট্রায়াল নয়, শেষে কার্ড চাওয়া হবে না।',
+    alwaysHeading: 'দুই প্যাকেজেই আছে',
+    always: [
+      'ডাবল-এন্ট্রি খাতা ও স্থিতিপত্র',
+      'সীমাহীন দেনাদার-পাওনাদার ও ঋণের হিসাব',
+      'ডিপিএস, সঞ্চয় ও বীমা',
+      'ক্যাটাগরি, সাব-ক্যাটাগরি ও ট্যাগ',
+      'রিপোর্ট, খোঁজ ও কার্যবিবরণী',
+      'অফলাইনে কাজ করা ও ফোনে ইনস্টল',
+    ],
+    compared: COMPARED,
+    unlimited: 'সীমাহীন',
+    off: 'নেই',
+    soon: 'আসছে',
+    perMonth: ' / মাস',
+    orYearly: 'অথবা বছরে',
+    freeName: 'ফ্রি',
+    freeNote: 'আজীবন ফ্রি। কার্ড লাগবে না।',
+    freeCta: 'ফ্রি শুরু করুন',
+    premiumCta: 'ফ্রি দিয়ে শুরু করুন',
+    premiumBadge: 'সব সীমাহীন',
+    premiumNote:
+      'সবাই ফ্রি দিয়েই শুরু করেন। প্রিমিয়ামে যেতে চাইলে অ্যাপ থেকে যোগাযোগ করুন — অনলাইন পেমেন্ট এখনো চালু হয়নি।',
+    sideBySide: 'পাশাপাশি',
+    tableWhat: 'কী',
+    tableCaption: 'প্যাকেজ অনুযায়ী সীমা',
+    megabytes: 'মেগাবাইট',
+    bengaliNumerals: true,
+  },
+  en: {
+    heading: 'Pricing',
+    blurb:
+      'Two plans, nothing hidden. The free one is genuinely free — not a trial, and no card at the end.',
+    alwaysHeading: 'On both plans',
+    always: [
+      'Double-entry ledger and balance sheet',
+      'Unlimited debtors, creditors and loans',
+      'DPS, savings and insurance',
+      'Categories, sub-categories and tags',
+      'Reports, search and an audit trail',
+      'Works offline, installs to your phone',
+    ],
+    compared: [
+      { key: 'accounts.max', label: 'Accounts (bank, wallet, cash, card)' },
+      { key: 'transactions.monthly.max', label: 'Transactions' },
+      { key: 'attachments.storage.mb', label: 'Receipt photos', note: 'MB' },
+      { key: 'export.enabled', label: 'CSV export and backup' },
+      { key: 'email.connections.max', label: 'Connected mailboxes' },
+      { key: 'ingest.messages.monthly.max', label: 'Messages a month (Telegram, SMS)' },
+      { key: 'members.max', label: 'Members' },
+      { key: 'ai.reports.enabled', label: 'AI review', note: 'soon' },
+    ],
+    unlimited: 'Unlimited',
+    off: 'No',
+    soon: 'Coming',
+    perMonth: ' / month',
+    orYearly: 'or yearly',
+    freeName: 'Free',
+    freeNote: 'Free for good. No card required.',
+    freeCta: 'Start free',
+    premiumCta: 'Start on the free plan',
+    premiumBadge: 'Everything unlimited',
+    premiumNote:
+      'Everyone starts on the free plan. To move to premium, get in touch from inside the app — online payment is not live yet.',
+    sideBySide: 'Side by side',
+    tableWhat: 'What',
+    tableCaption: 'Limits by plan',
+    megabytes: 'MB',
+    bengaliNumerals: false,
+  },
+};
 
 export default async function PricingPage() {
+  return <Pricing content={CONTENT_BN} locale="bn" />;
+}
+
+export async function Pricing({ content, locale }: { content: SiteContent; locale: 'bn' | 'en' }) {
+  const t = locale === 'en' ? COPY.en : COPY.bn;
   const plans = await fetchPlans();
   const premium = plans.find((p) => p.code !== 'FREE') ?? plans[plans.length - 1]!;
 
@@ -169,25 +238,28 @@ export default async function PricingPage() {
 
       <section className="border-rule border-b">
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <h1 className="text-ink text-3xl font-semibold sm:text-4xl">দাম</h1>
-          <p className="text-ink-muted mt-3 max-w-2xl">
-            দুটি প্যাকেজ, লুকানো কিছু নেই। ফ্রিটা সত্যিই ফ্রি — ট্রায়াল নয়, শেষে কার্ড চাওয়া হবে
-            না।
-          </p>
+          <h1 className="text-ink text-3xl font-semibold sm:text-4xl">{t.heading}</h1>
+          <p className="text-ink-muted mt-3 max-w-2xl">{t.blurb}</p>
         </div>
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-4 lg:grid-cols-2">
           {plans.map((plan) => (
-            <PlanCard key={plan.code} plan={plan} highlight={plan.code === premium.code} />
+            <PlanCard
+              key={plan.code}
+              plan={plan}
+              highlight={plan.code === premium.code}
+              t={t}
+              locale={locale}
+            />
           ))}
         </div>
 
         <div className="rounded-card border-rule bg-greenbar mt-6 border p-5">
-          <h2 className="text-ink text-sm font-medium">দুই প্যাকেজেই আছে</h2>
+          <h2 className="text-ink text-sm font-medium">{t.alwaysHeading}</h2>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {ALWAYS.map((line) => (
+            {t.always.map((line) => (
               <li key={line} className="text-ink-muted flex items-start gap-2 text-sm">
                 <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 {line}
@@ -197,12 +269,12 @@ export default async function PricingPage() {
         </div>
       </section>
 
-      <ComparisonTable plans={plans} />
+      <ComparisonTable plans={plans} t={t} />
 
       <section className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
-        <h2 className="text-ink text-2xl font-semibold">প্রশ্ন</h2>
+        <h2 className="text-ink text-2xl font-semibold">{content.ui.faqHeading}</h2>
         <div className="mt-6 space-y-3">
-          {FAQ.map((item) => (
+          {content.faq.map((item) => (
             <details key={item.q} className="rounded-card border-rule bg-surface border p-4">
               <summary className="text-ink press cursor-pointer text-sm font-medium">
                 {item.q}
@@ -216,8 +288,21 @@ export default async function PricingPage() {
   );
 }
 
-function PlanCard({ plan, highlight }: { plan: PlanView; highlight: boolean }) {
+function PlanCard({
+  plan,
+  highlight,
+  t,
+  locale,
+}: {
+  plan: PlanView;
+  highlight: boolean;
+  t: Copy;
+  locale: 'bn' | 'en';
+}) {
   const free = plan.priceMinor === 0;
+  const money = (minor: number) =>
+    formatMinor(minor, { symbol: false, decimals: false, bengaliNumerals: t.bengaliNumerals });
+
   return (
     <div
       className={`rounded-card bg-surface border p-6 ${
@@ -225,33 +310,32 @@ function PlanCard({ plan, highlight }: { plan: PlanView; highlight: boolean }) {
       }`}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink text-xl font-semibold">{plan.name}</h2>
+        <h2 className="text-ink text-xl font-semibold">{free ? t.freeName : plan.name}</h2>
         {highlight ? (
           <span className="bg-greenbar text-income rounded-full px-2 py-0.5 text-xs font-medium">
-            সব সীমাহীন
+            {t.premiumBadge}
           </span>
         ) : null}
       </div>
 
       <p className="text-ink mt-4 text-3xl font-semibold">
-        {free ? 'ফ্রি' : `৳${takaFrom(plan.priceMinor)}`}
-        {!free ? <span className="text-ink-muted text-base font-normal"> / মাস</span> : null}
+        {free ? t.freeName : `৳${money(plan.priceMinor)}`}
+        {!free ? <span className="text-ink-muted text-base font-normal">{t.perMonth}</span> : null}
       </p>
       {free ? (
-        <p className="text-ink-muted mt-1 text-sm">আজীবন ফ্রি। কার্ড লাগবে না।</p>
+        <p className="text-ink-muted mt-1 text-sm">{t.freeNote}</p>
       ) : plan.priceYearlyMinor != null ? (
         <p className="text-ink-muted mt-1 text-sm">
-          অথবা বছরে{' '}
-          <strong className="text-ink font-medium">৳{takaFrom(plan.priceYearlyMinor)}</strong>{' '}
-          {/* The saving, computed rather than asserted: twelve months at the
-              monthly price, less the yearly price. `allocateMinor` splits
-              integer poisha into whole shares, so no float touches a price. */}
-          — {`${monthsSaved(plan)} মাস ফ্রি`}
+          {t.orYearly}{' '}
+          <strong className="text-ink font-medium">৳{money(plan.priceYearlyMinor)}</strong>
+          {/* The saving is computed from the two prices, not written down: edit
+              either in the admin panel and this sentence follows. */}
+          {savingLine(plan, t, locale)}
         </p>
       ) : null}
 
       <ul className="mt-5 space-y-2">
-        {COMPARED.map((row) => {
+        {t.compared.map((row) => {
           const value = plan.features.find((f) => f.key === row.key);
           const on = value ? value.limitValue === null || value.limitValue > 0 : false;
           return (
@@ -264,7 +348,7 @@ function PlanCard({ plan, highlight }: { plan: PlanView; highlight: boolean }) {
               <span className={on ? 'text-ink' : 'text-ink-muted'}>
                 {row.label}
                 {': '}
-                <strong className="font-medium">{describe(value, row.note)}</strong>
+                <strong className="font-medium">{describe(value, t, row.note)}</strong>
               </span>
             </li>
           );
@@ -279,47 +363,57 @@ function PlanCard({ plan, highlight }: { plan: PlanView; highlight: boolean }) {
             : 'border-rule bg-surface text-ink hover:bg-greenbar border'
         }`}
       >
-        {free ? 'ফ্রি শুরু করুন' : 'ফ্রি দিয়ে শুরু করুন'}
+        {free ? t.freeCta : t.premiumCta}
         <ArrowRight className="h-4 w-4" aria-hidden />
       </Link>
       {highlight ? (
-        <p className="text-ink-muted mt-2 text-center text-xs">
-          সবাই ফ্রি দিয়েই শুরু করেন। প্রিমিয়ামে যেতে চাইলে অ্যাপ থেকে যোগাযোগ করুন — অনলাইন
-          পেমেন্ট এখনো চালু হয়নি।
-        </p>
+        <p className="text-ink-muted mt-2 text-center text-xs">{t.premiumNote}</p>
       ) : null}
     </div>
   );
 }
 
+/** " — ৳600 saved", or nothing when the yearly price is not a saving. */
+function savingLine(plan: PlanView, t: Copy, locale: 'bn' | 'en'): string {
+  const yearly = plan.priceYearlyMinor ?? 0;
+  const twelve = plan.priceMinor * 12;
+  if (plan.priceMinor <= 0 || yearly <= 0 || yearly >= twelve) return '';
+  const saved = formatMinor(twelve - yearly, {
+    symbol: false,
+    decimals: false,
+    bengaliNumerals: t.bengaliNumerals,
+  });
+  return locale === 'en' ? ` — ৳${saved} saved` : ` — ৳${saved} সাশ্রয়`;
+}
+
 /** `null` is unlimited, `0` is off, a number is a ceiling. Never a blank cell. */
-function describe(feature: PlanFeature | undefined, note?: string): string {
+function describe(feature: PlanFeature | undefined, t: Copy, note?: string): string {
   if (!feature) return '—';
-  if (feature.limitValue === null) return 'সীমাহীন';
-  if (feature.limitValue === 0) return note === 'আসছে' ? 'আসছে' : 'নেই';
+  if (feature.limitValue === null) return t.unlimited;
+  if (feature.limitValue === 0) return note === 'আসছে' || note === 'soon' ? t.soon : t.off;
   const n = formatMinor(feature.limitValue * 100, {
     symbol: false,
     decimals: false,
-    bengaliNumerals: true,
+    bengaliNumerals: t.bengaliNumerals,
   });
-  return note && note !== 'আসছে' ? `${n} ${note}` : n;
+  return note && note !== 'আসছে' && note !== 'soon' ? `${n} ${t.megabytes}` : n;
 }
 
-function ComparisonTable({ plans }: { plans: PlanView[] }) {
+function ComparisonTable({ plans, t }: { plans: PlanView[]; t: Copy }) {
   return (
     <section className="border-rule border-y">
       <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <h2 className="text-ink text-2xl font-semibold">পাশাপাশি</h2>
+        <h2 className="text-ink text-2xl font-semibold">{t.sideBySide}</h2>
         {/* The table scrolls inside its own box rather than pushing the page
             sideways — a landing page that scrolls horizontally on a 320px
             phone is the fastest way to lose the visitor and the ranking. */}
         <div className="mt-6 overflow-x-auto">
           <table className="w-full min-w-[32rem] border-collapse text-sm">
-            <caption className="sr-only">প্যাকেজ অনুযায়ী সীমা</caption>
+            <caption className="sr-only">{t.tableCaption}</caption>
             <thead>
               <tr className="border-rule border-b">
                 <th scope="col" className="text-ink-muted py-3 pr-4 text-left font-medium">
-                  কী
+                  {t.tableWhat}
                 </th>
                 {plans.map((plan) => (
                   <th
@@ -327,13 +421,13 @@ function ComparisonTable({ plans }: { plans: PlanView[] }) {
                     scope="col"
                     className="text-ink px-4 py-3 text-left font-medium"
                   >
-                    {plan.name}
+                    {plan.priceMinor === 0 ? t.freeName : plan.name}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {COMPARED.map((row) => (
+              {t.compared.map((row) => (
                 <tr key={row.key} className="border-rule border-b last:border-b-0">
                   <th scope="row" className="text-ink py-3 pr-4 text-left font-normal">
                     {row.label}
@@ -342,6 +436,7 @@ function ComparisonTable({ plans }: { plans: PlanView[] }) {
                     <td key={plan.code} className="text-ink-muted px-4 py-3">
                       {describe(
                         plan.features.find((f) => f.key === row.key),
+                        t,
                         row.note,
                       )}
                     </td>
