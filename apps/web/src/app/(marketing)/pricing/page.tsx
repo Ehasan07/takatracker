@@ -21,7 +21,7 @@ import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from
  */
 
 export const metadata = pageMetadata({
-  title: 'দাম ও প্যাকেজ — হিসাব | Pricing',
+  title: 'দাম ও প্যাকেজ — Taka Tracker | Pricing',
   description:
     'ফ্রি প্যাকেজ আজীবন ফ্রি — দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনা-পাওনা। প্রিমিয়াম মাসে ৳৩৫০ বা বছরে ৳৩৬০০, সব সীমাহীন। Free forever plan, or ৳350/month (৳3600/year) for everything unlimited.',
   path: '/pricing',

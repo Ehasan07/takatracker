@@ -21,7 +21,7 @@ import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from
  */
 
 export const metadata = pageMetadata({
-  title: 'হিসাব — বাংলাদেশের ব্যক্তিগত হিসাবের সফটওয়্যার | Personal Finance App',
+  title: 'Taka Tracker — বাংলাদেশের ব্যক্তিগত হিসাবের সফটওয়্যার | Personal Finance App',
   description:
     'আয়, খরচ, ধার-দেনা, ডিপিএস ও বীমার হিসাব এক জায়গায় — সম্পূর্ণ বাংলায়। ডাবল-এন্ট্রি হিসাবরক্ষণের উপর তৈরি, অফলাইনেও চলে। ফ্রি প্যাকেজ আজীবন ফ্রি। A free double-entry personal finance app for Bangladesh, on web and mobile.',
   path: '/',

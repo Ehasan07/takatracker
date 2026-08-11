@@ -13,6 +13,10 @@ export const metadata: Metadata = {
     default: 'Taka Tracker — বাংলাদেশের ব্যক্তিগত হিসাবের সফটওয়্যার',
     /* Public pages set their own full title; app screens inherit the suffix, so
      * a browser tab or a shared link always says which product it is. */
+    /* App screens inherit the suffix so a tab always says which product it is.
+       The public pages set a full title of their own and are exempt — the
+       landing page already opens with the name, and "… | Personal Finance App ·
+       Taka Tracker" reads like a mistake. */
     template: '%s · Taka Tracker',
   },
   description:

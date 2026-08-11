@@ -29,7 +29,11 @@ export function pageMetadata(input: {
 }): Metadata {
   const url = `${SITE.url}${input.path}`;
   return {
-    title: input.title,
+    /* Absolute, so the root layout's `%s · Taka Tracker` template does not run.
+     * A public page writes its own full title — the landing page already opens
+     * with the product name, and appending it again reads as a mistake in the
+     * one place a search result is judged. */
+    title: { absolute: input.title },
     description: input.description,
     keywords: input.keywords,
     /* One canonical per page. The landing page is reachable at `/` through a
