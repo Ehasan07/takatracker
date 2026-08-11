@@ -14,10 +14,6 @@ import { PeopleService } from './people.service';
  *
  * `PeopleService` is exported for whoever needs it next; nothing consumes it
  * today.
- *
- * TODO(main): register `PeopleModule` in `app.module.ts` — that file belongs to
- * another change, so it is not edited here. Without the registration the five
- * routes under `/v1/people` do not exist.
  */
 @Module({
   controllers: [PeopleController],

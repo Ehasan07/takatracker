@@ -130,6 +130,19 @@ export const simpleTransactionSchema = z
     /* Tags, not a category. The category says *what* the money went on; a tag
      * says who for or what project, and a transaction can carry several. */
     tagIds: z.array(cuid).max(20).optional(),
+    /* Who the money was with — the shopkeeper, the tenant, the friend.
+     *
+     * The column and the `?personId=` filter have both existed since loans
+     * shipped, but only the loan module ever wrote it, so `/people` counted
+     * zero transactions against everyone who had no loan and the khata's person
+     * filter could not find a single manual entry. Distinct from `payee`, which
+     * is free text nothing can group by, and from a tag, which labels the
+     * purpose rather than the counterparty.
+     *
+     * `nullish` rather than `optional`, because an edit has to be able to say
+     * "nobody" as well as "unchanged": omitted leaves the row's person alone,
+     * `null` detaches it. Same rule as `tagIds` and `attachmentIds`. */
+    personId: cuid.nullish(),
   })
   .superRefine((val, ctx) => {
     if (val.type === 'TRANSFER') {

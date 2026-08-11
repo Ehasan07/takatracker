@@ -8,18 +8,12 @@ import type { AuditAction } from '../audit/audit.service';
  * transaction it was on — both are edits to how a household's history reads,
  * and neither leaves a trace anywhere else.
  *
- * TODO(main): `AUDIT_ACTIONS` in audit/audit.service.ts does not carry these
- * yet, and that file belongs to another change, so each string is asserted here
- * rather than edited in there. Nothing is wrong with the rows that get written —
- * `AuditEvent.action` is a plain `String` column, no enum and no migration.
- * Delete the assertions once these are in the union:
- *
- *   tag.created
- *   tag.updated
- *   tag.deleted
- *   tag.merged
+ * Annotated, never `as AuditAction`. A cast compiles whatever string is on the
+ * right of it, so a typo would ship a row under an action name no query looks
+ * for; the annotation makes the union the authority and a rename upstream a
+ * compile error here.
  */
-export const TAG_CREATED = 'tag.created' as AuditAction;
-export const TAG_UPDATED = 'tag.updated' as AuditAction;
-export const TAG_DELETED = 'tag.deleted' as AuditAction;
-export const TAG_MERGED = 'tag.merged' as AuditAction;
+export const TAG_CREATED: AuditAction = 'tag.created';
+export const TAG_UPDATED: AuditAction = 'tag.updated';
+export const TAG_DELETED: AuditAction = 'tag.deleted';
+export const TAG_MERGED: AuditAction = 'tag.merged';

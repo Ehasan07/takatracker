@@ -20,6 +20,7 @@ import { AccountService } from './account.service';
 import { AuthService, type AuthResult } from './auth.service';
 import { CurrentUser, type AuthUser } from './current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { NoImpersonationGuard } from './no-impersonation.guard';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from './jwt.strategy';
 import { SessionsService, type SessionRequestContext } from './sessions.service';
 
@@ -166,7 +167,14 @@ export class AuthController {
     ]);
     // `emailVerifiedAt` (from the profile) drives the verification nag and
     // `onboardingCompletedAt` the first-run flow. Both are additive fields.
-    return { ...profile, onboardingCompletedAt: onboardingCompletedAt?.toISOString() ?? null };
+    return {
+      ...profile,
+      onboardingCompletedAt: onboardingCompletedAt?.toISOString() ?? null,
+      /* Read off the token, so a support banner survives a reload that lost the
+       * start response. `false` on every ordinary session, which is every
+       * session but a handful. */
+      isImpersonated: user.impersonatedBy !== null,
+    };
   }
 
   // --- email verification ----------------------------------------------------
@@ -243,7 +251,7 @@ export class AuthController {
    */
   @Post('password/change')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
   @Throttle(rate(5))
   async changePassword(
     @Body(zodPipe(changePasswordSchema)) body: z.infer<typeof changePasswordSchema>,
@@ -289,7 +297,7 @@ export class AuthController {
 
   @Delete('sessions/:familyId')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
   async revokeSession(
     @CurrentUser() user: AuthUser,
     @Param('familyId') familyId: string,
@@ -303,7 +311,7 @@ export class AuthController {
 
   @Post('sessions/revoke-others')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
   async revokeOtherSessions(
     @Body(zodPipe(revokeOthersSchema)) body: z.infer<typeof revokeOthersSchema>,
     @CurrentUser() user: AuthUser,

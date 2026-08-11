@@ -49,7 +49,7 @@ import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { TagDot } from '../tags/parts';
 import { fetchTags, tagKeys } from '../tags/queries';
-import { tagName, type TagDto, type TransactionTagDto } from '../tags/types';
+import { tagName, type TagDto } from '../tags/types';
 
 /**
  * The khata.
@@ -119,11 +119,15 @@ const SOURCE_LABEL: Record<string, string> = {
  * caught up and that file belongs to another change. Optional, so a payload
  * replayed from the offline queue that predates tagging still types.
  */
-type LedgerTxn = TransactionDto & {
-  attachmentIds?: string[];
-  tags?: TransactionTagDto[];
-};
+type LedgerTxn = TransactionDto;
 
+/**
+ * Still a function rather than a field read.
+ *
+ * A payload replayed from the offline queue can predate either field, and at
+ * runtime that is `undefined` however the type reads. One `?? []` here beats
+ * the same guard at four call sites.
+ */
 const attachmentsOf = (txn: LedgerTxn): string[] => txn.attachmentIds ?? [];
 
 const labelOf = (txn: TransactionDto): string => txn.description || txn.categoryName || 'লেনদেন';
@@ -1207,15 +1211,14 @@ function TransactionDetail({
 /**
  * Attach receipts to one transaction.
  *
- * The upload half works today: `POST /v1/attachments` stores the bytes and
- * hands back an id. The *link* half does not — `simpleTransactionSchema` has no
- * `attachmentIds`, so Zod strips it from the body and the row is written
- * without it, and `present()` never returns it either. Rather than show a save
- * that silently does nothing, this checks the response for the ids it just
- * sent, and if they are not there it says so and deletes the bytes it uploaded
- * so nothing is left orphaned on the server's disk. Two lines in the API — the
- * field on the schema and on the `data`/`present` pair — and this starts
- * working with no change here.
+ * Both halves work: `POST /v1/attachments` stores the bytes and hands back an
+ * id, and the transaction write links them.
+ *
+ * The echo check below stays. It was written when the link half did not exist —
+ * `present()` never returned `attachmentIds`, so a save appeared to work and
+ * quietly dropped the receipt — and it is what noticed. Keeping it means a
+ * future regression in that column shows as a message and a cleaned-up upload
+ * rather than as bytes on the server's disk belonging to nothing.
  */
 function ReceiptSheet({
   txn,

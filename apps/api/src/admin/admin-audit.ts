@@ -9,62 +9,43 @@ import type { AuditAction } from '../audit/audit.service';
  * support tool nobody can review is a liability, and "who looked at my data?"
  * is the first thing a customer asks.
  *
- * TODO(main): `AUDIT_ACTIONS` in audit/audit.service.ts does not carry these
- * yet, and that file belongs to another change, so each string is asserted here
- * rather than edited in there. Nothing is wrong with the rows that get written —
- * `AuditEvent.action` is a plain `String` column, no enum and no migration.
- * Delete the assertions once these are in the union:
+ * Annotated, never `as AuditAction`. A cast compiles whatever string is on the
+ * right of it, so a typo would ship a row under an action name no query looks
+ * for; the annotation makes the union the authority and a rename upstream a
+ * compile error here.
  *
- *   admin.tenant_viewed
- *   admin.tenant_list_viewed
- *   admin.plan_assigned
- *   admin.feature_overridden
- *   admin.tenant_suspended
- *   admin.tenant_reactivated
- *   admin.overview_viewed
- *   admin.audit_viewed        <- NOT in the brief's list. Added because reading
- *                                the cross-tenant audit log is itself a read of
- *                                tenant data and the same rule applies to it.
- *                                Reuse of one of the others would have filed it
- *                                under a name that means something else.
- *   admin.plan_created
- *   admin.plan_updated
- *   admin.plan_features_updated
- *   admin.plan_retired
- *   admin.plan_unretired      <- NOT in the brief's list either, and for the
- *                                same reason as admin.audit_viewed: filing the
- *                                act of putting a package back on sale under
- *                                `admin.plan_retired` would name it as its own
- *                                inverse, and `admin.plan_updated` would bury
- *                                it among price edits. "When did this plan go
- *                                back on sale?" has to be one query.
- *   admin.feature_created
- *   admin.feature_updated
+ * Two of these were not in the brief's list and are their own strings anyway:
+ *
+ *   admin.audit_viewed    reading the cross-tenant audit log is itself a read
+ *                         of tenant data, and reusing one of the others would
+ *                         file it under a name that means something else.
+ *   admin.plan_unretired  putting a package back on sale filed under
+ *                         `admin.plan_retired` would name an event as its own
+ *                         inverse, and `admin.plan_updated` would bury it among
+ *                         price edits. "When did this plan go back on sale?"
+ *                         has to be one query.
  */
-export const TENANT_LIST_VIEWED = 'admin.tenant_list_viewed' as AuditAction;
-export const TENANT_VIEWED = 'admin.tenant_viewed' as AuditAction;
-export const PLAN_ASSIGNED = 'admin.plan_assigned' as AuditAction;
-export const FEATURE_OVERRIDDEN = 'admin.feature_overridden' as AuditAction;
-export const TENANT_SUSPENDED = 'admin.tenant_suspended' as AuditAction;
-export const TENANT_REACTIVATED = 'admin.tenant_reactivated' as AuditAction;
-export const OVERVIEW_VIEWED = 'admin.overview_viewed' as AuditAction;
-export const AUDIT_VIEWED = 'admin.audit_viewed' as AuditAction;
+export const TENANT_LIST_VIEWED: AuditAction = 'admin.tenant_list_viewed';
+export const TENANT_VIEWED: AuditAction = 'admin.tenant_viewed';
+export const PLAN_ASSIGNED: AuditAction = 'admin.plan_assigned';
+export const FEATURE_OVERRIDDEN: AuditAction = 'admin.feature_overridden';
+export const TENANT_SUSPENDED: AuditAction = 'admin.tenant_suspended';
+export const TENANT_REACTIVATED: AuditAction = 'admin.tenant_reactivated';
+export const OVERVIEW_VIEWED: AuditAction = 'admin.overview_viewed';
+export const AUDIT_VIEWED: AuditAction = 'admin.audit_viewed';
 
 /* The package editor. Every one of these changes what somebody can be sold or
  * what they are allowed to do, across every tenant at once, so all six are
  * awaited rather than emitted — see `AdminService.assignPlan` for why a write's
  * audit row is not fire-and-forget. */
-export const PLAN_CREATED = 'admin.plan_created' as AuditAction;
-export const PLAN_UPDATED = 'admin.plan_updated' as AuditAction;
-export const PLAN_FEATURES_UPDATED = 'admin.plan_features_updated' as AuditAction;
-export const PLAN_RETIRED = 'admin.plan_retired' as AuditAction;
-export const PLAN_UNRETIRED = 'admin.plan_unretired' as AuditAction;
-export const FEATURE_CREATED = 'admin.feature_created' as AuditAction;
-export const FEATURE_UPDATED = 'admin.feature_updated' as AuditAction;
+export const PLAN_CREATED: AuditAction = 'admin.plan_created';
+export const PLAN_UPDATED: AuditAction = 'admin.plan_updated';
+export const PLAN_FEATURES_UPDATED: AuditAction = 'admin.plan_features_updated';
+export const PLAN_RETIRED: AuditAction = 'admin.plan_retired';
+export const PLAN_UNRETIRED: AuditAction = 'admin.plan_unretired';
+export const FEATURE_CREATED: AuditAction = 'admin.feature_created';
+export const FEATURE_UPDATED: AuditAction = 'admin.feature_updated';
 
-/* These two are already in the union and nothing emitted them until now. No
- * assertion: the annotation proves they exist, so a rename upstream is a
- * compile error here rather than a silently orphaned string. */
 export const IMPERSONATION_STARTED: AuditAction = 'support.impersonation_started';
 export const IMPERSONATION_ENDED: AuditAction = 'support.impersonation_ended';
 

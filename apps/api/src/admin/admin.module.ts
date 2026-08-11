@@ -18,12 +18,12 @@ import { SuperAdminGuard } from './super-admin.guard';
  *
  * `AuthModule` is imported for one thing only — `AuthService.reissueAccessToken`,
  * the existing minter that impersonation borrows instead of reimplementing.
- * `PrismaModule`, `AuditModule` and `EntitlementsModule` are already global.
+ * `PrismaModule`, `AuditModule` and `EntitlementsModule` are already global,
+ * which is how `AdminService` reaches `FeatureCatalogueService`.
  *
- * TODO(main): register this in `app.module.ts` (`AdminModule` in `imports`).
- * Nothing else needs to change — the guard is bound with `@UseGuards` on the
- * controller, not as an `APP_GUARD`, precisely so mounting this module cannot
- * alter the behaviour of any other route.
+ * The guard is bound with `@UseGuards` on the controller rather than as an
+ * `APP_GUARD`, so mounting this module in `app.module.ts` cannot alter the
+ * behaviour of any other route.
  */
 @Module({
   imports: [AuthModule],

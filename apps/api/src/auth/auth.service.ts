@@ -211,13 +211,27 @@ export class AuthService {
   private signAccessToken(
     user: { id: string; email: string; tokenVersion: number },
     workspaceId: string,
+    impersonatedBy?: string,
   ): Promise<string> {
     return this.jwt.signAsync(
       /* `tv` is the user's token version at the moment of minting. JwtStrategy
        * compares it against the stored value on every request, which is how a
        * password reset kills an access token that has not expired yet — the
-       * refresh families it revokes cannot reach one. */
-      { sub: user.id, email: user.email, ws: workspaceId, tv: user.tokenVersion },
+       * refresh families it revokes cannot reach one.
+       *
+       * `imp`/`impBy` mark a support session. Only ever set by
+       * `AdminImpersonationService`; an ordinary sign-in omits both, so an
+       * existing token and every future normal one are unchanged. The claims
+       * are in the token rather than only in the response envelope because the
+       * server has to be able to refuse an operator on a sensitive route, and
+       * it cannot ask the client what kind of session this is. */
+      {
+        sub: user.id,
+        email: user.email,
+        ws: workspaceId,
+        tv: user.tokenVersion,
+        ...(impersonatedBy ? { imp: true as const, impBy: impersonatedBy } : {}),
+      },
       // Read through the resolver, never `process.env`: the strategy that
       // verifies this token reads it at a different moment in the boot, and the
       // two must not be able to see different values. See common/env.ts.
@@ -238,6 +252,7 @@ export class AuthService {
   async reissueAccessToken(
     userId: string,
     workspaceId: string,
+    impersonatedBy?: string,
   ): Promise<{ accessToken: string; expiresIn: number }> {
     // Re-read rather than trusting a caller-supplied version: the bump has just
     // been written and this token has to carry the value that is now stored.
@@ -246,7 +261,7 @@ export class AuthService {
       select: { id: true, email: true, tokenVersion: true },
     });
     return {
-      accessToken: await this.signAccessToken(user, workspaceId),
+      accessToken: await this.signAccessToken(user, workspaceId, impersonatedBy),
       expiresIn: ACCESS_TTL_SECONDS,
     };
   }

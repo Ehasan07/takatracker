@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import { Logger } from '@nestjs/common';
+import { isPlaceholder } from '../common/env';
 
 /**
  * The envelope a mailbox credential is stored in.
@@ -80,23 +81,6 @@ const KEY_BYTES = 32; // AES-256
 const HKDF_SALT = 'hishab.mail.hkdf.salt.v1';
 const HKDF_INFO = 'hishab.mail.secret.v1';
 
-/**
- * Mirrors `PLACEHOLDER_PREFIXES` in `common/env.ts`.
- *
- * TODO(main): `common/env.ts` owns this list and does not export `isPlaceholder`;
- * that file belongs to another change, so the check is duplicated rather than
- * imported. Delete this constant and import the real one once it is exported —
- * the two lists drifting apart is the only failure mode here, and it fails
- * *safe* (a placeholder this copy does not recognise still gets caught by the
- * boot check in `assertProductionEnv`).
- */
-const PLACEHOLDER_PREFIXES = ['change-me', 'changeme', 'dev-', 'your-', 'replace-me', 'todo'];
-
-function looksPublished(value: string): boolean {
-  const v = value.trim().toLowerCase();
-  return v === '' || PLACEHOLDER_PREFIXES.some((prefix) => v.startsWith(prefix));
-}
-
 /** Raised when a stored credential cannot be opened. Never carries key material. */
 export class MailCryptoError extends Error {
   constructor(message: string) {
@@ -138,7 +122,7 @@ function encryptionKey(): Buffer {
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (isProduction) {
-    if (!configured || looksPublished(configured)) {
+    if (!configured || isPlaceholder(configured)) {
       throw new MailCryptoError(
         `${MAIL_KEY_ENV} is missing or still at a placeholder value. Refusing to store mailbox ` +
           'credentials under a key that is published in .env.example.',
@@ -149,7 +133,7 @@ function encryptionKey(): Buffer {
       `${MAIL_KEY_ENV} is not set. Using a random key for this process only; every mailbox ` +
         'credential stored now becomes unreadable when the API restarts.',
     );
-  } else if (looksPublished(configured)) {
+  } else if (isPlaceholder(configured)) {
     logger.warn(
       `${MAIL_KEY_ENV} is a placeholder. Fine here, fatal in production — see mail-crypto.ts.`,
     );

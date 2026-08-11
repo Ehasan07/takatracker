@@ -788,6 +788,49 @@ describe('super admin', () => {
       .expect(400);
   });
 
+  it('marks the session on the token, and shuts the doors an operator must not walk through', async () => {
+    const op = await operator();
+    const tenant = await signup(ctx);
+
+    const started = await ctx
+      .http()
+      .post(`/v1/admin/tenants/${tenant.workspaceId}/impersonate`)
+      .set(auth(op))
+      .send({ reason: 'রসিদ দেখা যাচ্ছে না — টিকিট ৯৯১' })
+      .expect(200);
+
+    const support = { Authorization: `Bearer ${started.body.accessToken}` };
+
+    /* On the token, not only in the envelope above. A client that dropped the
+     * response and reloaded still learns it is in a support session, and — the
+     * part that matters — so does the server. */
+    const me = await ctx.http().get('/v1/auth/me').set(support).expect(200);
+    expect(me.body.isImpersonated).toBe(true);
+
+    // Reading is the whole point of the feature and stays open.
+    await ctx.http().get('/v1/accounts').set(support).expect(200);
+    await ctx.http().get('/v1/transactions').set(support).expect(200);
+
+    // Changing their credentials, signing their devices out, or walking off
+    // with the file — none of those are support.
+    await ctx
+      .http()
+      .post('/v1/auth/password/change')
+      .set(support)
+      .send({ currentPassword: 'hishab1234', newPassword: 'hishab12345' })
+      .expect(403);
+    await ctx.http().post('/v1/auth/sessions/revoke-others').set(support).send({}).expect(403);
+    await ctx.http().get('/v1/export/transactions').set(support).expect(403);
+
+    /* The customer's own session reaches all three. Same routes, same
+       workspace, same everything except who is holding the token — which is
+       the only thing the guard looks at. */
+    const own = await ctx.http().get('/v1/auth/me').set(auth(tenant)).expect(200);
+    expect(own.body.isImpersonated).toBe(false);
+    await ctx.http().get('/v1/export/transactions').set(auth(tenant)).expect(200);
+    await ctx.http().post('/v1/auth/sessions/revoke-others').set(auth(tenant)).send({}).expect(200);
+  });
+
   it('refuses to impersonate another super admin', async () => {
     const op = await operator();
     const other = await operator();

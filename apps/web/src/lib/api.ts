@@ -199,8 +199,23 @@ export interface TransactionDto {
   counterAccountName: string | null;
   categoryId: string | null;
   categoryName: string | null;
+  /** Who the money was with. A `Person` row, unlike the free-text `payee`. */
+  personId: string | null;
+  personName: string | null;
+  /** Labels — who for, what project. Several per row, unlike the category. */
+  tags: TransactionTagDto[];
+  /** Receipt ids, in the order they were attached. */
+  attachmentIds: string[];
   createdAt: string;
   balanceAfterMinor?: number;
+}
+
+/** One tag as it rides along on a transaction. Enough to render a chip. */
+export interface TransactionTagDto {
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
 }
 
 export interface SummaryDto {

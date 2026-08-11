@@ -92,6 +92,20 @@ describe('people', () => {
     return res.body as PersonRow[];
   };
 
+  const expenseCategory = async (user: Awaited<ReturnType<typeof signup>>): Promise<string> => {
+    const res = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    return (res.body as { kind: string; id: string }[]).find((c) => c.kind === 'EXPENSE')!.id;
+  };
+
+  const expense = (accountId: string, categoryId: string) => ({
+    date: daysAgo(1),
+    type: 'EXPENSE' as const,
+    amountMinor: 25_000,
+    accountId,
+    categoryId,
+    description: 'বাজার',
+  });
+
   const netWorth = async (user: Awaited<ReturnType<typeof signup>>): Promise<number> => {
     const res = await ctx.http().get('/v1/reports/balance-sheet').set(auth(user)).expect(200);
     return res.body.netWorthMinor as number;
@@ -160,15 +174,6 @@ describe('people', () => {
     expect(await list(user)).toHaveLength(1);
   });
 
-  /**
-   * Only the no-transactions branch is exercised, because it is the only one
-   * reachable: `Transaction.personId` is written by the loan module alone —
-   * `simpleTransactionSchema` has no such field, so a manual entry cannot name a
-   * person — and deleting the loan soft-deletes its transactions along with it.
-   * A person with live transactions therefore always has a live loan, and a live
-   * loan refuses the delete outright (the case above). The longer message stays
-   * in the service for when a manual entry can carry a person.
-   */
   it('removes a contact and leaves the books exactly where they were', async () => {
     const { user } = await workspaceWithCash();
     const person = await ctx
@@ -191,6 +196,90 @@ describe('people', () => {
     expect(await list(user)).toHaveLength(0);
     // A contact is a label on the books, never a line in them.
     expect(await netWorth(user)).toBe(before);
+  });
+
+  it('counts an ordinary expense against the person it names', async () => {
+    const { user, cashId } = await workspaceWithCash();
+    const person = await ctx
+      .http()
+      .post('/v1/people')
+      .set(auth(user))
+      .send({ name: 'দোকানদার' })
+      .expect(201);
+
+    const created = await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...expense(cashId, await expenseCategory(user)), personId: person.body.id })
+      .expect(201);
+
+    // Read back, not just accepted: the column was written for months and
+    // never returned, so "the POST answered 201" proved nothing.
+    expect(created.body.personId).toBe(person.body.id);
+    expect(created.body.personName).toBe('দোকানদার');
+
+    const [row] = await list(user);
+    expect(row?.transactionCount).toBe(1);
+    // The khata's person filter, which could not reach a manual entry before.
+    const filtered = await ctx
+      .http()
+      .get(`/v1/transactions?personId=${person.body.id}`)
+      .set(auth(user))
+      .expect(200);
+    expect(filtered.body.items).toHaveLength(1);
+  });
+
+  it('says what it will not destroy, and then does not destroy it', async () => {
+    const { user, cashId } = await workspaceWithCash();
+    const person = await ctx
+      .http()
+      .post('/v1/people')
+      .set(auth(user))
+      .send({ name: 'দোকানদার' })
+      .expect(201);
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...expense(cashId, await expenseCategory(user)), personId: person.body.id })
+      .expect(201);
+
+    const before = await netWorth(user);
+
+    const removed = await ctx
+      .http()
+      .delete(`/v1/people/${person.body.id}`)
+      .set(auth(user))
+      .expect(200);
+
+    expect(removed.body.transactionCount).toBe(1);
+    expect(removed.body.message).toContain('কোনো লেনদেন মুছে ফেলা হয়নি');
+    // The claim the message makes, measured rather than trusted.
+    expect(await netWorth(user)).toBe(before);
+    const remaining = await ctx.http().get('/v1/transactions').set(auth(user)).expect(200);
+    expect(remaining.body.items).toHaveLength(1);
+  });
+
+  it('refuses another workspace’s person on a transaction', async () => {
+    const mine = await workspaceWithCash();
+    const theirs = await workspaceWithCash();
+    const stranger = await ctx
+      .http()
+      .post('/v1/people')
+      .set(auth(theirs.user))
+      .send({ name: 'অন্য কেউ' })
+      .expect(201);
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(mine.user))
+      .send({
+        ...expense(mine.cashId, await expenseCategory(mine.user)),
+        personId: stranger.body.id,
+      })
+      .expect(404);
   });
 
   it('folds two spellings of one person together without moving a poisha', async () => {

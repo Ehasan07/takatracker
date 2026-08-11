@@ -20,6 +20,7 @@ import {
 } from '@hishab/shared';
 import type { Prisma, TransactionType } from '@prisma/client';
 import { minorToNumber } from '../common/bigint-json';
+import { escapeLike } from '../common/like';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
@@ -69,7 +70,24 @@ export interface TransactionView {
    */
   categoryId: string | null;
   categoryName: string | null;
+  /**
+   * Who the money was with, if anybody. Not the same question as `payee`, which
+   * is free text: this one is a row in `Person`, so it groups, filters and adds
+   * up on the party ledger. Returned because a client that can set a field has
+   * to be able to read it back — the same reason `tags` is here.
+   */
+  personId: string | null;
+  personName: string | null;
   tags: TransactionTagView[];
+  /**
+   * Receipt ids, in the order they were attached.
+   *
+   * Written since the attachment picker shipped and never read back, so the
+   * receipt sheet could upload bytes, save them, and then show the transaction
+   * as having no receipt — it detects that and deletes what it uploaded rather
+   * than leaving orphans on disk. Returning the column is the whole fix.
+   */
+  attachmentIds: string[];
   createdAt: string;
   balanceAfterMinor?: number;
 }
@@ -81,6 +99,10 @@ const txInclude = {
       category: { select: { id: true, name: true, nameBn: true } },
     },
   },
+  /* Name, never the phone or the note: this rides along on every row of the
+   * khata's infinite list, and a list screen has no use for a contact's
+   * details. `/people` is where those live. */
+  person: { select: { id: true, name: true } },
   /* One extra left join on an indexed foreign key, on every read of a
    * transaction. It is not optional: a client that can set tags has to be able
    * to read them back, and a list screen that omitted them would show a
@@ -97,31 +119,14 @@ const txInclude = {
 type TxWithEntries = Prisma.TransactionGetPayload<{ include: typeof txInclude }>;
 
 /**
- * What a create or update accepts, until `tagIds` reaches @hishab/shared.
+ * What a create or update accepts.
  *
- * TODO(main): `simpleTransactionSchema` in packages/shared/src/schemas.ts does
- * not carry `tagIds` and that file belongs to another change, so the field is
- * added to the type here and parsed alongside the body in the controller. Add
- *
- *   tagIds: z.array(cuid).max(20).optional(),
- *
- * to that schema and this intersection collapses to nothing — it is written as
- * an intersection rather than an `extends` precisely so that adding the field
- * upstream with the same type is a no-op instead of a conflict.
+ * Both aliases now, `tagIds` and `tagId` having reached @hishab/shared — kept
+ * as names rather than deleted because every signature in this file reads
+ * better for saying which of the two it takes.
  */
-export type TransactionWriteInput = SimpleTransactionInput & { tagIds?: string[] };
-
-/**
- * The list query, until `tagId` reaches @hishab/shared.
- *
- * TODO(main): add
- *
- *   tagId: cuid.optional(),
- *
- * to `transactionQuerySchema` and delete this type along with the extra
- * `@Query('tagId')` parameter in the controller.
- */
-export type ListTransactionsQuery = TransactionQuery & { tagId?: string };
+export type TransactionWriteInput = SimpleTransactionInput;
+export type ListTransactionsQuery = TransactionQuery;
 
 /**
  * How many tags one transaction may carry.
@@ -151,6 +156,7 @@ export class TransactionsService {
       counterAccountId?: string | null;
       categoryId?: string | null;
       tagIds?: readonly string[];
+      personId?: string | null;
     },
   ): Promise<void> {
     const accountIds = [input.accountId, input.counterAccountId].filter(
@@ -179,6 +185,17 @@ export class TransactionsService {
         where: { id: { in: tagIds }, workspaceId, deletedAt: null },
       });
       if (tags !== tagIds.length) throw new NotFoundException('ট্যাগ পাওয়া যায়নি');
+    }
+    /* The counterparty, proved to be this workspace's before the id is written.
+     * `Transaction.personId` has no composite foreign key back to the
+     * workspace, so an unchecked id here would file somebody else's tenant's
+     * contact against this row — and `/people` counts, the khata's person
+     * filter and the party ledger all read that column back. */
+    if (input.personId) {
+      const person = await this.prisma.person.count({
+        where: { id: input.personId, workspaceId, deletedAt: null },
+      });
+      if (person !== 1) throw new NotFoundException('ব্যক্তি পাওয়া যায়নি');
     }
   }
 
@@ -219,6 +236,8 @@ export class TransactionsService {
         description: input.description,
         notes: input.notes,
         payee: input.payee,
+        // Who the money was with. Until now only the loan module wrote this.
+        personId: input.personId ?? null,
         externalRef: input.externalRef,
         source: input.source,
         /* Receipts. The column and the schema field have both existed since the
@@ -326,6 +345,11 @@ export class TransactionsService {
           payee: input.payee,
           // Omitted leaves the receipts alone; `[]` clears them, matching tags.
           ...(input.attachmentIds === undefined ? {} : { attachmentIds: input.attachmentIds }),
+          /* Omitted leaves the counterparty alone; `null` detaches them. Prisma
+           * reads `undefined` as "do not touch", so spelling it out matters:
+           * `personId: input.personId` would look identical and behave the
+           * same, but the reader could not tell which of the two was meant. */
+          ...(input.personId === undefined ? {} : { personId: input.personId }),
           externalRef: input.externalRef,
           entries: {
             create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
@@ -819,6 +843,9 @@ export class TransactionsService {
       counterAccountName: tx.type === 'TRANSFER' ? (counter?.account.name ?? null) : null,
       categoryId: category?.id ?? null,
       categoryName: category ? (category.nameBn ?? category.name) : null,
+      personId: tx.personId,
+      personName: tx.person?.name ?? null,
+      attachmentIds: tx.attachmentIds,
       /* Sorted here rather than in the query. Prisma can order an included
        * relation by a field of *its* relation, but doing so turns one join into
        * an ordered subquery on the main list screen; a handful of chips per row
@@ -908,19 +935,6 @@ function addOneDay(d: Date): Date {
  * user asked for.
  */
 const MAX_SEARCH_TOKENS = 8;
-
-/**
- * Escape the LIKE metacharacters before a token reaches `contains`.
- *
- * Prisma interpolates `contains` straight into `ILIKE '%' || $1 || '%'`, so an
- * unescaped `%` is a wildcard: searching `50%` would return the whole ledger and
- * `_` would match any single character. Postgres's default LIKE escape is the
- * backslash and the Prisma filter exposes no ESCAPE clause, so prefixing the
- * three metacharacters is both necessary and sufficient.
- */
-function escapeLike(token: string): string {
-  return token.replace(/[\\%_]/g, '\\$&');
-}
 
 /**
  * The forms of one token worth putting to SQL.

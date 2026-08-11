@@ -308,6 +308,80 @@ describe('ledger', () => {
     expect(res.body.items[0].balanceAfterMinor).toBe(account.body.balanceMinor);
   });
 
+  it('links a receipt to a transaction and hands the ids back', async () => {
+    /* The smallest valid PNG. `file-type.ts` sniffs the magic bytes rather than
+       trusting the declared Content-Type, so a plausible header is required. */
+    const png = Buffer.from(
+      '89504e470d0a1a0a0000000d4948445200000001000000010806000000' +
+        '1f15c4890000000a49444154789c6300010000050001' +
+        '0d0a2db40000000049454e44ae426082',
+      'hex',
+    );
+    const uploaded = await ctx
+      .http()
+      .post('/v1/attachments?filename=receipt.png')
+      .set(auth(user))
+      .set('content-type', 'application/octet-stream')
+      .send(png)
+      .expect(201);
+
+    const created = await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 15000,
+        accountId: cashId,
+        categoryId: foodCategoryId,
+        attachmentIds: [uploaded.body.id],
+      })
+      .expect(201);
+
+    /* Written since the picker shipped and never returned, so the receipt
+       sheet uploaded bytes, saved, saw no ids come back and deleted them
+       again — the feature could not work and said so on screen. */
+    expect(created.body.attachmentIds).toEqual([uploaded.body.id]);
+
+    const reread = await ctx
+      .http()
+      .get(`/v1/transactions/${created.body.id}`)
+      .set(auth(user))
+      .expect(200);
+    expect(reread.body.attachmentIds).toEqual([uploaded.body.id]);
+
+    // Omitted on an edit leaves them alone; `[]` is how they come off.
+    const edited = await ctx
+      .http()
+      .patch(`/v1/transactions/${created.body.id}`)
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 16000,
+        accountId: cashId,
+        categoryId: foodCategoryId,
+      })
+      .expect(200);
+    expect(edited.body.attachmentIds).toEqual([uploaded.body.id]);
+
+    const cleared = await ctx
+      .http()
+      .patch(`/v1/transactions/${created.body.id}`)
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 16000,
+        accountId: cashId,
+        categoryId: foodCategoryId,
+        attachmentIds: [],
+      })
+      .expect(200);
+    expect(cleared.body.attachmentIds).toEqual([]);
+  });
+
   it('summarises the month with income, expense and net', async () => {
     const res = await ctx.http().get('/v1/transactions/summary').set(auth(user)).expect(200);
     expect(res.body.incomeMinor).toBeGreaterThan(0);

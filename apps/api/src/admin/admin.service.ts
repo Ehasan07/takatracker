@@ -3,6 +3,7 @@ import type { FeatureKind, MeterPeriod, WorkspaceStatus } from '@prisma/client';
 import { resolveEntitlements } from '@hishab/core';
 import { startOfMonth, startOfNextMonth, toLocalDateString } from '@hishab/shared';
 import { AuditService, type AuditAction } from '../audit/audit.service';
+import { FeatureCatalogueService } from '../entitlements/feature-catalogue.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -117,6 +118,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
+    private readonly features: FeatureCatalogueService,
   ) {}
 
   // --- tenants ---------------------------------------------------------------
@@ -860,31 +862,41 @@ export class AdminService {
   }
 
   /**
-   * The sellable catalogue, from the database.
+   * The sellable catalogue.
    *
-   * TODO(main): `EntitlementsModule` is growing a `FeatureCatalogueService` in
-   * a parallel change that owns exactly this question and seeds `Feature` at
-   * boot. Delete this method and inject that service once it lands; the
-   * `UNSEEDED_FALLBACK` above goes with it.
+   * Read through `FeatureCatalogueService`, which owns this question, seeds
+   * `Feature` at boot and caches the answer — this module used to run its own
+   * `feature.findMany` on every tenant view and every near-limit sweep, a
+   * second source of truth for one table.
+   *
+   * `UNSEEDED_FALLBACK` stays. It is not a duplicate of the catalogue but a
+   * defence against it being empty, which is a state a fresh database really
+   * reaches: an empty table would make the tenant screen look broken and would
+   * report "0 tenants near a limit" as though it were a measurement rather than
+   * an absence. `catalogueSeeded` rides out to the screen so the difference is
+   * visible there too.
+   *
+   * The two shapes name their labels the opposite way round — `Feature.label`
+   * is the English column and `CatalogueFeature.label` is the Bengali string —
+   * so the flip happens here, once.
    */
   private async catalogue(): Promise<{ features: FeatureDescriptor[]; seeded: boolean }> {
-    const rows = await this.prisma.feature.findMany({
-      where: { isActive: true },
-      orderBy: [{ sortOrder: 'asc' }, { key: 'asc' }],
-      select: {
-        key: true,
-        label: true,
-        labelBn: true,
-        kind: true,
-        unit: true,
-        period: true,
-        category: true,
-        sortOrder: true,
-      },
-    });
-    return rows.length > 0
-      ? { features: rows, seeded: true }
-      : { features: UNSEEDED_FALLBACK, seeded: false };
+    const rows = await this.features.active();
+    if (rows.length === 0) return { features: UNSEEDED_FALLBACK, seeded: false };
+
+    return {
+      features: rows.map((row) => ({
+        key: row.key,
+        label: row.labelEn,
+        labelBn: row.label,
+        kind: row.kind,
+        unit: row.unit,
+        period: row.period,
+        category: row.category,
+        sortOrder: row.sortOrder,
+      })),
+      seeded: true,
+    };
   }
 
   /** id -> {id, name, email} for whoever granted an override. Never a hash. */

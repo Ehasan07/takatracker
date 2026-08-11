@@ -38,7 +38,15 @@ const PLACEHOLDER_PREFIXES = ['change-me', 'changeme', 'dev-', 'your-', 'replace
 /** The example `DATABASE_URL` ships these credentials. Real deploys generate a password. */
 const PUBLISHED_DB_CREDENTIALS = 'hishab:hishab@';
 
-function isPlaceholder(value: string): boolean {
+/**
+ * Is this value blank, or one of the examples the repository publishes?
+ *
+ * Exported because `mail-accounts/mail-crypto.ts` refuses to derive a key from
+ * one, and it used to keep its own copy of the prefix list — two lists that
+ * could drift, in a check whose entire job is to notice that a secret is not
+ * secret.
+ */
+export function isPlaceholder(value: string): boolean {
   const v = value.trim().toLowerCase();
   if (v === '') return true;
   if (v.includes(PUBLISHED_DB_CREDENTIALS)) return true;

@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { fetchPeople } from '@/app/(shell)/people/queries';
 import { TagPicker } from '@/app/(shell)/tags/tag-picker';
-import type { TransactionTagDto } from '@/app/(shell)/tags/types';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
 import {
@@ -24,13 +24,13 @@ import { Sheet } from './ui/sheet';
 type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER';
 
 /**
- * `TransactionView.tags` as the API returns it.
+ * The row being edited.
  *
- * Intersected in rather than declared on `TransactionDto`, the way the ledger
- * screen already intersects `attachmentIds`: `@/lib/api` belongs to another
- * change, and the picker below owns the tag domain either way.
+ * `tags` is optional at runtime whatever `TransactionDto` says — a payload
+ * replayed from the offline queue can predate tagging — which is what
+ * `tagsKnown` below exists to notice.
  */
-type TaggedTxn = TransactionDto & { tags?: TransactionTagDto[] };
+type TaggedTxn = TransactionDto;
 
 const TABS: { kind: Kind; label: string }[] = [
   { kind: 'EXPENSE', label: 'খরচ' },
@@ -67,6 +67,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   const [description, setDescription] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [tagIds, setTagIds] = React.useState<string[]>([]);
+  const [personId, setPersonId] = React.useState('');
   /**
    * Whether the row being edited actually told us its tags.
    *
@@ -117,6 +118,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setNotes(editing.notes ?? '');
       setTagIds((editing.tags ?? []).map((tag) => tag.id));
       setTagsKnown(editing.tags !== undefined);
+      setPersonId(editing.personId ?? '');
     } else {
       setKind('EXPENSE');
       setAmount('');
@@ -127,6 +129,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setNotes('');
       setTagIds([]);
       setTagsKnown(true);
+      setPersonId('');
     }
     setError(null);
   }, [open, editing, today]);
@@ -200,6 +203,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
            is how somebody takes the last tag off a row. Left out entirely when
            the row arrived without its tags, so the server keeps what it has. */
         tagIds: tagsKnown ? tagIds : undefined,
+        /* `null`, not `undefined`, when the picker is empty: omitting the field
+           leaves the row's person alone, which would make "কেউ না" impossible
+           to save. Sent on a create too, where the two mean the same thing. */
+        personId: personId || null,
       };
 
       return api<TransactionDto>(editing ? `/transactions/${editing.id}` : '/transactions', {
@@ -406,6 +413,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             tagged — গাড়ি is a tag whether the money was spent or moved. */}
         <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
 
+        <PersonField value={personId} onChange={setPersonId} />
+
         <Field label="বিবরণ" htmlFor="qa-description">
           <Input
             id="qa-description"
@@ -440,5 +449,51 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         </Button>
       </form>
     </Sheet>
+  );
+}
+
+/**
+ * Who the money was with.
+ *
+ * A `<select>` of people who already exist, and nothing more. Typing a new name
+ * here would create a contact as a side effect of an expense — exactly how the
+ * duplicate করিমs that `/people` exists to merge came about in the first place.
+ * Adding somebody is a deliberate act on that screen, or a consequence of
+ * recording a loan.
+ *
+ * Optional, always. Most entries have no counterparty worth naming, and a field
+ * that nags for one teaches people to put something meaningless in it.
+ */
+function PersonField({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const people = useQuery({
+    queryKey: ['people', 'list', ''],
+    queryFn: () => fetchPeople(),
+    staleTime: 60_000,
+  });
+
+  const rows = people.data ?? [];
+  /* Hidden until there is somebody to pick, rather than shown empty. An
+     enabled dropdown with one "কেউ না" in it is a dead end that asks the reader
+     to work out why. */
+  if (rows.length === 0 && !value) return null;
+
+  return (
+    <Field label="কার সাথে" htmlFor="qa-person">
+      <Select
+        id="qa-person"
+        name="personId"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">কেউ না</option>
+        {rows.map((person) => (
+          <option key={person.id} value={person.id}>
+            {person.name}
+            {person.relation ? ` — ${person.relation}` : ''}
+          </option>
+        ))}
+      </Select>
+      <p className="text-ink-muted mt-1 text-xs">ঐচ্ছিক। নতুন কাউকে যোগ করতে মানুষজন পাতায় যান।</p>
+    </Field>
   );
 }

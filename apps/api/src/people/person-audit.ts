@@ -10,18 +10,10 @@ import type { AuditAction } from '../audit/audit.service';
  * All four are edits to *whose* money this is, and nothing else in the system
  * records them — the `Person` row itself keeps only its current values.
  *
- * TODO(main): `AUDIT_ACTIONS` in audit/audit.service.ts does not carry these
- * yet, and that file belongs to another change, so each string is asserted here
- * rather than edited in there. Nothing is wrong with the rows that get written —
- * `AuditEvent.action` is a plain `String` column, no enum and no migration.
- * Delete the assertions once these are in the union:
- *
- *   person.created
- *   person.updated
- *   person.deleted
- *   person.merged
+ * Annotated, never `as AuditAction` — see `tags/tag-audit.ts` for why a cast
+ * here would let a typo through to a row nothing ever reads back.
  */
-export const PERSON_CREATED = 'person.created' as AuditAction;
-export const PERSON_UPDATED = 'person.updated' as AuditAction;
-export const PERSON_DELETED = 'person.deleted' as AuditAction;
-export const PERSON_MERGED = 'person.merged' as AuditAction;
+export const PERSON_CREATED: AuditAction = 'person.created';
+export const PERSON_UPDATED: AuditAction = 'person.updated';
+export const PERSON_DELETED: AuditAction = 'person.deleted';
+export const PERSON_MERGED: AuditAction = 'person.merged';

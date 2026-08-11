@@ -15,6 +15,15 @@ export interface AuthUser {
   workspaceId: string;
   role: MembershipRole;
   timezone: string;
+  /**
+   * The operator's user id when this request is a support session, otherwise
+   * null.
+   *
+   * `id` and `email` stay the *customer's* throughout — the whole point of
+   * impersonation is to see what they see — so this is the only thing on the
+   * request that says the person at the keyboard is somebody else.
+   */
+  impersonatedBy: string | null;
 }
 
 export const CurrentUser = createParamDecorator(

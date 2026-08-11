@@ -62,13 +62,21 @@ const MAX_SECONDS = 15 * 60;
  * audit event. That is stated plainly rather than dressed up, because a "revoke"
  * button that does not revoke is worse than none.
  *
- * TODO(main): once `JwtPayload` can carry them, add `imp: true` and
- * `impBy: <operator id>` claims in `AuthService.signAccessToken` and surface
- * them on `AuthUser`. Then the banner is driven by the token itself rather than
- * by the envelope below, actions taken during the session can be audited as
- * SUPPORT rather than as the customer, and sensitive routes can refuse an
- * impersonated caller outright. All three need edits to `auth/` and `AuthUser`,
- * which this change does not own.
+ * ## What the token says
+ *
+ * It carries `imp: true` and `impBy: <operator id>`, surfaced on `AuthUser` as
+ * `impersonatedBy`. Two things follow: `/auth/me` reports the session, so the
+ * banner survives a reload that lost the envelope; and `NoImpersonationGuard`
+ * refuses the routes an operator has no business reaching while wearing
+ * somebody else's face — changing their password, revoking their devices,
+ * downloading their books.
+ *
+ * What does *not* follow, and is worth saying plainly: ordinary writes made
+ * during a session are still audited as the customer, `actorType: 'USER'`.
+ * Attributing them to SUPPORT means every audit call site in the application
+ * reading `impersonatedBy`, and a half-converted set of call sites would be
+ * worse than a consistent one — the start and end rows below, plus the
+ * timestamps, are what bound a session today.
  */
 @Injectable()
 export class AdminImpersonationService {
@@ -128,7 +136,11 @@ export class AdminImpersonationService {
       throw new ForbiddenException('একজন অপারেটরের হয়ে সাপোর্ট সেশন চালু করা যায় না');
     }
 
-    const issued = await this.auth.reissueAccessToken(membership.user.id, workspace.id);
+    /* The operator's id goes into the token, not just into the audit row. It is
+     * what `NoImpersonationGuard` reads to keep a support session out of the
+     * routes below, and what `/auth/me` reports so the banner survives a page
+     * reload that lost the envelope. */
+    const issued = await this.auth.reissueAccessToken(membership.user.id, workspace.id, actor.id);
     const startedAt = new Date();
     const expiresIn = Math.min(issued.expiresIn, MAX_SECONDS);
     const expiresAt = new Date(startedAt.getTime() + expiresIn * 1000);

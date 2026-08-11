@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { searchTokens } from '@hishab/core';
 import { Prisma } from '@prisma/client';
 import type { MailFolder } from '@prisma/client';
+import { escapeLike } from '../common/like';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
 import type { ListMailMessagesQuery } from './mail-accounts.controller';
@@ -201,22 +202,4 @@ export class MailMessagesService {
   private static presentDetail(row: DetailRow): MailMessageDetailView {
     return { ...MailMessagesService.present(row), body: row.body };
   }
-}
-
-/**
- * Escape the LIKE metacharacters before a token reaches `contains`.
- *
- * Prisma interpolates `contains` straight into `ILIKE '%' || $1 || '%'`, so an
- * unescaped `%` is a wildcard: searching `50%` would return the whole mailbox
- * and `_` would match any single character. Postgres's default LIKE escape is
- * the backslash and the Prisma filter exposes no ESCAPE clause, so prefixing the
- * three metacharacters is both necessary and sufficient.
- *
- * TODO(main): identical to `escapeLike` in transactions/transactions.service.ts,
- * which does not export it. Two copies of four characters of regex is the lesser
- * evil against editing a file this change does not own; fold them into
- * `common/` when something touches both.
- */
-function escapeLike(token: string): string {
-  return token.replace(/[\\%_]/g, '\\$&');
 }

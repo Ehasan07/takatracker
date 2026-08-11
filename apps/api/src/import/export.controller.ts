@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { NoImpersonationGuard } from '../auth/no-impersonation.guard';
 import { zodPipe } from '../common/zod.pipe';
 import { ExportService } from './export.service';
 
@@ -39,8 +40,11 @@ function attachment(filename: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
+/* An operator can read any figure on any screen during a support session. What
+ * they cannot do is walk out with the file — a CSV of somebody's whole ledger
+ * is the one artefact that outlives the session and leaves the building. */
 @Controller('export')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, NoImpersonationGuard)
 export class ExportController {
   constructor(private readonly exports: ExportService) {}
 

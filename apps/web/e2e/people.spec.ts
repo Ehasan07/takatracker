@@ -121,6 +121,32 @@ test.describe('people', () => {
     await expect(survivor.first()).toContainText('80,000');
   });
 
+  test('an ordinary expense can name who it was with', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await lend(page, 'করিম', '50000');
+
+    await page.goto('/');
+    await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+    await sheet.getByLabel('পরিমাণ (৳)').fill('250');
+    await sheet.getByLabel('ক্যাটাগরি').selectOption({ label: 'খাবার ও বাজার' });
+    await sheet.getByLabel('বিবরণ').fill('করিমের দোকানে বাজার');
+    /* The field appears only once somebody exists to pick — see `PersonField`.
+       Recording the loan above is what put করিম in the workspace. */
+    await sheet.getByLabel('কার সাথে').selectOption({ label: 'করিম' });
+    /* Not `saveSheet`: this button names the amount — "৳250.00 সংরক্ষণ করুন" —
+       so the exact match every other sheet uses would never find it. */
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // Read back on the row, which is the half that did not work before: the
+    // column was written for months and `present()` never returned it.
+    await page.goto('/transactions');
+    await expect(page.getByTestId('ledger-list').getByText('করিমের দোকানে বাজার')).toBeVisible();
+  });
+
   test('refuses to remove somebody who still owes money', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);

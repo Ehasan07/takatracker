@@ -21,6 +21,17 @@ export interface JwtPayload {
    * itself rather than leaving a hole.
    */
   tv?: number;
+  /**
+   * True on a support token, minted by `POST /admin/impersonate/:workspaceId`.
+   *
+   * Absent on every ordinary sign-in, so nothing changes for a normal session.
+   * Its presence is what lets a route refuse an operator outright — see
+   * `NoImpersonationGuard` — rather than relying on the client to have stored
+   * the envelope and behaved itself.
+   */
+  imp?: true;
+  /** The operator's own user id. Present only alongside `imp`. */
+  impBy?: string;
 }
 
 export const ACCESS_COOKIE = 'hishab_at';
@@ -94,6 +105,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       workspaceId: membership.workspace.id,
       role: membership.role,
       timezone: membership.workspace.timezone,
+      /* Read from the token, so it cannot be lost by a client that drops the
+       * envelope. `impBy` without `imp` is treated as no session at all: the
+       * pair is minted together and one without the other is not a shape this
+       * server produces. */
+      impersonatedBy: payload.imp === true ? (payload.impBy ?? null) : null,
     };
   }
 }

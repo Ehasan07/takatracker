@@ -44,16 +44,10 @@ export interface TagDto {
 /**
  * A tag as it rides along on a transaction (`TransactionView.tags`).
  *
- * Declared here rather than on `TransactionDto` in `@/lib/api` because that file
- * belongs to another change; the ledger screen intersects it in, the same way it
- * already intersects `attachmentIds`.
+ * It lives on `TransactionDto` now, next to the field that carries it. Re-exported
+ * here so the tag screens keep importing their own vocabulary from one place.
  */
-export interface TransactionTagDto {
-  id: string;
-  name: string;
-  color: string | null;
-  icon: string | null;
-}
+export type { TransactionTagDto } from '@/lib/api';
 
 /** `DELETE /v1/tags/:id` — states out loud that nothing was destroyed. */
 export interface DeleteTagResult {
