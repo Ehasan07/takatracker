@@ -3,6 +3,7 @@ import { toLocalDateString } from '@hishab/shared';
 import {
   auth,
   createTestApp,
+  unlimit,
   resetDatabase,
   signup,
   type SignedUpUser,
@@ -41,6 +42,9 @@ describe('reports', () => {
     ctx = await createTestApp();
     await resetDatabase(ctx.prisma);
     user = await signup(ctx);
+    /* Four accounts, and the free plan grants two. This suite is about what the
+       reports say, not about what a plan sells. */
+    await unlimit(ctx, user.workspaceId);
 
     const post = (path: string, body: Record<string, unknown>) =>
       ctx.http().post(path).set(auth(user)).send(body).expect(201);

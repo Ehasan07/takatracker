@@ -230,7 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div data-app-shell className="flex h-dvh overflow-hidden">
       {/* Sidebar — 768px and up. One <nav>, because the 44px audit in
           e2e/responsive.spec.ts resolves it with getByRole('navigation'). */}
       <aside

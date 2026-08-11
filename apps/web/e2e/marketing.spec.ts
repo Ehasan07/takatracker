@@ -1,0 +1,160 @@
+import { expect, test, type Page } from '@playwright/test';
+
+/**
+ * The public site: the landing page, pricing, and the two things that decide
+ * whether either of them is ever found — the HTML a crawler reads, and whether
+ * the page behaves on a 320px phone.
+ *
+ * These run signed out on purpose. `/` is the dashboard for anybody with a
+ * session and the landing page for everybody else, and the whole point of the
+ * rewrite is that the second group is who a search engine is.
+ */
+
+const PASSWORD = 'hishab1234';
+
+let counter = 0;
+const uniqueEmail = (): string => {
+  counter += 1;
+  return `mkt-${Date.now()}-${counter}-${Math.trunc(performance.now())}@example.test`;
+};
+
+async function signup(page: Page): Promise<void> {
+  await page.goto('/signup');
+  await page.getByLabel('নাম').fill('বাজার পরীক্ষা');
+  await page.getByLabel('ইমেইল').fill(uniqueEmail());
+  await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+  await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
+  await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
+test.describe('the public site', () => {
+  test('/ is the landing page when signed out and the dashboard when signed in', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    // The URL stays `/` — a rewrite, not a redirect, because `/` is the address
+    // that gets printed, linked and indexed.
+    expect(new URL(page.url()).pathname).toBe('/');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('আপনার টাকা কোথায় যায়');
+
+    await signup(page);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).not.toContainText(
+      'আপনার টাকা কোথায় যায়',
+    );
+  });
+
+  test('puts the answer in the HTML, not in a fetch', async ({ page }) => {
+    /* With JavaScript off there is no hydration, no client fetch and no
+       framework — what is left is exactly what a crawler is handed. If the
+       pitch, the features and the FAQ answers are not in here, the page does
+       not rank however many keywords the metadata carries. */
+    const context = await page.context().browser()!.newContext({ javaScriptEnabled: false });
+    const bare = await context.newPage();
+    await bare.goto('/');
+
+    const html = await bare.content();
+    expect(html).toContain('ডাবল-এন্ট্রি');
+    expect(html).toContain('দেনাদার-পাওনাদার');
+    // An FAQ answer, in full, not behind a click.
+    expect(html).toContain('ফ্রি প্যাকেজ আজীবন ফ্রি');
+    // Structured data, both blocks.
+    expect(html).toContain('"@type":"SoftwareApplication"');
+    expect(html).toContain('"@type":"FAQPage"');
+    await context.close();
+  });
+
+  test('tells a crawler which URL this is and how to share it', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      'https://takatracker.com',
+    );
+    await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
+      'content',
+      'https://takatracker.com',
+    );
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      'content',
+      /ডাবল-এন্ট্রি/,
+    );
+    // Exactly one h1. Two would leave a crawler guessing which is the subject.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  });
+
+  test('serves robots.txt and a sitemap that agree with each other', async ({ request }) => {
+    const robots = await request.get('/robots.txt');
+    expect(robots.ok()).toBe(true);
+    const robotsBody = await robots.text();
+    expect(robotsBody).toContain('Sitemap: https://takatracker.com/sitemap.xml');
+    // The screens behind a session must not compete with the page that ranks.
+    expect(robotsBody).toContain('/transactions');
+
+    const sitemap = await request.get('/sitemap.xml');
+    expect(sitemap.ok()).toBe(true);
+    const xml = await sitemap.text();
+    // Spelled exactly as the canonical tag spells it — see sitemap.ts.
+    expect(xml).toContain('<loc>https://takatracker.com</loc>');
+    expect(xml).toContain('<loc>https://takatracker.com/pricing</loc>');
+  });
+
+  test('prices come from the API, and say what free actually means', async ({ page }) => {
+    await page.goto('/pricing');
+    await expect(page.getByRole('heading', { level: 1, name: 'দাম' })).toBeVisible();
+
+    const free = page.locator('h2', { hasText: 'ফ্রি' }).first();
+    await expect(free).toBeVisible();
+    // ৳1200/year, in Bengali numerals, read off the plan the server enforces.
+    await expect(page.getByText('৳১,২০০').first()).toBeVisible();
+    await expect(page.getByText('আজীবন ফ্রি').first()).toBeVisible();
+
+    // The comparison table names both tiers and the two ceilings that differ.
+    const table = page.getByRole('table');
+    await expect(table).toContainText('প্রিমিয়াম');
+    await expect(table).toContainText('রসিদের ছবি');
+  });
+
+  test('gets from the landing page to a real account', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: 'ফ্রি অ্যাকাউন্ট খুলুন' }).first().click();
+    await expect(page).toHaveURL(/\/signup/);
+    await expect(page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' })).toBeVisible();
+  });
+
+  test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
+    for (const path of ['/', '/pricing']) {
+      await page.goto(path);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `${path} scrolls horizontally by ${overflow}px`).toBeLessThanOrEqual(1);
+
+      /* Only the links and buttons that are actually on screen. The phone menu
+         is closed at rest, and a hidden control has no size to measure. */
+      const controls = page.locator('a:visible, button:visible');
+      const count = await controls.count();
+      for (let i = 0; i < count; i += 1) {
+        const box = await controls.nth(i).boundingBox();
+        if (!box) continue;
+        const text = (await controls.nth(i).innerText()).trim().slice(0, 30);
+        /* Two exclusions, both narrow on purpose.
+         *
+         * A link inside a `<p>` or a `<summary>` is a word in a sentence — it
+         * has no size of its own and giving it one would break the line. A
+         * `sr-only` skip link has no size until it is focused, at which point
+         * it does. `<li>` is deliberately *not* excused: a footer link list is
+         * navigation, and that exclusion was hiding seven 17px targets. */
+        const skip = await controls.nth(i).evaluate((el) => {
+          const parent = el.parentElement?.tagName ?? '';
+          return ['P', 'SUMMARY'].includes(parent) || el.classList.contains('sr-only');
+        });
+        if (skip) continue;
+        expect(box.height, `${path}: "${text}" is ${box.height}px tall`).toBeGreaterThanOrEqual(40);
+      }
+    }
+  });
+});

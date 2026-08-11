@@ -350,25 +350,43 @@ export interface PlanDefinition {
  * DEFAULT_FEATURES. Changing what a shipped tier includes is a pull request;
  * creating a *new* package is now a row, not a deployment.
  *
- * PRICES ARE PLACEHOLDERS until tiers and pricing are decided — see
- * docs/PLAN.md §6. Nothing charges money yet; M31 is where billing lands.
+ * Two tiers, because two is what is being sold. `FREE` is what every website
+ * signup lands on — see `DEFAULT_PLAN_CODE` — and it is free for good rather
+ * than a trial that expires. `PREMIUM` lifts every ceiling for ৳১২০০ a year.
+ *
+ * Boot upserts with an empty `update`, so these values create a plan and never
+ * overwrite one. An install where an operator has already edited a limit
+ * through `PUT /admin/plans/:code/features` keeps their number, which is the
+ * point: the catalogue is data, and this is only its first day.
  */
 export const DEFAULT_PLANS: readonly PlanDefinition[] = [
   {
     code: 'FREE',
     name: 'ফ্রি',
     priceMinor: 0,
+    /* Monthly at zero is still zero, and the pricing page reads the price
+     * rather than the interval to decide what to print. */
     interval: 'MONTHLY',
     isPublic: true,
     sortOrder: 10,
     features: {
-      'accounts.max': 5,
-      'transactions.monthly.max': 300,
+      /* Two accounts the user opened. The loan control accounts carry a
+       * `systemKey` and are excluded from the count, so recording a loan can
+       * never eat a slot the user thought was theirs. */
+      'accounts.max': 2,
+      /* Unlimited on purpose. A ledger that stops accepting entries in the
+       * third week of the month is not a ledger, and somebody who cannot
+       * finish writing their own history has no reason to come back for the
+       * paid tier. The limits are on *capacity*, never on the writing. */
+      'transactions.monthly.max': null,
       'members.max': 1,
       'ingest.channels': 1,
       'ingest.messages.monthly.max': 100,
       'ai.tokens.monthly.max': 0,
-      'attachments.storage.mb': 50,
+      /* Off. Receipts are the clearest thing a free tier can withhold: they
+       * cost real disk, they are the reason to upgrade, and doing without them
+       * takes nothing away from the books themselves. */
+      'attachments.storage.mb': 0,
       'email.connections.max': 0,
       'ai.reports.enabled': 0,
       'export.enabled': 0,
@@ -377,25 +395,29 @@ export const DEFAULT_PLANS: readonly PlanDefinition[] = [
     },
   },
   {
-    code: 'PRO',
-    name: 'প্রো',
-    priceMinor: 49_900,
-    interval: 'MONTHLY',
+    code: 'PREMIUM',
+    name: 'প্রিমিয়াম',
+    /** ৳১২০০ a year, in poisha like every other amount in the system. */
+    priceMinor: 120_000,
+    interval: 'YEARLY',
     isPublic: true,
     sortOrder: 20,
     features: {
       'accounts.max': null,
       'transactions.monthly.max': null,
-      'members.max': 5,
+      'members.max': null,
       'ingest.channels': null,
-      'ingest.messages.monthly.max': 2_000,
-      'ai.tokens.monthly.max': 300_000,
-      'attachments.storage.mb': 2_000,
-      'email.connections.max': 3,
+      'ingest.messages.monthly.max': null,
+      'ai.tokens.monthly.max': null,
+      'attachments.storage.mb': null,
+      'email.connections.max': null,
       'ai.reports.enabled': 1,
       'export.enabled': 1,
-      // Owner-only, and never on a public plan (v3 §B2). Granted per workspace
-      // through an override, with a note recording why.
+      /* The one ceiling that is not lifted, and not an oversight. A workspace
+       * with `sms.channel` on can point a phone's whole message stream at this
+       * server; v3 §B2 makes it owner-granted per workspace, through an
+       * override that records who turned it on and why. A package cannot sell
+       * it, so the pricing page must not promise it. */
       'sms.channel': 0,
       'notifications.telegram': 1,
     },

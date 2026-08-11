@@ -24,6 +24,7 @@
 @layer base {
   html {
     height: 100%;
+    scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
     /* Kills the 300ms tap delay and double-tap zoom without disabling
        pinch-to-zoom, which would be an accessibility failure. */
@@ -35,11 +36,22 @@
     color: var(--hishab-ink);
     font-family: var(--hishab-font-sans);
     height: 100%;
-    /* The shell owns scrolling, not the document. Fixed chrome + an inner
-       scroll area is what separates an app from a web page. */
-    overflow: hidden;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The shell owns scrolling, not the document. Fixed chrome + an inner scroll
+     area is what separates an app from a web page.
+   *
+   * Scoped to the shell rather than set on `body` outright, because the public
+   * pages are web pages and want the document to scroll: that is what lets a
+   * phone's address bar collapse, what makes `scroll-behavior: smooth` reach an
+   * anchor, and what a crawler's viewport heuristics expect. A browser without
+   * `:has()` scrolls the body behind a shell that has its own scroll container
+   * — which changes nothing, because that container is `h-dvh` and the body has
+   * nowhere to go. */
+  body:has([data-app-shell]) {
+    overflow: hidden;
   }
 
   * {

@@ -211,3 +211,25 @@ export async function signup(ctx: TestContext, email = uniqueEmail()): Promise<S
 }
 
 export const auth = (user: SignedUpUser) => ({ Authorization: `Bearer ${user.accessToken}` });
+
+/**
+ * Lift one plan ceiling for one workspace, the way a support override would.
+ *
+ * The free plan grants two accounts, which is the product decision — but a
+ * suite about reports, or the audit log, or categories needs four accounts to
+ * have anything to say, and it should fail when *its own* subject breaks, not
+ * when pricing changes. Those suites lift the ceiling here and go back to
+ * testing what they are named after. A suite that is genuinely about limits
+ * sets its own overrides and does not call this.
+ */
+export async function unlimit(
+  ctx: TestContext,
+  workspaceId: string,
+  featureKey = 'accounts.max',
+): Promise<void> {
+  await ctx.prisma.workspaceFeatureOverride.upsert({
+    where: { workspaceId_featureKey: { workspaceId, featureKey } },
+    create: { workspaceId, featureKey, limitValue: null },
+    update: { limitValue: null, expiresAt: null },
+  });
+}

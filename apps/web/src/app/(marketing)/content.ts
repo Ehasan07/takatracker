@@ -1,0 +1,384 @@
+/**
+ * What the public pages say, in one file.
+ *
+ * Marketing copy drifts from the product faster than anything else in a
+ * codebase, and the usual way it happens is that a claim lives inside the JSX
+ * of a section nobody opens again. Keeping the claims as data makes the drift
+ * visible: `SHIPPED` is a list somebody can read next to the route table, and
+ * `COMING` is a list that has to shrink.
+ *
+ * The rule for this file: **nothing in `SHIPPED` may be something you cannot
+ * do today on takatracker.com.** Every entry below names the screen it is
+ * about. A feature that is half-built belongs in `COMING`, however close it is.
+ */
+
+export interface Feature {
+  /** Bengali, because that is the language of the product. */
+  title: string;
+  /** English, because half of Bangladesh searches in it and so does Google. */
+  titleEn: string;
+  body: string;
+  /** The route it is about — kept so a claim can be checked against the app. */
+  route: string;
+}
+
+export interface FeatureGroup {
+  id: string;
+  heading: string;
+  headingEn: string;
+  blurb: string;
+  features: Feature[];
+}
+
+/**
+ * The pitch, in one sentence each, for the three things somebody decides in
+ * the first ten seconds: what is it, who is it for, why not a spreadsheet.
+ */
+export const HERO = {
+  eyebrow: 'বাংলাদেশের জন্য তৈরি ব্যক্তিগত হিসাবের সফটওয়্যার',
+  title: 'আপনার টাকা কোথায় যায়, শেষ পয়সাটা পর্যন্ত',
+  /* English rides in the subtitle rather than the headline. A Bengali speaker
+     reading a Bengali product should meet Bengali first; the English line is
+     for the same person searching "personal finance app bangladesh" an hour
+     earlier, and for the crawler that read that search. */
+  subtitle:
+    'আয়, খরচ, ধার-দেনা, সঞ্চয় আর বীমা — সব এক খাতায়। ডাবল-এন্ট্রি হিসাবরক্ষণের উপর তৈরি, তাই যোগফল কখনো মেলে না এমন হয় না।',
+  subtitleEn: 'A double-entry personal finance app for Bangladesh. Web and mobile, in Bangla.',
+  primaryCta: 'ফ্রি অ্যাকাউন্ট খুলুন',
+  secondaryCta: 'দাম দেখুন',
+} as const;
+
+/**
+ * Numbers a visitor can check, not numbers we wish were true.
+ *
+ * No download count, no star rating, no "trusted by 10,000 families" — the
+ * product launched this month and every one of those would be a lie. What is
+ * left is what the engineering actually guarantees, which is a better claim
+ * anyway: the reference sites lead with 14M downloads because they cannot lead
+ * with correctness.
+ */
+export const PROOF: { value: string; label: string }[] = [
+  { value: 'ডাবল-এন্ট্রি', label: 'প্রতিটি লেনদেনের দুই দিক, ডেবিট আর ক্রেডিট' },
+  { value: '০.০০ পয়সা', label: 'সব হিসাব পূর্ণসংখ্যা পয়সায় — দশমিকের ভুল অসম্ভব' },
+  { value: '১০০% বাংলা', label: 'পর্দা, রিপোর্ট, তারিখ, সংখ্যা — সবই বাংলায়' },
+  { value: 'অফলাইনেও', label: 'নেট না থাকলে এন্ট্রি জমা থাকে, ফিরলে নিজেই যায়' },
+];
+
+/**
+ * How it works, in three steps.
+ *
+ * Borrowed shape, not borrowed content: every reference site opens with a
+ * three-step strip because somebody deciding whether to sign up wants to know
+ * what the next ten minutes look like, not what the product is called.
+ */
+export const STEPS: { title: string; body: string }[] = [
+  {
+    title: 'টাকা কোথায় আছে বলুন',
+    body: 'ব্যাংক, বিকাশ-নগদ-রকেট, হাতের নগদ, ক্রেডিট কার্ড — যেখানে যা আছে একবার বসিয়ে দিন। দুই মিনিটের কাজ।',
+  },
+  {
+    title: 'খরচ লিখুন, যেভাবে সহজ',
+    body: 'অ্যাপে টাইপ করুন, অথবা টেলিগ্রামে পাঠান। ব্যাংকের এসএমএস থেকে খসড়া তৈরি হয় — আপনি না বললে খাতায় ওঠে না।',
+  },
+  {
+    title: 'মাস শেষে উত্তর পান',
+    body: 'কোথায় গেল, কার কাছে পাব, কাকে দেব, গত মাসের চেয়ে কত বেশি — রিপোর্ট নিজেই বলে দেয়।',
+  },
+];
+
+export const GROUPS: FeatureGroup[] = [
+  {
+    id: 'ledger',
+    heading: 'খাতা, যেমন হওয়া উচিত',
+    headingEn: 'Double-entry bookkeeping',
+    blurb:
+      'বেশিরভাগ খরচের অ্যাপ একটা তালিকা রাখে। এটা খাতা রাখে — প্রতিটি টাকা কোথা থেকে এল আর কোথায় গেল, দুই দিকই লেখা থাকে।',
+    features: [
+      {
+        title: 'ডাবল-এন্ট্রি লেজার',
+        titleEn: 'Double-entry ledger',
+        body: 'প্রতিটি লেনদেনের ডেবিট আর ক্রেডিট সমান — এটা নিয়ম নয়, ডাটাবেজের শর্ত। অসমান কিছু লেখাই যায় না।',
+        route: '/transactions',
+      },
+      {
+        title: 'অ্যাকাউন্ট ও ব্যালেন্স',
+        titleEn: 'Accounts and balances',
+        body: 'ব্যাংক, মোবাইল ব্যাংকিং, নগদ, ক্রেডিট কার্ড। প্রারম্ভিক জের থেকে আজকের ব্যালেন্স, নিজে থেকেই।',
+        route: '/accounts',
+      },
+      {
+        title: 'ক্যাটাগরি ও সাব-ক্যাটাগরি',
+        titleEn: 'Categories and sub-categories',
+        body: '২১টি খাত আগে থেকেই বসানো, নিচে যত ইচ্ছে সাব-ক্যাটাগরি। রিপোর্টে সাব-ক্যাটাগরি মূল খাতে যোগ হয়।',
+        route: '/categories',
+      },
+      {
+        title: 'ট্যাগ',
+        titleEn: 'Tags',
+        body: 'খাত বলে টাকা কীসে গেল, ট্যাগ বলে কার জন্য — পারিবারিক, ব্যবসা, রমজান। একটি লেনদেনে যতগুলো দরকার।',
+        route: '/tags',
+      },
+      {
+        title: 'ব্যাংক মেলানো',
+        titleEn: 'Reconciliation',
+        body: 'আসল ব্যালেন্স লিখে দিন, পার্থক্যটা সমন্বয় হিসেবে বসে যাবে। খাতা আর ব্যাংক আর আলাদা থাকবে না।',
+        route: '/accounts',
+      },
+    ],
+  },
+  {
+    id: 'loans',
+    heading: 'ধার-দেনা, আন্তর্জাতিক নিয়মে',
+    headingEn: 'Loans and party ledger',
+    blurb:
+      'কার কাছে পাবেন, কাকে দেবেন, কিস্তি কতটা বাকি। QuickBooks বা Zoho যেভাবে রাখে সেভাবেই — ধার আয়ও নয়, খরচও নয়।',
+    features: [
+      {
+        title: 'ধার দেওয়া ও নেওয়া',
+        titleEn: 'Money lent and borrowed',
+        body: 'দুই দিক আলাদা রাখা। ধার নেওয়া টাকা দায়, ধার দেওয়া টাকা সম্পদ — কোনোটাই আয় বা খরচ নয়।',
+        route: '/loans',
+      },
+      {
+        title: 'কিস্তি ও চলমান জের',
+        titleEn: 'Instalments with running balance',
+        body: 'প্রতিটি কিস্তির পর কত বাকি, সুদ আলাদা করে। সুদ শোধের দিনেই থেমে যায়, পরদিন আবার বাড়ে না।',
+        route: '/loans',
+      },
+      {
+        title: 'পার্টি লেজার',
+        titleEn: 'Party ledger',
+        body: 'একজন মানুষের সব ঋণ এক পাতায়, এক চলমান জেরে। ফোন তোলার আগে "আমাদের মধ্যে কত" এক নম্বরে।',
+        route: '/loans',
+      },
+      {
+        title: 'বিবরণী ও এক্সপোর্ট',
+        titleEn: 'Statements and CSV export',
+        body: 'তারিখ ধরে কেটে নিন, CSV নামান — Excel বাংলা ঠিকঠাক পড়বে। ছাপালে কাগজেও পরিষ্কার।',
+        route: '/loans',
+      },
+      {
+        title: 'মানুষজন',
+        titleEn: 'Contacts',
+        body: 'নাম, ফোন, সম্পর্ক ঠিক করুন। একই মানুষ দুবার লেখা হলে মিলিয়ে দিন — হিসাব দুই ভাগে থাকবে না।',
+        route: '/people',
+      },
+    ],
+  },
+  {
+    id: 'planning',
+    heading: 'সঞ্চয়, বীমা, কার্ড',
+    headingEn: 'Savings, insurance, cards',
+    blurb: 'টাকা শুধু আসে-যায় না, জমেও। কবে কত দিতে হবে সেটা মনে রাখার দায়িত্ব সফটওয়্যারের।',
+    features: [
+      {
+        title: 'ডিপিএস ও সঞ্চয় স্কিম',
+        titleEn: 'DPS and savings schemes',
+        body: 'কিস্তি, মেয়াদ, মুনাফা। কত জমেছে আর কত বাকি, প্রতিটি স্কিমের নিজের পাতায়।',
+        route: '/savings',
+      },
+      {
+        title: 'বীমা পলিসি',
+        titleEn: 'Insurance policies',
+        body: 'প্রিমিয়াম কবে, কত, কোনটা বাকি। পলিসি নম্বর আর মেয়াদ এক জায়গায়।',
+        route: '/insurance',
+      },
+      {
+        title: 'ক্রেডিট কার্ডের তাগাদা',
+        titleEn: 'Credit-card due reminders',
+        body: 'বিলের তারিখের আগে টেলিগ্রামে মনে করিয়ে দেয়। টাকা জমা দিলে ওই মাসের তাগাদা নিজেই থেমে যায়।',
+        route: '/settings',
+      },
+    ],
+  },
+  {
+    id: 'insight',
+    heading: 'রিপোর্ট ও খোঁজ',
+    headingEn: 'Reports and search',
+    blurb: 'সংখ্যা জমা করা সহজ, প্রশ্নের উত্তর পাওয়া কঠিন। এই অংশটা উত্তরের জন্য।',
+    features: [
+      {
+        title: 'আয়-ব্যয় ও নগদ প্রবাহ',
+        titleEn: 'Income, expense and cash flow',
+        body: 'মাস ধরে, খাত ধরে, অ্যাকাউন্ট ধরে। গত মাসের সাথে তুলনা এক ক্লিকে।',
+        route: '/reports',
+      },
+      {
+        title: 'স্থিতিপত্র, যেকোনো দিনের',
+        titleEn: 'Balance sheet, as of any date',
+        body: 'আজকের নিট সম্পদ, অথবা গত ৩০ জুনের। দুই তারিখের পার্থক্যও একই পাতায়।',
+        route: '/reports',
+      },
+      {
+        title: 'ট্যাগ ধরে রিপোর্ট',
+        titleEn: 'Reporting by tag',
+        body: 'শুধু পারিবারিক খরচ, শুধু ব্যবসার — যে ট্যাগে লিখেছেন সেই ট্যাগেই হিসাব।',
+        route: '/reports',
+      },
+      {
+        title: 'বাংলা-ইংরেজি-বাংলিশ খোঁজ',
+        titleEn: 'Bangla, English and Banglish search',
+        body: '"karim", "korim" বা "করিম" — তিনটেই একজনকে খুঁজে দেয়। "রিকশা" আর "rickshaw"-ও এক।',
+        route: '/transactions',
+      },
+    ],
+  },
+  {
+    id: 'input',
+    heading: 'লেখার ঝামেলা কম',
+    headingEn: 'Getting data in',
+    blurb: 'হিসাব রাখা বন্ধ হয় লেখার ক্লান্তিতে, আগ্রহের অভাবে নয়।',
+    features: [
+      {
+        title: 'টেলিগ্রাম থেকে এন্ট্রি',
+        titleEn: 'Telegram entry',
+        body: 'বটকে লিখলেই খসড়া তৈরি। বাসে বসে "রিকশা ৬০" — বাড়ি ফিরে এক ট্যাপে খাতায়।',
+        route: '/settings',
+      },
+      {
+        title: 'বার্তার ইনবক্স',
+        titleEn: 'Draft inbox',
+        body: 'যা-ই আসুক, আগে খসড়া হয়ে বসে থাকে। আপনি না বললে কোনো কিছু খাতায় ওঠে না।',
+        route: '/inbox',
+      },
+      {
+        title: 'মেইলবক্স যুক্ত করা',
+        titleEn: 'Mailbox connector',
+        body: 'ব্যাংকের বিবরণী আর লেনদেনের চিঠি অ্যাপ থেকেই পড়ুন। শুধু পড়া — কিছু পাঠায় না, কিছু মোছে না।',
+        route: '/mail',
+      },
+      {
+        title: 'CSV ইমপোর্ট ও ব্যাকআপ',
+        titleEn: 'CSV import and backup',
+        body: 'পুরোনো এক্সেল থেকে লেনদেন আনুন, কলাম মিলিয়ে নিন। পুরো খাতা যেকোনো দিন নামিয়ে রাখুন।',
+        route: '/import',
+      },
+      {
+        title: 'রসিদের ছবি',
+        titleEn: 'Receipt attachments',
+        body: 'লেনদেনের সাথে রসিদ জুড়ে দিন। প্রিমিয়ামে সীমাহীন।',
+        route: '/transactions',
+      },
+    ],
+  },
+  {
+    id: 'trust',
+    heading: 'আপনার তথ্য, আপনার',
+    headingEn: 'Privacy and control',
+    blurb: 'ব্যক্তিগত হিসাব মানে ব্যাংক স্টেটমেন্ট, বেতন, ধারের পরিমাণ। এগুলো নিয়ে ঢিলেমি চলে না।',
+    features: [
+      {
+        title: 'আলাদা ওয়ার্কস্পেস',
+        titleEn: 'Hard tenant isolation',
+        body: 'প্রতিটি অ্যাকাউন্টের তথ্য নিজের ওয়ার্কস্পেসে। প্রতিটি প্রশ্ন ওয়ার্কস্পেস ধরেই করা হয়, ব্যতিক্রম নেই।',
+        route: '/settings',
+      },
+      {
+        title: 'কার্যবিবরণী',
+        titleEn: 'Audit trail',
+        body: 'কে কখন কী বদলেছে, সবটা লেখা থাকে — আপনি নিজেই পড়তে পারবেন।',
+        route: '/audit',
+      },
+      {
+        title: 'সাইন-ইন করা ডিভাইস',
+        titleEn: 'Session control',
+        body: 'কোন ডিভাইস থেকে ঢোকা আছে দেখুন, এক ট্যাপে বের করে দিন।',
+        route: '/settings',
+      },
+      {
+        title: 'রপ্তানি, বাধা ছাড়াই',
+        titleEn: 'Your data, exportable',
+        body: 'পুরো খাতা CSV-তে। কোনো দিন চলে যেতে চাইলে তথ্য আটকে রাখা হবে না।',
+        route: '/import',
+      },
+    ],
+  },
+];
+
+/**
+ * What is not built yet, said plainly.
+ *
+ * A roadmap on a pricing page is a promise, so this list carries only what is
+ * actually being worked towards, and it never appears above the fold. The
+ * honest version sells better than the alternative anyway: somebody who signs
+ * up for a feature that turns out not to exist does not stay.
+ */
+export const COMING: { title: string; body: string }[] = [
+  {
+    title: 'ব্যাংকের এসএমএস নিজে পড়া',
+    body: 'বিকাশ, নগদ, ব্যাংকের বার্তা থেকে সরাসরি খসড়া। কাঠামোটা তৈরি, প্রতিটি ব্যাংকের ছাঁচ বসানো বাকি।',
+  },
+  {
+    title: 'অ্যান্ড্রয়েড ও আইওএস অ্যাপ',
+    body: 'আজই ফোনের ব্রাউজার থেকে হোম স্ক্রিনে বসানো যায় এবং অফলাইনে চলে। স্টোরের অ্যাপ তার পরের ধাপ।',
+  },
+  {
+    title: 'AI দিয়ে মাসিক পর্যালোচনা',
+    body: '"গত মাসে কোথায় বেশি গেল, কী কমানো যায়" — নিজের খাতার উপর, নিজের ভাষায়।',
+  },
+  {
+    title: 'পুনরাবৃত্ত লেনদেন',
+    body: 'ভাড়া, বেতন, কিস্তি — যেগুলো প্রতি মাসে একই, সেগুলো নিজে থেকেই বসবে।',
+  },
+  {
+    title: 'পরিবারের সদস্য',
+    body: 'একই খাতায় একাধিক মানুষ, আলাদা অনুমতি নিয়ে।',
+  },
+  {
+    title: 'রসিদ থেকে লেখা পড়া (OCR)',
+    body: 'রসিদের ছবি তুললেই টাকা আর তারিখ বসে যাবে।',
+  },
+];
+
+/**
+ * The questions a Bangladeshi visitor actually has before signing up.
+ *
+ * Also the page's structured data: these become `FAQPage` JSON-LD, which is
+ * how a search result gets the expandable questions under it. So each answer
+ * has to stand alone — a crawler shows it with no page around it.
+ */
+export const FAQ: { q: string; a: string }[] = [
+  {
+    q: 'হিসাব কি সত্যিই ফ্রি?',
+    a: 'হ্যাঁ। ফ্রি প্যাকেজ আজীবন ফ্রি — কোনো ট্রায়াল নয়, শেষে কার্ড চাওয়া হয় না। দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনাদার-পাওনাদার। শুধু রসিদের ছবি প্রিমিয়ামে।',
+  },
+  {
+    q: 'ডাবল-এন্ট্রি মানে কী, আমার কি এটা লাগবে?',
+    a: 'ডাবল-এন্ট্রি মানে প্রতিটি টাকার দুই দিক লেখা — কোথা থেকে এল আর কোথায় গেল। আপনাকে ডেবিট-ক্রেডিট শিখতে হবে না, পর্দায় সেটা দেখাবেই না। লাভটা হলো, হিসাব কখনো নিজের সাথে অমিল হতে পারে না।',
+  },
+  {
+    q: 'আমার ব্যাংকের তথ্য কি আপনারা দেখতে পান?',
+    a: 'আমরা কোনো ব্যাংকের সাথে যুক্ত নই এবং আপনার ব্যাংকের পাসওয়ার্ড চাই না। আপনি নিজে যা লেখেন বা যে মেইলবক্স নিজে যুক্ত করেন, শুধু সেটুকুই। প্রতিটি ওয়ার্কস্পেসের তথ্য আলাদা, আর কে কখন কী দেখেছে তার পূর্ণ তালিকা রাখা হয়।',
+  },
+  {
+    q: 'নেট না থাকলে চলবে?',
+    a: 'চলবে। ফোনের হোম স্ক্রিনে বসিয়ে নিলে অ্যাপের মতোই খোলে, আর নেট না থাকলে এন্ট্রি জমা থাকে — সংযোগ ফিরলে নিজে থেকেই চলে যায়।',
+  },
+  {
+    q: 'ধার দেওয়া-নেওয়ার টাকা কি আয়-ব্যয়ে যোগ হয়?',
+    a: 'না, কখনো না। ধার নেওয়া টাকা দায়, ধার দেওয়া টাকা সম্পদ — নগদ প্রবাহে দেখাবে, কিন্তু আয় বা খরচে নয়। সুদটাই কেবল আয় বা খরচ। QuickBooks আর Zoho Books একই নিয়ম মানে।',
+  },
+  {
+    q: 'পুরোনো এক্সেলের হিসাব আনা যাবে?',
+    a: 'যাবে। CSV ইমপোর্টে কলাম মিলিয়ে নিন, ভুল হলে পুরো ব্যাচ একসাথে ফিরিয়ে নেওয়া যায়।',
+  },
+  {
+    q: 'টাকা কীভাবে দেব?',
+    a: 'প্রিমিয়াম বছরে ৳১২০০। এই মুহূর্তে অনলাইন পেমেন্ট চালু হয়নি — প্রিমিয়াম নিতে চাইলে যোগাযোগ করুন, আমরা আপনার অ্যাকাউন্টে চালু করে দেব।',
+  },
+];
+
+/** Used by the header, the footer and the sitemap, so they cannot disagree. */
+export const NAV: { href: string; label: string }[] = [
+  { href: '/#features', label: 'ফিচার' },
+  { href: '/pricing', label: 'দাম' },
+  { href: '/#coming', label: 'আসছে' },
+  { href: '/#faq', label: 'প্রশ্ন' },
+];
+
+export const SITE = {
+  name: 'হিসাব',
+  nameEn: 'Hishab — Taka Tracker',
+  url: 'https://takatracker.com',
+  tagline: 'বাংলাদেশের জন্য ডাবল-এন্ট্রি ব্যক্তিগত হিসাবের সফটওয়্যার',
+} as const;

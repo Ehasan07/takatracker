@@ -6,6 +6,7 @@ import {
   signup,
   uniqueEmail,
   type TestContext,
+  unlimit,
 } from './harness';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -146,6 +147,8 @@ describe('audit log', () => {
 
   it('is newest first and pages with a cursor', async () => {
     const user = await signup(ctx);
+    // Three rows to page through; the free plan sells two accounts.
+    await unlimit(ctx, user.workspaceId);
     for (const name of ['ক', 'খ', 'গ']) {
       await ctx
         .http()

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auth, createTestApp, resetDatabase, signup, type TestContext } from './harness';
+import { auth, createTestApp, resetDatabase, signup, type TestContext, unlimit } from './harness';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -129,6 +129,8 @@ describe('categories', () => {
 
   it('accepts asset and liability accounts', async () => {
     const user = await signup(ctx);
+    // One account per type; the free plan sells two in total.
+    await unlimit(ctx, user.workspaceId);
     for (const type of ['ASSET', 'LIABILITY', 'RECEIVABLE', 'PAYABLE']) {
       await ctx
         .http()

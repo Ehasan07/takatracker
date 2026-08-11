@@ -25,7 +25,7 @@ const asRows = (code: string): PlanFeatureRow[] =>
   }));
 
 const FREE = resolveEntitlements(asRows('FREE'));
-const PRO = resolveEntitlements(asRows('PRO'));
+const PREMIUM = resolveEntitlements(asRows('PREMIUM'));
 
 describe('plan catalogue', () => {
   it('defines every feature key on every plan', () => {
@@ -108,42 +108,42 @@ describe('meter period keys', () => {
 
 describe('limits', () => {
   it('reads a numeric ceiling', () => {
-    expect(limitFor(FREE, 'accounts.max')).toBe(5);
+    expect(limitFor(FREE, 'accounts.max')).toBe(2);
   });
 
   it('treats null as unlimited', () => {
-    expect(limitFor(PRO, 'accounts.max')).toBeNull();
-    expect(remaining(PRO, 'accounts.max', 9999)).toBe(Infinity);
-    expect(isWithinLimit(PRO, 'accounts.max', 9999)).toBe(true);
+    expect(limitFor(PREMIUM, 'accounts.max')).toBeNull();
+    expect(remaining(PREMIUM, 'accounts.max', 9999)).toBe(Infinity);
+    expect(isWithinLimit(PREMIUM, 'accounts.max', 9999)).toBe(true);
   });
 
   it('counts headroom and never goes negative', () => {
-    expect(remaining(FREE, 'accounts.max', 2)).toBe(3);
-    expect(remaining(FREE, 'accounts.max', 5)).toBe(0);
+    expect(remaining(FREE, 'accounts.max', 1)).toBe(1);
+    expect(remaining(FREE, 'accounts.max', 2)).toBe(0);
     expect(remaining(FREE, 'accounts.max', 99)).toBe(0);
   });
 
   it('allows the last unit and refuses the one after it', () => {
-    expect(isWithinLimit(FREE, 'accounts.max', 4)).toBe(true);
-    expect(isWithinLimit(FREE, 'accounts.max', 5)).toBe(false);
+    expect(isWithinLimit(FREE, 'accounts.max', 1)).toBe(true);
+    expect(isWithinLimit(FREE, 'accounts.max', 2)).toBe(false);
   });
 
   it('honours a requested batch size', () => {
-    expect(isWithinLimit(FREE, 'accounts.max', 3, 2)).toBe(true);
-    expect(isWithinLimit(FREE, 'accounts.max', 3, 3)).toBe(false);
+    expect(isWithinLimit(FREE, 'accounts.max', 0, 2)).toBe(true);
+    expect(isWithinLimit(FREE, 'accounts.max', 0, 3)).toBe(false);
   });
 });
 
 describe('flags', () => {
   it('is off at zero and on otherwise', () => {
     expect(can(FREE, 'export.enabled')).toBe(false);
-    expect(can(PRO, 'export.enabled')).toBe(true);
+    expect(can(PREMIUM, 'export.enabled')).toBe(true);
   });
 
   it('treats a zero limit as the feature being switched off', () => {
     // "0 mailbox connections" is a different statement from "unlimited".
     expect(can(FREE, 'email.connections.max')).toBe(false);
-    expect(can(PRO, 'email.connections.max')).toBe(true);
+    expect(can(PREMIUM, 'email.connections.max')).toBe(true);
   });
 });
 
@@ -161,7 +161,7 @@ describe('overrides', () => {
 
   it('can grant an owner-only feature the plans never include', () => {
     const e = resolveEntitlements(
-      asRows('PRO'),
+      asRows('PREMIUM'),
       [{ featureKey: 'sms.channel', limitValue: 1 }],
       now,
     );
@@ -174,7 +174,7 @@ describe('overrides', () => {
       [{ featureKey: 'accounts.max', limitValue: 50, expiresAt: new Date('2026-08-07T00:00:00Z') }],
       now,
     );
-    expect(limitFor(expired, 'accounts.max')).toBe(5);
+    expect(limitFor(expired, 'accounts.max')).toBe(2);
 
     const live = resolveEntitlements(
       asRows('FREE'),
@@ -198,7 +198,7 @@ describe('overrides', () => {
       { featureKey: 'custom.widgets.max', limitValue: 7 },
     ]);
     expect(limitFor(e, 'custom.widgets.max')).toBe(7);
-    expect(limitFor(e, 'accounts.max')).toBe(5);
+    expect(limitFor(e, 'accounts.max')).toBe(2);
   });
 
   it('reaches the client, so a runtime feature can be rendered', () => {
@@ -229,30 +229,30 @@ describe('a feature nobody has sold you', () => {
 describe('fallback', () => {
   it('gives a workspace with no plan the free tier, not everything', () => {
     const none = resolveEntitlements([]);
-    expect(limitFor(none, 'accounts.max')).toBe(5);
+    expect(limitFor(none, 'accounts.max')).toBe(2);
     expect(can(none, 'export.enabled')).toBe(false);
   });
 });
 
 describe('breach payload', () => {
   it('carries the key, the limit and the usage', () => {
-    expect(describeBreach(FREE, 'accounts.max', 5)).toEqual({
+    expect(describeBreach(FREE, 'accounts.max', 2)).toEqual({
       featureKey: 'accounts.max',
       label: 'অ্যাকাউন্ট',
-      limit: 5,
-      used: 5,
+      limit: 2,
+      used: 2,
     });
   });
 
   it('is null when the feature is unlimited', () => {
-    expect(describeBreach(PRO, 'accounts.max', 9999)).toBeNull();
+    expect(describeBreach(PREMIUM, 'accounts.max', 9999)).toBeNull();
   });
 });
 
 describe('serialisation', () => {
   it('round-trips through JSON for the client', () => {
     const json = entitlementsToJson(FREE);
-    expect(json['accounts.max']).toBe(5);
+    expect(json['accounts.max']).toBe(2);
     const back = entitlementsFromJson(json);
     for (const key of FEATURE_KEYS) expect(limitFor(back, key)).toBe(limitFor(FREE, key));
   });

@@ -4,8 +4,19 @@ import { Providers } from '@/components/providers';
 import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar';
 
 export const metadata: Metadata = {
-  title: 'হিসাব — Taka Tracker',
-  description: 'আয়, খরচ, ধার-দেনা ও সঞ্চয়ের ব্যক্তিগত হিসাব। বাংলাদেশের জন্য তৈরি।',
+  /* Absolute URLs for canonical, Open Graph and the sitemap all resolve
+   * against this. Without it Next emits relative `og:url` values, which most
+   * scrapers — Facebook and WhatsApp among them, the two that matter most in
+   * Bangladesh — refuse to follow, so a shared link renders as a bare URL. */
+  metadataBase: new URL('https://takatracker.com'),
+  title: {
+    default: 'হিসাব — বাংলাদেশের ব্যক্তিগত হিসাবের সফটওয়্যার',
+    /* Public pages set their own full title; app screens inherit the suffix, so
+     * a browser tab or a shared link always says which product it is. */
+    template: '%s · হিসাব',
+  },
+  description:
+    'আয়, খরচ, ধার-দেনা, সঞ্চয় ও বীমার ব্যক্তিগত হিসাব — সম্পূর্ণ বাংলায়, ডাবল-এন্ট্রি হিসাবরক্ষণের উপর তৈরি। A double-entry personal finance app for Bangladesh.',
   applicationName: 'হিসাব',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'হিসাব' },

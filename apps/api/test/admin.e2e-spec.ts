@@ -261,22 +261,22 @@ describe('super admin', () => {
       .http()
       .post(`/v1/admin/tenants/${tenant.workspaceId}/plan`)
       .set(auth(op))
-      .send({ planCode: 'PRO', note: 'ছয় মাসের চুক্তি' })
+      .send({ planCode: 'PREMIUM', note: 'ছয় মাসের চুক্তি' })
       .expect(200);
     expect(assigned.body.previousPlanCode).toBe('FREE');
-    expect(assigned.body.plan.code).toBe('PRO');
+    expect(assigned.body.plan.code).toBe('PREMIUM');
 
     // The tenant's own entitlements move on their very next request.
     const theirs = await ctx.http().get('/v1/entitlements').set(auth(tenant)).expect(200);
-    expect(theirs.body.plan.code).toBe('PRO');
-    expect(theirs.body.entitlements['accounts.max']).toBeNull(); // PRO is unlimited
+    expect(theirs.body.plan.code).toBe('PREMIUM');
+    expect(theirs.body.entitlements['accounts.max']).toBeNull(); // PREMIUM is unlimited
 
     // A no-op assignment is a mistake worth naming, not a silent success.
     await ctx
       .http()
       .post(`/v1/admin/tenants/${tenant.workspaceId}/plan`)
       .set(auth(op))
-      .send({ planCode: 'PRO' })
+      .send({ planCode: 'PREMIUM' })
       .expect(400);
 
     await ctx
@@ -343,7 +343,7 @@ describe('super admin', () => {
       .send({ action: 'clear', note: 'মাইগ্রেশন শেষ' })
       .expect(200);
     expect(cleared.body.override).toBeNull();
-    expect(cleared.body.effectiveLimit).toBe(5); // back to FREE's five
+    expect(cleared.body.effectiveLimit).toBe(2); // back to FREE's two
 
     // Clearing what is not there is a 404, not a cheerful no-op.
     await ctx

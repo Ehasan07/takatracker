@@ -45,11 +45,14 @@ describe('entitlements', () => {
     const res = await ctx.http().get('/v1/entitlements').set(auth(user)).expect(200);
 
     expect(res.body.plan.code).toBe('FREE');
-    expect(res.body.entitlements['accounts.max']).toBe(5);
+    expect(res.body.entitlements['accounts.max']).toBe(2);
     expect(res.body.entitlements['export.enabled']).toBe(0);
+    /* Unlimited, and deliberately so: a ledger that stops accepting entries
+       mid-month is not a ledger. The free tier limits capacity, never writing. */
+    expect(res.body.entitlements['transactions.monthly.max']).toBeNull();
     // Three system accounts exist but are hidden, and must not eat the quota.
     expect(res.body.usage['accounts.max']).toBe(0);
-    expect(res.body.remaining['accounts.max']).toBe(5);
+    expect(res.body.remaining['accounts.max']).toBe(2);
   });
 
   it('publishes the plan comparison from the same definition it enforces', async () => {
@@ -57,7 +60,7 @@ describe('entitlements', () => {
     const res = await ctx.http().get('/v1/entitlements/plans').set(auth(user)).expect(200);
     const codes = res.body.map((p: { code: string }) => p.code);
     expect(codes).toContain('FREE');
-    expect(codes).toContain('PRO');
+    expect(codes).toContain('PREMIUM');
 
     /* v3 §B2: no public plan may ever unlock the SMS channel.
      *
@@ -124,27 +127,27 @@ describe('entitlements', () => {
       return res.body.entitlements['accounts.max'];
     };
 
-    expect(await limitNow()).toBe(5); // the FREE plan
+    expect(await limitNow()).toBe(2); // the FREE plan
 
     await setLimit(ctx, user.workspaceId, 'accounts.max', 20, new Date(Date.now() + 3_600_000));
     expect(await limitNow()).toBe(20);
 
     // An expired grant lapses on its own — no job has to clean it up.
     await setLimit(ctx, user.workspaceId, 'accounts.max', 20, new Date(Date.now() - 1_000));
-    expect(await limitNow()).toBe(5);
+    expect(await limitNow()).toBe(2);
   });
 
   it('enforces the plan ceiling once an override lapses', async () => {
     const user = await signup(ctx);
-    await setLimit(ctx, user.workspaceId, 'accounts.max', 2, new Date(Date.now() - 1_000));
+    await setLimit(ctx, user.workspaceId, 'accounts.max', 9, new Date(Date.now() - 1_000));
     await setLimit(ctx, user.workspaceId, 'accounts.max', 1, new Date(Date.now() - 1_000));
 
-    // Back on FREE's five, so five succeed and the sixth does not.
-    for (const name of ['ক', 'খ', 'গ', 'ঘ', 'ঙ']) {
+    // Back on FREE's two, so two succeed and the third does not.
+    for (const name of ['ক', 'খ']) {
       await addAccount(ctx, user, name).expect(201);
     }
-    const blocked = await addAccount(ctx, user, 'চ').expect(402);
-    expect(blocked.body.limit).toBe(5);
+    const blocked = await addAccount(ctx, user, 'গ').expect(402);
+    expect(blocked.body.limit).toBe(2);
   });
 
   it('meters transactions by the month and still allows edits at the ceiling', async () => {
@@ -204,7 +207,9 @@ describe('entitlements', () => {
         .set('content-type', 'application/octet-stream')
         .send(png);
 
-    // Free plan grants 50 MB, so this one lands.
+    /* The free plan sells no storage at all now, so the allowed case has to be
+       granted first — which is the same shape as a premium workspace. */
+    await setLimit(ctx, user.workspaceId, 'attachments.storage.mb', 50);
     await upload().expect(201);
 
     /* A package that says "no attachments" has to mean it. This ceiling was
@@ -219,6 +224,19 @@ describe('entitlements', () => {
     await upload().expect(201);
   });
 
+  it('lets a visitor with no account read the prices', async () => {
+    /* No `.set(auth(...))`. The pricing page is read by people who have not
+       signed up yet — that is the whole point of it — and the comparison was
+       documented as public while sitting behind a class-level guard. */
+    const res = await ctx.http().get('/v1/entitlements/plans').expect(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body.every((p: { code: string }) => typeof p.code === 'string')).toBe(true);
+
+    await ctx.http().get('/v1/entitlements/features').expect(200);
+    // The one that is genuinely about a workspace still needs a session.
+    await ctx.http().get('/v1/entitlements').expect(401);
+  });
+
   it('keeps limits per workspace', async () => {
     const restricted = await signup(ctx);
     const roomy = await signup(ctx);
@@ -228,6 +246,7 @@ describe('entitlements', () => {
     await addAccount(ctx, restricted, 'ব্যাংক').expect(402);
 
     // The neighbour is untouched by someone else's downgrade.
+    await setLimit(ctx, roomy.workspaceId, 'accounts.max', null);
     for (const name of ['নগদ', 'ব্যাংক', 'বিকাশ']) {
       await addAccount(ctx, roomy, name).expect(201);
     }

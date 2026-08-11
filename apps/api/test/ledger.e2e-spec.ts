@@ -4,6 +4,7 @@ import {
   createTestApp,
   resetDatabase,
   signup,
+  unlimit,
   type SignedUpUser,
   type TestContext,
 } from './harness';
@@ -309,6 +310,9 @@ describe('ledger', () => {
   });
 
   it('links a receipt to a transaction and hands the ids back', async () => {
+    /* Receipts are what the free plan withholds, so this suite grants itself
+       the storage a premium workspace has and goes back to testing the link. */
+    await unlimit(ctx, user.workspaceId, 'attachments.storage.mb');
     /* The smallest valid PNG. `file-type.ts` sniffs the magic bytes rather than
        trusting the declared Content-Type, so a plausible header is required. */
     const png = Buffer.from(
