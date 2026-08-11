@@ -65,6 +65,7 @@ export class AuthService {
           phone: input.phone,
           passwordHash,
           locale: input.locale,
+          device: input.device ?? null,
           notifyTimezone: input.timezone,
         },
       });
@@ -384,6 +385,7 @@ export class AuthService {
         name: true,
         phone: true,
         locale: true,
+        device: true,
         notifyTimezone: true,
         // null while unproven. Nothing gates on it — see AccountService — but
         // the client needs it to show the verification nag.

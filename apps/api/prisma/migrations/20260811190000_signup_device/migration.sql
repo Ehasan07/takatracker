@@ -1,0 +1,11 @@
+-- Which kind of device somebody signed up on.
+--
+-- Kept because "add to home screen" is three different sets of instructions and
+-- the wrong one is worse than none: iOS hides it behind Share, Android behind
+-- the overflow menu, and a desktop browser behind an icon in the address bar.
+-- Asking once, at signup, means the guide can open on the right page and the
+-- reminder to install can be phrased in the words that device actually uses.
+--
+-- Nullable: every account that already exists was never asked, and guessing
+-- retroactively would be a fabricated answer to a question about a person.
+ALTER TABLE "User" ADD COLUMN "device" TEXT;

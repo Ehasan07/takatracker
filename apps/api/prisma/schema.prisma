@@ -27,6 +27,8 @@ model User {
   name         String
   /// Display language. Currency and the ledger day belong to the workspace.
   locale       String   @default("bn")
+  /// IOS | ANDROID | DESKTOP, as answered at signup. Null for older accounts.
+  device       String?
   /// When to deliver reminders to this person, which need not match the
   /// workspace's accounting timezone.
   notifyTimezone String @default("Asia/Dhaka")

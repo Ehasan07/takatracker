@@ -18,6 +18,7 @@ const PUBLIC_PATHS = [
    * to it below for anybody without a session, and both canonicalise to `/`. */
   '/home',
   '/pricing',
+  '/guide',
 ];
 
 /**

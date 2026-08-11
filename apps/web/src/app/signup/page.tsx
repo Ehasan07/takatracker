@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
-import { CURRENCIES, DEFAULT_CURRENCY, currencyLabel, type Locale } from '@hishab/shared';
+import {
+  CURRENCIES,
+  DEFAULT_CURRENCY,
+  currencyLabel,
+  type DeviceKind,
+  type Locale,
+} from '@hishab/shared';
+import { guessDevice } from '@/app/(marketing)/guide/device-guide';
 import { api, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
@@ -15,6 +22,15 @@ export default function SignupPage() {
   const [password, setPassword] = React.useState('');
   const [locale, setLocale] = React.useState<Locale>('bn');
   const [currency, setCurrency] = React.useState(DEFAULT_CURRENCY);
+  /* Guessed, shown, and changeable — not detected and hidden. The user agent is
+     a string a browser may lie about, and the answer decides which set of
+     "add to home screen" instructions this person is shown for the rest of
+     their account's life. Getting it wrong silently would be worse than
+     asking. */
+  const [device, setDevice] = React.useState<DeviceKind>('ANDROID');
+  React.useEffect(() => {
+    setDevice(guessDevice(navigator.userAgent, navigator.maxTouchPoints ?? 0));
+  }, []);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
 
@@ -32,7 +48,7 @@ export default function SignupPage() {
     try {
       await api('/auth/signup', {
         method: 'POST',
-        body: { name, email, password, locale, currency },
+        body: { name, email, password, locale, currency, device },
       });
       router.push('/');
       router.refresh();
@@ -108,6 +124,30 @@ export default function SignupPage() {
             {locale === 'en'
               ? 'Your books are kept in this currency. It cannot be changed once you have entries.'
               : 'আপনার খাতা এই কারেন্সিতেই থাকবে। এন্ট্রি বসানোর পর এটি আর বদলানো যাবে না।'}
+          </p>
+        </Field>
+
+        <Field
+          label={locale === 'en' ? 'Your device' : 'কোন ডিভাইস ব্যবহার করছেন'}
+          htmlFor="device"
+        >
+          <Select
+            id="device"
+            name="device"
+            value={device}
+            onChange={(e) => setDevice(e.target.value as DeviceKind)}
+          >
+            <option value="ANDROID">অ্যান্ড্রয়েড ফোন</option>
+            <option value="IOS">আইফোন / আইপ্যাড</option>
+            <option value="DESKTOP">কম্পিউটার</option>
+          </Select>
+          <p className="text-ink-muted mt-1 text-xs">
+            {locale === 'en'
+              ? 'So we can show you the right steps to put the app on your home screen.'
+              : 'হোম স্ক্রিনে অ্যাপটি বসানোর সঠিক ধাপগুলো দেখানোর জন্য।'}{' '}
+            <Link href="/guide" className="text-income underline">
+              {locale === 'en' ? 'See the guide' : 'নির্দেশনা দেখুন'}
+            </Link>
           </p>
         </Field>
 

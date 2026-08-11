@@ -3,6 +3,7 @@ import { DEFAULT_CURRENCY, isSupportedCurrency } from './currency.js';
 import {
   ACCOUNT_TYPES,
   CATEGORY_KINDS,
+  DEVICE_KINDS,
   ENTRY_DIRECTIONS,
   LOCALES,
   TRANSACTION_SOURCES,
@@ -43,6 +44,8 @@ export const signupSchema = z.object({
     .toUpperCase()
     .refine(isSupportedCurrency, 'এই কারেন্সিটি সমর্থিত নয়')
     .default(DEFAULT_CURRENCY),
+  /** Which "add to home screen" instructions this person will need. */
+  device: z.enum(DEVICE_KINDS).optional(),
   timezone: z.string().default('Asia/Dhaka'),
 });
 export type SignupInput = z.infer<typeof signupSchema>;

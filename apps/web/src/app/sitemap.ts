@@ -22,6 +22,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
        remember. */
     { url: SITE.url, lastModified, changeFrequency: 'weekly', priority: 1 },
     { url: `${SITE.url}/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
+    { url: `${SITE.url}/guide`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${SITE.url}/signup`, lastModified, changeFrequency: 'yearly', priority: 0.6 },
     { url: `${SITE.url}/login`, lastModified, changeFrequency: 'yearly', priority: 0.4 },
   ];

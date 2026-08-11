@@ -47,6 +47,17 @@ export type EntryDirection = (typeof ENTRY_DIRECTIONS)[number];
 export const CATEGORY_KINDS = ['INCOME', 'EXPENSE'] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
 
+/**
+ * What somebody signed up on.
+ *
+ * Three values rather than a user-agent string, because the only thing this is
+ * for is choosing which set of "add to home screen" instructions to show, and
+ * those come in exactly three shapes. A parsed user-agent would be more precise
+ * and less useful.
+ */
+export const DEVICE_KINDS = ['IOS', 'ANDROID', 'DESKTOP'] as const;
+export type DeviceKind = (typeof DEVICE_KINDS)[number];
+
 export const LOCALES = ['bn', 'en'] as const;
 export type Locale = (typeof LOCALES)[number];
 

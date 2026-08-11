@@ -127,8 +127,57 @@ test.describe('the public site', () => {
     await expect(page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' })).toBeVisible();
   });
 
+  test('the install guide carries all three devices in the HTML', async ({ page }) => {
+    await page.goto('/guide');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ফোনে বসাবেন');
+
+    /* Every device's steps are server-rendered; the tabs only choose which is
+       on top. A crawler and a reader whose JavaScript has not arrived both get
+       the whole thing — and the iOS caveat matters, because on an iPhone only
+       Safari can do this and somebody in Chrome will look for a button that is
+       not there. */
+    const html = await page.content();
+    expect(html).toContain('Add to Home Screen');
+    expect(html).toContain('শুধু Safari থেকেই');
+    expect(html).toContain('Install app');
+    expect(html).toContain('"@type":"HowTo"');
+
+    // Switching device switches the steps.
+    await page.getByRole('tab', { name: 'আইফোন / আইপ্যাড' }).click();
+    await expect(page.getByRole('tab', { name: 'আইফোন / আইপ্যাড' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    /* Scoped to the visible list. The same sentences also sit in an `sr-only`
+       block so a crawler gets every device's steps whatever the tabs show, and
+       an unscoped match finds both. */
+    await expect(
+      page.getByRole('list', { name: /আইফোন/ }).getByText('নিচের শেয়ার বোতামে চাপ দিন'),
+    ).toBeVisible();
+
+    await page.getByRole('tab', { name: 'কম্পিউটার' }).click();
+    await expect(page.getByText('Firefox আর Safari ডেস্কটপে').first()).toBeVisible();
+  });
+
+  test('signup asks which phone, and the answer sticks', async ({ page }) => {
+    await page.goto('/signup');
+    await page.getByLabel('নাম').fill('ডিভাইস পরীক্ষা');
+    await page.getByLabel('ইমেইল').fill(uniqueEmail());
+    await page.getByLabel('কোন ডিভাইস ব্যবহার করছেন').selectOption('IOS');
+    await page.getByLabel('কারেন্সি').selectOption('USD');
+    await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+    await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
+    await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // The currency chosen at signup is the one the books are kept in, so the
+    // dashboard's figures carry its symbol rather than a hardcoded ৳.
+    await expect(page.getByText('$', { exact: false }).first()).toBeVisible();
+  });
+
   test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
-    for (const path of ['/', '/pricing']) {
+    for (const path of ['/', '/pricing', '/guide']) {
       await page.goto(path);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
