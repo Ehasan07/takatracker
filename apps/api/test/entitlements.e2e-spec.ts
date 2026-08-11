@@ -186,6 +186,39 @@ describe('entitlements', () => {
     await ctx.http().post(`/v1/transactions/${first.body.id}/restore`).set(auth(user)).expect(201);
   });
 
+  it('refuses an upload when the plan grants no storage, and allows it when it does', async () => {
+    const user = await signup(ctx);
+    /* The smallest valid PNG. `file-type.ts` sniffs the magic bytes rather than
+       trusting a declared Content-Type. */
+    const png = Buffer.from(
+      '89504e470d0a1a0a0000000d4948445200000001000000010806000000' +
+        '1f15c4890000000a49444154789c630001000005000' +
+        '10d0a2db40000000049454e44ae426082',
+      'hex',
+    );
+    const upload = () =>
+      ctx
+        .http()
+        .post('/v1/attachments?filename=receipt.png')
+        .set(auth(user))
+        .set('content-type', 'application/octet-stream')
+        .send(png);
+
+    // Free plan grants 50 MB, so this one lands.
+    await upload().expect(201);
+
+    /* A package that says "no attachments" has to mean it. This ceiling was
+       measured, reported on the admin screen and priced into every plan, and
+       never once checked — a workspace on zero could upload all day. */
+    await setLimit(ctx, user.workspaceId, 'attachments.storage.mb', 0);
+    const refused = await upload().expect(402);
+    expect(refused.body.message).toContain('সংযুক্তি স্টোরেজ');
+
+    // And the refusal lifts the moment the plan does.
+    await setLimit(ctx, user.workspaceId, 'attachments.storage.mb', 50);
+    await upload().expect(201);
+  });
+
   it('keeps limits per workspace', async () => {
     const restricted = await signup(ctx);
     const roomy = await signup(ctx);

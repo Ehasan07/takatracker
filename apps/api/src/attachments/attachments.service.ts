@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { toBengaliDigits } from '@hishab/shared';
 import { AuditService } from '../audit/audit.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
 import { AttachmentStorage, UnsafeStoragePathError } from './attachment-storage';
@@ -109,6 +110,9 @@ export interface AttachmentDownload {
   stream: ReadStream;
 }
 
+/** Matches `EntitlementsService`, which reports the usage this is checked against. */
+const BYTES_PER_MB = 1_048_576;
+
 export interface UploadAttachmentInput {
   /** Already stripped of anything path-like by the controller. May be empty. */
   filename: string;
@@ -123,6 +127,7 @@ export class AttachmentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly storage: AttachmentStorage,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   // --- writes ------------------------------------------------------------------
@@ -131,6 +136,26 @@ export class AttachmentsService {
     const { bytes } = input;
 
     if (bytes.length === 0) throw new BadRequestException(EMPTY_FILE_MESSAGE);
+    /* The plan's storage ceiling, enforced here because here is the only place
+     * bytes reach the disk.
+     *
+     * It was measured and reported and never *checked*: `attachments.storage.mb`
+     * had a usage number, a column on every plan and a row on the admin screen,
+     * and a workspace whose plan set it to zero could still upload all day. A
+     * package that says "no attachments" has to mean it, and a paid tier that
+     * sells 500 MB is not selling anything if the free one has no ceiling
+     * either.
+     *
+     * Rounded **up**, so a 200 KB receipt costs 1 MB against the allowance
+     * rather than nothing: rounding down would let a plan with a 5 MB ceiling
+     * take an unbounded number of small files, which is the same hole with a
+     * longer fuse. A zero ceiling therefore refuses the first byte. */
+    await this.entitlements.assertWithinLimit(
+      ctx.workspaceId,
+      'attachments.storage.mb',
+      ctx.timezone,
+      Math.ceil(bytes.length / BYTES_PER_MB),
+    );
     /* The controller already refused anything larger while it was arriving.
      * Repeated here because the service must not depend on its caller having
      * done so — this is the only place that decides what lands on disk. */
