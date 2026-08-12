@@ -103,6 +103,8 @@ export class MailService {
     to: string;
     name: string;
     token: string;
+    /** Six digits, for somebody who would rather type than leave the app. */
+    code: string;
     expiresInHours: number;
   }): Promise<MailSendResult> {
     return this.send(
@@ -112,6 +114,7 @@ export class MailService {
         // The token rides in the query string of a web route, never in a path
         // segment — proxies and analytics log paths far more eagerly.
         url: `${APP_URL}${VERIFY_PATH}?token=${encodeURIComponent(params.token)}`,
+        code: params.code,
         expiresInHours: params.expiresInHours,
       }),
     );

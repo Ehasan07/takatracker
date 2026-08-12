@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { formatLedgerDate, fromLocalDateString } from '@hishab/shared';
 import { useGreeting } from '@/components/account-menu';
 import { FirstRunCard } from '@/components/first-run-card';
+import { VerifyEmailCard } from '@/components/verify-email-card';
 import { Money } from '@/components/money';
 import { SkeletonCard } from '@/components/skeleton';
 import { endpoints } from '@/lib/api';
@@ -50,6 +51,10 @@ export default function DashboardPage() {
         <p className="text-ink-muted text-sm">{formatLedgerDate(new Date())}</p>
       </header>
 
+      {/* Above first run: proving the address is what makes a password reset
+          reach anybody, so it is the one thing worth doing before setting up
+          accounts. Both cards render nothing when they have nothing to say. */}
+      <VerifyEmailCard />
       <FirstRunCard />
 
       {/* Single column on phones, two up from tablet */}

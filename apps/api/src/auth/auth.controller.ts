@@ -40,6 +40,11 @@ const resetPasswordSchema = z.object({
   password: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
 });
 /** `currentPassword` is only ever compared, never stored, so it is not bounded by policy. */
+/* Digits only, and generous about the shape. People paste "042 931" out of the
+ * email and type dashes; the service strips everything that is not a digit, so
+ * the schema only has to keep the field a short string. */
+const verifyCodeSchema = z.object({ code: z.string().min(4).max(16) });
+
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(200),
   newPassword: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
@@ -202,6 +207,33 @@ export class AuthController {
     @Req() req: Request,
   ) {
     return this.account.confirmVerification(body.token, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
+  }
+
+  /**
+   * `POST /v1/auth/verify/code` — the six digits from the email.
+   *
+   * Session-authenticated, unlike the link. A code is typed by somebody already
+   * looking at the app, so there is no cross-device case to serve — and
+   * requiring the session means an attacker needs the account as well as the
+   * digits, rather than the digits alone.
+   *
+   * Throttled harder than the link path, and the per-token attempt cap in
+   * `EmailTokenService.checkCode` is the other half: the throttle bounds the
+   * rate, the cap bounds the total, and six digits needs both.
+   */
+  @Post('verify/code')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @Throttle(rate(10))
+  confirmVerificationCode(
+    @CurrentUser() user: AuthUser,
+    @Body(zodPipe(verifyCodeSchema)) body: z.infer<typeof verifyCodeSchema>,
+    @Req() req: Request,
+  ) {
+    return this.account.confirmVerificationCode(user.id, body.code, {
       ip: req.ip,
       userAgent: req.header('user-agent') ?? undefined,
     });

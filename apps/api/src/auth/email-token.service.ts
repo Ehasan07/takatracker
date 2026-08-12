@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { EmailTokenPurpose } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,11 +35,41 @@ const TTL_BY_PURPOSE: Record<EmailTokenPurpose, number> = {
   RESET_PASSWORD: RESET_TTL_MS,
 };
 
+/**
+ * How long the six-digit code is good for, separately from the link.
+ *
+ * The link keeps its 24 hours because it is opened from an email client,
+ * sometimes on another device and sometimes the next morning. A code is typed
+ * by somebody who is already looking at the app, so a short window costs them
+ * nothing and shrinks the guessing window a great deal.
+ */
+export const CODE_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * Wrong guesses before a code is burnt.
+ *
+ * Six digits is a million values — plenty against a person, not much against a
+ * script. The throttle on the route bounds the rate; this bounds the total, and
+ * it is the one that makes a short numeric code safe to offer at all. Five is
+ * enough for a mistyped digit twice over.
+ */
+export const MAX_CODE_ATTEMPTS = 5;
+
 export interface IssuedToken {
   /** The only time the plaintext exists. It goes into an email and is dropped. */
   token: string;
+  /** Six digits, for somebody who would rather type than leave the app. */
+  code: string;
   expiresAt: Date;
 }
+
+export type CodeCheck =
+  | { status: 'OK'; id: string; userId: string }
+  | { status: 'NO_CODE' }
+  | { status: 'EXPIRED' }
+  | { status: 'USED' }
+  | { status: 'LOCKED' }
+  | { status: 'WRONG'; attemptsLeft: number };
 
 export type TokenLookup =
   | { status: 'UNKNOWN' }
@@ -55,6 +85,60 @@ export class EmailTokenService {
     return createHash('sha256').update(token).digest('hex');
   }
 
+  /**
+   * Six digits, uniformly.
+   *
+   * `randomInt` rather than `Math.random()`: this is the whole secret for the
+   * code path, and `Math.random()` is a PRNG whose output is predictable from
+   * a few samples. Leading zeros are kept — "042931" is a valid code and
+   * dropping the zero would both shrink the space and confuse the typist.
+   */
+  static sixDigits(): string {
+    return String(randomInt(0, 1_000_000)).padStart(6, '0');
+  }
+
+  /**
+   * Check a typed code against the newest outstanding one for this user.
+   *
+   * Looked up by user and purpose rather than by hash, because six digits
+   * collide across accounts and a hash lookup would occasionally hand back
+   * somebody else's row. The comparison is constant-time all the same: an
+   * attacker who could time it would learn the code a digit at a time.
+   *
+   * A wrong guess is counted. At `MAX_CODE_ATTEMPTS` the row is burnt rather
+   * than merely refused — leaving it alive would let the counter be dodged by
+   * asking for a new code and going back to the old one.
+   */
+  async checkCode(userId: string, purpose: EmailTokenPurpose, code: string): Promise<CodeCheck> {
+    const row = await this.prisma.emailToken.findFirst({
+      where: { userId, purpose },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!row?.codeHash) return { status: 'NO_CODE' };
+    if (row.usedAt) return { status: 'USED' };
+    if (row.attempts >= MAX_CODE_ATTEMPTS) return { status: 'LOCKED' };
+    /* Two clocks: the row's own expiry, and the shorter one the code lives
+     * under. The link may still be good long after the digits have stopped
+     * being. */
+    if (row.expiresAt.getTime() <= Date.now()) return { status: 'EXPIRED' };
+    if (row.createdAt.getTime() + CODE_TTL_MS <= Date.now()) return { status: 'EXPIRED' };
+
+    const given = Buffer.from(EmailTokenService.hash(code.trim()));
+    const known = Buffer.from(row.codeHash);
+    const ok = given.length === known.length && timingSafeEqual(given, known);
+
+    if (!ok) {
+      const updated = await this.prisma.emailToken.update({
+        where: { id: row.id },
+        data: { attempts: { increment: 1 } },
+        select: { attempts: true },
+      });
+      return { status: 'WRONG', attemptsLeft: Math.max(0, MAX_CODE_ATTEMPTS - updated.attempts) };
+    }
+
+    return { status: 'OK', id: row.id, userId: row.userId };
+  }
+
   static ttlFor(purpose: EmailTokenPurpose): number {
     return TTL_BY_PURPOSE[purpose];
   }
@@ -65,6 +149,7 @@ export class EmailTokenService {
     requestIp?: string | null,
   ): Promise<IssuedToken> {
     const token = randomBytes(32).toString('base64url');
+    const code = EmailTokenService.sixDigits();
     const expiresAt = new Date(Date.now() + TTL_BY_PURPOSE[purpose]);
 
     await this.prisma.emailToken.create({
@@ -72,12 +157,13 @@ export class EmailTokenService {
         userId,
         purpose,
         tokenHash: EmailTokenService.hash(token),
+        codeHash: EmailTokenService.hash(code),
         expiresAt,
         requestIp: requestIp?.slice(0, 60) ?? null,
       },
     });
 
-    return { token, expiresAt };
+    return { token, code, expiresAt };
   }
 
   /**

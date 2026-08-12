@@ -70,17 +70,30 @@ export function verificationEmail(params: {
   to: string;
   name: string;
   url: string;
+  /** Six digits, for typing back into the app. */
+  code: string;
   expiresInHours: number;
 }): MailMessage {
+  /* Both ways in, in one email.
+   *
+   * The link is for somebody reading this on a laptop; the code is for the far
+   * more common case of somebody who opened the app on their phone, is looking
+   * at a "type the code" box, and would have to leave it, find the mail app,
+   * tap a link and be bounced back. The code is printed *before* the button
+   * because that is the reader we expect. */
   const { text, html } = render({
     heading: 'আপনার ইমেইল ঠিকানা যাচাই করুন',
     lines: [
       `আসসালামু আলাইকুম ${params.name},`,
-      `${BRAND}-এ আপনার ইমেইল ঠিকানা নিশ্চিত করতে নিচের লিংকে ক্লিক করুন।`,
+      `${BRAND}-এ আপনার ইমেইল ঠিকানা নিশ্চিত করতে অ্যাপে এই কোডটি লিখুন:`,
+      /* Spaced, because a six-digit run is read back in threes and an unspaced
+         one gets mistyped. The app strips whatever is not a digit. */
+      `${params.code.slice(0, 3)} ${params.code.slice(3)}`,
+      'অথবা নিচের বোতামে ক্লিক করুন।',
     ],
     action: { label: 'ইমেইল যাচাই করুন', url: params.url },
     footer: [
-      `লিংকটি ${toBengaliDigits(params.expiresInHours)} ঘণ্টা পর্যন্ত কাজ করবে এবং একবারই ব্যবহার করা যাবে।`,
+      `কোডটি ১৫ মিনিট, আর লিংকটি ${toBengaliDigits(params.expiresInHours)} ঘণ্টা পর্যন্ত কাজ করবে — দুটোই একবার।`,
       'আপনি যদি এই অ্যাকাউন্ট না খুলে থাকেন, এই মেইলটি উপেক্ষা করুন।',
     ],
   });

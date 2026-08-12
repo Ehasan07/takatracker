@@ -53,6 +53,9 @@ const FORGOT_RESPONSE = {
  */
 const PASSWORD_CHANGED_ACTION = 'auth.password_changed' as AuditAction;
 
+/** One sentence for a proven address, wherever the proof came from. */
+const VERIFIED_MESSAGE = 'আপনার ইমেইল ঠিকানা যাচাই সম্পন্ন হয়েছে।';
+
 @Injectable()
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
@@ -116,11 +119,12 @@ export class AccountService {
       );
     }
 
-    const { token, expiresAt } = await this.tokens.issue(user.id, 'VERIFY_EMAIL', meta.ip);
+    const { token, code, expiresAt } = await this.tokens.issue(user.id, 'VERIFY_EMAIL', meta.ip);
     const result = await this.mail.sendVerification({
       to: user.email,
       name: user.name,
       token,
+      code,
       expiresInHours: VERIFY_TTL_MS / 3_600_000,
     });
 
@@ -153,6 +157,75 @@ export class AccountService {
    * did this, you are fine" and "this link is too old, here is a fresh one"
    * send the user to completely different places.
    */
+  /**
+   * Verify with the six digits from the email.
+   *
+   * Session-authenticated, unlike the link: a code is typed by somebody who is
+   * already signed in and looking at the box, so there is no cross-device case
+   * to serve and requiring the session removes a whole class of guessing —
+   * an attacker needs the account *and* the code rather than the code alone.
+   */
+  async confirmVerificationCode(
+    userId: string,
+    code: string,
+    meta: RequestMeta = {},
+  ): Promise<{ verified: true; alreadyVerified: boolean; message: string }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { emailVerifiedAt: true },
+    });
+    if (user.emailVerifiedAt) {
+      return {
+        verified: true,
+        alreadyVerified: true,
+        message: 'আপনার ইমেইল ঠিকানা আগেই যাচাই করা হয়েছে।',
+      };
+    }
+
+    const digits = code.replace(/\D/g, '');
+    const check = await this.tokens.checkCode(userId, 'VERIFY_EMAIL', digits);
+
+    if (check.status === 'OK') {
+      if (!(await this.markVerified(check.id, check.userId, meta))) {
+        return {
+          verified: true,
+          alreadyVerified: true,
+          message: 'আপনার ইমেইল ঠিকানা আগেই যাচাই করা হয়েছে।',
+        };
+      }
+      return { verified: true, alreadyVerified: false, message: VERIFIED_MESSAGE };
+    }
+
+    /* Each refusal says the one thing the person can act on, and nothing that
+     * would help somebody guessing: a wrong code says how many tries are left,
+     * an expired one offers a fresh send, and a burnt one says so plainly
+     * rather than counting down to nothing. */
+    const reasons: Record<string, { code: string; message: string }> = {
+      NO_CODE: {
+        code: 'CODE_NOT_SENT',
+        message: 'কোনো কোড পাঠানো হয়নি। আগে “কোড পাঠান” চাপুন।',
+      },
+      USED: { code: 'CODE_USED', message: 'এই কোডটি আগেই ব্যবহার করা হয়েছে।' },
+      EXPIRED: {
+        code: 'CODE_EXPIRED',
+        message: 'কোডের মেয়াদ শেষ। নতুন একটি কোড চেয়ে নিন।',
+      },
+      LOCKED: {
+        code: 'CODE_LOCKED',
+        message: 'অনেকবার ভুল হয়েছে — এই কোডটি আর কাজ করবে না। নতুন একটি কোড চেয়ে নিন।',
+      },
+    };
+
+    if (check.status === 'WRONG') {
+      throw new BadRequestException({
+        code: 'CODE_WRONG',
+        message: `কোডটি মেলেনি। আর ${toBengaliDigits(check.attemptsLeft)} বার চেষ্টা করা যাবে।`,
+        attemptsLeft: check.attemptsLeft,
+      });
+    }
+    throw new BadRequestException(reasons[check.status]);
+  }
+
   async confirmVerification(
     token: string,
     meta: RequestMeta = {},
@@ -203,8 +276,7 @@ export class AccountService {
       });
     }
 
-    // Atomic claim: a double-clicked button cannot verify twice.
-    if (!(await this.tokens.claim(lookup.id))) {
+    if (!(await this.markVerified(lookup.id, lookup.userId, meta))) {
       return {
         verified: true,
         alreadyVerified: true,
@@ -212,17 +284,31 @@ export class AccountService {
       };
     }
 
-    const verifiedAt = new Date();
+    return { verified: true, alreadyVerified: false, message: VERIFIED_MESSAGE };
+  }
+
+  /**
+   * Claim the token and stamp the address as verified.
+   *
+   * Shared by the link and the code, because two implementations of "this
+   * address is now proven" would eventually differ on the parts that matter —
+   * the atomic claim that stops a double-clicked button verifying twice, the
+   * invalidation of every older outstanding token, and the audit row. Returns
+   * false when the claim was lost, which is the "already used" case.
+   */
+  private async markVerified(tokenId: string, userId: string, meta: RequestMeta): Promise<boolean> {
+    if (!(await this.tokens.claim(tokenId))) return false;
+
     const user = await this.prisma.user.update({
-      where: { id: lookup.userId },
-      data: { emailVerifiedAt: verifiedAt },
-      select: { id: true, emailVerifiedAt: true },
+      where: { id: userId },
+      data: { emailVerifiedAt: new Date() },
+      select: { id: true },
     });
 
-    // Older links become "already used" rather than staying live.
-    await this.tokens.invalidateOutstanding(lookup.userId, 'VERIFY_EMAIL', lookup.id);
+    // Older links and codes become "already used" rather than staying live.
+    await this.tokens.invalidateOutstanding(userId, 'VERIFY_EMAIL', tokenId);
 
-    const workspaceId = await primaryWorkspaceId(this.prisma, lookup.userId);
+    const workspaceId = await primaryWorkspaceId(this.prisma, userId);
     if (workspaceId) {
       this.audit.emit({
         workspaceId,
@@ -234,12 +320,7 @@ export class AccountService {
         userAgent: meta.userAgent,
       });
     }
-
-    return {
-      verified: true,
-      alreadyVerified: false,
-      message: 'আপনার ইমেইল ঠিকানা যাচাই সম্পন্ন হয়েছে।',
-    };
+    return true;
   }
 
   /** Best-effort fresh link after a dead one. Silent when cooling down. */
@@ -252,11 +333,12 @@ export class AccountService {
     });
     if (!user || user.emailVerifiedAt) return false;
 
-    const { token } = await this.tokens.issue(userId, 'VERIFY_EMAIL', meta.ip);
+    const { token, code } = await this.tokens.issue(userId, 'VERIFY_EMAIL', meta.ip);
     const result = await this.mail.sendVerification({
       to: user.email,
       name: user.name,
       token,
+      code,
       expiresInHours: VERIFY_TTL_MS / 3_600_000,
     });
 

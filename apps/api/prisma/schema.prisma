@@ -103,6 +103,12 @@ model EmailToken {
   userId    String
   purpose   EmailTokenPurpose
   tokenHash String            @unique
+  /// The six-digit code carried in the same email. Not unique — six digits
+  /// collide, so the lookup is by (userId, purpose) and the hash is compared
+  /// afterwards. Null on rows issued before codes existed.
+  codeHash  String?
+  /// Wrong guesses against `codeHash`. The code burns at five; see the migration.
+  attempts  Int               @default(0)
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime          @default(now())
@@ -112,6 +118,7 @@ model EmailToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose])
+  @@index([userId, purpose, createdAt])
   @@index([expiresAt])
 }
 
