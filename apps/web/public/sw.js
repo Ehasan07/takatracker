@@ -7,7 +7,7 @@
 /* Bumped with the shell precache list below: `activate` deletes every cache
  * whose key does not start with VERSION, which is how an old inventory is
  * retired rather than left to shadow the new one. */
-const VERSION = 'hishab-v2';
+const VERSION = 'hishab-v3';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 
@@ -156,16 +156,52 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation: network first, fall back to the cached shell, then the offline page.
+  /* Navigation: the cached shell first, the network in the background.
+   *
+   * This used to be network-first, and that is what made the installed app feel
+   * like a website. The server is not slow — measured from Dhaka it answers a
+   * 3.5 KB chunk in 0.7s, almost all of it round-trip time to Germany — so
+   * *every* launch from the home screen paid a full DNS + TCP + TLS + HTML wait
+   * before a single pixel appeared, however warm the cache was.
+   *
+   * Serving the cached document immediately makes a relaunch instant, and the
+   * fetch that follows refreshes it for next time. Two things make that safe
+   * here rather than merely fast:
+   *
+   *   - The shell carries no money. Every figure on every screen is fetched by
+   *     React Query after boot, under the rules further down this file; a stale
+   *     document cannot show a stale balance, only a stale layout.
+   *   - Static chunks are cache-first and immutable, so a cached document and
+   *     the exact chunk hashes it names stay together. A deploy changes both,
+   *     and `VERSION` above drops the pair when the worker rolls over.
+   */
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          void caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => (await caches.match(request)) ?? (await caches.match('/offline'))),
+      (async () => {
+        const cached = await caches.match(request);
+
+        const fresh = fetch(request)
+          .then((response) => {
+            /* Only a real page. A redirect to /login or an error page must not
+             * be written over a good shell — the next launch would then open on
+             * a login screen the user is not actually locked out of. */
+            if (response.ok && response.type === 'basic') {
+              const copy = response.clone();
+              void caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          })
+          .catch(() => null);
+
+        if (cached) {
+          // Revalidation continues after the response is handed over; without
+          // `waitUntil` the worker may be killed mid-flight and never update.
+          event.waitUntil(fresh);
+          return cached;
+        }
+
+        return (await fresh) ?? (await caches.match('/offline'));
+      })(),
     );
     return;
   }

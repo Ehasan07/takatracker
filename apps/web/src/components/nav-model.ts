@@ -254,7 +254,12 @@ export const ADMIN_GROUP: Group = {
   id: 'platform',
   title: 'প্ল্যাটফর্ম',
   items: [
-    { href: '/admin', label: 'প্ল্যাটফর্ম', icon: LayoutGrid, blurb: 'সব ওয়ার্কস্পেস ও সীমা' },
+    {
+      href: '/admin',
+      label: 'সারসংক্ষেপ',
+      icon: LayoutGrid,
+      blurb: 'সব ওয়ার্কস্পেস ও সীমা',
+    },
     { href: '/admin/tenants', label: 'ওয়ার্কস্পেস', icon: Building2, blurb: 'গ্রাহকের তালিকা' },
     {
       href: '/admin/analytics',
@@ -274,6 +279,46 @@ export const ADMIN_GROUP: Group = {
 export const SIDEBAR_GROUPS: Group[] = [
   { id: 'primary', title: '', items: PRIMARY.filter((item) => item.href !== MORE_HREF) },
   ...GROUPS,
+];
+
+/**
+ * What an operator's phone tab bar holds.
+ *
+ * An operator runs the platform; they do not keep books in it. Showing them
+ * ড্যাশবোর্ড, খাতা and ধার-দেনা offers five taps into an empty ledger that will
+ * never have anything in it, and — worse — makes the product look as though the
+ * person who runs it is also a customer of it. Four operator destinations
+ * instead, in the same five-cell grid the phone shell expects.
+ */
+export const OPERATOR_PRIMARY: Destination[] = [
+  { href: '/admin', label: 'সারসংক্ষেপ', icon: LayoutGrid },
+  { href: '/admin/tenants', label: 'গ্রাহক', icon: Building2 },
+  { href: '/admin/analytics', label: 'বিশ্লেষণ', icon: ChartColumn },
+  { href: '/admin/plans', label: 'প্যাকেজ', icon: BadgeCheck },
+  { href: '/admin/audit', label: 'বিবরণী', icon: ScrollText },
+];
+
+/**
+ * The operator's whole navigation — the platform, and the app's own settings.
+ *
+ * Settings stays because it is where an operator changes their own password and
+ * signs a lost device out; that is about the *account*, not about bookkeeping.
+ * Everything else a customer sees is gone.
+ */
+export const OPERATOR_SIDEBAR_GROUPS: Group[] = [
+  { id: 'primary', title: '', items: OPERATOR_PRIMARY },
+  {
+    id: 'app',
+    title: 'অ্যাপ',
+    items: [
+      {
+        href: '/settings',
+        label: 'সেটিংস',
+        icon: Settings,
+        blurb: 'প্রোফাইল, থিম ও সাইন-ইন করা ডিভাইস',
+      },
+    ],
+  },
 ];
 
 /**
@@ -297,7 +342,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   /* Deliberately different from each page's own `<h1>` ("প্ল্যাটফর্মের
    * সারসংক্ষেপ", "সব ওয়ার্কস্পেস"), so the phone title bar never repeats a
    * heading that is already on the screen. */
-  '/admin': 'প্ল্যাটফর্ম',
+  '/admin': 'সারসংক্ষেপ',
   '/admin/tenants': 'ওয়ার্কস্পেস',
   '/admin/plans': 'প্যাকেজ',
   '/admin/features': 'ফিচার',

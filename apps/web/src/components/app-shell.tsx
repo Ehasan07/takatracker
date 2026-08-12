@@ -13,7 +13,8 @@ import {
   HUB_DESTINATIONS,
   MORE_HREF,
   PRIMARY,
-  ADMIN_GROUP,
+  OPERATOR_PRIMARY,
+  OPERATOR_SIDEBAR_GROUPS,
   SIDEBAR_GROUPS,
   isPrimaryRoute,
   parentOf,
@@ -60,14 +61,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isDesktop = useIsDesktop();
   const keyboardInset = useKeyboardInset();
   const queryClient = useQueryClient();
-  /* Draws one extra sidebar group and nothing else. Every byte the panel shows
-   * still passes `SuperAdminGuard`, which re-reads the flag from the database
-   * on every admin request — forging this buys a menu item that leads to 404. */
+  /* An operator gets a different product, not the same one with a menu item
+   * added.
+   *
+   * They run the platform; they do not keep books in it. Leaving ড্যাশবোর্ড,
+   * খাতা and ধার-দেনা in their navigation offered five taps into a ledger that
+   * will never have anything in it, and made the product look as though the
+   * person running it is also a customer of it.
+   *
+   * This is presentation only. Every byte the panel shows still passes
+   * `SuperAdminGuard`, which re-reads the flag from the database on every admin
+   * request — forging the flag here buys a menu that leads to 404. And it hides
+   * rather than forbids: the customer routes still render if an operator types
+   * one, because their workspace does exist (it is where their own audit rows
+   * are filed) and breaking it would be a bigger change than this is. */
   const isOperator = useIsOperator();
   const sidebarGroups = React.useMemo(
-    () => (isOperator ? [...SIDEBAR_GROUPS, ADMIN_GROUP] : SIDEBAR_GROUPS),
+    () => (isOperator ? OPERATOR_SIDEBAR_GROUPS : SIDEBAR_GROUPS),
     [isOperator],
   );
+  const tabs = isOperator ? OPERATOR_PRIMARY : PRIMARY;
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const scrollRef = React.useRef<HTMLElement | null>(null);
 
@@ -296,15 +309,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               page, so there was nothing on screen to suggest an account even
               existed. */}
           <AccountMenu />
-          <button
-            type="button"
-            onClick={openQuickAdd}
-            title="নতুন লেনদেন (N)"
-            className="press bg-income flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-white"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            নতুন লেনদেন
-          </button>
+          {/* Not for an operator: the button writes into a ledger they do not
+              keep, and offering it is how a support session ends up with a test
+              transaction in somebody's books. */}
+          {isOperator ? null : (
+            <button
+              type="button"
+              onClick={openQuickAdd}
+              title="নতুন লেনদেন (N)"
+              className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              নতুন লেনদেন
+            </button>
+          )}
         </div>
       </aside>
 
@@ -355,10 +373,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="নতুন লেনদেন"
           onClick={openQuickAdd}
           className={cn(
-            'press bg-income fixed right-4 z-30 h-14 w-14 items-center justify-center rounded-full text-white shadow-lg',
+            'press bg-brand text-brand-contrast fixed right-4 z-30 h-14 w-14 items-center justify-center rounded-full shadow-lg',
             // Not the `hidden` attribute: `display: flex` from a utility class
             // is an author rule and beats the user agent's `[hidden]`.
-            keyboardInset > 0 ? 'hidden' : 'flex md:hidden',
+            keyboardInset > 0 || isOperator ? 'hidden' : 'flex md:hidden',
           )}
           style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
         >
@@ -379,7 +397,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label="প্রধান মেনু"
           className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-5 border-t md:hidden"
         >
-          {PRIMARY.map((item) => {
+          {tabs.map((item) => {
             const active = tabActive(item.href);
             return (
               <Link

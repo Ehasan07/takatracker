@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import * as React from 'react';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { formatLedgerDate, fromLocalDateString } from '@hishab/shared';
@@ -9,9 +11,20 @@ import { FirstRunCard } from '@/components/first-run-card';
 import { VerifyEmailCard } from '@/components/verify-email-card';
 import { Money } from '@/components/money';
 import { SkeletonCard } from '@/components/skeleton';
+import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
 import { endpoints } from '@/lib/api';
 
 export default function DashboardPage() {
+  /* An operator has no books, so this screen has nothing to tell them. They are
+   * sent to the platform overview instead — `replace`, not `push`, so the back
+   * button does not walk them into the empty ledger they were just moved out
+   * of. Rendering nothing meanwhile avoids a flash of zeroes. */
+  const router = useRouter();
+  const isOperator = useIsOperator();
+  React.useEffect(() => {
+    if (isOperator) router.replace('/admin');
+  }, [isOperator, router]);
+
   const { greeting, name } = useGreeting();
   const summary = useQuery({ queryKey: ['summary'], queryFn: endpoints.summary });
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
@@ -23,6 +36,8 @@ export default function DashboardPage() {
   const totalBalance = (accounts.data ?? []).reduce((sum, a) => sum + a.balanceMinor, 0);
   const topCategories = (summary.data?.expenseByCategory ?? []).slice(0, 5);
   const largest = topCategories[0]?.totalMinor ?? 0;
+
+  if (isOperator) return null;
 
   if (summary.isLoading && accounts.isLoading) {
     return (
