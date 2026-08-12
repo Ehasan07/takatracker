@@ -12,6 +12,7 @@ import {
   NotebookText,
   PiggyBank,
   ScrollText,
+  Send,
   Settings,
   ShieldCheck,
   Tag as TagIcon,
@@ -262,6 +263,12 @@ export const ADMIN_GROUP: Group = {
     },
     { href: '/admin/tenants', label: 'ওয়ার্কস্পেস', icon: Building2, blurb: 'গ্রাহকের তালিকা' },
     {
+      href: '/admin/broadcast',
+      label: 'বার্তা পাঠান',
+      icon: Send,
+      blurb: 'টেলিগ্রামে যাঁরা যুক্ত, তাঁদের কাছে',
+    },
+    {
       href: '/admin/analytics',
       label: 'বিশ্লেষণ',
       icon: ChartColumn,
@@ -294,8 +301,8 @@ export const OPERATOR_PRIMARY: Destination[] = [
   { href: '/admin', label: 'সারসংক্ষেপ', icon: LayoutGrid },
   { href: '/admin/tenants', label: 'গ্রাহক', icon: Building2 },
   { href: '/admin/analytics', label: 'বিশ্লেষণ', icon: ChartColumn },
+  { href: '/admin/broadcast', label: 'বার্তা', icon: Send },
   { href: '/admin/plans', label: 'প্যাকেজ', icon: BadgeCheck },
-  { href: '/admin/audit', label: 'বিবরণী', icon: ScrollText },
 ];
 
 /**
@@ -347,6 +354,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   '/admin/plans': 'প্যাকেজ',
   '/admin/features': 'ফিচার',
   '/admin/analytics': 'বিশ্লেষণ',
+  '/admin/broadcast': 'বার্তা পাঠান',
   '/admin/audit': 'কার্যবিবরণী',
 };
 

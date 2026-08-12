@@ -970,6 +970,82 @@ describe('super admin', () => {
     await ctx.http().get('/v1/admin/analytics/categories').set(auth(tenant)).expect(404);
   });
 
+  it('counts a broadcast before sending it, and never messages the unconnected', async () => {
+    const op = await operator();
+    const tenant = await signup(ctx);
+
+    /* Nobody has connected Telegram, so there is nobody to reach. The dry run
+       is what the screen calls first — telling somebody how many phones a
+       message is about to reach *before* it reaches them is the difference
+       between a tool and an accident. */
+    const dry = await ctx
+      .http()
+      .post('/v1/admin/broadcast')
+      .set(auth(op))
+      .send({ message: 'পরীক্ষা', dryRun: true })
+      .expect(200);
+    expect(dry.body.dryRun).toBe(true);
+    expect(dry.body.eligible).toBe(0);
+    expect(dry.body.sent).toBe(0);
+    expect(dry.body.withoutTelegram).toBeGreaterThan(0);
+
+    /* A connection that exists but is switched off is not a recipient. Sending
+       to somebody who turned notifications off is the fastest way to lose the
+       binding — and with it the reminders they did want. */
+    await ctx.prisma.telegramConnection.create({
+      data: {
+        workspaceId: tenant.workspaceId,
+        userId: tenant.id,
+        chatId: '12345',
+        isEnabled: false,
+        status: 'ACTIVE',
+        verifiedAt: new Date(),
+      },
+    });
+    const stillNone = await ctx
+      .http()
+      .post('/v1/admin/broadcast')
+      .set(auth(op))
+      .send({ message: 'পরীক্ষা', dryRun: true })
+      .expect(200);
+    expect(stillNone.body.eligible).toBe(0);
+
+    // Enabled and verified: now they count.
+    await ctx.prisma.telegramConnection.updateMany({
+      where: { workspaceId: tenant.workspaceId },
+      data: { isEnabled: true },
+    });
+    const reachable = await ctx
+      .http()
+      .post('/v1/admin/broadcast')
+      .set(auth(op))
+      .send({ message: 'পরীক্ষা', dryRun: true })
+      .expect(200);
+    expect(reachable.body.eligible).toBe(1);
+
+    const reach = await ctx.http().get('/v1/admin/broadcast/reach').set(auth(op)).expect(200);
+    expect(reach.body.connected).toBe(1);
+  });
+
+  it('keeps the broadcast behind the operator flag, and refuses an empty message', async () => {
+    const tenant = await signup(ctx);
+    // 404, never 403 — the panel does not advertise itself.
+    await ctx
+      .http()
+      .post('/v1/admin/broadcast')
+      .set(auth(tenant))
+      .send({ message: 'hi', dryRun: true })
+      .expect(404);
+
+    const op = await operator();
+    await ctx
+      .http()
+      .post('/v1/admin/broadcast')
+      .set(auth(op))
+      .send({ message: '   ', dryRun: true })
+      .expect(400);
+  });
+
   it('refuses to impersonate another super admin', async () => {
     const op = await operator();
     const other = await operator();

@@ -483,7 +483,16 @@ export class CardRemindersService {
    * network blip is not. Three consecutive bad days disables the connection so
    * we never hammer Telegram, which would get the IP blocked.
    */
-  private async recordOutcome(connectionId: string, ok: boolean, failure?: string): Promise<void> {
+  /**
+   * What a send outcome means for the connection.
+   *
+   * Public because the admin broadcast sends over the same bot to the same
+   * connections and must reach the same conclusions — a chat that blocked the
+   * bot is blocked whoever was sending, and two implementations would
+   * eventually disagree about which failures are permanent. That disagreement
+   * shows up as a connection this service keeps retrying forever.
+   */
+  async recordOutcome(connectionId: string, ok: boolean, failure?: string): Promise<void> {
     if (ok) {
       await this.prisma.telegramConnection.update({
         where: { id: connectionId },

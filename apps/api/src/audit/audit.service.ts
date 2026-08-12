@@ -89,6 +89,7 @@ export const AUDIT_ACTIONS = [
    * would make "who looked at this customer's money?" unanswerable. */
   'admin.tenant_finance_viewed',
   'admin.analytics_viewed',
+  'admin.broadcast_sent',
   'admin.overview_viewed',
   'admin.audit_viewed',
   'admin.plan_assigned',

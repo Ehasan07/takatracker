@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AccountsModule } from '../accounts/accounts.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminAnalyticsService } from './admin-analytics.service';
+import { AdminBroadcastService } from './admin-broadcast.service';
 import { AdminCatalogueService } from './admin-catalogue.service';
 import { AdminFinanceService } from './admin-finance.service';
 import { AdminImpersonationService } from './admin-impersonation.service';
@@ -31,7 +33,7 @@ import { SuperAdminGuard } from './super-admin.guard';
 @Module({
   /* `AccountsModule` for one thing: `AccountsService.balances`, so an operator
    * and a customer read the same number rather than two implementations of it. */
-  imports: [AuthModule, AccountsModule],
+  imports: [AuthModule, AccountsModule, NotificationsModule],
   controllers: [AdminController],
   providers: [
     AdminService,
@@ -39,6 +41,7 @@ import { SuperAdminGuard } from './super-admin.guard';
     AdminImpersonationService,
     AdminFinanceService,
     AdminAnalyticsService,
+    AdminBroadcastService,
     SuperAdminGuard,
   ],
 })

@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { zodPipe } from '../common/zod.pipe';
 import type { AdminActor } from './admin-audit';
+import { AdminBroadcastService } from './admin-broadcast.service';
 import { AdminCatalogueService } from './admin-catalogue.service';
 import { AdminImpersonationService } from './admin-impersonation.service';
 import { AdminService } from './admin.service';
@@ -168,6 +169,20 @@ const categoryAnalyticsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+/**
+ * A broadcast.
+ *
+ * `dryRun` first, always, from the screen: telling somebody how many phones a
+ * message is about to reach *before* it reaches them is the difference between
+ * a tool and an accident.
+ */
+const broadcastSchema = z.object({
+  message: z.string().trim().min(1).max(3_000),
+  workspaceIds: z.array(z.string().min(1).max(64)).max(500).optional(),
+  planCode: z.string().trim().max(40).optional(),
+  dryRun: z.boolean().optional(),
+});
+
 const createPlanSchema = z.object({
   code: planCodeSchema,
   name: z.string().trim().min(1).max(120),
@@ -281,6 +296,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly catalogue: AdminCatalogueService,
+    private readonly broadcast: AdminBroadcastService,
     private readonly impersonation: AdminImpersonationService,
   ) {}
 
@@ -356,6 +372,30 @@ export class AdminController {
     query: z.infer<typeof categoryAnalyticsQuerySchema>,
   ) {
     return this.admin.categoryAnalytics(actorFrom(user, req), query);
+  }
+
+  /** How many phones a broadcast could reach right now. */
+  @Get('broadcast/reach')
+  broadcastReach() {
+    return this.broadcast.reach();
+  }
+
+  /**
+   * `POST /v1/admin/broadcast` — a Telegram message to customers.
+   *
+   * Only to people who connected Telegram themselves and left it enabled: the
+   * binding *is* the consent, and there is no separate list to be on. Every
+   * send writes an audit row carrying the message itself, so "what did we tell
+   * them?" is answerable months later.
+   */
+  @Post('broadcast')
+  @HttpCode(200)
+  sendBroadcast(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Body(zodPipe(broadcastSchema)) body: z.infer<typeof broadcastSchema>,
+  ) {
+    return this.broadcast.send(actorFrom(user, req), body);
   }
 
   @Post('tenants/:workspaceId/plan')
