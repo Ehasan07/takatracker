@@ -79,7 +79,10 @@ export class MailService {
       port: Number(process.env.SMTP_PORT ?? 587),
       user: process.env.SMTP_USER || undefined,
       pass: process.env.SMTP_PASS || undefined,
-      from: process.env.MAIL_FROM ?? 'হিসাব <no-reply@takatracker.com>',
+      /* The product's name, and an address on the domain the reader signed up
+       * to. A From that names something else is the shape spam filters score
+       * against and cautious readers delete. */
+      from: process.env.MAIL_FROM ?? 'Taka Tracker <no-reply@takatracker.com>',
     });
   }
 

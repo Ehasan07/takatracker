@@ -10,7 +10,10 @@ import type { MailMessage } from './mail.transport';
  * and a webmail from 2009.
  */
 
-const BRAND = 'হিসাব';
+/* The product's name, not the Bengali word for "accounts". A verification mail
+ * whose subject line names something other than the site the reader just signed
+ * up to is the shape a phishing filter — and a cautious reader — distrusts. */
+const BRAND = 'Taka Tracker';
 
 /** Anything interpolated into the HTML part is escaped. Names come from users. */
 export function escapeHtml(value: string): string {
