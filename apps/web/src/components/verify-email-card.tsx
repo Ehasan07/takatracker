@@ -107,10 +107,14 @@ export function VerifyEmailCard() {
                entirely. `numeric` brings up the right keyboard. */
             autoComplete="one-time-code"
             inputMode="numeric"
-            maxLength={7}
-            placeholder="০০০ ০০০"
+            maxLength={6}
+            placeholder="০০০০০০"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            /* Everything that is not a digit is dropped as it is typed, so a
+               pasted "714 987" — or one with a dash, or a stray space from a
+               mail client — becomes a code that works. The server strips too;
+               this is so the box *shows* what will be sent. */
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             className="money tracking-widest"
           />
         </Field>

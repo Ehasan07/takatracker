@@ -175,11 +175,32 @@ export const simpleTransactionSchema = z
       .refine(isSupportedCurrency, 'এই কারেন্সিটি সমর্থিত নয়')
       .nullish(),
     fxAmountMinor: positiveMinorAmount.nullish(),
+    /* How much of a thing, beside how much it cost.
+     *
+     * Thousandths, integer: half a kilo is 500. "৳12,000 on fuel this year" is
+     * a number the ledger already gives; "340 litres" is the one a household
+     * acts on, because a price rise and a habit change look identical in taka
+     * and completely different in litres.
+     *
+     * The unit is free text on purpose — কেজি, লিটার, পিস, ডজন, হালি, বস্তা are
+     * all real and no fixed list survives contact with a Bangladeshi kitchen. */
+    quantityMilli: z.number().int().positive().max(1_000_000_000).nullish(),
+    quantityUnit: z.string().trim().max(20).nullish(),
   })
   .superRefine((val, ctx) => {
     /* Both or neither. One without the other is a half-recorded fact: a
      * currency with no amount says nothing, and an amount with no currency is a
      * number whose units are unknown — which is worse than not recording it. */
+    /* A quantity with no unit is a bare number nobody can read back, and a
+     * unit with no quantity says nothing at all. Both or neither, the same rule
+     * the currency pair follows. */
+    if ((val.quantityMilli == null) !== (val.quantityUnit == null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['quantityUnit'],
+        message: 'পরিমাণ আর একক — দুটোই দিতে হবে, অথবা কোনোটিই নয়',
+      });
+    }
     if ((val.fxCurrency == null) !== (val.fxAmountMinor == null)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

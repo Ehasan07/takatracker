@@ -602,6 +602,94 @@ export class ReportsService {
       items,
     };
   }
+
+  /**
+   * How much of each thing, per unit and category.
+   *
+   * The question the taka figures cannot answer. "৳12,000 on fuel this year" is
+   * already on every report; "340 litres" is the one somebody acts on, because
+   * a price rise and a habit change look identical in money and completely
+   * different in litres.
+   *
+   * Grouped by unit *first*, because adding kilos to litres produces a number
+   * with no meaning. Every row is a total within one unit, and units never mix.
+   */
+  async byQuantity(ctx: TenantContext, query: PeriodQuery) {
+    const { gte, lt } = this.range(query, ctx.timezone);
+
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        workspaceId: ctx.workspaceId,
+        deletedAt: null,
+        quantityUnit: { not: null },
+        quantityMilli: { not: null },
+        date: { gte, lt },
+      },
+      select: {
+        quantityMilli: true,
+        quantityUnit: true,
+        entries: {
+          where: { categoryId: { not: null } },
+          select: { category: { select: { id: true, name: true, nameBn: true } } },
+          take: 1,
+        },
+      },
+    });
+
+    /* Unit names are compared case- and space-insensitively so "কেজি" and
+     * "কেজি " are one row. The *first* spelling seen is what gets printed —
+     * lowercasing a Bengali unit would be a no-op anyway, and second-guessing
+     * somebody's own word for their own unit is not this function's business. */
+    const buckets = new Map<
+      string,
+      {
+        unit: string;
+        totalMilli: number;
+        count: number;
+        byCategory: Map<string, { name: string; totalMilli: number }>;
+      }
+    >();
+
+    for (const row of rows) {
+      const unit = (row.quantityUnit ?? '').trim();
+      if (!unit) continue;
+      const key = unit.toLowerCase();
+      const bucket = buckets.get(key) ?? {
+        unit,
+        totalMilli: 0,
+        count: 0,
+        byCategory: new Map<string, { name: string; totalMilli: number }>(),
+      };
+
+      const milli = minorToNumber(row.quantityMilli ?? 0n);
+      bucket.totalMilli += milli;
+      bucket.count += 1;
+
+      const category = row.entries[0]?.category;
+      const categoryKey = category?.id ?? 'none';
+      const name = category ? (category.nameBn ?? category.name) : 'খাত ছাড়া';
+      const seen = bucket.byCategory.get(categoryKey) ?? { name, totalMilli: 0 };
+      seen.totalMilli += milli;
+      bucket.byCategory.set(categoryKey, seen);
+
+      buckets.set(key, bucket);
+    }
+
+    return {
+      from: query.from,
+      to: query.to,
+      units: [...buckets.values()]
+        .sort((a, b) => b.totalMilli - a.totalMilli)
+        .map((bucket) => ({
+          unit: bucket.unit,
+          totalMilli: bucket.totalMilli,
+          transactionCount: bucket.count,
+          categories: [...bucket.byCategory.values()]
+            .sort((a, b) => b.totalMilli - a.totalMilli)
+            .map((c) => ({ name: c.name, totalMilli: c.totalMilli })),
+        })),
+    };
+  }
 }
 
 /**

@@ -89,9 +89,14 @@ export function verificationEmail(params: {
     lines: [
       `আসসালামু আলাইকুম ${params.name},`,
       `${BRAND}-এ আপনার ইমেইল ঠিকানা নিশ্চিত করতে অ্যাপে এই কোডটি লিখুন:`,
-      /* Spaced, because a six-digit run is read back in threes and an unspaced
-         one gets mistyped. The app strips whatever is not a digit. */
-      `${params.code.slice(0, 3)} ${params.code.slice(3)}`,
+      /* Unspaced, and that is a correction.
+       *
+       * It was printed as "714 987" because a six-digit run is easier to read
+       * in threes. But the person reading it is on a phone, looking at a
+       * numeric keypad that has no space key — so they could neither type what
+       * they saw nor paste it without the space coming along. Readability of
+       * the code is worth nothing if the code cannot be entered. */
+      params.code,
       'অথবা নিচের বোতামে ক্লিক করুন।',
     ],
     action: { label: 'ইমেইল যাচাই করুন', url: params.url },

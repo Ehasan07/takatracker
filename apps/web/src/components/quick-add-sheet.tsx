@@ -8,6 +8,7 @@ import { fetchPeople } from '@/app/(shell)/people/queries';
 import { TagPicker } from '@/app/(shell)/tags/tag-picker';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
+import { invalidateAfterWrite } from '@/lib/invalidate';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import {
   api,
@@ -18,6 +19,7 @@ import {
 } from '@/lib/api';
 import { CategoryChips, CategoryPicker } from './category-picker';
 import { FxField, convert, type FxValue } from './fx-field';
+import { QuantityField, type QuantityValue } from './quantity-field';
 import { NumericKeypad } from './numeric-keypad';
 import { Button } from './ui/button';
 import { Field, Input, Select, Textarea } from './ui/field';
@@ -74,6 +76,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
      workspace's own money and never open the section. */
   const [fx, setFx] = React.useState<FxValue | null>(null);
   const [fxRate, setFxRate] = React.useState('');
+  /* Null on almost every entry — a bus fare is not two of anything. */
+  const [quantity, setQuantity] = React.useState<QuantityValue | null>(null);
   /**
    * Whether the row being edited actually told us its tags.
    *
@@ -138,6 +142,11 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           ? String(Math.abs(editing.amountMinor) / editing.fxAmountMinor)
           : '',
       );
+      setQuantity(
+        editing.quantityMilli && editing.quantityUnit
+          ? { milli: editing.quantityMilli, unit: editing.quantityUnit }
+          : null,
+      );
     } else {
       setKind('EXPENSE');
       setAmount('');
@@ -151,6 +160,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setPersonId('');
       setFx(null);
       setFxRate('');
+      setQuantity(null);
     }
     setError(null);
   }, [open, editing, today]);
@@ -241,6 +251,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
            cleared the section has to say so rather than leave the old one. */
         fxCurrency: fx ? fx.currency : null,
         fxAmountMinor: fx ? fx.amountMinor : null,
+        /* Both or neither — the server refuses a half-pair, and an edit that
+           cleared the section has to say so rather than leave the old one. */
+        quantityMilli: quantity && quantity.milli > 0 ? quantity.milli : null,
+        quantityUnit: quantity && quantity.milli > 0 ? quantity.unit.trim() || null : null,
       };
 
       return api<TransactionDto>(editing ? `/transactions/${editing.id}` : '/transactions', {
@@ -249,16 +263,27 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         queueWhenOffline: true,
       });
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       haptic('success');
-      await queryClient.invalidateQueries();
+      /* Close first, refresh after.
+       *
+       * This used to `await queryClient.invalidateQueries()` — with no filter,
+       * which marks *every* query in the cache stale and waits for all of them
+       * to refetch before the sheet closes. On a connection with a second of
+       * round-trip time that is the write, then a fan-out of reads, then the
+       * sheet finally moving: two seconds of a form sitting there after the
+       * user has finished with it.
+       *
+       * The write has already succeeded by the time this runs. Nothing about
+       * the refresh needs to block the person who made it. */
       onOpenChange(false);
+      invalidateAfterWrite(queryClient);
     },
     onError: async (err) => {
       if (err instanceof QueuedOfflineError) {
         // Parked offline is a success from the user's point of view.
-        await queryClient.invalidateQueries();
         onOpenChange(false);
+        invalidateAfterWrite(queryClient);
         return;
       }
       haptic('warn');
@@ -448,6 +473,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
 
         <PersonField value={personId} onChange={setPersonId} />
+
+        <QuantityField value={quantity} onChange={setQuantity} />
 
         <FxField value={fx} onChange={setFx} rate={fxRate} onRateChange={setFxRate} />
 

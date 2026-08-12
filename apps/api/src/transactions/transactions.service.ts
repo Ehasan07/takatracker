@@ -78,6 +78,10 @@ export interface TransactionView {
    */
   personId: string | null;
   personName: string | null;
+  /** Thousandths of `quantityUnit`. 500 is half a kilo. */
+  quantityMilli: number | null;
+  /** কেজি, লিটার, পিস… free text, and null on almost every entry. */
+  quantityUnit: string | null;
   /** ISO 4217 the money was actually in, or null when it was the workspace's own. */
   fxCurrency: string | null;
   /** The amount in `fxCurrency`. The rate is `amountMinor / fxAmountMinor`. */
@@ -246,6 +250,9 @@ export class TransactionsService {
          * `amountMinor` above is already converted; these two are the receipt. */
         fxCurrency: input.fxCurrency ?? null,
         fxAmountMinor: input.fxAmountMinor == null ? null : BigInt(input.fxAmountMinor),
+        // How much of a thing. Thousandths, so half a kilo is 500.
+        quantityMilli: input.quantityMilli == null ? null : BigInt(input.quantityMilli),
+        quantityUnit: input.quantityUnit ?? null,
         externalRef: input.externalRef,
         source: input.source,
         /* Receipts. The column and the schema field have both existed since the
@@ -365,6 +372,13 @@ export class TransactionsService {
             : {
                 fxCurrency: input.fxCurrency ?? null,
                 fxAmountMinor: input.fxAmountMinor == null ? null : BigInt(input.fxAmountMinor),
+              }),
+          // Both move together or neither does, like the currency pair above.
+          ...(input.quantityMilli === undefined && input.quantityUnit === undefined
+            ? {}
+            : {
+                quantityMilli: input.quantityMilli == null ? null : BigInt(input.quantityMilli),
+                quantityUnit: input.quantityUnit ?? null,
               }),
           externalRef: input.externalRef,
           entries: {
@@ -861,6 +875,8 @@ export class TransactionsService {
       categoryName: category ? (category.nameBn ?? category.name) : null,
       personId: tx.personId,
       personName: tx.person?.name ?? null,
+      quantityMilli: tx.quantityMilli == null ? null : minorToNumber(tx.quantityMilli),
+      quantityUnit: tx.quantityUnit,
       fxCurrency: tx.fxCurrency,
       fxAmountMinor: tx.fxAmountMinor == null ? null : minorToNumber(tx.fxAmountMinor),
       attachmentIds: tx.attachmentIds,

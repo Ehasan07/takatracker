@@ -1243,6 +1243,12 @@ model Transaction {
   description   String?
   notes         String?
   payee         String?
+  /// How much of a thing was bought, in thousandths of `quantityUnit`. Half a
+  /// kilo is 500. An integer for the same reason money is one — see the
+  /// migration.
+  quantityMilli BigInt?
+  /// Free text: কেজি, লিটার, পিস, ডজন. An enum would be wrong within a week.
+  quantityUnit  String?
   /// ISO 4217 of the money as it was actually spent. Null = the workspace's own.
   fxCurrency    String?
   /// The amount in `fxCurrency`, integer minor units of *that* currency.

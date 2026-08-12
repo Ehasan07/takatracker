@@ -51,6 +51,7 @@ import {
   reportKeys,
 } from './queries';
 import { RangeBar } from './range-bar';
+import { QuantityPanel } from './quantity-panel';
 import { TagPanel } from './tag-panel';
 import {
   MAX_TREND_MONTHS,
@@ -462,6 +463,10 @@ function ReportsBody({ today }: { today: Date }) {
         {/* The same money, cut by who it was for rather than what it went on.
             Directly after the category split, because the pair of them is the
             only place the difference between the two is visible at all. */}
+        {/* After the money panels, because it answers a different question and
+            reading it as though it were taka would be the one mistake here. */}
+        <QuantityPanel period={range} />
+
         <TagPanel
           kind={kind}
           period={range}

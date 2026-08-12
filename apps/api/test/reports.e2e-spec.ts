@@ -223,3 +223,97 @@ describe('reports', () => {
     await ctx.http().get(`/v1/reports/category/${foodId}`).set(auth(bob)).expect(404);
   });
 });
+
+/**
+ * Quantities get their own workspace.
+ *
+ * The suite above builds one fixture in `beforeAll` and every test in it
+ * asserts that fixture's totals — three extra transactions moved all of them at
+ * once. A feature that needs its own rows needs its own books.
+ */
+describe('quantity reporting', () => {
+  let ctx: TestContext;
+  let user: SignedUpUser;
+  let cashId: string;
+  let foodId: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+    user = await signup(ctx);
+
+    const cash = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নগদ', type: 'CASH', openingBalance: 1_000_000 })
+      .expect(201);
+    cashId = cash.body.id;
+
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    foodId = cats.body.find((c: { nameBn: string }) => c.nameBn === 'খাবার ও বাজার').id;
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('totals how much of a thing was bought, never mixing units', async () => {
+    /* The question money cannot answer: "৳12,000 on fuel" is already on every
+       report, and "340 litres" is the one somebody acts on — a price rise and a
+       habit change look identical in taka and completely different in litres. */
+    const buy = (amountMinor: number, quantityMilli: number, quantityUnit: string) =>
+      ctx
+        .http()
+        .post('/v1/transactions')
+        .set(auth(user))
+        .send({
+          date: day('15'),
+          type: 'EXPENSE',
+          amountMinor,
+          accountId: cashId,
+          categoryId: foodId,
+          quantityMilli,
+          quantityUnit,
+        })
+        .expect(201);
+
+    await buy(50_000, 2_000, 'লিটার'); // 2 L
+    await buy(30_000, 1_500, 'লিটার'); // 1.5 L
+    await buy(120_000, 5_000, 'কেজি'); // 5 kg
+
+    const res = await ctx.http().get('/v1/reports/by-quantity').set(auth(user)).expect(200);
+    const litres = res.body.units.find((u: { unit: string }) => u.unit === 'লিটার');
+    const kilos = res.body.units.find((u: { unit: string }) => u.unit === 'কেজি');
+
+    // 3.5 litres, in thousandths. Kilos are their own row and are never added in.
+    expect(litres.totalMilli).toBe(3_500);
+    expect(litres.transactionCount).toBe(2);
+    expect(kilos.totalMilli).toBe(5_000);
+    expect(litres.categories[0].name).toBe('খাবার ও বাজার');
+  });
+
+  it('refuses a quantity with no unit, and a unit with no quantity', async () => {
+    /* A number with no unit cannot be read back, and a unit with no number says
+       nothing. Both or neither — the same rule the currency pair follows. */
+    const base = {
+      date: day('15'),
+      type: 'EXPENSE',
+      amountMinor: 10_000,
+      accountId: cashId,
+      categoryId: foodId,
+    };
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...base, quantityMilli: 1_000 })
+      .expect(400);
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ ...base, quantityUnit: 'কেজি' })
+      .expect(400);
+  });
+});

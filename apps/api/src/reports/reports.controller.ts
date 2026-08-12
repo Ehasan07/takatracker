@@ -113,6 +113,21 @@ export class ReportsController {
     });
   }
 
+  /**
+   * `GET /v1/reports/by-quantity` — how much of each thing, not how much it cost.
+   *
+   * The question money cannot answer: a price rise and a habit change look
+   * identical in taka and completely different in litres.
+   */
+  @Get('by-quantity')
+  byQuantity(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.byQuantity(user, this.period(user, from, to));
+  }
+
   @Get('cash-flow')
   cashFlow(@CurrentUser() user: AuthUser, @Query('from') from?: string, @Query('to') to?: string) {
     return this.reports.cashFlow(user, this.period(user, from, to));
