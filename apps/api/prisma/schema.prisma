@@ -22,7 +22,11 @@ datasource db {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
-  phone        String?
+  /// The mobile number, canonical `01XXXXXXXXX` — `storablePhone` runs on every
+  /// write. Unique so it can be signed in with; nullable so the accounts that
+  /// predate the field are asked in the app rather than locked out by a
+  /// migration. Postgres allows many NULLs under a unique index.
+  phone        String?  @unique
   passwordHash String
   name         String
   /// Display language. Currency and the ledger day belong to the workspace.
@@ -87,6 +91,13 @@ model RefreshToken {
   @@index([expiresAt])
 }
 
+/// How a code reached the person. Email is free; an SMS costs money and is
+/// capped, which cannot be counted without recording which is which.
+enum TokenChannel {
+  EMAIL
+  SMS
+}
+
 enum EmailTokenPurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
@@ -106,6 +117,8 @@ model EmailToken {
   id        String            @id @default(cuid())
   userId    String
   purpose   EmailTokenPurpose
+  /// EMAIL unless the code was texted. Read by the daily SMS cap.
+  channel   TokenChannel      @default(EMAIL)
   tokenHash String            @unique
   /// The six-digit code carried in the same email. Not unique — six digits
   /// collide, so the lookup is by (userId, purpose) and the hash is compared
@@ -123,6 +136,7 @@ model EmailToken {
 
   @@index([userId, purpose])
   @@index([userId, purpose, createdAt])
+  @@index([userId, channel, createdAt])
   @@index([expiresAt])
 }
 

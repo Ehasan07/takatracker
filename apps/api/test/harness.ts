@@ -194,6 +194,23 @@ export interface SignedUpUser {
   refreshToken: string;
 }
 
+/**
+ * A distinct Bangladeshi mobile per signup.
+ *
+ * The number is unique across accounts now, so a fixed one would make the
+ * second `signup()` in any suite fail with a conflict — and it would fail in
+ * whichever test happened to run second, which is the worst way to find out.
+ *
+ * `018` is a real Robi prefix and the last eight digits come from a counter, so
+ * the numbers are well-formed, distinct, and obviously synthetic.
+ */
+let phoneCounter = 0;
+export function uniquePhone(): string {
+  phoneCounter += 1;
+  const tail = String((Date.now() % 1_000_000) * 100 + (phoneCounter % 100)).slice(-8);
+  return `018${tail.padStart(8, '0')}`;
+}
+
 export async function signup(
   ctx: TestContext,
   email = uniqueEmail(),
@@ -203,7 +220,13 @@ export async function signup(
   const res = await ctx
     .http()
     .post('/v1/auth/signup')
-    .send({ email, password: 'hishab1234', name: 'পরীক্ষা ব্যবহারকারী', locale })
+    .send({
+      email,
+      password: 'hishab1234',
+      name: 'পরীক্ষা ব্যবহারকারী',
+      locale,
+      phone: uniquePhone(),
+    })
     .expect(201);
 
   return {

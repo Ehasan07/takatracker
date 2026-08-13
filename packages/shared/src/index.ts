@@ -5,3 +5,4 @@ export * from './enums.js';
 export * from './schemas.js';
 export * from './units.js';
 export * from './display-name.js';
+export * from './phone.js';

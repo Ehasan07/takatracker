@@ -8,15 +8,25 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import type { TokenChannel } from '@prisma/client';
 import { DEFAULT_CATEGORIES, DEFAULT_PLAN_CODE, SYSTEM_ACCOUNT_SEED } from '@hishab/core';
-import type { LoginInput, SignupInput } from '@hishab/shared';
+import { normaliseBdPhone, type LoginInput, type SignupInput } from '@hishab/shared';
+
+/**
+ * One sentence whichever half was wrong, and whichever identifier was used.
+ *
+ * "No account with that number" would turn the login form into a way of asking
+ * whether somebody banks here — the same property `otp/request` protects.
+ */
+const LOGIN_REFUSAL = 'ইমেইল/মোবাইল বা পাসওয়ার্ড ভুল';
 import { AuditService } from '../audit/audit.service';
 import { jwtAccessSecret } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountService } from './account.service';
 import { ARGON_OPTIONS } from './auth.helpers';
 import { BreachedPasswordService, BREACHED_PASSWORD_MESSAGE } from './breached-password.service';
-import { EmailTokenService, SIGN_IN_TTL_MS } from './email-token.service';
+import { EmailTokenService, MAX_SMS_PER_DAY, SIGN_IN_TTL_MS } from './email-token.service';
+import { SmsSender } from '../notifications/sms.sender';
 import { MailService } from '../mail/mail.service';
 
 /**
@@ -67,6 +77,7 @@ export class AuthService {
     private readonly emailTokens: EmailTokenService,
     private readonly mail: MailService,
     private readonly breached: BreachedPasswordService,
+    private readonly sms: SmsSender,
   ) {}
 
   private static hashToken(token: string): string {
@@ -77,6 +88,12 @@ export class AuthService {
     const email = input.email.toLowerCase().trim();
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('এই ইমেইলে ইতিমধ্যে অ্যাকাউন্ট আছে');
+
+    /* The number is a credential now, so two accounts cannot share one. The
+     * unique index is the real guard — this is the readable refusal, and the
+     * index is what holds when two signups race. */
+    const phoneTaken = await this.prisma.user.findUnique({ where: { phone: input.phone } });
+    if (phoneTaken) throw new ConflictException('এই মোবাইল নম্বরে ইতিমধ্যে অ্যাকাউন্ট আছে');
 
     /* Length alone was the whole rule, so `password` opened accounts. See
      * `BreachedPasswordService`: this is the other half of NIST 800-63B, and
@@ -189,8 +206,7 @@ export class AuthService {
 
   async login(input: LoginInput, meta: AuthMeta = {}): Promise<AuthResult> {
     const { deviceId, userAgent } = meta;
-    const email = input.email.toLowerCase().trim();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.findByIdentifier(input.identifier);
 
     // Constant-ish work whether or not the user exists, so timing says nothing.
     const hash = user?.passwordHash ?? (await AuthService.dummyHash());
@@ -215,7 +231,7 @@ export class AuthService {
           });
         }
       }
-      throw new UnauthorizedException('ইমেইল বা পাসওয়ার্ড ভুল');
+      throw new UnauthorizedException(LOGIN_REFUSAL);
     }
 
     const workspace = await this.defaultWorkspace(user.id);
@@ -242,27 +258,58 @@ export class AuthService {
    * the mail is fired without being awaited so that an address that exists is
    * not measurably slower than one that does not.
    */
-  async requestSignInCode(rawEmail: string, meta: AuthMeta = {}): Promise<void> {
-    const email = rawEmail.toLowerCase().trim();
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      select: { id: true, email: true, name: true },
-    });
+  /**
+   * Ask for a sign-in code, by email or by text. Answers identically either way.
+   *
+   * The same rule as `forgotPassword`, for the same reason: an anonymous caller
+   * must not learn which addresses or numbers have accounts here. Unknown,
+   * known, cooling down, out of texts, gateway down — one response, and the
+   * send is fired without being awaited so a registered identifier is not
+   * measurably slower than one that is not.
+   *
+   * ## Email is the first offer and SMS the second
+   *
+   * Not a preference — a cost. Email is free and unmetered, a text costs money
+   * per message and arrives on a lock screen. So the screen asks for the email
+   * code first and only offers "send it to my phone" when that has not worked,
+   * and this method defaults to `EMAIL` for a caller that says nothing.
+   */
+  async requestSignInCode(
+    rawIdentifier: string,
+    meta: AuthMeta & { channel?: TokenChannel } = {},
+  ): Promise<void> {
+    const channel = meta.channel ?? 'EMAIL';
+    const user = await this.findByIdentifier(rawIdentifier);
     if (!user) {
-      this.logger.debug('Sign-in code requested for an address with no account');
+      this.logger.debug('Sign-in code requested for an identifier with no account');
       return;
     }
 
     if (await this.emailTokens.isCoolingDown(user.id, 'SIGN_IN')) return;
 
-    const { code } = await this.emailTokens.issue(user.id, 'SIGN_IN', meta.ip);
+    if (channel === 'SMS') {
+      /* Three things have to hold, and every one of them fails silently: the
+       * account has a number, the gateway exists, and the day's allowance is
+       * not spent. Saying which would tell an anonymous caller something about
+       * an account they have not proved they own. */
+      if (!user.phone) return;
+      if (!this.sms.configured) return;
+      if ((await this.emailTokens.smsSentToday(user.id)) >= MAX_SMS_PER_DAY) return;
 
-    void this.mail.sendSignInCode({
-      to: user.email,
-      name: user.name,
-      code,
-      expiresInMinutes: SIGN_IN_TTL_MS / 60_000,
-    });
+      const { code } = await this.emailTokens.issue(user.id, 'SIGN_IN', meta.ip, 'SMS');
+      void this.sms.send(
+        user.phone,
+        `Taka Tracker: ${code} — লগইনের কোড, ${SIGN_IN_TTL_MS / 60_000} মিনিট কাজ করবে। কাউকে দেবেন না।`,
+      );
+    } else {
+      const { code } = await this.emailTokens.issue(user.id, 'SIGN_IN', meta.ip, 'EMAIL');
+      void this.mail.sendSignInCode({
+        to: user.email,
+        name: user.name,
+        code,
+        expiresInMinutes: SIGN_IN_TTL_MS / 60_000,
+      });
+    }
 
     const workspace = await this.defaultWorkspace(user.id).catch(() => null);
     if (workspace) {
@@ -272,6 +319,7 @@ export class AuthService {
         action: 'auth.signin_code_requested',
         entity: 'User',
         entityId: user.id,
+        after: { channel },
         ip: meta.ip,
         userAgent: meta.userAgent,
       });
@@ -297,9 +345,12 @@ export class AuthService {
    * after somebody has demonstrably read their email would be asking them to
    * prove a thing they just proved.
    */
-  async signInWithCode(rawEmail: string, code: string, meta: AuthMeta = {}): Promise<AuthResult> {
-    const email = rawEmail.toLowerCase().trim();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async signInWithCode(
+    rawIdentifier: string,
+    code: string,
+    meta: AuthMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.findByIdentifier(rawIdentifier);
 
     /* One message for every failure — wrong code, no such address, expired, or
      * five wrong guesses already spent. See `SIGN_IN_REFUSAL`. */
@@ -356,6 +407,24 @@ export class AuthService {
     });
 
     return this.issue(user, workspace, { deviceId: meta.deviceId, userAgent: meta.userAgent });
+  }
+
+  /**
+   * The account behind whatever they typed.
+   *
+   * An email or a Bangladeshi mobile, decided by looking at the value rather
+   * than by asking the user to say which — the wall this removes is being told
+   * "enter a valid email" after typing a real, working phone number.
+   *
+   * The number is normalised before the lookup, so `+8801712345678`,
+   * `০১৭১২৩৪৫৬৭৮` and `01712-345678` all find the same row. The column holds
+   * the canonical form because every write path runs `storablePhone` first.
+   */
+  private async findByIdentifier(identifier: string) {
+    const trimmed = identifier.trim();
+    const phone = normaliseBdPhone(trimmed);
+    if (phone) return this.prisma.user.findUnique({ where: { phone } });
+    return this.prisma.user.findUnique({ where: { email: trimmed.toLowerCase() } });
   }
 
   private static dummyHashCache: string | null = null;

@@ -19,6 +19,7 @@ export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
+  const [phone, setPhone] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [locale, setLocale] = React.useState<Locale>('bn');
   const [currency, setCurrency] = React.useState(DEFAULT_CURRENCY);
@@ -48,7 +49,7 @@ export default function SignupPage() {
     try {
       await api('/auth/signup', {
         method: 'POST',
-        body: { name, email, password, locale, currency, device },
+        body: { name, email, phone, password, locale, currency, device },
       });
       router.push('/');
       router.refresh();
@@ -106,6 +107,27 @@ export default function SignupPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </Field>
+
+        {/* Above the currency because it is identity, not preference — and
+            in Bangladesh it is the identity somebody reaches for first. */}
+        <Field label={locale === 'en' ? 'Mobile number' : 'মোবাইল নম্বর'} htmlFor="phone">
+          <Input
+            id="phone"
+            name="phone"
+            type="tel"
+            autoComplete="tel"
+            inputMode="tel"
+            required
+            placeholder="01712345678"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </Field>
+        <p className="text-ink-muted -mt-2 text-xs">
+          {locale === 'en'
+            ? 'You can sign in with this number as well as with your email.'
+            : 'এই নম্বর দিয়েও লগইন করতে পারবেন, ইমেইলের পাশাপাশি।'}
+        </p>
 
         <Field label={locale === 'en' ? 'Currency' : 'কারেন্সি'} htmlFor="currency">
           <Select

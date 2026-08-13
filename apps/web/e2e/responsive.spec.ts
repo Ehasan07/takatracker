@@ -9,6 +9,19 @@ import { expect, test, type Page } from '@playwright/test';
  * target anybody can miss. The floor is a design rule about CSS pixels, so it
  * is compared in CSS pixels rather than in the float noise underneath.
  */
+/**
+ * A distinct Bangladeshi mobile per signup. The number is unique across
+ * accounts now, so a fixed one makes the second signup in a run fail with a
+ * conflict — in whichever test happens to go second.
+ */
+let phoneSeq = 0;
+function uniquePhone(): string {
+  phoneSeq += 1;
+  return `018${String((Date.now() % 1_000_000) * 100 + (phoneSeq % 100))
+    .slice(-8)
+    .padStart(8, '0')}`;
+}
+
 const TAP_TARGET_MIN = 43.99;
 
 /** M4 acceptance: the responsive shell and the PWA plumbing. */
@@ -20,6 +33,7 @@ async function signup(page: Page): Promise<void> {
     .getByLabel('ইমেইল')
     .fill(`resp-${Date.now()}-${Math.trunc(performance.now())}@example.test`);
   await page.getByLabel('পাসওয়ার্ড').fill('hishab1234');
+  await page.getByLabel('মোবাইল নম্বর').fill(uniquePhone());
   await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
   await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' })).toBeVisible();
 }

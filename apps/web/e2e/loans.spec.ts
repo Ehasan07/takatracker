@@ -32,6 +32,19 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * target anybody can miss. The floor is a design rule about CSS pixels, so it
  * is compared in CSS pixels rather than in the float noise underneath.
  */
+/**
+ * A distinct Bangladeshi mobile per signup. The number is unique across
+ * accounts now, so a fixed one makes the second signup in a run fail with a
+ * conflict — in whichever test happens to go second.
+ */
+let phoneSeq = 0;
+function uniquePhone(): string {
+  phoneSeq += 1;
+  return `018${String((Date.now() % 1_000_000) * 100 + (phoneSeq % 100))
+    .slice(-8)
+    .padStart(8, '0')}`;
+}
+
 const TAP_TARGET_MIN = 43.99;
 
 const PASSWORD = 'hishab1234';
@@ -47,6 +60,7 @@ async function signup(page: Page): Promise<void> {
   await page.getByLabel('নাম').fill('ঋণ পরীক্ষা');
   await page.getByLabel('ইমেইল').fill(uniqueEmail());
   await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+  await page.getByLabel('মোবাইল নম্বর').fill(uniquePhone());
   await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
   // Argon2 is deliberately slow, and nine signups in a row on a loaded machine
   // can outlast the default expect timeout. Waiting is not flakiness.

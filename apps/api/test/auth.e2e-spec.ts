@@ -6,6 +6,7 @@ import {
   signup,
   uniqueEmail,
   type TestContext,
+  uniquePhone,
 } from './harness';
 
 describe('auth', () => {
@@ -163,7 +164,14 @@ describe('auth', () => {
     const res = await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email, password: 'hishab1234', name: 'Yen User', locale: 'en', currency: 'JPY' })
+      .send({
+        email,
+        password: 'hishab1234',
+        name: 'Yen User',
+        locale: 'en',
+        currency: 'JPY',
+        phone: uniquePhone(),
+      })
       .expect(201);
 
     const me = await ctx
@@ -187,7 +195,13 @@ describe('auth', () => {
     await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email: uniqueEmail(), password: 'hishab1234', name: 'x', currency: 'ZZZ' })
+      .send({
+        email: uniqueEmail(),
+        password: 'hishab1234',
+        name: 'x',
+        currency: 'ZZZ',
+        phone: uniquePhone(),
+      })
       .expect(400);
   });
 
@@ -195,7 +209,7 @@ describe('auth', () => {
     const res = await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email: uniqueEmail(), password: 'hishab1234', name: 'x' })
+      .send({ email: uniqueEmail(), password: 'hishab1234', name: 'x', phone: uniquePhone() })
       .expect(201);
     const me = await ctx
       .http()
@@ -211,7 +225,7 @@ describe('auth', () => {
     const res = await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email, password: 'hishab1234', name: 'রহিম' })
+      .send({ email, password: 'hishab1234', name: 'রহিম', phone: uniquePhone() })
       .expect(201);
 
     expect(res.body.accessToken).toBeTruthy();
@@ -244,12 +258,12 @@ describe('auth', () => {
     await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email, password: 'hishab1234', name: 'করিম' })
+      .send({ email, password: 'hishab1234', name: 'করিম', phone: uniquePhone() })
       .expect(201);
     await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email, password: 'hishab1234', name: 'করিম' })
+      .send({ email, password: 'hishab1234', name: 'করিম', phone: uniquePhone() })
       .expect(409);
   });
 
@@ -257,7 +271,7 @@ describe('auth', () => {
     await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email: uniqueEmail('short'), password: 'abc', name: 'ক' })
+      .send({ email: uniqueEmail('short'), password: 'abc', name: 'ক', phone: uniquePhone() })
       .expect(400);
   });
 
@@ -266,7 +280,7 @@ describe('auth', () => {
     await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email, password: 'hishab1234', name: 'সালমা' })
+      .send({ email, password: 'hishab1234', name: 'সালমা', phone: uniquePhone() })
       .expect(201);
 
     await ctx.http().post('/v1/auth/login').send({ email, password: 'hishab1234' }).expect(200);
@@ -385,6 +399,7 @@ describe('breached passwords', () => {
         password: 'password',
         name: 'পরীক্ষা',
         locale: 'bn',
+        phone: uniquePhone(),
       })
       .expect(400);
 
@@ -404,6 +419,7 @@ describe('breached passwords', () => {
         password: 'amar khatar chabi',
         name: 'পরীক্ষা',
         locale: 'bn',
+        phone: uniquePhone(),
       })
       .expect(201);
   });
@@ -419,5 +435,106 @@ describe('breached passwords', () => {
       .set(auth(user))
       .send({ currentPassword: 'hishab1234', newPassword: '12345678' })
       .expect(400);
+  });
+});
+
+/**
+ * The mobile number as an identity.
+ *
+ * In Bangladesh this is what somebody remembers and what they already sign in
+ * to bKash and Nagad with. It was an optional, unindexed contact field that
+ * signup never asked for — all fourteen live accounts had none — so making it
+ * a credential means three things at once: required, unique, and recognised
+ * however it is spelled.
+ */
+describe('signing in with a mobile number', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  const open = (phone: string, email = uniqueEmail('phone')) =>
+    ctx
+      .http()
+      .post('/v1/auth/signup')
+      .send({ email, password: 'hishab1234', name: 'পরীক্ষা', locale: 'bn', phone });
+
+  it('signs in with the number, and with the email, and with either spelling', async () => {
+    const email = uniqueEmail('both');
+    await open('01712345601', email).expect(201);
+
+    for (const identifier of [
+      '01712345601',
+      email,
+      /* The same number, written the five other ways a person or a paste
+         actually produces. All of them are one account. */
+      '+8801712345601',
+      '8801712345601',
+      '01712-345601',
+      '০১৭১২৩৪৫৬০১',
+    ]) {
+      await ctx
+        .http()
+        .post('/v1/auth/login')
+        .send({ identifier, password: 'hishab1234' })
+        .expect(200);
+    }
+  });
+
+  it('still accepts the old body shape', async () => {
+    /* A password manager entry or an open tab is still posting `email`.
+       Renaming a field must not sign people out of their own habits. */
+    const email = uniqueEmail('legacy');
+    await open('01712345602', email).expect(201);
+    await ctx.http().post('/v1/auth/login').send({ email, password: 'hishab1234' }).expect(200);
+  });
+
+  it('refuses a second account on the same number, however it is written', async () => {
+    await open('01712345603').expect(201);
+    /* Different spelling, same human. Without normalisation before the unique
+       index, six spellings would look like six people. */
+    const clash = await open('+8801712345603').expect(409);
+    expect(JSON.stringify(clash.body)).toContain('মোবাইল');
+  });
+
+  it('refuses a number that is not a Bangladeshi mobile', async () => {
+    /* `Person.phone` keeps the opposite rule on purpose — an unparseable
+       number there is still the best record of how to reach somebody. This one
+       is a credential, and a credential nobody can type back is not one. */
+    for (const bad of ['12345', '+919876543210', '01212345678', 'not a number']) {
+      await open(bad).expect(400);
+    }
+  });
+
+  it('says the same thing whichever half was wrong', async () => {
+    /* "No account with that number" would turn the login form into a way of
+       asking whether somebody banks here. */
+    const email = uniqueEmail('same');
+    await open('01712345604', email).expect(201);
+
+    const badPassword = await ctx
+      .http()
+      .post('/v1/auth/login')
+      .send({ identifier: '01712345604', password: 'wrong-password' })
+      .expect(401);
+    const noSuchNumber = await ctx
+      .http()
+      .post('/v1/auth/login')
+      .send({ identifier: '01799999999', password: 'wrong-password' })
+      .expect(401);
+
+    expect(badPassword.body.message).toBe(noSuchNumber.body.message);
+  });
+
+  it('stores the number in one canonical form', async () => {
+    const email = uniqueEmail('canon');
+    await open('+8801712345605', email).expect(201);
+    const user = await ctx.prisma.user.findUnique({ where: { email } });
+    expect(user?.phone).toBe('01712345605');
   });
 });

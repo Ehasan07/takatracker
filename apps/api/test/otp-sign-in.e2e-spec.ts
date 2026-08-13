@@ -8,6 +8,7 @@ import {
   uniqueEmail,
   type TestContext,
 } from './harness';
+import { MAX_SMS_PER_DAY } from '../src/auth/email-token.service';
 
 /**
  * Signing in with a code emailed to the address on the account.
@@ -77,7 +78,7 @@ describe('signing in with an emailed code', () => {
     const res = await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '123456' })
+      .send({ identifier: user.email, code: '123456' })
       .expect(200);
 
     expect(res.body.accessToken).toBeTruthy();
@@ -97,7 +98,7 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: ' 246 810 ' })
+      .send({ identifier: user.email, code: ' 246 810 ' })
       .expect(200);
   });
 
@@ -108,12 +109,12 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '112233' })
+      .send({ identifier: user.email, code: '112233' })
       .expect(200);
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '112233' })
+      .send({ identifier: user.email, code: '112233' })
       .expect(401);
   });
 
@@ -128,7 +129,7 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '445566' })
+      .send({ identifier: user.email, code: '445566' })
       .expect(401);
   });
 
@@ -141,12 +142,12 @@ describe('signing in with an emailed code', () => {
     const wrong = await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '000000' })
+      .send({ identifier: user.email, code: '000000' })
       .expect(401);
     const stranger = await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: uniqueEmail('nobody'), code: '000000' })
+      .send({ identifier: uniqueEmail('nobody'), code: '000000' })
       .expect(401);
 
     expect(wrong.body.message).toBe(stranger.body.message);
@@ -160,7 +161,7 @@ describe('signing in with an emailed code', () => {
       await ctx
         .http()
         .post('/v1/auth/otp/verify')
-        .send({ email: user.email, code: '000000' })
+        .send({ identifier: user.email, code: '000000' })
         .expect(401);
     }
 
@@ -170,7 +171,7 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '135790' })
+      .send({ identifier: user.email, code: '135790' })
       .expect(401);
   });
 
@@ -193,7 +194,7 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '999111' })
+      .send({ identifier: user.email, code: '999111' })
       .expect(401);
   });
 
@@ -207,7 +208,7 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '314159' })
+      .send({ identifier: user.email, code: '314159' })
       .expect(200);
 
     const log = await ctx.http().get('/v1/audit?limit=50').set(auth(user)).expect(200);
@@ -229,7 +230,7 @@ describe('signing in with an emailed code', () => {
     const session = await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '271828' })
+      .send({ identifier: user.email, code: '271828' })
       .expect(200);
 
     const after = await ctx
@@ -245,8 +246,86 @@ describe('signing in with an emailed code', () => {
     await ctx
       .http()
       .post('/v1/auth/otp/verify')
-      .send({ email: user.email, code: '12345' })
+      .send({ identifier: user.email, code: '12345' })
       .expect(400);
-    await ctx.http().post('/v1/auth/otp/request').send({ email: 'not-an-address' }).expect(400);
+    /* An identifier that is neither an email nor a BD mobile still gets the
+       identical 200 — the route must not become a way of asking "is this a
+       valid account shape here?" any more than "does this account exist?". */
+    await ctx.http().post('/v1/auth/otp/request').send({ email: 'not-an-address' }).expect(200);
+    await ctx.http().post('/v1/auth/otp/request').send({ email: '' }).expect(400);
+  });
+
+  it('sends by email unless a text is asked for', async () => {
+    /* Not a preference — a cost. Email is free and unmetered; a text costs
+       money per message and lands on a lock screen. A caller that says nothing
+       must never be charged for one. */
+    const user = await signup(ctx);
+    await ctx.http().post('/v1/auth/otp/request').send({ identifier: user.email }).expect(200);
+
+    const rows = await ctx.prisma.emailToken.findMany({
+      where: { userId: user.id, purpose: 'SIGN_IN' },
+      select: { channel: true },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.channel).toBe('EMAIL');
+  });
+
+  it('never sends a text when no gateway is configured', async () => {
+    /* The suite sets no `SMS_API_KEY`. Asking for a text must then be a silent
+       no-op rather than an error, so the screen behaves the same whether or not
+       the operator has bought a gateway. */
+    const user = await signup(ctx);
+    await ctx
+      .http()
+      .post('/v1/auth/otp/request')
+      .send({ identifier: user.email, channel: 'sms' })
+      .expect(200);
+
+    const count = await ctx.prisma.emailToken.count({
+      where: { userId: user.id, channel: 'SMS' },
+    });
+    expect(count).toBe(0);
+  });
+
+  it('caps texts at three a day, counted from what was issued', async () => {
+    /* The ceiling protects the account holder's evening as much as the bill: a
+       script pointed at somebody's number must not be able to keep their phone
+       buzzing. Counted from the rows actually issued, so the number cannot
+       drift away from what was sent. */
+    const user = await signup(ctx);
+    for (let i = 0; i < MAX_SMS_PER_DAY; i += 1) {
+      await ctx.prisma.emailToken.create({
+        data: {
+          userId: user.id,
+          purpose: 'SIGN_IN',
+          channel: 'SMS',
+          tokenHash: createHash('sha256').update(`sms-${user.id}-${i}`).digest('hex'),
+          codeHash: createHash('sha256').update(`00000${i}`).digest('hex'),
+          expiresAt: new Date(Date.now() + 10 * 60_000),
+        },
+      });
+    }
+
+    await ctx
+      .http()
+      .post('/v1/auth/otp/request')
+      .send({ identifier: user.email, channel: 'sms' })
+      .expect(200);
+
+    const count = await ctx.prisma.emailToken.count({
+      where: { userId: user.id, channel: 'SMS' },
+    });
+    expect(count).toBe(MAX_SMS_PER_DAY);
+  });
+
+  it('finds the account by mobile number as well as by email', async () => {
+    const user = await signup(ctx);
+    const row = await ctx.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+
+    await ctx.http().post('/v1/auth/otp/request').send({ identifier: row.phone }).expect(200);
+    const issued = await ctx.prisma.emailToken.count({
+      where: { userId: user.id, purpose: 'SIGN_IN' },
+    });
+    expect(issued).toBe(1);
   });
 });

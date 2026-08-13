@@ -7,6 +7,7 @@ import {
   uniqueEmail,
   type TestContext,
   unlimit,
+  uniquePhone,
 } from './harness';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -42,7 +43,7 @@ describe('audit log', () => {
     const created = await ctx
       .http()
       .post('/v1/auth/signup')
-      .send({ email, password: 'hishab1234', name: 'অডিট' })
+      .send({ email, password: 'hishab1234', name: 'অডিট', phone: uniquePhone() })
       .expect(201);
 
     const user = {

@@ -1,0 +1,23 @@
+-- A mobile number you can sign in with.
+--
+-- In Bangladesh the phone is the identity — bKash, Nagad and Pathao all key on
+-- it — and this column has been optional, unindexed and never asked for. All
+-- fourteen live accounts have `NULL`, so there is nothing to collide and
+-- nothing to backfill.
+--
+-- ## Why it stays nullable
+--
+-- Postgres lets a unique index hold any number of NULLs, which is exactly the
+-- shape needed: new signups must give a number and no two may share one, while
+-- the accounts that predate the field keep working and are asked for theirs in
+-- the app rather than being locked out by a migration. "Required" is enforced
+-- where the account is created, not by the column.
+--
+-- ## Why it is stored canonically
+--
+-- The write paths run `storablePhone` first, so `+8801712345678`,
+-- `8801712345678`, `০১৭১২৩৪৫৬৭৮` and `01712-345678` all land as
+-- `01712345678`. A unique index over raw text would happily accept six
+-- spellings of one number, which is worse than no index: it would look like
+-- six people.
+CREATE UNIQUE INDEX "User_phone_key" ON "User"("phone");

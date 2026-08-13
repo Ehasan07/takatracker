@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import type { EmailTokenPurpose } from '@prisma/client';
+import type { EmailTokenPurpose, TokenChannel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -62,6 +62,16 @@ export const CODE_TTL_MS = 15 * 60 * 1000;
  * enough for a mistyped digit twice over.
  */
 export const MAX_CODE_ATTEMPTS = 5;
+
+/**
+ * Text messages per account per day.
+ *
+ * Email is the first way a code is offered and is not capped. This is the
+ * second, and every one of these costs money and lands on a lock screen — so
+ * the ceiling protects the account holder's evening as much as the bill.
+ */
+export const MAX_SMS_PER_DAY = 3;
+const SMS_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface IssuedToken {
   /** The only time the plaintext exists. It goes into an email and is dropped. */
@@ -155,6 +165,7 @@ export class EmailTokenService {
     userId: string,
     purpose: EmailTokenPurpose,
     requestIp?: string | null,
+    channel: TokenChannel = 'EMAIL',
   ): Promise<IssuedToken> {
     const token = randomBytes(32).toString('base64url');
     const code = EmailTokenService.sixDigits();
@@ -164,6 +175,7 @@ export class EmailTokenService {
       data: {
         userId,
         purpose,
+        channel,
         tokenHash: EmailTokenService.hash(token),
         codeHash: EmailTokenService.hash(code),
         expiresAt,
@@ -234,6 +246,28 @@ export class EmailTokenService {
    * across restarts and across API instances, and so it is per-account rather
    * than per-IP — a shared office NAT must not lock a colleague out.
    */
+  /**
+   * How many text messages this account has been sent in the last day.
+   *
+   * The cap is on SMS alone and not on codes in general: email is free and
+   * unlimited, an SMS costs money per message and arrives on a lock screen.
+   * Three is enough for a bad signal and a retype, and few enough that a
+   * script pointed at somebody's number cannot run up a bill or keep their
+   * phone buzzing all night.
+   *
+   * Counted from *issued* rows rather than from a separate tally, so the number
+   * cannot drift away from what was actually sent.
+   */
+  async smsSentToday(userId: string): Promise<number> {
+    return this.prisma.emailToken.count({
+      where: {
+        userId,
+        channel: 'SMS',
+        createdAt: { gte: new Date(Date.now() - SMS_WINDOW_MS) },
+      },
+    });
+  }
+
   async isCoolingDown(userId: string, purpose: EmailTokenPurpose): Promise<Date | null> {
     const last = await this.prisma.emailToken.findFirst({
       where: { userId, purpose },

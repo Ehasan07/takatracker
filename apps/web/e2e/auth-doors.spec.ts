@@ -83,4 +83,24 @@ test.describe('the way in', () => {
     await page.getByRole('button', { name: 'পাসওয়ার্ড দিয়ে ঢুকুন' }).click();
     await expect(page.getByLabel('পাসওয়ার্ড')).toBeVisible();
   });
+
+  test('takes an email or a mobile number in one box', async ({ page }) => {
+    await page.goto('/login');
+
+    /* One box for both. Asking somebody to choose "email or phone" first is a
+       decision about their own account they should not have to make, and a
+       `type="email"` field would have the browser refuse a real, working
+       Bangladeshi number before the request was ever built. */
+    const box = page.getByLabel('ইমেইল বা মোবাইল নম্বর');
+    await expect(box).toBeVisible();
+    await expect(box).toHaveAttribute('type', 'text');
+
+    await box.fill('01712345678');
+    await page.getByLabel('পাসওয়ার্ড').fill('whatever-is-wrong');
+    await page.getByRole('button', { name: 'লগইন', exact: true }).click();
+
+    /* Refused, but for the password — not for the shape of what was typed. */
+    await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/login/);
+  });
 });

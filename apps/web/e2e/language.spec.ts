@@ -11,6 +11,19 @@ import { expect, test, type Page } from '@playwright/test';
  * sheet — comes back in the other language too.
  */
 
+/**
+ * A distinct Bangladeshi mobile per signup. The number is unique across
+ * accounts now, so a fixed one makes the second signup in a run fail with a
+ * conflict — in whichever test happens to go second.
+ */
+let phoneSeq = 0;
+function uniquePhone(): string {
+  phoneSeq += 1;
+  return `018${String((Date.now() % 1_000_000) * 100 + (phoneSeq % 100))
+    .slice(-8)
+    .padStart(8, '0')}`;
+}
+
 const PASSWORD = 'hishab1234';
 
 let counter = 0;
@@ -24,6 +37,7 @@ async function signup(page: Page): Promise<void> {
   await page.getByLabel('নাম').fill('ভাষা পরীক্ষা');
   await page.getByLabel('ইমেইল').fill(uniqueEmail());
   await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+  await page.getByLabel('মোবাইল নম্বর').fill(uniquePhone());
   await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
   await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible({
     timeout: 30_000,
@@ -43,26 +57,22 @@ async function addCashAccount(page: Page): Promise<void> {
 
 async function switchTo(page: Page, label: 'English' | 'বাংলা'): Promise<void> {
   await page.goto('/settings');
-  const group = page.getByRole('group', { name: 'ভাষা' });
-  await group.getByRole('button', { name: label }).click();
 
-  /* Wait for the *evidence*, not for a load state.
+  /* Armed before the click, and waiting for the navigation itself.
    *
-   * The switch reloads the page on purpose — the formatters read a
-   * module-level locale, so anything already rendered would keep the old
-   * digits. But `waitForLoadState('load')` returns immediately here: the
-   * current document is already loaded and the reload has not started yet, so
-   * the next `goto` raced it and sometimes won. Waiting for a string that only
-   * exists on the far side of the switch is the only honest signal.
+   * Two earlier signals both looked right and both fired too early.
+   * `waitForLoadState('load')` returns immediately, because the current
+   * document is already loaded and the reload has not begun. Waiting for the
+   * settings note to change language is worse: `onSuccess` writes the new
+   * locale into the React Query cache *before* calling `reload()`, so the note
+   * flips while the old page is still on screen — and the next `goto` then
+   * races a reload that is still coming.
+   *
+   * The reload is the thing being waited for, so it is the thing to wait on.
    */
-  /* The line under the two buttons, which names what the choice covers. The
-     `<h1>` would have been the obvious signal and is `hidden md:block`, so it
-     does not exist at the two phone widths this suite also runs at. */
-  const settled =
-    label === 'English'
-      ? 'Numbers, dates and category names in English'
-      : 'সংখ্যা, তারিখ ও খাতের নাম বাংলায়';
-  await expect(page.getByText(settled, { exact: true })).toBeVisible({ timeout: 20_000 });
+  const reloaded = page.waitForEvent('load');
+  await page.getByRole('group', { name: 'ভাষা' }).getByRole('button', { name: label }).click();
+  await reloaded;
 }
 
 test.describe('language', () => {

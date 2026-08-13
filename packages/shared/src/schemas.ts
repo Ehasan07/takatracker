@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normaliseBdPhone } from './phone.js';
 import { DEFAULT_CURRENCY, isSupportedCurrency } from './currency.js';
 import {
   ACCOUNT_TYPES,
@@ -28,7 +29,25 @@ export const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
   name: z.string().min(1).max(120),
-  phone: z.string().max(30).optional(),
+  /**
+   * The mobile number, and now required.
+   *
+   * In Bangladesh this is the identity — it is what somebody remembers, what
+   * they already sign in to bKash and Nagad with, and what they will type here
+   * first. It was optional and never asked for, so all fourteen live accounts
+   * have none.
+   *
+   * Refused rather than stored verbatim when it is not a recognisable BD
+   * mobile: this one is a *credential*, not a contact note. `Person.phone`
+   * keeps the opposite rule — an unparseable number there is still the best
+   * record of how to reach somebody — and the two differ on purpose.
+   */
+  phone: z
+    .string()
+    .transform((value) => normaliseBdPhone(value))
+    .refine((value): value is string => value !== null, {
+      message: 'বাংলাদেশি মোবাইল নম্বর দিন — যেমন ০১৭১২৩৪৫৬৭৮',
+    }),
   locale: z.enum(LOCALES).default('bn'),
   /**
    * ISO 4217, chosen on the signup form.
@@ -50,10 +69,31 @@ export const signupSchema = z.object({
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
-export const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
+/**
+ * Sign in with either identifier.
+ *
+ * `identifier` rather than `email`, because a Bangladeshi user reaches for
+ * their mobile number first and being told "enter a valid email" when they
+ * typed a real, working number is the kind of wall that ends a session. The
+ * server decides which one it is; see `AuthService.login`.
+ *
+ * `email` is still accepted as a field name so that anything already posting
+ * the old shape — a saved password manager entry, an open tab — keeps working.
+ */
+export const loginSchema = z
+  .object({
+    identifier: z.string().trim().min(1).max(200).optional(),
+    email: z.string().trim().min(1).max(200).optional(),
+    password: z.string().min(1),
+  })
+  .transform((value) => ({
+    identifier: value.identifier ?? value.email ?? '',
+    password: value.password,
+  }))
+  .refine((value) => value.identifier !== '', {
+    message: 'ইমেইল বা মোবাইল নম্বর দিন',
+    path: ['identifier'],
+  });
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const refreshSchema = z.object({ refreshToken: z.string().min(1) });

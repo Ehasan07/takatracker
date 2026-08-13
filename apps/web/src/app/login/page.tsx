@@ -45,7 +45,7 @@ function LoginForm() {
     setPending(true);
     try {
       if (mode === 'password') {
-        await api('/auth/login', { method: 'POST', body: { email, password } });
+        await api('/auth/login', { method: 'POST', body: { identifier: email, password } });
         land();
       } else if (!codeSent) {
         const res = await api<{ message: string }>('/auth/otp/request', {
@@ -78,14 +78,23 @@ function LoginForm() {
 
   return (
     <form className="flex flex-col gap-4" onSubmit={(e) => void onSubmit(e)}>
-      <Field label="ইমেইল" htmlFor="email">
+      {/* One box for both. Asking somebody to pick "email or phone" first is a
+          decision they should not have to make about their own account, and
+          telling a Bangladeshi user "enter a valid email" after they typed a
+          real, working mobile number is the wall that ends a session. The
+          server works out which it is.
+
+          `type="text"`, not `email`: the browser's own validation would refuse
+          a phone number before the request was ever built. `username` for
+          autocomplete, which is what a password manager stores either way. */}
+      <Field label="ইমেইল বা মোবাইল নম্বর" htmlFor="email">
         <Input
           id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          inputMode="email"
+          name="identifier"
+          type="text"
+          autoComplete="username"
           required
+          placeholder="01712345678"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />

@@ -10,6 +10,19 @@ import { expect, test, type Page } from '@playwright/test';
  * rewrite is that the second group is who a search engine is.
  */
 
+/**
+ * A distinct Bangladeshi mobile per signup. The number is unique across
+ * accounts now, so a fixed one makes the second signup in a run fail with a
+ * conflict — in whichever test happens to go second.
+ */
+let phoneSeq = 0;
+function uniquePhone(): string {
+  phoneSeq += 1;
+  return `018${String((Date.now() % 1_000_000) * 100 + (phoneSeq % 100))
+    .slice(-8)
+    .padStart(8, '0')}`;
+}
+
 const PASSWORD = 'hishab1234';
 
 let counter = 0;
@@ -23,6 +36,7 @@ async function signup(page: Page): Promise<void> {
   await page.getByLabel('নাম').fill('বাজার পরীক্ষা');
   await page.getByLabel('ইমেইল').fill(uniqueEmail());
   await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+  await page.getByLabel('মোবাইল নম্বর').fill(uniquePhone());
   await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
   await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible({
     timeout: 30_000,
@@ -166,6 +180,7 @@ test.describe('the public site', () => {
     await page.getByLabel('কোন ডিভাইস ব্যবহার করছেন').selectOption('IOS');
     await page.getByLabel('কারেন্সি').selectOption('USD');
     await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
+    await page.getByLabel('মোবাইল নম্বর').fill(uniquePhone());
     await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
     await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' }).first()).toBeVisible({
       timeout: 30_000,

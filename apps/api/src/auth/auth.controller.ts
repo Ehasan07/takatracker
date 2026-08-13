@@ -36,10 +36,26 @@ const tokenField = z.string().min(1).max(512);
 const verifyConfirmSchema = z.object({ token: tokenField });
 const forgotPasswordSchema = z.object({ email: z.string().email() });
 
-const signInCodeRequestSchema = z.object({ email: z.string().email() });
+const signInCodeRequestSchema = z
+  .object({
+    /* An email or a Bangladeshi mobile, the same box the login form uses. */
+    identifier: z.string().trim().min(1).max(200).optional(),
+    email: z.string().trim().min(1).max(200).optional(),
+    /* Email unless asked otherwise. SMS costs money and lands on a lock
+       screen, so it is never the default. */
+    channel: z.enum(['email', 'sms']).default('email'),
+  })
+  .transform((value) => ({
+    identifier: value.identifier ?? value.email ?? '',
+    channel: value.channel,
+  }))
+  .refine((value) => value.identifier !== '', {
+    message: 'ইমেইল বা মোবাইল নম্বর দিন',
+    path: ['identifier'],
+  });
 
 const signInCodeVerifySchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().trim().min(1).max(200),
   /* Digits only, exactly six. Trimmed and stripped first, because a code
      pasted out of a mail client arrives with whitespace attached. */
   code: z
@@ -290,11 +306,14 @@ export class AuthController {
     @Body(zodPipe(signInCodeRequestSchema)) body: z.infer<typeof signInCodeRequestSchema>,
     @Req() req: Request,
   ) {
-    await this.auth.requestSignInCode(body.email, {
+    await this.auth.requestSignInCode(body.identifier, {
       ip: req.ip,
       userAgent: req.header('user-agent') ?? undefined,
+      channel: body.channel === 'sms' ? 'SMS' : 'EMAIL',
     });
-    return { message: 'এই ঠিকানায় অ্যাকাউন্ট থাকলে একটি কোড পাঠানো হয়েছে।' };
+    /* One sentence for both channels and for an identifier with no account.
+       Naming the channel back would say whether the account has a phone. */
+    return { message: 'অ্যাকাউন্ট থাকলে একটি কোড পাঠানো হয়েছে।' };
   }
 
   /** Trade the code for a session. Audited as `auth.signin_code`, not `auth.login`. */
@@ -306,7 +325,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.signInWithCode(body.email, body.code, {
+    const result = await this.auth.signInWithCode(body.identifier, body.code, {
       deviceId: req.header('x-device-id') ?? undefined,
       userAgent: req.header('user-agent') ?? undefined,
       ip: req.ip,

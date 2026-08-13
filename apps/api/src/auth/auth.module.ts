@@ -5,6 +5,7 @@ import { jwtAccessSecret } from '../common/env';
 import { MailModule } from '../mail/mail.module';
 import { AccountService } from './account.service';
 import { BreachedPasswordService } from './breached-password.service';
+import { SmsSender } from '../notifications/sms.sender';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { EmailTokenService } from './email-token.service';
@@ -41,6 +42,7 @@ import { SessionsService } from './sessions.service';
     AccountService,
     SessionsService,
     BreachedPasswordService,
+    SmsSender,
   ],
   exports: [AuthService, AccountService, SessionsService],
 })
