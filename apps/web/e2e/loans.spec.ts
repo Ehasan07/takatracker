@@ -23,6 +23,17 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * correctly at all four widths.
  */
 
+/**
+ * The 44px floor, measured the way a browser actually reports it.
+ *
+ * `getBoundingClientRect` returns a float, and a box laid out as exactly
+ * `2.75rem` comes back as 43.99998474121094 often enough to fail a run at
+ * random — a difference of three ten-millionths of a pixel, which is not a
+ * target anybody can miss. The floor is a design rule about CSS pixels, so it
+ * is compared in CSS pixels rather than in the float noise underneath.
+ */
+const TAP_TARGET_MIN = 43.99;
+
 const PASSWORD = 'hishab1234';
 
 let counter = 0;
@@ -497,8 +508,12 @@ test.describe('loans', () => {
       const label = (await target.innerText()).trim() || (await target.getAttribute('aria-label'));
       const box = await target.boundingBox();
       expect(box, `${label ?? 'target'} should be laid out`).not.toBeNull();
-      expect(box!.height, `${label ?? 'target'} is too short`).toBeGreaterThanOrEqual(44);
-      expect(box!.width, `${label ?? 'target'} is too narrow`).toBeGreaterThanOrEqual(44);
+      expect(box!.height, `${label ?? 'target'} is too short`).toBeGreaterThanOrEqual(
+        TAP_TARGET_MIN,
+      );
+      expect(box!.width, `${label ?? 'target'} is too narrow`).toBeGreaterThanOrEqual(
+        TAP_TARGET_MIN,
+      );
     }
   });
 });

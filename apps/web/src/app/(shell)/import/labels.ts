@@ -1,5 +1,4 @@
 import type { DatePreference, ImportColumn } from '@hishab/core';
-import { formatLedgerDate, fromLocalDateString, toBengaliDigits } from '@hishab/shared';
 
 /**
  * What a spreadsheet column can be.
@@ -41,37 +40,13 @@ export const BATCH_STATUS_LABEL: Record<string, string> = {
   FAILED: 'ব্যর্থ',
 };
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import { fmtDate as bnDate, fmtDateTime12 as bnDateTime, fmtNumber as bnNum } from '@/lib/format';
 
-/**
- * The contract says YYYY-MM-DD, but an ISO timestamp — or anything else — must
- * not take the screen down: `fromLocalDateString` throws on any other shape.
- */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const iso = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return toBengaliDigits(String(value));
-  try {
-    return formatLedgerDate(fromLocalDateString(iso));
-  } catch {
-    return toBengaliDigits(String(value));
-  }
-}
-
-/** "৭ আগস্ট ২০২৬, ৩:০৫ PM" — history needs the time of day to be readable. */
-export function bnDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const day = bnDate(value);
-  const stamp = new Date(value);
-  if (Number.isNaN(stamp.getTime())) return day;
-  const time = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Dhaka',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(stamp);
-  return `${day}, ${toBengaliDigits(time)}`;
-}
+export { bnDate, bnDateTime, bnNum };
 
 /** Bytes as something a person reads, in Bengali digits. */
 export function bnBytes(bytes: number): string {

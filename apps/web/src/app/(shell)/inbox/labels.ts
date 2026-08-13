@@ -1,41 +1,12 @@
-import {
-  DEFAULT_TIMEZONE,
-  formatLedgerDate,
-  fromLocalDateString,
-  toBengaliDigits,
-} from '@hishab/shared';
 import type { Direction, DraftStatus, IngestionChannel, RejectReason } from './types';
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import { fmtDate as bnDate, fmtDateTime as bnDateTime, fmtNumber as bnNum } from '@/lib/format';
 
-/**
- * The contract says YYYY-MM-DD, but an ISO timestamp must not take the screen
- * down: `fromLocalDateString` throws on anything else.
- */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const iso = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return toBengaliDigits(value);
-  try {
-    return formatLedgerDate(fromLocalDateString(iso));
-  } catch {
-    return toBengaliDigits(value);
-  }
-}
-
-/** "৭ আগস্ট ২০২৬, ১১:০৫" — when the message reached the phone. */
-export function bnDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const when = new Date(iso);
-  if (Number.isNaN(when.getTime())) return toBengaliDigits(iso);
-  const clock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: DEFAULT_TIMEZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(when);
-  return `${formatLedgerDate(when)}, ${toBengaliDigits(clock)}`;
-}
+export { bnDate, bnDateTime, bnNum };
 
 export const STATUS_LABEL: Record<DraftStatus, string> = {
   PENDING: 'যাচাইয়ের অপেক্ষায়',

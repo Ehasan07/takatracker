@@ -5,6 +5,8 @@ import * as React from 'react';
 import { CURRENCIES, currencyOf, formatMinor, parseMoneyToMinor } from '@hishab/shared';
 import { convert, type FxValue } from './fx-convert';
 import { api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
+import { t } from '@/lib/t';
 import { Field, Input, Select } from '@/components/ui/field';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
@@ -101,7 +103,7 @@ export function FxField({
         onClick={() => setCurrency(base === 'USD' ? 'BDT' : 'USD')}
         className="press text-income self-start text-sm underline"
       >
-        অন্য মুদ্রায় খরচ হয়েছে?
+        {t('fx.open', 'অন্য মুদ্রায় খরচ হয়েছে?')}
       </button>
     );
   }
@@ -112,7 +114,7 @@ export function FxField({
   return (
     <div className="rounded-card border-rule bg-greenbar space-y-3 border p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-ink text-sm font-medium">অন্য মুদ্রার খরচ</p>
+        <p className="text-ink text-sm font-medium">{t('fx.title', 'অন্য মুদ্রার খরচ')}</p>
         <button
           type="button"
           onClick={() => {
@@ -122,12 +124,12 @@ export function FxField({
           }}
           className="press text-ink-muted min-h-11 text-sm underline"
         >
-          বাদ দিন
+          {t('quantity.remove', 'বাদ দিন')}
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="মুদ্রা" htmlFor="fx-currency">
+        <Field label={t('fx.currency', 'মুদ্রা')} htmlFor="fx-currency">
           <Select
             id="fx-currency"
             value={value.currency}
@@ -141,7 +143,7 @@ export function FxField({
           </Select>
         </Field>
 
-        <Field label="মূল অঙ্ক" htmlFor="fx-amount">
+        <Field label={t('fx.original', 'মূল অঙ্ক')} htmlFor="fx-amount">
           <Input
             id="fx-amount"
             inputMode="decimal"
@@ -152,7 +154,10 @@ export function FxField({
         </Field>
       </div>
 
-      <Field label={`রেট — ১ ${value.currency} = কত ${currencyInfo.symbol}`} htmlFor="fx-rate">
+      <Field
+        label={`${t('fx.rate', 'রেট')} — ${fmtNumber(1)} ${value.currency} = ? ${currencyInfo.symbol}`}
+        htmlFor="fx-rate"
+      >
         <Input
           id="fx-rate"
           inputMode="decimal"
@@ -162,17 +167,17 @@ export function FxField({
         />
         <p className="text-ink-muted mt-1 text-xs">
           {suggestion.isFetching
-            ? 'আজকের রেট আনা হচ্ছে…'
+            ? t('fx.fetching', 'আজকের রেট আনা হচ্ছে…')
             : suggestion.data
-              ? `আজকের প্রকাশিত রেট বসানো হয়েছে (${suggestion.data.provider})। আপনি বদলে দিতে পারেন — যেটা এখানে থাকবে সেটাই খাতায় যাবে।`
+              ? `${t('fx.suggested', 'আজকের প্রকাশিত রেট বসানো হয়েছে। আপনি বদলে দিতে পারেন — যেটা এখানে থাকবে সেটাই খাতায় যাবে।')} (${suggestion.data.provider})`
               : /* Not an error state. The rate was always the user's to declare;
                    the feed only ever offered to fill it in. */
-                'রেট আনা যায়নি — নিজে লিখে দিন।'}
+                t('fx.failed', 'রেট আনা যায়নি — নিজে লিখে দিন।')}
         </p>
       </Field>
 
       <p className="text-ink text-sm">
-        খাতায় যাবে:{' '}
+        {t('fx.willSave', 'খাতায় যাবে:')}{' '}
         <strong className="font-medium">
           {converted && converted > 0 ? formatMinor(converted, { currency: base }) : '—'}
         </strong>

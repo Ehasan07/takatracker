@@ -14,14 +14,7 @@ import {
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
-import {
-  addDays,
-  formatLedgerDate,
-  fromLocalDateString,
-  startOfMonth,
-  toBengaliDigits,
-  toLocalDateString,
-} from '@hishab/shared';
+import { addDays, startOfMonth, toLocalDateString } from '@hishab/shared';
 import { AttachmentPicker } from '@/components/attachment-picker';
 import {
   AttachmentBadge,
@@ -46,6 +39,8 @@ import {
   type TransactionDto,
 } from '@/lib/api';
 import { useDisplayName } from '@/lib/display-name';
+import { t } from '@/lib/t';
+import { fmtDate, fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { TagDot } from '../tags/parts';
@@ -60,7 +55,7 @@ import { type TagDto } from '../tags/types';
  *  1. **The list is paginated by cursor, not by a bigger limit.** The API caps
  *     `limit` at 100 and answers with a `nextCursor`, so a user with four
  *     hundred transactions reaches all of them by asking for more — never by us
- *     raising a number until it breaks. "আরও দেখুন" rather than infinite
+ *     raising a number until it breaks. t('txn.loadMore', 'আরও দেখুন') rather than infinite
  *     scroll on purpose: this is a list people scan for one particular row, and
  *     a scrollbar that keeps shrinking under the thumb makes that harder, not
  *     easier. The button also tells them there *is* more.
@@ -78,7 +73,7 @@ import { type TagDto } from '../tags/types';
 /** The API's own default. One page is one screenful of scrolling on a phone. */
 const PAGE_SIZE = 50;
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 /** Types the simple transaction body can express, and therefore can be edited. */
 const SIMPLE_TYPES = new Set(['INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT', 'OPENING_BALANCE']);
@@ -131,7 +126,18 @@ type LedgerTxn = TransactionDto;
  */
 const attachmentsOf = (txn: LedgerTxn): string[] => txn.attachmentIds ?? [];
 
-const labelOf = (txn: TransactionDto): string => txn.description || txn.categoryName || 'লেনদেন';
+const labelOf = (txn: TransactionDto): string =>
+  txn.description || txn.categoryName || t('entry.transaction', 'লেনদেন');
+
+/* The two label tables above keep their Bengali beside the key and are looked
+   up through `t` at render, rather than being translated where they are
+   declared: a module-level constant is evaluated before a workspace's own
+   wording override has been fetched. */
+const typeLabel = (type: string): string =>
+  TYPE_LABEL[type] ? t(`txn.type.${type}`, TYPE_LABEL[type]) : type;
+
+const sourceLabel = (source: string): string =>
+  SOURCE_LABEL[source] ? t(`txn.source.${source}`, SOURCE_LABEL[source]) : source;
 
 // --- filter state ----------------------------------------------------------
 
@@ -144,7 +150,7 @@ const labelOf = (txn: TransactionDto): string => txn.description || txn.category
  * they would work. Adding the two controls is a change of its own.
  *
  * `tagId` is here rather than in component state for the same reason as the
- * rest — "পারিবারিক, last month" has to survive a reload and be sendable to
+ * rest — t('txn.searchHint', 'পারিবারিক, last month') has to survive a reload and be sendable to
  * somebody else — and because the by-tag report links straight into it.
  */
 const FILTER_KEYS = [
@@ -324,7 +330,7 @@ function TransactionsScreen() {
     <div className="flex shrink-0 items-center">
       <button
         type="button"
-        aria-label="সম্পাদনা"
+        aria-label={t('common.edit', 'সম্পাদনা')}
         onClick={() => {
           // These actions also live inside the detail sheet; stacking the edit
           // sheet on top of it would trap a phone user two layers deep.
@@ -337,7 +343,7 @@ function TransactionsScreen() {
       </button>
       <button
         type="button"
-        aria-label="মুছুন"
+        aria-label={t('common.delete', 'মুছুন')}
         onClick={() => remove.mutate(txn)}
         className="press touch-target text-expense hover:bg-greenbar flex items-center justify-center rounded-md"
       >
@@ -380,7 +386,11 @@ function TransactionsScreen() {
               key={tag.id}
               type="button"
               aria-pressed={on}
-              aria-label={on ? `${tag.name} ট্যাগের ছাঁকনি সরান` : `${tag.name} ট্যাগ দিয়ে ছাঁকুন`}
+              aria-label={
+                on
+                  ? `${tag.name} — ${t('txn.unfilterTag', 'ট্যাগের ছাঁকনি সরান')}`
+                  : `${tag.name} — ${t('txn.filterByTag', 'ট্যাগ দিয়ে ছাঁকুন')}`
+              }
               onClick={() => {
                 haptic('tap');
                 setFilters({ tagId: on ? '' : tag.id });
@@ -405,9 +415,11 @@ function TransactionsScreen() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       {/* The phone gets its title from the shell's navigation bar. */}
       <header className="hidden items-baseline justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">খাতা</h1>
+        <h1 className="text-ink text-2xl font-semibold">{t('nav.transactions', 'খাতা')}</h1>
         <p className="text-ink-muted text-sm">
-          {transactions.hasNextPage ? `${bn(shown)} টি দেখানো হচ্ছে` : `${bn(shown)} টি লেনদেন`}
+          {transactions.hasNextPage
+            ? t('txn.showingN', '{n} টি দেখানো হচ্ছে').replace('{n}', bn(shown))
+            : t('txn.countN', '{n} টি লেনদেন').replace('{n}', bn(shown))}
         </p>
       </header>
 
@@ -428,7 +440,7 @@ function TransactionsScreen() {
           className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
         >
           <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
-          <p className="text-ink text-sm">এই ট্যাগটি আর নেই।</p>
+          <p className="text-ink text-sm">{t('txn.tagGone', 'এই ট্যাগটি আর নেই।')}</p>
           <p className="text-ink-muted text-xs">
             ট্যাগটি মুছে ফেলা হয়েছে বা অন্য ট্যাগের সাথে মিলিয়ে দেওয়া হয়েছে। ছাঁকনিটি সরিয়ে
             পুরো খাতা দেখুন।
@@ -451,10 +463,14 @@ function TransactionsScreen() {
       ) : items.length === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
           <p className="text-ink">
-            {unfiltered ? 'এখনও কোনো লেনদেন নেই।' : 'এই ফিল্টারে কোনো লেনদেন নেই।'}
+            {unfiltered
+              ? t('txn.empty', 'এখনও কোনো লেনদেন নেই।')
+              : t('txn.emptyFiltered', 'এই ফিল্টারে কোনো লেনদেন নেই।')}
           </p>
           <p className="text-ink-muted mt-1 text-sm">
-            {unfiltered ? '+ বোতাম দিয়ে প্রথম লেনদেনটি যোগ করুন।' : 'উপরের ফিল্টার বদলে দেখুন।'}
+            {unfiltered
+              ? t('txn.emptyHint', '+ বোতাম দিয়ে প্রথম লেনদেনটি যোগ করুন।')
+              : t('txn.emptyFilteredHint', 'উপরের ফিল্টার বদলে দেখুন।')}
           </p>
         </div>
       ) : (
@@ -468,7 +484,7 @@ function TransactionsScreen() {
             {groups.map(([date, rows]) => (
               <section key={date}>
                 <h2 className="border-rule bg-greenbar text-ink-muted sticky top-0 z-10 border-b px-3 py-1.5 text-xs font-medium">
-                  {formatLedgerDate(fromLocalDateString(date))}
+                  {fmtDate(date)}
                 </h2>
                 <ul>
                   {rows.map((txn) => {
@@ -497,9 +513,7 @@ function TransactionsScreen() {
                               {txn.type === 'TRANSFER'
                                 ? `${txn.accountName} → ${txn.counterAccountName}`
                                 : [txn.accountName, txn.categoryName].filter(Boolean).join(' · ')}
-                              {txn.source !== 'MANUAL'
-                                ? ` · ${SOURCE_LABEL[txn.source] ?? txn.source}`
-                                : ''}
+                              {txn.source !== 'MANUAL' ? ` · ${sourceLabel(txn.source)}` : ''}
                             </span>
                           </span>
 
@@ -538,13 +552,13 @@ function TransactionsScreen() {
                         <SwipeRow
                           enabled={coarse}
                           right={{
-                            label: 'সম্পাদনা',
+                            label: t('common.edit', 'সম্পাদনা'),
                             icon: <Pencil className="h-4 w-4" aria-hidden />,
                             className: 'bg-brass',
                             onAction: () => setEditing(txn),
                           }}
                           left={{
-                            label: 'মুছুন',
+                            label: t('common.delete', 'মুছুন'),
                             icon: <Trash2 className="h-4 w-4" aria-hidden />,
                             className: 'bg-expense',
                             onAction: () => remove.mutate(txn),
@@ -571,7 +585,7 @@ function TransactionsScreen() {
                     void transactions.fetchNextPage();
                   }}
                 >
-                  {transactions.isFetchingNextPage ? 'আনা হচ্ছে…' : 'আরও দেখুন'}
+                  {transactions.isFetchingNextPage ? t('txn.loading', 'আনা হচ্ছে…') : 'আরও দেখুন'}
                 </Button>
               </div>
             ) : shown > PAGE_SIZE ? (
@@ -606,8 +620,8 @@ function TransactionsScreen() {
       <Sheet
         open={detailOpen && detail !== null}
         onOpenChange={(open) => setDetailOpen(open)}
-        title="লেনদেনের বিবরণ"
-        description={detail ? formatLedgerDate(fromLocalDateString(detail.date)) : undefined}
+        title={t('txn.detail', 'লেনদেনের বিবরণ')}
+        description={detail ? fmtDate(detail.date) : undefined}
       >
         {detail ? (
           <TransactionDetail
@@ -630,7 +644,7 @@ function TransactionsScreen() {
 
       {undoable ? (
         <UndoToast
-          message={`মোছা হয়েছে: ${undoable.label}`}
+          message={`${t('txn.deleted', 'মোছা হয়েছে')}: ${undoable.label}`}
           onUndo={() => {
             restore.mutate(undoable.id);
             setUndoable(null);
@@ -720,13 +734,13 @@ function FilterBar({
   const today = toLocalDateString(now);
   const monthStart = startOfMonth(now);
   const presets: readonly (readonly [string, string, string])[] = [
-    ['এই মাস', toLocalDateString(monthStart), today],
+    [t('range.thisMonth', 'এই মাস'), toLocalDateString(monthStart), today],
     [
-      'গত মাস',
+      t('range.lastMonth', 'গত মাস'),
       toLocalDateString(startOfMonth(addDays(monthStart, -1))),
       toLocalDateString(addDays(monthStart, -1)),
     ],
-    ['এই বছর', `${today.slice(0, 4)}-01-01`, today],
+    [t('range.thisYear', 'এই বছর'), `${today.slice(0, 4)}-01-01`, today],
   ];
 
   const clearAll = (): void => {
@@ -754,21 +768,21 @@ function FilterBar({
     const value = filters[key];
     switch (key) {
       case 'from':
-        return `${formatLedgerDate(fromLocalDateString(value))} থেকে`;
+        return `${fmtDate(value)} ${t('range.from', 'থেকে')}`;
       case 'to':
-        return `${formatLedgerDate(fromLocalDateString(value))} পর্যন্ত`;
+        return `${fmtDate(value)} ${t('range.to', 'পর্যন্ত')}`;
       case 'accountId':
         return nameOf(accounts, value);
       case 'categoryId':
         return categoryName(value);
       case 'tagId':
-        return `ট্যাগ: ${tagLabel(value)}`;
+        return `${t('nav.tags', 'ট্যাগ')}: ${tagLabel(value)}`;
       case 'type':
-        return TYPE_LABEL[value] ?? value;
+        return typeLabel(value);
       case 'source':
-        return SOURCE_LABEL[value] ?? value;
+        return sourceLabel(value);
       case 'personId':
-        return peopleOptions.find(([id]) => id === value)?.[1] ?? 'ব্যক্তি';
+        return peopleOptions.find(([id]) => id === value)?.[1] ?? t('txn.person', 'ব্যক্তি');
       default:
         return value;
     }
@@ -793,8 +807,8 @@ function FilterBar({
             aria-hidden
           />
           <Input
-            aria-label="খুঁজুন"
-            placeholder="খুঁজুন…"
+            aria-label={t('common.search', 'খুঁজুন')}
+            placeholder={`${t('common.search', 'খুঁজুন')}…`}
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             enterKeyHint="search"
@@ -829,7 +843,7 @@ function FilterBar({
           !panelOpen && 'hidden md:grid',
         )}
       >
-        <Field label="শুরুর তারিখ" htmlFor="fl-from">
+        <Field label={t('txn.fromDate', 'শুরুর তারিখ')} htmlFor="fl-from">
           <Input
             id="fl-from"
             type="date"
@@ -838,7 +852,7 @@ function FilterBar({
             onChange={(e) => setFilters({ from: e.target.value })}
           />
         </Field>
-        <Field label="শেষ তারিখ" htmlFor="fl-to">
+        <Field label={t('txn.toDate', 'শেষ তারিখ')} htmlFor="fl-to">
           <Input
             id="fl-to"
             type="date"
@@ -853,7 +867,7 @@ function FilterBar({
             value={filters.accountId}
             onChange={(e) => setFilters({ accountId: e.target.value })}
           >
-            <option value="">সব অ্যাকাউন্ট</option>
+            <option value="">{t('txn.allAccounts', 'সব অ্যাকাউন্ট')}</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -867,7 +881,7 @@ function FilterBar({
             value={filters.categoryId}
             onChange={(e) => setFilters({ categoryId: e.target.value })}
           >
-            <option value="">সব ক্যাটাগরি</option>
+            <option value="">{t('txn.allCategories', 'সব ক্যাটাগরি')}</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {displayNameOf(c)}
@@ -885,7 +899,7 @@ function FilterBar({
               value={filters.tagId}
               onChange={(e) => setFilters({ tagId: e.target.value })}
             >
-              <option value="">সব ট্যাগ</option>
+              <option value="">{t('txn.allTags', 'সব ট্যাগ')}</option>
               {tags.map((tag) => (
                 <option key={tag.id} value={tag.id}>
                   {displayNameOf(tag)}
@@ -901,23 +915,23 @@ function FilterBar({
             value={filters.type}
             onChange={(e) => setFilters({ type: e.target.value })}
           >
-            <option value="">সব ধরন</option>
+            <option value="">{t('txn.allKinds', 'সব ধরন')}</option>
             {['EXPENSE', 'INCOME', 'TRANSFER', 'ADJUSTMENT', 'OPENING_BALANCE'].map((value) => (
               <option key={value} value={value}>
-                {TYPE_LABEL[value]}
+                {typeLabel(value)}
               </option>
             ))}
-            <optgroup label="ধার-দেনা">
+            <optgroup label={t('nav.loans', 'ধার-দেনা')}>
               {['LOAN_GIVEN', 'LOAN_REPAID', 'BORROWED', 'BORROW_REPAID'].map((value) => (
                 <option key={value} value={value}>
-                  {TYPE_LABEL[value]}
+                  {typeLabel(value)}
                 </option>
               ))}
             </optgroup>
-            <optgroup label="সঞ্চয় ও বিমা">
+            <optgroup label={t('txn.savingsInsurance', 'সঞ্চয় ও বিমা')}>
               {['SAVINGS_DEPOSIT', 'SAVINGS_WITHDRAWAL', 'PREMIUM_PAID'].map((value) => (
                 <option key={value} value={value}>
-                  {TYPE_LABEL[value]}
+                  {typeLabel(value)}
                 </option>
               ))}
             </optgroup>
@@ -973,13 +987,13 @@ function FilterBar({
 
           {moreOpen ? (
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Field label="কোথা থেকে এসেছে" htmlFor="fl-source">
+              <Field label={t('txn.source', 'কোথা থেকে এসেছে')} htmlFor="fl-source">
                 <Select
                   id="fl-source"
                   value={filters.source}
                   onChange={(e) => setFilters({ source: e.target.value })}
                 >
-                  <option value="">সব উৎস</option>
+                  <option value="">{t('txn.allSources', 'সব উৎস')}</option>
                   {Object.entries(SOURCE_LABEL).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
@@ -989,13 +1003,13 @@ function FilterBar({
               </Field>
 
               {peopleOptions.length > 0 ? (
-                <Field label="ব্যক্তি (ধার-দেনা)" htmlFor="fl-person">
+                <Field label={t('txn.personFilter', 'ব্যক্তি (ধার-দেনা)')} htmlFor="fl-person">
                   <Select
                     id="fl-person"
                     value={filters.personId}
                     onChange={(e) => setFilters({ personId: e.target.value })}
                   >
-                    <option value="">সবাই</option>
+                    <option value="">{t('txn.everyone', 'সবাই')}</option>
                     {peopleOptions.map(([id, name]) => (
                       <option key={id} value={id}>
                         {name}
@@ -1011,10 +1025,10 @@ function FilterBar({
 
       {/* What is actually on, and one tap to take any of it off. */}
       {activeCount > 0 ? (
-        <div className="chip-strip" aria-label="চালু ফিল্টার">
+        <div className="chip-strip" aria-label={t('txn.activeFilters', 'চালু ফিল্টার')}>
           {filters.q ? (
             <FilterChip
-              label={`খোঁজ: ${filters.q}`}
+              label={`${t('common.search', 'খুঁজুন')}: ${filters.q}`}
               onClear={() => {
                 setTyped('');
                 setFilters({ q: '' });
@@ -1051,7 +1065,7 @@ function FilterChip({ label, onClear }: { label: string; onClear: () => void }) 
           haptic('tap');
           onClear();
         }}
-        aria-label={`ফিল্টার সরান: ${label}`}
+        aria-label={`${t('txn.removeFilter', 'ফিল্টার সরান')}: ${label}`}
         className="press hover:bg-income/20 flex h-8 w-8 items-center justify-center rounded-full"
       >
         <X className="h-3.5 w-3.5" aria-hidden />
@@ -1067,8 +1081,10 @@ function LedgerError({ onRetry }: { onRetry: () => void }) {
       className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
-      <p className="text-ink text-sm">লেনদেনের তালিকা আনা যায়নি।</p>
-      <p className="text-ink-muted text-xs">ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।</p>
+      <p className="text-ink text-sm">{t('txn.listFailed', 'লেনদেনের তালিকা আনা যায়নি।')}</p>
+      <p className="text-ink-muted text-xs">
+        {t('common.checkConnection', 'ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।')}
+      </p>
       <Button variant="outline" size="sm" className="mt-1" onClick={onRetry}>
         <RotateCw className="h-4 w-4" aria-hidden />
         আবার চেষ্টা করুন
@@ -1098,25 +1114,25 @@ function TransactionDetail({
   return (
     <dl className="space-y-3 text-sm">
       <div>
-        <dt className="text-ink-muted text-xs">পরিমাণ</dt>
+        <dt className="text-ink-muted text-xs">{t('entry.amount', 'পরিমাণ')}</dt>
         <dd>
           <Money minor={txn.amountMinor} colored signed className="text-xl" />
         </dd>
       </div>
       <div>
-        <dt className="text-ink-muted text-xs">বিবরণ</dt>
+        <dt className="text-ink-muted text-xs">{t('entry.description', 'বিবরণ')}</dt>
         <dd className="text-ink break-words">{txn.description || '—'}</dd>
       </div>
       <div>
-        <dt className="text-ink-muted text-xs">তারিখ</dt>
-        <dd className="text-ink">{formatLedgerDate(fromLocalDateString(txn.date))}</dd>
+        <dt className="text-ink-muted text-xs">{t('entry.date', 'তারিখ')}</dt>
+        <dd className="text-ink">{fmtDate(txn.date)}</dd>
       </div>
       <div>
-        <dt className="text-ink-muted text-xs">ধরন</dt>
-        <dd className="text-ink">{TYPE_LABEL[txn.type] ?? txn.type}</dd>
+        <dt className="text-ink-muted text-xs">{t('entry.kind', 'ধরন')}</dt>
+        <dd className="text-ink">{typeLabel(txn.type)}</dd>
       </div>
       <div>
-        <dt className="text-ink-muted text-xs">অ্যাকাউন্ট</dt>
+        <dt className="text-ink-muted text-xs">{t('entry.account', 'অ্যাকাউন্ট')}</dt>
         <dd className="text-ink">
           {txn.type === 'TRANSFER'
             ? `${txn.accountName ?? '—'} → ${txn.counterAccountName ?? '—'}`
@@ -1124,13 +1140,13 @@ function TransactionDetail({
         </dd>
       </div>
       <div>
-        <dt className="text-ink-muted text-xs">ক্যাটাগরি</dt>
+        <dt className="text-ink-muted text-xs">{t('entry.category', 'ক্যাটাগরি')}</dt>
         <dd className="text-ink">{txn.categoryName ?? '—'}</dd>
       </div>
       {/* Beside the category on purpose: one line says what the money went on,
           the next says who it was for. */}
       <div>
-        <dt className="text-ink-muted text-xs">ট্যাগ</dt>
+        <dt className="text-ink-muted text-xs">{t('nav.tags', 'ট্যাগ')}</dt>
         <dd className="mt-1">
           {txn.tags && txn.tags.length > 0 ? (
             <ul className="flex flex-wrap gap-1.5">
@@ -1142,7 +1158,9 @@ function TransactionDetail({
                       type="button"
                       aria-pressed={on}
                       aria-label={
-                        on ? `${tag.name} ট্যাগের ছাঁকনি সরান` : `${tag.name} ট্যাগ দিয়ে ছাঁকুন`
+                        on
+                          ? `${tag.name} — ${t('txn.unfilterTag', 'ট্যাগের ছাঁকনি সরান')}`
+                          : `${tag.name} — ${t('txn.filterByTag', 'ট্যাগ দিয়ে ছাঁকুন')}`
                       }
                       onClick={() => {
                         haptic('tap');
@@ -1171,13 +1189,13 @@ function TransactionDetail({
       </div>
       {txn.notes ? (
         <div>
-          <dt className="text-ink-muted text-xs">নোট</dt>
+          <dt className="text-ink-muted text-xs">{t('entry.notes', 'নোট')}</dt>
           <dd className="text-ink break-words">{txn.notes}</dd>
         </div>
       ) : null}
 
       <div>
-        <dt className="text-ink-muted text-xs">রসিদ</dt>
+        <dt className="text-ink-muted text-xs">{t('txn.receipts', 'রসিদ')}</dt>
         <dd className="mt-1">
           {receipts.length > 0 ? (
             <ul className="flex flex-wrap gap-2">
@@ -1188,7 +1206,9 @@ function TransactionDetail({
               ))}
             </ul>
           ) : (
-            <p className="text-ink-muted text-xs">কোনো রসিদ যোগ করা হয়নি।</p>
+            <p className="text-ink-muted text-xs">
+              {t('txn.noReceipts', 'কোনো রসিদ যোগ করা হয়নি।')}
+            </p>
           )}
           {editable ? (
             <Button variant="outline" size="sm" className="mt-2" onClick={onReceipts}>
@@ -1301,7 +1321,10 @@ function ReceiptSheet({
         await discardOrphans();
         setIds(attachmentsOf(txn));
         setError(
-          'রসিদটি সংরক্ষণ করা যায়নি — সার্ভার এখনো লেনদেনের সাথে রসিদ যুক্ত রাখতে পারছে না।',
+          t(
+            'txn.receiptFailed',
+            'রসিদটি সংরক্ষণ করা যায়নি — সার্ভার এখনো লেনদেনের সাথে রসিদ যুক্ত রাখতে পারছে না।',
+          ),
         );
         return;
       }
@@ -1312,7 +1335,7 @@ function ReceiptSheet({
       onClose();
     } catch (err) {
       haptic('warn');
-      setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি');
+      setError(err instanceof Error ? err.message : t('common.saveFailed', 'সংরক্ষণ করা যায়নি'));
     } finally {
       setSaving(false);
     }
@@ -1326,7 +1349,7 @@ function ReceiptSheet({
     <Sheet
       open={txn !== null}
       onOpenChange={(open) => !open && close()}
-      title="রসিদ"
+      title={t('txn.receipts', 'রসিদ')}
       description={txn ? labelOf(txn) : undefined}
     >
       <div className="flex flex-col gap-4">
@@ -1339,7 +1362,7 @@ function ReceiptSheet({
         ) : null}
 
         <Button size="block" disabled={saving} onClick={() => void save()}>
-          {saving ? 'সংরক্ষণ হচ্ছে…' : 'সংরক্ষণ করুন'}
+          {saving ? t('common.saving', 'সংরক্ষণ হচ্ছে…') : t('common.save', 'সংরক্ষণ করুন')}
         </Button>
         <Button variant="outline" size="block" onClick={close}>
           বাতিল

@@ -5,12 +5,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { api, endpoints } from '@/lib/api';
+import { t } from '@/lib/t';
 import { resetSessionForSignOut } from '@/lib/session-reset';
 import { UsageMeter } from '@/components/usage-meter';
 import { SessionsList } from '@/components/sessions-list';
 import { IngestionSettings } from '@/components/ingestion-settings';
 import { MailSettings } from '@/components/mail-settings';
 import { TelegramSettings } from '@/components/telegram-settings';
+import { LanguageSettings } from '@/components/language-settings';
 import { UnitSettings } from '@/components/unit-settings';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
@@ -53,17 +55,19 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">সেটিংস</h1>
+      <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        {t('nav.settings', 'সেটিংস')}
+      </h1>
 
       <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">অ্যাকাউন্ট</h2>
+        <h2 className="text-ink-muted text-sm font-medium">{t('shell.account', 'অ্যাকাউন্ট')}</h2>
         <p className="text-ink mt-1">{me.data?.name}</p>
         <p className="text-ink-muted text-sm">{me.data?.email}</p>
       </section>
 
       <section className="rounded-card border-rule bg-surface border p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-ink-muted text-sm font-medium">প্ল্যান</h2>
+          <h2 className="text-ink-muted text-sm font-medium">{t('settings.plan', 'প্ল্যান')}</h2>
           <span className="text-ink text-sm font-semibold">
             {entitlements.data?.plan?.name ?? '—'}
           </span>
@@ -71,23 +75,23 @@ export default function SettingsPage() {
         {entitlements.data?.plan && entitlements.data.plan.priceMinor > 0 ? (
           <p className="text-ink-muted mt-1 text-xs">
             <Money minor={entitlements.data.plan.priceMinor} className="inline" decimals={false} />{' '}
-            / মাস
+            / {t('settings.perMonth', 'মাস')}
           </p>
         ) : null}
 
         <div className="mt-3 flex flex-col gap-3">
           <UsageMeter
-            label="অ্যাকাউন্ট"
+            label={t('entry.account', 'অ্যাকাউন্ট')}
             used={entitlements.data?.usage['accounts.max'] ?? 0}
             limit={entitlements.data?.entitlements['accounts.max'] ?? null}
           />
           <UsageMeter
-            label="এই মাসের লেনদেন"
+            label={t('settings.monthlyEntries', 'এই মাসের লেনদেন')}
             used={entitlements.data?.usage['transactions.monthly.max'] ?? 0}
             limit={entitlements.data?.entitlements['transactions.monthly.max'] ?? null}
           />
           <UsageMeter
-            label="সদস্য"
+            label={t('settings.members', 'সদস্য')}
             used={entitlements.data?.usage['members.max'] ?? 0}
             limit={entitlements.data?.entitlements['members.max'] ?? null}
           />
@@ -95,15 +99,21 @@ export default function SettingsPage() {
       </section>
 
       <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">খাত ব্যবস্থাপনা</h2>
-        <p className="text-ink-muted mt-1 text-sm">আয় ও খরচের খাত যোগ করুন, নাম বদলান, মুছুন।</p>
+        <h2 className="text-ink-muted text-sm font-medium">
+          {t('settings.categories', 'খাত ব্যবস্থাপনা')}
+        </h2>
+        <p className="text-ink-muted mt-1 text-sm">
+          {t('nav.categories.blurb', 'আয় ও খরচের খাত যোগ করুন, নাম বদলান, মুছুন')}
+        </p>
         <Link
           href="/categories"
           className="press bg-income mt-3 inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-white"
         >
-          ক্যাটাগরি দেখুন
+          {t('settings.seeCategories', 'ক্যাটাগরি দেখুন')}
         </Link>
       </section>
+
+      <LanguageSettings />
 
       <UnitSettings />
 
@@ -116,7 +126,7 @@ export default function SettingsPage() {
       <SessionsList />
 
       <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">থিম</h2>
+        <h2 className="text-ink-muted text-sm font-medium">{t('settings.theme', 'থিম')}</h2>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {(['system', 'light', 'dark'] as const).map((option) => (
             <button
@@ -130,18 +140,27 @@ export default function SettingsPage() {
                   : 'border-rule text-ink min-h-11 rounded-md border text-sm'
               }
             >
-              {option === 'system' ? 'সিস্টেম' : option === 'light' ? 'আলো' : 'অন্ধকার'}
+              {option === 'system'
+                ? t('settings.theme.system', 'সিস্টেম')
+                : option === 'light'
+                  ? t('settings.theme.light', 'আলো')
+                  : t('settings.theme.dark', 'অন্ধকার')}
             </button>
           ))}
         </div>
       </section>
 
       <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">পরের ধাপ</h2>
+        <h2 className="text-ink-muted text-sm font-medium">{t('settings.nextUp', 'পরের ধাপ')}</h2>
         <ul className="text-ink-muted mt-2 list-disc pl-5 text-sm">
-          <li>ব্যাংকের এসএমএস পড়ে খসড়া তৈরি — আপনার আসল বার্তার নমুনা পেলে</li>
-          <li>ইমেইলে যাচাই ও পাসওয়ার্ড রিসেটের লিংক পাঠানো</li>
-          <li>মোবাইল অ্যাপ</li>
+          <li>
+            {t(
+              'settings.next.sms',
+              'ব্যাংকের এসএমএস পড়ে খসড়া তৈরি — আপনার আসল বার্তার নমুনা পেলে',
+            )}
+          </li>
+          <li>{t('settings.next.email', 'ইমেইলে যাচাই ও পাসওয়ার্ড রিসেটের লিংক পাঠানো')}</li>
+          <li>{t('settings.next.mobile', 'মোবাইল অ্যাপ')}</li>
         </ul>
       </section>
 

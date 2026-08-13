@@ -2,7 +2,6 @@
 
 import { Camera, Paperclip, RotateCw, X } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import {
   ATTACHMENT_ACCEPT,
   AttachmentViewer,
@@ -14,6 +13,8 @@ import {
 } from '@/components/attachment-viewer';
 import { Button } from '@/components/ui/button';
 import { ApiError, API_BASE } from '@/lib/api';
+import { t } from '@/lib/t';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 
@@ -32,13 +33,16 @@ import { cn } from '@/lib/utils';
  * `attachments.service.ts` already answers 413 and 415 in Bengali.
  */
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 const TOO_LARGE = `ফাইলটি খুব বড় — সর্বোচ্চ ${bn(
   MAX_ATTACHMENT_BYTES / (1024 * 1024),
 )} মেগাবাইট পর্যন্ত ছবি বা পিডিএফ দেওয়া যায়`;
 
-const WRONG_TYPE = 'শুধু ছবি (JPEG, PNG, WebP, HEIC) অথবা পিডিএফ ফাইল দেওয়া যায়';
+const WRONG_TYPE = t(
+  'attach.badType',
+  'শুধু ছবি (JPEG, PNG, WebP, HEIC) অথবা পিডিএফ ফাইল দেওয়া যায়',
+);
 
 /**
  * A locally detectable refusal, so an obviously wrong file never leaves the
@@ -48,7 +52,7 @@ const WRONG_TYPE = 'শুধু ছবি (JPEG, PNG, WebP, HEIC) অথবা 
  */
 function localRejection(file: File): string | null {
   if (file.size > MAX_ATTACHMENT_BYTES) return TOO_LARGE;
-  if (file.size === 0) return 'ফাইলটি খালি — আবার চেষ্টা করুন';
+  if (file.size === 0) return t('attach.empty', 'ফাইলটি খালি — আবার চেষ্টা করুন');
   if (file.type && !file.type.startsWith('image/') && file.type !== 'application/pdf') {
     return WRONG_TYPE;
   }
@@ -100,11 +104,11 @@ export function uploadAttachment(
 
       xhr.onerror = () => {
         done();
-        reject(new ApiError(0, 'সংযোগ পাওয়া যাচ্ছে না'));
+        reject(new ApiError(0, t('attach.offline', 'সংযোগ পাওয়া যাচ্ছে না')));
       };
       xhr.onabort = () => {
         done();
-        reject(new DOMException('বাতিল করা হয়েছে', 'AbortError'));
+        reject(new DOMException(t('attach.cancelled', 'বাতিল করা হয়েছে'), 'AbortError'));
       };
 
       xhr.send(file);
@@ -220,7 +224,7 @@ export function AttachmentPicker({
             onChangeRef.current([...valueRef.current, uploaded.id]);
           }
           if (uploaded.duplicateOfId) {
-            setNotice('এই রসিদটি আগেও একবার যোগ করা হয়েছিল।');
+            setNotice(t('attach.duplicate', 'এই রসিদটি আগেও একবার যোগ করা হয়েছিল।'));
           }
         })
         .catch((err: unknown) => {
@@ -229,7 +233,8 @@ export function AttachmentPicker({
             return;
           }
           haptic('warn');
-          const message = err instanceof Error ? err.message : 'আপলোড করা যায়নি';
+          const message =
+            err instanceof Error ? err.message : t('attach.failed', 'আপলোড করা যায়নি');
           setPending((list) =>
             list.map((p) => (p.key === item.key ? { ...p, error: message, percent: 0 } : p)),
           );
@@ -328,7 +333,7 @@ export function AttachmentPicker({
                 <button
                   type="button"
                   onClick={() => remove(id)}
-                  aria-label="সংযুক্তি সরান"
+                  aria-label={t('attach.remove', 'সংযুক্তি সরান')}
                   className="press bg-ink text-paper absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full shadow"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden />
@@ -388,7 +393,7 @@ export function AttachmentPicker({
                 <button
                   type="button"
                   onClick={() => retry(item)}
-                  aria-label="আবার চেষ্টা করুন"
+                  aria-label={t('attach.retry', 'আবার চেষ্টা করুন')}
                   className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-md"
                 >
                   <RotateCw className="h-4 w-4" aria-hidden />
@@ -400,7 +405,11 @@ export function AttachmentPicker({
                   item.controller.abort();
                   dropPending(item.key, true);
                 }}
-                aria-label={item.error ? 'বাদ দিন' : 'আপলোড বাতিল করুন'}
+                aria-label={
+                  item.error
+                    ? t('quantity.remove', 'বাদ দিন')
+                    : t('attach.cancel', 'আপলোড বাতিল করুন')
+                }
                 className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-md"
               >
                 <X className="h-4 w-4" aria-hidden />

@@ -34,10 +34,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Plus, Search, X } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { ApiError, api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { useDisplayName } from '@/lib/display-name';
@@ -45,7 +45,7 @@ import { TagDot } from './parts';
 import { fetchTags, tagKeys } from './queries';
 import { type TagDto } from './types';
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 export function TagPicker({
   value,

@@ -3,6 +3,7 @@
 import { Delete } from 'lucide-react';
 import * as React from 'react';
 import { haptic } from '@/lib/haptics';
+import { t } from '@/lib/t';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as const;
 
@@ -44,12 +45,16 @@ export function NumericKeypad({
   };
 
   return (
-    <div className="grid grid-cols-3 gap-2" role="group" aria-label="সংখ্যা প্যাড">
+    <div
+      className="grid grid-cols-3 gap-2"
+      role="group"
+      aria-label={t('keypad.label', 'সংখ্যা প্যাড')}
+    >
       {KEYS.map((key) => (
         <button
           key={key}
           type="button"
-          aria-label={key === 'del' ? 'মুছুন' : key}
+          aria-label={key === 'del' ? t('common.delete', 'মুছুন') : key}
           onClick={() => press(key)}
           className="press bg-greenbar text-ink flex h-14 select-none items-center justify-center rounded-xl text-xl font-medium tabular-nums"
         >

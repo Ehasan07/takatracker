@@ -3,10 +3,18 @@
 import { ChevronRight, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
-import { ALL_DESTINATIONS, GROUPS, matchesQuery, type Destination } from '@/components/nav-model';
+import {
+  ALL_DESTINATIONS,
+  GROUPS,
+  blurbOf,
+  groupTitleOf,
+  labelOf,
+  matchesQuery,
+  type Destination,
+} from '@/components/nav-model';
 import { AccountMenu } from '@/components/account-menu';
 import { haptic } from '@/lib/haptics';
+import { fmtNumber } from '@/lib/format';
 
 /**
  * The আরও hub.
@@ -74,14 +82,16 @@ export default function MorePage() {
 
       {searching ? (
         matches.length > 0 ? (
-          <Section title={`${toBengaliDigits(String(matches.length))} টি পাতা`} items={matches} />
+          <Section title={`${fmtNumber(String(matches.length))} টি পাতা`} items={matches} />
         ) : (
           <p className="text-ink-muted rounded-card border-rule bg-surface border p-4 text-sm">
             কিছু পাওয়া যায়নি। অন্য শব্দে খুঁজে দেখুন — যেমন “বীমা”, “এক্সেল” বা “থিম”।
           </p>
         )
       ) : (
-        GROUPS.map((group) => <Section key={group.id} title={group.title} items={group.items} />)
+        GROUPS.map((group) => (
+          <Section key={group.id} title={groupTitleOf(group)} items={group.items} />
+        ))
       )}
     </div>
   );
@@ -103,9 +113,9 @@ function Section({ title, items }: { title: string; items: Destination[] }) {
                 <item.icon className="h-5 w-5" aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="text-ink block truncate text-sm font-medium">{item.label}</span>
+                <span className="text-ink block truncate text-sm font-medium">{labelOf(item)}</span>
                 {item.blurb ? (
-                  <span className="text-ink-muted block truncate text-xs">{item.blurb}</span>
+                  <span className="text-ink-muted block truncate text-xs">{blurbOf(item)}</span>
                 ) : null}
               </span>
               <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />

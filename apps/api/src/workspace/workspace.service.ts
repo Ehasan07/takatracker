@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { normaliseUnitList } from '@hishab/shared';
+import { LOCALES, normaliseUnitList, type Locale } from '@hishab/shared';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -29,10 +29,16 @@ import { PrismaService } from '../prisma/prisma.service';
 export interface WorkspaceSettingsPatch {
   /** Replaces the list. An empty array is a legitimate "remove them all". */
   quantityUnits?: string[];
+  /**
+   * The books' language. Chosen at signup and, until now, frozen there — the
+   * `Workspace` row had no write path at all.
+   */
+  locale?: Locale;
 }
 
 export interface WorkspaceSettingsView {
   quantityUnits: string[];
+  locale: Locale;
 }
 
 @Injectable()
@@ -45,9 +51,9 @@ export class WorkspaceService {
   async settings(workspaceId: string): Promise<WorkspaceSettingsView> {
     const workspace = await this.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { quantityUnits: true },
+      select: { quantityUnits: true, locale: true },
     });
-    return { quantityUnits: workspace.quantityUnits };
+    return { quantityUnits: workspace.quantityUnits, locale: asLocale(workspace.locale) };
   }
 
   async update(
@@ -57,7 +63,7 @@ export class WorkspaceService {
   ): Promise<WorkspaceSettingsView> {
     const before = await this.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { quantityUnits: true },
+      select: { quantityUnits: true, locale: true },
     });
 
     /* Cleaned here and not only in the client: the cap, the de-duplication and
@@ -66,13 +72,22 @@ export class WorkspaceService {
      * workspace two কেজি rows with only one of them removable. */
     const quantityUnits =
       patch.quantityUnits === undefined ? undefined : normaliseUnitList(patch.quantityUnits);
+    const locale = patch.locale;
 
-    if (quantityUnits === undefined) return { quantityUnits: before.quantityUnits };
+    /* A PATCH carrying neither field is a read. Writing anyway would put a
+       no-op row in the audit log every time a screen saved a form it had not
+       changed. */
+    if (quantityUnits === undefined && locale === undefined) {
+      return { quantityUnits: before.quantityUnits, locale: asLocale(before.locale) };
+    }
 
     const updated = await this.prisma.workspace.update({
       where: { id: workspaceId },
-      data: { quantityUnits },
-      select: { quantityUnits: true },
+      data: {
+        ...(quantityUnits === undefined ? {} : { quantityUnits }),
+        ...(locale === undefined ? {} : { locale }),
+      },
+      select: { quantityUnits: true, locale: true },
     });
 
     /* Emitted, not awaited. A settings change is worth a line in the log —
@@ -84,10 +99,20 @@ export class WorkspaceService {
       action: 'workspace.settings_updated',
       entity: 'Workspace',
       entityId: workspaceId,
-      before: { quantityUnits: before.quantityUnits },
-      after: { quantityUnits: updated.quantityUnits },
+      before: { quantityUnits: before.quantityUnits, locale: before.locale },
+      after: { quantityUnits: updated.quantityUnits, locale: updated.locale },
     });
 
-    return { quantityUnits: updated.quantityUnits };
+    return { quantityUnits: updated.quantityUnits, locale: asLocale(updated.locale) };
   }
+}
+
+/**
+ * The column is a plain string, so a value written before `LOCALES` existed —
+ * or by a future migration — must not leak out as a locale the client cannot
+ * render. Anything unrecognised reads as Bengali, which is what the workspace
+ * was already being shown.
+ */
+function asLocale(value: string): Locale {
+  return (LOCALES as readonly string[]).includes(value) ? (value as Locale) : 'bn';
 }

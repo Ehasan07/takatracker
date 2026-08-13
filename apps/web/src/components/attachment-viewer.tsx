@@ -3,10 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText, Paperclip, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError, API_BASE } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 
@@ -76,7 +76,7 @@ export function fetchAttachmentMeta(id: string): Promise<AttachmentMeta> {
 
 /** Bengali file size. Truncated, never rounded — ESLint bans `Math.round`. */
 export function formatBytes(bytes: number): string {
-  const bn = (value: string): string => toBengaliDigits(value);
+  const bn = (value: string): string => fmtNumber(value);
   if (bytes < 1024) return `${bn(String(bytes))} বাইট`;
   if (bytes < 1024 * 1024) return `${bn(String(Math.trunc(bytes / 1024)))} কিলোবাইট`;
   // One decimal place, built from integers so no float formatting is involved.
@@ -205,12 +205,10 @@ export function AttachmentBadge({ count, className }: { count: number; className
   return (
     <span
       className={cn('text-ink-muted inline-flex shrink-0 items-center gap-0.5 text-xs', className)}
-      title={`${toBengaliDigits(String(count))}টি সংযুক্তি`}
+      title={`${fmtNumber(String(count))}টি সংযুক্তি`}
     >
       <Paperclip className="h-3 w-3" aria-hidden />
-      <span aria-label={`${toBengaliDigits(String(count))}টি সংযুক্তি`}>
-        {toBengaliDigits(String(count))}
-      </span>
+      <span aria-label={`${fmtNumber(String(count))}টি সংযুক্তি`}>{fmtNumber(String(count))}</span>
     </span>
   );
 }

@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { Field, Input } from '@/components/ui/field';
 import { useQuantityUnits } from '@/lib/workspace-units';
+import { fmtNumber } from '@/lib/format';
+import { t } from '@/lib/t';
 import { toMilli, type QuantityValue } from './quantity';
 
 export { COMMON_UNITS, fromMilli, toMilli, type QuantityValue } from './quantity';
@@ -46,7 +48,7 @@ export function QuantityField({
         onClick={() => onChange({ milli: 0, unit: 'কেজি' })}
         className="press text-brand self-start text-sm underline"
       >
-        পরিমাণ লিখবেন? (কত কেজি, কত লিটার)
+        {t('quantity.open', 'পরিমাণ লিখবেন? (কত কেজি, কত লিটার)')}
       </button>
     );
   }
@@ -54,7 +56,7 @@ export function QuantityField({
   return (
     <div className="rounded-card border-rule bg-brand-tint space-y-3 border p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-ink text-sm font-medium">পরিমাণ</p>
+        <p className="text-ink text-sm font-medium">{t('quantity.title', 'পরিমাণ')}</p>
         <button
           type="button"
           onClick={() => {
@@ -63,12 +65,12 @@ export function QuantityField({
           }}
           className="press text-ink-muted min-h-11 text-sm underline"
         >
-          বাদ দিন
+          {t('quantity.remove', 'বাদ দিন')}
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="কত" htmlFor="qty-amount">
+        <Field label={t('quantity.howMuch', 'কত')} htmlFor="qty-amount">
           <Input
             id="qty-amount"
             inputMode="decimal"
@@ -77,11 +79,11 @@ export function QuantityField({
               setText(e.target.value);
               onChange({ ...value, milli: toMilli(e.target.value) ?? 0 });
             }}
-            placeholder="১.৫"
+            placeholder={fmtNumber('1.5')}
           />
         </Field>
 
-        <Field label="একক" htmlFor="qty-unit">
+        <Field label={t('quantity.unit', 'একক')} htmlFor="qty-unit">
           {/* A `<datalist>`, so the field stays free text. No fixed list
               survives contact with a Bangladeshi kitchen — হালি, বস্তা, গজ and
               a dozen others are all real, and a picker that cannot say the true
@@ -103,7 +105,7 @@ export function QuantityField({
       </div>
 
       <p className="text-ink-muted text-xs">
-        মাস শেষে দেখতে পাবেন কত {value.unit || 'একক'} কেনা হয়েছে — রিপোর্টে “পরিমাণ” অংশে।
+        {t('quantity.hint', 'মাস শেষে দেখতে পাবেন কত কেনা হয়েছে — রিপোর্টের “পরিমাণ” অংশে।')}
       </p>
     </div>
   );

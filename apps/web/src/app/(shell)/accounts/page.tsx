@@ -13,45 +13,61 @@ import {
   Tags,
 } from 'lucide-react';
 import * as React from 'react';
-import { formatMinor, parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
+import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
 import { api, ApiError, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
+import { t } from '@/lib/t';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { UsageMeter } from '@/components/usage-meter';
 
+/* The Bengali stays here beside the key, and the lookup happens at render:
+   a module-level constant is evaluated before a workspace's wording override
+   has been fetched. */
 const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
-  { value: 'CASH', label: 'নগদ', group: 'হাতে ও ব্যাংকে' },
-  { value: 'BANK', label: 'ব্যাংক', group: 'হাতে ও ব্যাংকে' },
-  { value: 'MOBILE_WALLET', label: 'মোবাইল ওয়ালেট', group: 'হাতে ও ব্যাংকে' },
-  { value: 'SAVINGS', label: 'সঞ্চয় / ডিপিএস', group: 'হাতে ও ব্যাংকে' },
-  { value: 'ASSET', label: 'সম্পদ (জমি, স্বর্ণ, গাড়ি)', group: 'সম্পদ' },
-  { value: 'RECEIVABLE', label: 'পাওনা (যা আমি পাব)', group: 'সম্পদ' },
-  { value: 'CREDIT_CARD', label: 'ক্রেডিট কার্ড', group: 'দায়' },
-  { value: 'LIABILITY', label: 'ঋণ / দায়', group: 'দায়' },
-  { value: 'PAYABLE', label: 'দেনা (যা আমি দেব)', group: 'দায়' },
+  { value: 'CASH', label: 'নগদ', group: 'liquid' },
+  { value: 'BANK', label: 'ব্যাংক', group: 'liquid' },
+  { value: 'MOBILE_WALLET', label: 'মোবাইল ওয়ালেট', group: 'liquid' },
+  { value: 'SAVINGS', label: 'সঞ্চয় / ডিপিএস', group: 'liquid' },
+  { value: 'ASSET', label: 'সম্পদ (জমি, স্বর্ণ, গাড়ি)', group: 'asset' },
+  { value: 'RECEIVABLE', label: 'পাওনা (যা আমি পাব)', group: 'asset' },
+  { value: 'CREDIT_CARD', label: 'ক্রেডিট কার্ড', group: 'liability' },
+  { value: 'LIABILITY', label: 'ঋণ / দায়', group: 'liability' },
+  { value: 'PAYABLE', label: 'দেনা (যা আমি দেব)', group: 'liability' },
 ];
 
-const TYPE_GROUPS = ['হাতে ও ব্যাংকে', 'সম্পদ', 'দায়'] as const;
+const TYPE_GROUPS = ['liquid', 'asset', 'liability'] as const;
+
+const GROUP_LABELS: Record<(typeof TYPE_GROUPS)[number], string> = {
+  liquid: 'হাতে ও ব্যাংকে',
+  asset: 'সম্পদ',
+  liability: 'দায়',
+};
+
+const groupLabel = (group: (typeof TYPE_GROUPS)[number]): string =>
+  t(`account.group.${group}`, GROUP_LABELS[group]);
 
 /** Offered only because the row draws it — see AccountAvatar. */
-const ACCOUNT_COLORS: { value: string; label: string }[] = [
-  { value: '#0F7B4F', label: 'সবুজ' },
-  { value: '#1E5EB8', label: 'নীল' },
-  { value: '#B26A00', label: 'সোনালি' },
-  { value: '#B3261E', label: 'লাল' },
-  { value: '#6B3FA0', label: 'বেগুনি' },
-  { value: '#3F4A55', label: 'ধূসর' },
+const ACCOUNT_COLORS: { value: string; key: string; label: string }[] = [
+  { value: '#0F7B4F', key: 'green', label: 'সবুজ' },
+  { value: '#1E5EB8', key: 'blue', label: 'নীল' },
+  { value: '#B26A00', key: 'gold', label: 'সোনালি' },
+  { value: '#B3261E', key: 'red', label: 'লাল' },
+  { value: '#6B3FA0', key: 'purple', label: 'বেগুনি' },
+  { value: '#3F4A55', key: 'grey', label: 'ধূসর' },
 ];
 
-const typeLabel = (value: string): string =>
-  ACCOUNT_TYPES.find((t) => t.value === value)?.label ?? value;
+const typeLabel = (value: string): string => {
+  const hit = ACCOUNT_TYPES.find((type) => type.value === value);
+  return hit ? t(`account.type.${hit.value}`, hit.label) : value;
+};
 
 /**
  * An account edit moves money. The opening balance and the type change today's
@@ -132,7 +148,9 @@ export default function AccountsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">অ্যাকাউন্ট</h1>
+        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+          {t('nav.accounts', 'অ্যাকাউন্ট')}
+        </h1>
         <div className="flex items-center gap-2">
           {/* Accounts say what you have; categories say where money goes. Both
               answer "what do I keep books with", so they sit together. */}
@@ -161,22 +179,29 @@ export default function AccountsPage() {
             onClick={() => setAddOpen(true)}
             size="sm"
             disabled={atLimit}
-            title={atLimit ? 'প্ল্যানের সীমা শেষ' : undefined}
+            title={atLimit ? t('account.atLimit', 'প্ল্যানের সীমা শেষ') : undefined}
           >
             <Plus className="h-4 w-4" aria-hidden />
-            নতুন
+            {t('common.new', 'নতুন')}
           </Button>
         </div>
       </header>
 
       <section className="rounded-card border-rule bg-surface border p-4">
-        <p className="text-ink-muted text-sm">মোট</p>
+        <p className="text-ink-muted text-sm">{t('account.total', 'মোট')}</p>
         <Money minor={total} className="text-2xl font-semibold" />
-        <UsageMeter className="mt-3" label="অ্যাকাউন্ট" used={accountsUsed} limit={accountLimit} />
+        <UsageMeter
+          className="mt-3"
+          label={t('nav.accounts', 'অ্যাকাউন্ট')}
+          used={accountsUsed}
+          limit={accountLimit}
+        />
         {atLimit ? (
           <p className="text-brass mt-2 text-xs">
-            প্ল্যানের সীমা শেষ। পুরনো অ্যাকাউন্টের নামে চাপ দিয়ে সেটি আর্কাইভ করুন, অথবা প্ল্যান
-            আপগ্রেড করুন।
+            {t(
+              'account.atLimitHint',
+              'প্ল্যানের সীমা শেষ। পুরনো অ্যাকাউন্টের নামে চাপ দিয়ে সেটি আর্কাইভ করুন, অথবা প্ল্যান আপগ্রেড করুন।',
+            )}
           </p>
         ) : null}
       </section>
@@ -187,7 +212,7 @@ export default function AccountsPage() {
         </div>
       ) : accounts.data?.length === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
-          <p className="text-ink">এখনও কোনো অ্যাকাউন্ট নেই।</p>
+          <p className="text-ink">{t('account.empty', 'এখনও কোনো অ্যাকাউন্ট নেই।')}</p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
             প্রথম অ্যাকাউন্ট যোগ করুন
           </Button>
@@ -203,7 +228,7 @@ export default function AccountsPage() {
                   would leave nothing of the name at 320px. */}
               <button
                 type="button"
-                aria-label={`${account.name} সম্পাদনা`}
+                aria-label={`${account.name} — ${t('common.edit', 'সম্পাদনা')}`}
                 onClick={() => {
                   haptic('tap');
                   setEditing(account);
@@ -219,7 +244,7 @@ export default function AccountsPage() {
                     {typeLabel(account.type)}
                     {account.accountNumberMasked ? ` · ${account.accountNumberMasked}` : ''}
                     {account.dueDayOfMonth
-                      ? ` · প্রতি মাসের ${toBengaliDigits(String(account.dueDayOfMonth))} তারিখে পেমেন্ট`
+                      ? ` · ${t('account.dueOn', 'প্রতি মাসের {day} তারিখে পেমেন্ট').replace('{day}', fmtNumber(String(account.dueDayOfMonth)))}`
                       : ''}
                   </span>
                 </span>
@@ -229,8 +254,8 @@ export default function AccountsPage() {
               {account.dueDayOfMonth ? (
                 <button
                   type="button"
-                  aria-label={`${account.name} — এই মাসের রিমাইন্ডার বন্ধ করুন`}
-                  title="এই মাসের রিমাইন্ডার বন্ধ করুন"
+                  aria-label={`${account.name} — ${t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}`}
+                  title={t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}
                   onClick={() => muteReminders.mutate(account.id)}
                   className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
                 >
@@ -239,7 +264,7 @@ export default function AccountsPage() {
               ) : null}
               <button
                 type="button"
-                aria-label={`${account.name} মেলান`}
+                aria-label={`${account.name} — ${t('account.reconcile', 'মেলান')}`}
                 onClick={() => setReconciling(account)}
                 className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
               >
@@ -263,7 +288,9 @@ export default function AccountsPage() {
           className="press border-rule text-ink-muted hover:bg-greenbar flex min-h-11 items-center gap-2 self-start rounded-md border px-3 text-sm"
         >
           <Archive className="h-4 w-4" aria-hidden />
-          {showArchived ? 'আর্কাইভ লুকান' : 'আর্কাইভ করা অ্যাকাউন্ট দেখুন'}
+          {showArchived
+            ? t('account.hideArchived', 'আর্কাইভ লুকান')
+            : t('account.showArchived', 'আর্কাইভ করা অ্যাকাউন্ট দেখুন')}
         </button>
 
         {showArchived ? (
@@ -340,10 +367,13 @@ export default function AccountsPage() {
         onOpenChange={(open) => {
           if (!open) setArchiving(null);
         }}
-        title="আর্কাইভ করবেন?"
+        title={t('account.archiveTitle', 'আর্কাইভ করবেন?')}
         description={archiving?.name}
-        body="অ্যাকাউন্টটি তালিকা থেকে সরে যাবে এবং নতুন লেনদেনের ঘরে আর বেছে নেওয়া যাবে না। পুরনো লেনদেন, ব্যালেন্স আর প্রতিবেদনের হিসাব অক্ষত থাকবে, আর প্ল্যানের সীমার হিসাবেও এটি আর গোনা হবে না। চাইলে আবার চালু করা যাবে।"
-        confirmLabel="আর্কাইভ করুন"
+        body={t(
+          'account.archiveBody',
+          'অ্যাকাউন্টটি তালিকা থেকে সরে যাবে এবং নতুন লেনদেনের ঘরে আর বেছে নেওয়া যাবে না। পুরনো লেনদেন, ব্যালেন্স আর প্রতিবেদনের হিসাব অক্ষত থাকবে, আর প্ল্যানের সীমার হিসাবেও এটি আর গোনা হবে না। চাইলে আবার চালু করা যাবে।',
+        )}
+        confirmLabel={t('account.archive', 'আর্কাইভ করুন')}
         pending={archive.isPending}
         error={archive.error ? archive.error.message : null}
         onConfirm={() => {
@@ -527,7 +557,7 @@ function EditAccountSheet({
   onArchive: (account: AccountDto) => void;
 }) {
   /* The books' currency decides how many minor units a typed amount is worth. */
-  const { currency } = useWorkspaceSettings();
+  const { currency, currencyInfo } = useWorkspaceSettings();
   const queryClient = useQueryClient();
   const [form, setForm] = React.useState<AccountForm>(() => toForm(null));
   const [error, setError] = React.useState<string | null>(null);
@@ -558,7 +588,8 @@ function EditAccountSheet({
          a loan owns this account, or it is one of the hidden system accounts.
          That is a sentence for the user, not an error to swallow. */
       if (err instanceof ApiError && err.status === 400 && !err.issues) setRefusal(err.message);
-      else setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি');
+      else
+        setError(err instanceof Error ? err.message : t('common.saveFailed', 'সংরক্ষণ করা যায়নি'));
     },
   });
 
@@ -568,7 +599,7 @@ function EditAccountSheet({
     <Sheet
       open={account !== null}
       onOpenChange={(open) => !open && onClose()}
-      title="অ্যাকাউন্ট সম্পাদনা"
+      title={t('account.edit', 'অ্যাকাউন্ট সম্পাদনা')}
       description={account?.name}
     >
       <form
@@ -582,7 +613,7 @@ function EditAccountSheet({
           try {
             openingBalance = parseMoneyToMinor(form.opening || '0', currency);
           } catch {
-            setError('প্রারম্ভিক জেরের অঙ্কটি বোঝা যায়নি।');
+            setError(t('account.badOpening', 'প্রারম্ভিক জেরের অঙ্কটি বোঝা যায়নি।'));
             return;
           }
           const body = accountPatch(account, form, openingBalance);
@@ -594,23 +625,25 @@ function EditAccountSheet({
           save.mutate(body);
         }}
       >
-        <Field label="নাম" htmlFor="edit-acc-name">
+        <Field label={t('account.name', 'নাম')} htmlFor="edit-acc-name">
           <Input
             id="edit-acc-name"
             value={form.name}
             onChange={set('name')}
             required
-            placeholder="যেমন: ব্র্যাক ব্যাংক"
+            placeholder={t('account.nameHint', 'যেমন: ব্র্যাক ব্যাংক')}
           />
         </Field>
 
-        <Field label="ধরন" htmlFor="edit-acc-type">
+        <Field label={t('entry.kind', 'ধরন')} htmlFor="edit-acc-type">
           <Select id="edit-acc-type" value={form.type} onChange={set('type')}>
             {TYPE_GROUPS.map((group) => (
-              <optgroup key={group} label={group}>
-                {ACCOUNT_TYPES.filter((t) => t.group === group).map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
+              /* `type`, not `t` — the translator is called `t` and a parameter
+                 by that name shadows it inside this very block. */
+              <optgroup key={group} label={groupLabel(group)}>
+                {ACCOUNT_TYPES.filter((type) => type.group === group).map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {typeLabel(type.value)}
                   </option>
                 ))}
               </optgroup>
@@ -625,7 +658,10 @@ function EditAccountSheet({
 
         {isCard ? (
           <>
-            <Field label="পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)" htmlFor="edit-acc-due-day">
+            <Field
+              label={t('account.dueDay', 'পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)')}
+              htmlFor="edit-acc-due-day"
+            >
               <Input
                 id="edit-acc-due-day"
                 type="number"
@@ -634,10 +670,13 @@ function EditAccountSheet({
                 inputMode="numeric"
                 value={form.dueDay}
                 onChange={set('dueDay')}
-                placeholder="যেমন: ১২"
+                placeholder={fmtNumber('12')}
               />
             </Field>
-            <Field label="স্টেটমেন্টের তারিখ (মাসের কত তারিখ)" htmlFor="edit-acc-stmt-day">
+            <Field
+              label={t('account.statementDay', 'স্টেটমেন্টের তারিখ (মাসের কত তারিখ)')}
+              htmlFor="edit-acc-stmt-day"
+            >
               <Input
                 id="edit-acc-stmt-day"
                 type="number"
@@ -648,7 +687,10 @@ function EditAccountSheet({
                 onChange={set('statementDay')}
               />
             </Field>
-            <Field label="কত দিন আগে মনে করিয়ে দেব" htmlFor="edit-acc-lead">
+            <Field
+              label={t('account.leadDays', 'কত দিন আগে মনে করিয়ে দেব')}
+              htmlFor="edit-acc-lead"
+            >
               <Input
                 id="edit-acc-lead"
                 type="number"
@@ -657,19 +699,22 @@ function EditAccountSheet({
                 inputMode="numeric"
                 value={form.leadDays}
                 onChange={set('leadDays')}
-                placeholder="ফাঁকা রাখলে ওয়ার্কস্পেসের নিয়ম"
+                placeholder={t('account.leadDaysHint', 'ফাঁকা রাখলে ওয়ার্কস্পেসের নিয়ম')}
               />
             </Field>
           </>
         ) : null}
 
-        <Field label="প্রারম্ভিক জের (৳)" htmlFor="edit-acc-opening">
+        <Field
+          label={`${t('account.opening', 'প্রারম্ভিক জের')} (${currencyInfo.symbol})`}
+          htmlFor="edit-acc-opening"
+        >
           <Input
             id="edit-acc-opening"
             value={form.opening}
             onChange={set('opening')}
             inputMode="decimal"
-            placeholder="০.০০"
+            placeholder={fmtNumber('0.00')}
             className="money"
           />
         </Field>
@@ -678,30 +723,33 @@ function EditAccountSheet({
           প্রারম্ভিক জের বদলালে আজকের ব্যালেন্সও ঠিক ততটাই বদলাবে।
         </p>
 
-        <Field label="প্রতিষ্ঠান" htmlFor="edit-acc-inst">
+        <Field label={t('account.institution', 'প্রতিষ্ঠান')} htmlFor="edit-acc-inst">
           <Input
             id="edit-acc-inst"
             value={form.institution}
             onChange={set('institution')}
-            placeholder="যেমন: ব্র্যাক ব্যাংক"
+            placeholder={t('account.nameHint', 'যেমন: ব্র্যাক ব্যাংক')}
           />
         </Field>
 
-        <Field label="অ্যাকাউন্ট নম্বর (শেষ কয়েক অঙ্ক)" htmlFor="edit-acc-masked">
+        <Field
+          label={t('account.masked', 'অ্যাকাউন্ট নম্বর (শেষ কয়েক অঙ্ক)')}
+          htmlFor="edit-acc-masked"
+        >
           <Input
             id="edit-acc-masked"
             value={form.masked}
             onChange={set('masked')}
-            placeholder="****৪৫২১"
+            placeholder={`****${fmtNumber('4521')}`}
           />
         </Field>
 
-        <Field label="মেলানোর সংকেত" htmlFor="edit-acc-hints">
+        <Field label={t('account.matchHints', 'মেলানোর সংকেত')} htmlFor="edit-acc-hints">
           <Input
             id="edit-acc-hints"
             value={form.hints}
             onChange={set('hints')}
-            placeholder="যেমন: ৪৫২১, bKash, DBBL"
+            placeholder={t('account.matchHintsHint', 'যেমন: ৪৫২১, bKash, DBBL')}
           />
         </Field>
         <p className="text-ink-muted -mt-2 text-xs">
@@ -709,7 +757,7 @@ function EditAccountSheet({
           অ্যাকাউন্টে বসে। কমা দিয়ে আলাদা করুন।
         </p>
 
-        <Field label="আইকন (ইমোজি)" htmlFor="edit-acc-icon">
+        <Field label={t('account.icon', 'আইকন (ইমোজি)')} htmlFor="edit-acc-icon">
           <Input
             id="edit-acc-icon"
             value={form.icon}
@@ -720,7 +768,7 @@ function EditAccountSheet({
         </Field>
 
         <fieldset className="flex flex-col gap-1.5">
-          <legend className="text-ink text-sm font-medium">রঙ</legend>
+          <legend className="text-ink text-sm font-medium">{t('account.colour', 'রঙ')}</legend>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -731,13 +779,13 @@ function EditAccountSheet({
                 form.color === '' && 'border-ink font-medium',
               )}
             >
-              রঙ নেই
+              {t('account.noColour', 'রঙ নেই')}
             </button>
             {ACCOUNT_COLORS.map((swatch) => (
               <button
                 key={swatch.value}
                 type="button"
-                aria-label={swatch.label}
+                aria-label={t(`account.colour.${swatch.key}`, swatch.label)}
                 aria-pressed={form.color === swatch.value}
                 onClick={() => setForm((f) => ({ ...f, color: swatch.value }))}
                 className={cn(
@@ -754,7 +802,7 @@ function EditAccountSheet({
           </div>
         </fieldset>
 
-        <Field label="তালিকায় ক্রম (ছোট আগে)" htmlFor="edit-acc-sort">
+        <Field label={t('account.sortOrder', 'তালিকায় ক্রম (ছোট আগে)')} htmlFor="edit-acc-sort">
           <Input
             id="edit-acc-sort"
             type="number"
@@ -821,7 +869,7 @@ function AddAccountSheet({
   onSaved: () => void;
 }) {
   /* The books' currency decides how many minor units a typed amount is worth. */
-  const { currency } = useWorkspaceSettings();
+  const { currency, currencyInfo } = useWorkspaceSettings();
   const [name, setName] = React.useState('');
   const [type, setType] = React.useState('CASH');
   const [openingBalance, setOpeningBalance] = React.useState('');
@@ -853,12 +901,12 @@ function AddAccountSheet({
           ? err.message
           : err instanceof Error
             ? err.message
-            : 'সংরক্ষণ করা যায়নি',
+            : t('common.saveFailed', 'সংরক্ষণ করা যায়নি'),
       ),
   });
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="নতুন অ্যাকাউন্ট">
+    <Sheet open={open} onOpenChange={onOpenChange} title={t('account.new', 'নতুন অ্যাকাউন্ট')}>
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
@@ -867,22 +915,24 @@ function AddAccountSheet({
           save.mutate();
         }}
       >
-        <Field label="নাম" htmlFor="acc-name">
+        <Field label={t('account.name', 'নাম')} htmlFor="acc-name">
           <Input
             id="acc-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            placeholder="যেমন: ব্র্যাক ব্যাংক"
+            placeholder={t('account.nameHint', 'যেমন: ব্র্যাক ব্যাংক')}
           />
         </Field>
-        <Field label="ধরন" htmlFor="acc-type">
+        <Field label={t('entry.kind', 'ধরন')} htmlFor="acc-type">
           <Select id="acc-type" value={type} onChange={(e) => setType(e.target.value)}>
             {TYPE_GROUPS.map((group) => (
-              <optgroup key={group} label={group}>
-                {ACCOUNT_TYPES.filter((t) => t.group === group).map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
+              /* `type`, not `t` — the translator is called `t` and a parameter
+                 by that name shadows it inside this very block. */
+              <optgroup key={group} label={groupLabel(group)}>
+                {ACCOUNT_TYPES.filter((type) => type.group === group).map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {typeLabel(type.value)}
                   </option>
                 ))}
               </optgroup>
@@ -890,7 +940,10 @@ function AddAccountSheet({
           </Select>
         </Field>
         {type === 'CREDIT_CARD' ? (
-          <Field label="পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)" htmlFor="acc-due-day">
+          <Field
+            label={t('account.dueDay', 'পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)')}
+            htmlFor="acc-due-day"
+          >
             <Input
               id="acc-due-day"
               type="number"
@@ -899,18 +952,21 @@ function AddAccountSheet({
               inputMode="numeric"
               value={dueDay}
               onChange={(e) => setDueDay(e.target.value)}
-              placeholder="যেমন: ১২"
+              placeholder={fmtNumber('12')}
             />
           </Field>
         ) : null}
 
-        <Field label="প্রারম্ভিক জের (৳)" htmlFor="acc-opening">
+        <Field
+          label={`${t('account.opening', 'প্রারম্ভিক জের')} (${currencyInfo.symbol})`}
+          htmlFor="acc-opening"
+        >
           <Input
             id="acc-opening"
             value={openingBalance}
             onChange={(e) => setOpeningBalance(e.target.value)}
             inputMode="decimal"
-            placeholder="০.০০"
+            placeholder={fmtNumber('0.00')}
             className="money"
           />
         </Field>
@@ -937,7 +993,7 @@ function ReconcileSheet({
   onSaved: () => void;
 }) {
   /* The books' currency decides how many minor units a typed amount is worth. */
-  const { currency } = useWorkspaceSettings();
+  const { currency, currencyInfo } = useWorkspaceSettings();
   const [actual, setActual] = React.useState('');
   const [result, setResult] = React.useState<string | null>(null);
 
@@ -958,7 +1014,9 @@ function ReconcileSheet({
     onSuccess: (data) => {
       onSaved();
       setResult(
-        data.delta === 0 ? 'হিসাব আগেই মিলে ছিল।' : 'পার্থক্যটি সমন্বয় হিসেবে যোগ করা হয়েছে।',
+        data.delta === 0
+          ? t('account.alreadyMatched', 'হিসাব আগেই মিলে ছিল।')
+          : t('account.adjusted', 'পার্থক্যটি সমন্বয় হিসেবে যোগ করা হয়েছে।'),
       );
     },
   });
@@ -967,7 +1025,7 @@ function ReconcileSheet({
     <Sheet
       open={account !== null}
       onOpenChange={(open) => !open && onClose()}
-      title="ব্যালেন্স মেলান"
+      title={t('account.reconcileTitle', 'ব্যালেন্স মেলান')}
       description={account?.name}
     >
       <form
@@ -981,7 +1039,10 @@ function ReconcileSheet({
           খাতা অনুযায়ী এখন <Money minor={account?.balanceMinor ?? 0} className="inline" />। আসল
           ব্যালেন্স লিখুন — পার্থক্যটি সমন্বয় হিসেবে যোগ হবে।
         </p>
-        <Field label="আসল ব্যালেন্স (৳)" htmlFor="rec-actual">
+        <Field
+          label={`${t('account.realBalance', 'আসল ব্যালেন্স')} (${currencyInfo.symbol})`}
+          htmlFor="rec-actual"
+        >
           <Input
             id="rec-actual"
             value={actual}

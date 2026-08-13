@@ -37,6 +37,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
 import * as React from 'react';
 import { api, type CategoryDto } from '@/lib/api';
+import { t } from '@/lib/t';
 import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 
@@ -115,8 +116,8 @@ export function CategorySearch({
           type="search"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
-          placeholder="খাত খুঁজুন — রিকশা, khabar, বিদ্যুৎ"
-          aria-label="খাত খুঁজুন"
+          placeholder={t('entry.searchCategoryHint', 'খাত খুঁজুন — রিকশা, khabar, বিদ্যুৎ')}
+          aria-label={t('entry.searchCategory', 'খাত খুঁজুন')}
           enterKeyHint="search"
           className="border-rule bg-surface text-ink placeholder:text-ink-muted focus:border-brand focus:ring-brand/30 min-h-11 w-full rounded-md border pl-9 pr-9 text-sm focus:outline-none focus:ring-2"
           onKeyDown={(e) => {
@@ -137,7 +138,7 @@ export function CategorySearch({
           <button
             type="button"
             onClick={clear}
-            aria-label="খোঁজা বাদ দিন"
+            aria-label={t('common.clearSearch', 'খোঁজা বাদ দিন')}
             className="press text-ink-muted hover:text-ink absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full"
           >
             <X className="h-4 w-4" aria-hidden />
@@ -148,17 +149,24 @@ export function CategorySearch({
       {/* Nothing below the box until there is something to say. An empty result
           area on every entry would cost a row of a 320px sheet permanently. */}
       {!active ? null : found.isError ? (
-        <p className="text-ink-muted text-xs">খোঁজা যায়নি — নিচের তালিকা থেকে বেছে নিন।</p>
+        <p className="text-ink-muted text-xs">
+          {t('entry.searchFailed', 'খোঁজা যায়নি — নিচের তালিকা থেকে বেছে নিন।')}
+        </p>
       ) : hits.length === 0 ? (
         <p className="text-ink-muted text-xs">
-          {found.isFetching ? 'খোঁজা হচ্ছে…' : 'এই নামে কোনো খাত নেই — নিচের তালিকা দেখুন।'}
+          {found.isFetching
+            ? t('common.searching', 'খোঁজা হচ্ছে…')
+            : t('entry.noSuchCategory', 'এই নামে কোনো খাত নেই — নিচের তালিকা দেখুন।')}
         </p>
       ) : (
         /* Scrolls inside its own box. Twenty matches must not push the amount
            and the save button off a phone screen. Named, because the sheet also
            carries the accelerator strip — chips with the same খাত names on them
            — and "the যাতায়াত button" is otherwise two different controls. */
-        <ul className="app-scroll border-rule max-h-44 rounded-md border" aria-label="খোঁজার ফলাফল">
+        <ul
+          className="app-scroll border-rule max-h-44 rounded-md border"
+          aria-label={t('common.searchResults', 'খোঁজার ফলাফল')}
+        >
           {hits.map((row) => (
             <li key={row.id} className="border-rule border-b last:border-b-0">
               <button

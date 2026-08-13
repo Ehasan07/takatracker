@@ -4,10 +4,10 @@ import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { api, ApiError } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 
@@ -150,7 +150,7 @@ function ResetForm() {
           <span>
             নিরাপত্তার জন্য <strong>অন্য সব ডিভাইস থেকে লগআউট করে দেওয়া হয়েছে</strong>
             {revoked !== null && revoked > 0
-              ? ` — ${toBengaliDigits(String(revoked))}টি সেশন বন্ধ হয়েছে।`
+              ? ` — ${fmtNumber(String(revoked))}টি সেশন বন্ধ হয়েছে।`
               : ' — ফোন, কম্পিউটার, ব্রাউজার, সব।'}{' '}
             নতুন পাসওয়ার্ড দিয়ে আবার লগইন করতে হবে।
           </span>

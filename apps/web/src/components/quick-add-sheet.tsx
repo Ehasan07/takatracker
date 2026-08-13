@@ -8,6 +8,8 @@ import { fetchPeople } from '@/app/(shell)/people/queries';
 import { TagPicker } from '@/app/(shell)/tags/tag-picker';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
+import { fmtNumber } from '@/lib/format';
+import { t } from '@/lib/t';
 import { invalidateAfterWrite } from '@/lib/invalidate';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import {
@@ -36,10 +38,12 @@ type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER';
  */
 type TaggedTxn = TransactionDto;
 
-const TABS: { kind: Kind; label: string }[] = [
-  { kind: 'EXPENSE', label: 'খরচ' },
-  { kind: 'INCOME', label: 'আয়' },
-  { kind: 'TRANSFER', label: 'ট্রান্সফার' },
+/* Keys beside the Bengali, resolved at render rather than here: a module-level
+   constant is evaluated before a workspace's wording override has arrived. */
+const TABS: { kind: Kind; key: string; label: string }[] = [
+  { kind: 'EXPENSE', key: 'entry.tab.expense', label: 'খরচ' },
+  { kind: 'INCOME', key: 'entry.tab.income', label: 'আয়' },
+  { kind: 'TRANSFER', key: 'entry.tab.transfer', label: 'ট্রান্সফার' },
 ];
 
 export interface QuickAddSheetProps {
@@ -209,7 +213,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   };
 
   /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
-  const { currency } = useWorkspaceSettings();
+  const { currency, currencyInfo } = useWorkspaceSettings();
   const save = useMutation({
     mutationFn: async () => {
       /* When the money was in another currency, the amount written to the
@@ -217,17 +221,19 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
          figure in the amount box, which is left showing what they typed. */
       const converted = fx ? convert(fx.amountMinor, fx.currency, fxRate, currency) : null;
       if (fx && (converted === null || converted <= 0)) {
-        throw new Error('রেট বা মূল অঙ্ক ঠিক নেই');
+        throw new Error(t('entry.badRate', 'রেট বা মূল অঙ্ক ঠিক নেই'));
       }
       const amountMinor = converted ?? parseMoneyToMinor(amount, currency);
-      if (amountMinor <= 0) throw new Error('পরিমাণ শূন্যের চেয়ে বেশি হতে হবে');
+      if (amountMinor <= 0)
+        throw new Error(t('entry.amountPositive', 'পরিমাণ শূন্যের চেয়ে বেশি হতে হবে'));
       /* The <select> is `required`, so the browser normally refuses first. Said
          again here in words, because native validation is a bubble that a
          scrolled sheet can push off screen, and because an offline save is
          queued rather than answered — a row parked without its খাত would come
          back days later as an uncategorised entry nobody remembers. উপ-খাত is
          optional; the id below is whichever of the two was chosen last. */
-      if (kind !== 'TRANSFER' && !categoryId) throw new Error('ক্যাটাগরি বেছে নিন');
+      if (kind !== 'TRANSFER' && !categoryId)
+        throw new Error(t('entry.pickCategory', 'ক্যাটাগরি বেছে নিন'));
 
       const body = {
         date,
@@ -292,7 +298,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         setError(err.message);
         return;
       }
-      setError(err instanceof Error ? err.message : 'সংরক্ষণ করা যায়নি');
+      setError(err instanceof Error ? err.message : t('common.saveFailed', 'সংরক্ষণ করা যায়নি'));
     },
   });
 
@@ -308,7 +314,9 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? 'লেনদেন সম্পাদনা' : 'নতুন লেনদেন'}
+      title={
+        editing ? t('entry.edit', 'লেনদেন সম্পাদনা') : t('shell.newTransaction', 'নতুন লেনদেন')
+      }
     >
       <form
         className="flex flex-col gap-4"
@@ -320,7 +328,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       >
         <div
           role="tablist"
-          aria-label="ধরন"
+          aria-label={t('entry.kind', 'ধরন')}
           className="bg-greenbar grid grid-cols-3 gap-1 rounded-lg p-1"
         >
           {TABS.map((tab) => (
@@ -347,14 +355,14 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                   : 'press text-ink-muted min-h-10 rounded-md text-sm'
               }
             >
-              {tab.label}
+              {t(tab.key, tab.label)}
             </button>
           ))}
         </div>
 
         {/* One-tap repeat of something recent (spec §6.4). */}
         {!editing && repeatable.length > 0 ? (
-          <div className="chip-strip" aria-label="আবার যোগ করুন">
+          <div className="chip-strip" aria-label={t('entry.repeat', 'আবার যোগ করুন')}>
             {repeatable.map((txn) => (
               <button
                 key={txn.id}
@@ -364,7 +372,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
               >
                 <RotateCcw className="h-3 w-3 shrink-0" aria-hidden />
                 <span className="max-w-28 truncate">
-                  {txn.description || txn.categoryName || 'লেনদেন'}
+                  {txn.description || txn.categoryName || t('entry.transaction', 'লেনদেন')}
                 </span>
                 <span className="money text-ink-muted">
                   {formatMinor(Math.abs(txn.amountMinor), { decimals: false })}
@@ -374,7 +382,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           </div>
         ) : null}
 
-        <Field label="পরিমাণ (৳)" htmlFor="qa-amount">
+        <Field
+          label={`${t('entry.amount', 'পরিমাণ')} (${currencyInfo.symbol})`}
+          htmlFor="qa-amount"
+        >
           <Input
             id="qa-amount"
             name="amount"
@@ -386,7 +397,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                never gets shoved off-screen halfway through typing. */
             inputMode={coarse ? 'none' : 'decimal'}
             enterKeyHint="done"
-            placeholder="০.০০"
+            placeholder={fmtNumber('0.00')}
             className="money h-14 !text-3xl font-semibold"
           />
         </Field>
@@ -406,7 +417,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           />
         ) : null}
 
-        <Field label="তারিখ" htmlFor="qa-date">
+        <Field label={t('entry.date', 'তারিখ')} htmlFor="qa-date">
           <Input
             id="qa-date"
             name="date"
@@ -418,7 +429,11 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         </Field>
 
         <Field
-          label={kind === 'TRANSFER' ? 'যে অ্যাকাউন্ট থেকে' : 'অ্যাকাউন্ট'}
+          label={
+            kind === 'TRANSFER'
+              ? t('entry.fromAccount', 'যে অ্যাকাউন্ট থেকে')
+              : t('entry.account', 'অ্যাকাউন্ট')
+          }
           htmlFor="qa-account"
         >
           <Select
@@ -437,7 +452,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         </Field>
 
         {kind === 'TRANSFER' ? (
-          <Field label="যে অ্যাকাউন্টে" htmlFor="qa-counter">
+          <Field label={t('entry.toAccount', 'যে অ্যাকাউন্টে')} htmlFor="qa-counter">
             <Select
               id="qa-counter"
               name="counterAccountId"
@@ -445,7 +460,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
               onChange={(e) => setCounterAccountId(e.target.value)}
               required
             >
-              <option value="">বেছে নিন</option>
+              <option value="">{t('common.choose', 'বেছে নিন')}</option>
               {accountList
                 .filter((a) => a.id !== effectiveAccountId)
                 .map((a) => (
@@ -478,17 +493,17 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
 
         <FxField value={fx} onChange={setFx} rate={fxRate} onRateChange={setFxRate} />
 
-        <Field label="বিবরণ" htmlFor="qa-description">
+        <Field label={t('entry.description', 'বিবরণ')} htmlFor="qa-description">
           <Input
             id="qa-description"
             name="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="যেমন: সাপ্তাহিক বাজার"
+            placeholder={t('entry.descriptionHint', 'যেমন: সাপ্তাহিক বাজার')}
           />
         </Field>
 
-        <Field label="নোট" htmlFor="qa-notes">
+        <Field label={t('entry.notes', 'নোট')} htmlFor="qa-notes">
           <Textarea
             id="qa-notes"
             name="notes"
@@ -505,10 +520,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
 
         <Button type="submit" size="block" disabled={save.isPending} className="press">
           {save.isPending
-            ? 'সংরক্ষণ হচ্ছে…'
+            ? t('common.saving', 'সংরক্ষণ হচ্ছে…')
             : previewMinor > 0
-              ? `${formatMinor(previewMinor)} সংরক্ষণ করুন`
-              : 'সংরক্ষণ করুন'}
+              ? `${formatMinor(previewMinor)} ${t('common.save', 'সংরক্ষণ করুন')}`
+              : t('common.save', 'সংরক্ষণ করুন')}
         </Button>
       </form>
     </Sheet>
@@ -541,14 +556,14 @@ function PersonField({ value, onChange }: { value: string; onChange: (id: string
   if (rows.length === 0 && !value) return null;
 
   return (
-    <Field label="কার সাথে" htmlFor="qa-person">
+    <Field label={t('entry.withWhom', 'কার সাথে')} htmlFor="qa-person">
       <Select
         id="qa-person"
         name="personId"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
-        <option value="">কেউ না</option>
+        <option value="">{t('entry.nobody', 'কেউ না')}</option>
         {rows.map((person) => (
           <option key={person.id} value={person.id}>
             {person.name}
@@ -556,7 +571,9 @@ function PersonField({ value, onChange }: { value: string; onChange: (id: string
           </option>
         ))}
       </Select>
-      <p className="text-ink-muted mt-1 text-xs">ঐচ্ছিক। নতুন কাউকে যোগ করতে মানুষজন পাতায় যান।</p>
+      <p className="text-ink-muted mt-1 text-xs">
+        {t('entry.personHint', 'ঐচ্ছিক। নতুন কাউকে যোগ করতে মানুষজন পাতায় যান।')}
+      </p>
     </Field>
   );
 }

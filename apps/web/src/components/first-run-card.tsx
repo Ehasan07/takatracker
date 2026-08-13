@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useCompleteOnboarding, useMe } from '@/app/(shell)/onboarding/queries';
 import { Button } from '@/components/ui/button';
 import { endpoints } from '@/lib/api';
+import { t } from '@/lib/t';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -39,14 +40,14 @@ export function FirstRunCard() {
 
   return (
     <section className="rounded-card border-income/40 bg-surface border p-4">
-      <h2 className="text-ink text-base font-semibold">শুরু করা যাক</h2>
+      <h2 className="text-ink text-base font-semibold">{t('firstRun.title', 'শুরু করা যাক')}</h2>
       <p className="text-ink-muted mt-1 text-sm">
-        টাকা কোথায় আছে একবার বলে দিলে খাতা লেখা শুরু — দুই মিনিটের কাজ।
+        {t('firstRun.body', 'টাকা কোথায় আছে একবার বলে দিলে খাতা লেখা শুরু — দুই মিনিটের কাজ।')}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
           <Link href="/onboarding" onClick={() => haptic('tap')}>
-            শুরু করুন
+            {t('firstRun.start', 'শুরু করুন')}
           </Link>
         </Button>
         <Button
@@ -58,7 +59,9 @@ export function FirstRunCard() {
             dismiss.mutate();
           }}
         >
-          {dismiss.isPending ? 'সরানো হচ্ছে…' : 'আর দেখাবেন না'}
+          {dismiss.isPending
+            ? t('firstRun.dismissing', 'সরানো হচ্ছে…')
+            : t('firstRun.dismiss', 'আর দেখাবেন না')}
         </Button>
       </div>
       {dismiss.isError ? (

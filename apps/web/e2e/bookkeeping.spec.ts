@@ -117,7 +117,10 @@ test.describe('bookkeeping', () => {
     await signup(page);
     await addAccount(page, 'নগদ', '500');
 
-    await page.getByRole('button', { name: 'নগদ মেলান' }).click();
+    /* "নগদ — মেলান", not "নগদ মেলান": the verb now comes from the string
+       catalogue, so it is joined to the account name rather than written into
+       the same template. */
+    await page.getByRole('button', { name: 'নগদ — মেলান' }).click();
     await page.getByLabel('আসল ব্যালেন্স (৳)').fill('620.25');
     await page.getByRole('button', { name: 'মেলান' }).click();
 

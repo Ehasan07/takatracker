@@ -1,5 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
+/**
+ * The 44px floor, measured the way a browser actually reports it.
+ *
+ * `getBoundingClientRect` returns a float, and a box laid out as exactly
+ * `2.75rem` comes back as 43.99998474121094 often enough to fail a run at
+ * random — a difference of three ten-millionths of a pixel, which is not a
+ * target anybody can miss. The floor is a design rule about CSS pixels, so it
+ * is compared in CSS pixels rather than in the float noise underneath.
+ */
+const TAP_TARGET_MIN = 43.99;
+
 /** M4 acceptance: the responsive shell and the PWA plumbing. */
 
 async function signup(page: Page): Promise<void> {
@@ -58,8 +69,8 @@ test.describe('responsive shell', () => {
     for (let i = 0; i < (await links.count()); i += 1) {
       const box = await links.nth(i).boundingBox();
       expect(box, 'nav link should be laid out').not.toBeNull();
-      expect(box!.height).toBeGreaterThanOrEqual(44);
-      expect(box!.width).toBeGreaterThanOrEqual(44);
+      expect(box!.height).toBeGreaterThanOrEqual(TAP_TARGET_MIN);
+      expect(box!.width).toBeGreaterThanOrEqual(TAP_TARGET_MIN);
     }
   });
 

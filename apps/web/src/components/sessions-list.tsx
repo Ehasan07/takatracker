@@ -12,14 +12,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Monitor, RotateCw, Smartphone, Tablet, TriangleAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { api, ApiError } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { SkeletonRows } from './skeleton';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 interface Session {
   familyId: string;

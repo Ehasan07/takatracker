@@ -4,13 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
-import { formatMinor, parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
+import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
@@ -212,7 +213,7 @@ export default function InsurancePage() {
               {(detail.data.premiums ?? []).map((row, i) => (
                 <li key={row.id} className="flex items-center gap-2 py-2">
                   <span className="text-ink-muted w-8 shrink-0 text-xs">
-                    {toBengaliDigits(String(i + 1))}
+                    {fmtNumber(String(i + 1))}
                   </span>
                   <p className="text-ink min-w-0 flex-1 text-sm">{row.dueDate}</p>
                   <Money minor={row.amountMinor} className="shrink-0 text-sm" decimals={false} />

@@ -35,6 +35,56 @@ interface BeforeInstallPromptEvent extends Event {
 
 const DISMISS_KEY = 'hishab.install-prompt.dismissed';
 
+/**
+ * Take a new release on the launch that finds it, not the one after.
+ *
+ * Navigation is stale-while-revalidate (see `public/sw.js`), which is what
+ * makes a relaunch from the home screen instant. The cost is that the document
+ * served on launch is the one cached last time: a person who installed the app
+ * a month ago opens it after a deploy and gets the old shell, with the new one
+ * arriving only in the background. Without this they would have to open the app
+ * twice to see anything that shipped — and would have no way of knowing that.
+ *
+ * Three things happen here, and the order matters:
+ *
+ *  - `update()` asks the browser to re-fetch `sw.js` now. It does that on its
+ *    own eventually, but "eventually" is up to a day.
+ *  - `controllerchange` fires when the new worker takes over. `sw.js` calls
+ *    `skipWaiting()` and `clients.claim()`, so that happens without waiting for
+ *    every tab to close — which means the page is now running the *old* code
+ *    against the *new* cache. Reloading is what resolves that, not what causes
+ *    it.
+ *  - The reload is guarded twice. `refreshing` stops the classic loop where the
+ *    reload triggers another `controllerchange`; and it only fires when there
+ *    was already a controller, so a first install — where there is nothing to
+ *    replace — does not bounce the page somebody just opened.
+ */
+let refreshing = false;
+
+function adoptUpdates(): void {
+  const container = navigator.serviceWorker;
+
+  /* Read *before* anything is registered. `sw.js` calls `clients.claim()`, so a
+     first install also fires `controllerchange` — going from no controller to
+     one — and reloading on that would bounce the page of somebody who has just
+     arrived, every first visit, for no benefit at all: they are already looking
+     at the newest build. Only a page that was already controlled by an older
+     worker has anything to adopt. */
+  const hadController = Boolean(container.controller);
+
+  container.addEventListener('controllerchange', () => {
+    if (!hadController || refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
+  if (!hadController) return;
+
+  /* Ask now. Browsers re-fetch `sw.js` on their own, but on a schedule measured
+     in hours — far too slow to be how a release reaches an installed app. */
+  void container.ready.then((registration) => registration.update()).catch(() => undefined);
+}
+
 export function ServiceWorkerRegistrar() {
   const pathname = usePathname();
   const [installEvent, setInstallEvent] = React.useState<BeforeInstallPromptEvent | null>(null);
@@ -52,6 +102,7 @@ export function ServiceWorkerRegistrar() {
     if (isPublicPage) return;
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       void navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined);
+      adoptUpdates();
     }
 
     const onPrompt = (event: Event): void => {

@@ -14,8 +14,6 @@
  * one into taka except `<Money>`.
  */
 
-import { formatLedgerDate, fromLocalDateString, toBengaliDigits } from '@hishab/shared';
-
 /** `GET /v1/people?q=` — one row per contact, with what stands between you. */
 export interface PersonDto {
   id: string;
@@ -100,22 +98,19 @@ export const RELATION_SUGGESTIONS: readonly string[] = [
   'ভাড়াটিয়া',
 ];
 
-export const bn = (value: number | string): string => toBengaliDigits(String(value));
+export const bn = (value: number | string): string => fmtNumber(String(value));
 
 /**
  * The API sends `YYYY-MM-DD`; anything else must not take the screen down.
  * Same guard as the loan screens use, for the same reason.
  */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const iso = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return toBengaliDigits(value);
-  try {
-    return formatLedgerDate(fromLocalDateString(iso));
-  } catch {
-    return toBengaliDigits(value);
-  }
-}
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import { fmtDate as bnDate, fmtNumber } from '@/lib/format';
+
+export { bnDate };
 
 /**
  * The one or two letters that stand in for a face.

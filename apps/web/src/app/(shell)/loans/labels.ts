@@ -1,4 +1,3 @@
-import { formatLedgerDate, fromLocalDateString, toBengaliDigits } from '@hishab/shared';
 import type { LoanDirection, LoanInterestType, LoanStatus, PaymentMethod } from './types';
 
 export const DIRECTIONS: readonly (readonly [LoanDirection, string])[] = [
@@ -67,22 +66,13 @@ export function directionLabel(direction: string): string {
   return DIRECTIONS.find(([value]) => value === direction)?.[1] ?? direction;
 }
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import { fmtDate as bnDate, fmtNumber as bnNum } from '@/lib/format';
 
-/**
- * The contract says YYYY-MM-DD, but an ISO timestamp must not take the screen
- * down: `fromLocalDateString` throws on anything else.
- */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const iso = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return toBengaliDigits(value);
-  try {
-    return formatLedgerDate(fromLocalDateString(iso));
-  } catch {
-    return toBengaliDigits(value);
-  }
-}
+export { bnDate, bnNum };
 
 /** Whole percent paid, clamped. Truncated — ESLint bans Math.round for a reason. */
 export function paidPercent(paidMinor: number, totalMinor: number): number {

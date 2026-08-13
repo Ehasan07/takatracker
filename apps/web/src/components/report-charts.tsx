@@ -12,7 +12,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatMinor, toBengaliDigits } from '@hishab/shared';
+import { formatMinor } from '@hishab/shared';
+import { fmtNumber } from '@/lib/format';
 
 /**
  * Every chart in the app, in one module, so `next/dynamic` can keep Recharts
@@ -47,7 +48,7 @@ const bnMonth = (key: unknown): string => {
 
 const axisTick = (minorValue: number | string): string => {
   if (typeof minorValue !== 'number') return '';
-  return `${toBengaliDigits((minorValue / 100_000).toFixed(0))}k`;
+  return `${fmtNumber((minorValue / 100_000).toFixed(0))}k`;
 };
 
 const tooltipMoney = (value: unknown): string =>

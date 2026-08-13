@@ -67,6 +67,16 @@ function LoginForm() {
         {pending ? 'অপেক্ষা করুন…' : 'লগইন'}
       </Button>
 
+      {/* `/forgot`, the page it posts to and the reset screen it mails a link
+          to have all existed since the account routes were built. Nothing on
+          this screen linked to any of them, so the only way to reach a password
+          reset was to know the URL — which is the same as not having one. */}
+      <p className="text-center text-sm">
+        <Link href="/forgot" className="text-ink-muted hover:text-ink underline">
+          পাসওয়ার্ড ভুলে গেছেন?
+        </Link>
+      </p>
+
       <p className="text-ink-muted text-center text-sm">
         অ্যাকাউন্ট নেই?{' '}
         <Link href="/signup" className="text-brand font-medium underline">
@@ -81,7 +91,7 @@ export default function LoginPage() {
   return (
     <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
       <header className="text-center">
-        <h1 className="text-ink text-3xl font-semibold">হিসাব</h1>
+        <h1 className="text-ink text-3xl font-semibold">Taka Tracker</h1>
         <p className="text-ink-muted text-sm">আয়, খরচ ও সঞ্চয়ের ব্যক্তিগত খাতা</p>
       </header>
       <React.Suspense fallback={null}>

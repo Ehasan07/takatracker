@@ -19,18 +19,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Merge } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useDisplayName } from '@/lib/display-name';
 import { TagDot } from './parts';
 import { invalidateTagData } from './queries';
 import { type MergeTagResult, type TagDto } from './types';
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 export function MergeSheet({
   source,

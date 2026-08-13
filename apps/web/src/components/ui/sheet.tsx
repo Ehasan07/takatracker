@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import * as React from 'react';
 import { useIsDesktop, useKeyboardInset } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
+import { t } from '@/lib/t';
 import { cn } from '@/lib/utils';
 
 const DISMISS_AT = 110;
@@ -115,7 +116,7 @@ export function Sheet({
               )}
             </div>
             <Dialog.Close
-              aria-label="বন্ধ করুন"
+              aria-label={t('common.close', 'বন্ধ করুন')}
               className="press touch-target hover:bg-greenbar -mr-2 flex items-center justify-center rounded-md"
             >
               <X className="h-5 w-5" aria-hidden />

@@ -1,11 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { fmtDate, fmtDateObject } from '@/lib/format';
+import { t } from '@/lib/t';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { formatLedgerDate, fromLocalDateString } from '@hishab/shared';
 import { useGreeting } from '@/components/account-menu';
 import { FirstRunCard } from '@/components/first-run-card';
 import { VerifyEmailCard } from '@/components/verify-email-card';
@@ -56,14 +57,16 @@ export default function DashboardPage() {
           greeting carries the phone header instead of a second "ড্যাশবোর্ড". */}
       <header className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
         <div className="min-w-0">
-          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">ড্যাশবোর্ড</h1>
+          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+            {t('dashboard.title', 'ড্যাশবোর্ড')}
+          </h1>
           {greeting ? (
             <p className="text-ink text-base font-medium md:text-sm md:font-normal">
               {name ? `${greeting}, ${name}` : greeting}
             </p>
           ) : null}
         </div>
-        <p className="text-ink-muted text-sm">{formatLedgerDate(new Date())}</p>
+        <p className="text-ink-muted text-sm">{fmtDateObject(new Date())}</p>
       </header>
 
       {/* Above first run: proving the address is what makes a password reset
@@ -75,10 +78,12 @@ export default function DashboardPage() {
       {/* Single column on phones, two up from tablet */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <section className="rounded-card border-rule bg-surface border p-4">
-          <h2 className="text-ink-muted text-sm font-medium">এই মাসের হিসাব</h2>
+          <h2 className="text-ink-muted text-sm font-medium">
+            {t('dashboard.thisMonth', 'এই মাসের হিসাব')}
+          </h2>
           <dl className="mt-3 grid grid-cols-3 gap-2">
             <div className="min-w-0">
-              <dt className="text-ink-muted text-xs">আয়</dt>
+              <dt className="text-ink-muted text-xs">{t('dashboard.income', 'আয়')}</dt>
               <dd>
                 <Money
                   minor={summary.data?.incomeMinor ?? 0}
@@ -88,7 +93,7 @@ export default function DashboardPage() {
               </dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-ink-muted text-xs">খরচ</dt>
+              <dt className="text-ink-muted text-xs">{t('dashboard.expense', 'খরচ')}</dt>
               <dd>
                 <Money
                   minor={summary.data?.expenseMinor ?? 0}
@@ -98,7 +103,7 @@ export default function DashboardPage() {
               </dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-ink-muted text-xs">নিট</dt>
+              <dt className="text-ink-muted text-xs">{t('dashboard.net', 'নিট')}</dt>
               <dd>
                 <Money
                   minor={summary.data?.netMinor ?? 0}
@@ -117,7 +122,7 @@ export default function DashboardPage() {
             href="/accounts"
             className="press text-ink-muted hover:text-ink flex items-center gap-1 text-sm font-medium"
           >
-            মোট ব্যালেন্স
+            {t('dashboard.totalBalance', 'মোট ব্যালেন্স')}
             <ChevronRight className="h-4 w-4" aria-hidden />
           </Link>
           <p className="mt-1">
@@ -133,9 +138,9 @@ export default function DashboardPage() {
             ))}
             {accounts.data?.length === 0 ? (
               <li className="text-ink-muted py-2 text-sm">
-                কোনো অ্যাকাউন্ট নেই।{' '}
+                {t('dashboard.noAccounts', 'কোনো অ্যাকাউন্ট নেই।')}{' '}
                 <Link href="/accounts" className="text-income underline">
-                  একটি যোগ করুন
+                  {t('dashboard.addOne', 'একটি যোগ করুন')}
                 </Link>
               </li>
             ) : null}
@@ -143,9 +148,13 @@ export default function DashboardPage() {
         </section>
 
         <section className="rounded-card border-rule bg-surface border p-4">
-          <h2 className="text-ink-muted text-sm font-medium">শীর্ষ ৫ খরচের খাত</h2>
+          <h2 className="text-ink-muted text-sm font-medium">
+            {t('dashboard.topCategories', 'শীর্ষ ৫ খরচের খাত')}
+          </h2>
           {topCategories.length === 0 ? (
-            <p className="text-ink-muted mt-2 text-sm">এই মাসে এখনও কোনো খরচ নেই।</p>
+            <p className="text-ink-muted mt-2 text-sm">
+              {t('dashboard.noSpendYet', 'এই মাসে এখনও কোনো খরচ নেই।')}
+            </p>
           ) : (
             <ul className="mt-3 flex flex-col gap-2">
               {topCategories.map((row) => (
@@ -168,14 +177,16 @@ export default function DashboardPage() {
 
         <section className="rounded-card border-rule bg-surface border p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-ink-muted text-sm font-medium">সাম্প্রতিক লেনদেন</h2>
+            <h2 className="text-ink-muted text-sm font-medium">
+              {t('dashboard.recent', 'সাম্প্রতিক লেনদেন')}
+            </h2>
             <Link href="/transactions" className="text-income text-sm underline">
-              সব দেখুন
+              {t('dashboard.seeAll', 'সব দেখুন')}
             </Link>
           </div>
           {recent.data?.items.length === 0 ? (
             <p className="text-ink-muted mt-2 text-sm">
-              এখনও কিছু লেখা হয়নি। নিচের + বোতামে প্রথম লেনদেন যোগ করুন।
+              {t('dashboard.empty', 'এখনও কিছু লেখা হয়নি। নিচের + বোতামে প্রথম লেনদেন যোগ করুন।')}
             </p>
           ) : (
             <ul className="divide-rule mt-2 divide-y">
@@ -185,9 +196,7 @@ export default function DashboardPage() {
                     <p className="text-ink truncate text-sm">
                       {txn.description || txn.categoryName || txn.accountName}
                     </p>
-                    <p className="text-ink-muted truncate text-xs">
-                      {formatLedgerDate(fromLocalDateString(txn.date))}
-                    </p>
+                    <p className="text-ink-muted truncate text-xs">{fmtDate(txn.date)}</p>
                   </div>
                   <Money minor={txn.amountMinor} colored signed className="shrink-0 text-sm" />
                 </li>

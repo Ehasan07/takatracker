@@ -28,12 +28,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Info, Merge, Pencil, Plus, Search, Tag as TagIcon, Trash2 } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { ApiError, api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useDisplayName } from '@/lib/display-name';
 import { MergeSheet, mergeMessage } from './merge-sheet';
@@ -42,7 +42,7 @@ import { fetchTags, invalidateTagData, tagKeys } from './queries';
 import { TagSheet } from './tag-sheet';
 import { type DeleteTagResult, type TagDto } from './types';
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 const countLabel = (tag: TagDto): string =>
   tag.transactionCount > 0 ? `${bn(tag.transactionCount)}টি লেনদেন` : 'কোনো লেনদেন নেই';

@@ -3,8 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MailCheck } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { api, ApiError, endpoints } from '@/lib/api';
+import { t } from '@/lib/t';
+import { fmtNumber } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { haptic } from '@/lib/haptics';
@@ -62,18 +63,20 @@ export function VerifyEmailCard() {
          is no local "done" flag, so a reload cannot bring it back. */
       await queryClient.invalidateQueries({ queryKey: ['me'] });
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'কোডটি মেলেনি'),
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : t('verify.mismatch', 'কোডটি মেলেনি')),
   });
 
   const resend = useMutation({
     mutationFn: () => api<{ message: string }>('/auth/verify/send', { method: 'POST', body: {} }),
     onSuccess: (res) => {
       setError(null);
-      setNote(res.message ?? 'নতুন কোড পাঠানো হয়েছে।');
+      setNote(res.message ?? t('verify.resent', 'নতুন কোড পাঠানো হয়েছে।'));
     },
     /* The cooldown is a 429 carrying its own Bengali sentence with the seconds
        left in it — far more use than "try again later", so it is shown as-is. */
-    onError: (err) => setNote(err instanceof ApiError ? err.message : 'পাঠানো যায়নি'),
+    onError: (err) =>
+      setNote(err instanceof ApiError ? err.message : t('verify.sendFailed', 'পাঠানো যায়নি')),
   });
 
   const data = me.data as MeShape | undefined;
@@ -83,11 +86,27 @@ export function VerifyEmailCard() {
     <section className="rounded-card border-brand/40 bg-brand-tint border p-4">
       <h2 className="text-ink flex items-center gap-2 text-base font-semibold">
         <MailCheck className="text-brand h-4 w-4" aria-hidden />
-        ইমেইল যাচাই করুন
+        {t('verify.title', 'ইমেইল যাচাই করুন')}
       </h2>
       <p className="text-ink-muted mt-1 text-sm">
-        <span className="text-ink font-medium">{data.email}</span> ঠিকানায় ছয় সংখ্যার একটি কোড
-        পাঠানো হয়েছে। কোডটি নিচে লিখুন — অথবা ইমেইলের বোতামে ক্লিক করুন।
+        {/* The address is a span in the middle of the sentence, and the two
+            languages put it in different places — so the sentence carries a
+            placeholder rather than being split around the tag. */}
+        {t(
+          'verify.sentTo',
+          '{email} ঠিকানায় ছয় সংখ্যার একটি কোড পাঠানো হয়েছে। কোডটি নিচে লিখুন — অথবা ইমেইলের বোতামে ক্লিক করুন।',
+        )
+          .split('{email}')
+          .flatMap((part, i) =>
+            i === 0
+              ? [part]
+              : [
+                  <span key="email" className="text-ink font-medium">
+                    {data.email}
+                  </span>,
+                  part,
+                ],
+          )}
       </p>
 
       <form
@@ -99,7 +118,7 @@ export function VerifyEmailCard() {
           confirm.mutate();
         }}
       >
-        <Field label="কোড" htmlFor="verify-code" className="min-w-40 flex-1">
+        <Field label={t('verify.code', 'কোড')} htmlFor="verify-code" className="min-w-40 flex-1">
           <Input
             id="verify-code"
             /* `one-time-code` is what lets iOS and Android offer the digits
@@ -108,7 +127,7 @@ export function VerifyEmailCard() {
             autoComplete="one-time-code"
             inputMode="numeric"
             maxLength={6}
-            placeholder="০০০০০০"
+            placeholder={fmtNumber('000000')}
             value={code}
             /* Everything that is not a digit is dropped as it is typed, so a
                pasted "714 987" — or one with a dash, or a stray space from a
@@ -119,7 +138,9 @@ export function VerifyEmailCard() {
           />
         </Field>
         <Button type="submit" disabled={confirm.isPending || code.trim().length < 4}>
-          {confirm.isPending ? 'দেখা হচ্ছে…' : 'যাচাই করুন'}
+          {confirm.isPending
+            ? t('verify.checking', 'দেখা হচ্ছে…')
+            : t('verify.check', 'যাচাই করুন')}
         </Button>
         <Button
           type="button"
@@ -130,7 +151,9 @@ export function VerifyEmailCard() {
             resend.mutate();
           }}
         >
-          {resend.isPending ? 'পাঠানো হচ্ছে…' : 'আবার পাঠান'}
+          {resend.isPending
+            ? t('verify.sending', 'পাঠানো হচ্ছে…')
+            : t('verify.resend', 'আবার পাঠান')}
         </Button>
       </form>
 
@@ -142,8 +165,10 @@ export function VerifyEmailCard() {
       {note ? <p className="text-ink-muted mt-2 text-sm">{note}</p> : null}
 
       <p className="text-ink-muted mt-2 text-xs">
-        কোডটি {toBengaliDigits('15')} মিনিট কাজ করে। ইমেইল না পেলে স্প্যাম ফোল্ডার দেখুন, অথবা “আবার
-        পাঠান” চাপুন।
+        {t(
+          'verify.expiry',
+          'কোডটি {n} মিনিট কাজ করে। ইমেইল না পেলে স্প্যাম ফোল্ডার দেখুন, অথবা “আবার পাঠান” চাপুন।',
+        ).replace('{n}', fmtNumber('15'))}
       </p>
     </section>
   );

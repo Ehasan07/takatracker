@@ -42,6 +42,7 @@
 
 import * as React from 'react';
 import type { CategoryDto } from '@/lib/api';
+import { t } from '@/lib/t';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { useDisplayName } from '@/lib/display-name';
@@ -151,7 +152,7 @@ export function CategoryPicker({
           controls agree rather than competing. */}
       <CategorySearch kind={kind} idPrefix={idPrefix} onPick={onChange} />
 
-      <Field label="ক্যাটাগরি" htmlFor={categoryFieldId}>
+      <Field label={t('entry.category', 'ক্যাটাগরি')} htmlFor={categoryFieldId}>
         <Select
           id={categoryFieldId}
           name="categoryId"
@@ -162,7 +163,7 @@ export function CategoryPicker({
           required
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">বেছে নিন</option>
+          <option value="">{t('common.choose', 'বেছে নিন')}</option>
           {parentUnknown ? <option value={parentId}>{unknownName ?? '…'}</option> : null}
           {groups.map(({ parent, children: kids }) => (
             <React.Fragment key={parent.id}>
@@ -172,7 +173,9 @@ export function CategoryPicker({
                   the heading because a bare "রিকশা" three rows down from
                   যাতায়াত is exactly the ambiguity being fixed. */}
               {kids.length > 0 ? (
-                <optgroup label={`${nameOf(parent)}-এর উপ-খাত`}>
+                <optgroup
+                  label={t('entry.subOf', '{name}-এর উপ-খাত').replace('{name}', nameOf(parent))}
+                >
                   {kids.map((child) => (
                     <option key={child.id} value={child.id}>
                       {nameOf(child)}
@@ -189,7 +192,7 @@ export function CategoryPicker({
           "কোনোটি নয়" teaches a user that sub-categories are broken, and on a
           320px sheet it costs a row of the screen to do it. */}
       {group && children.length > 0 ? (
-        <Field label="উপ-খাত" htmlFor={subFieldId}>
+        <Field label={t('entry.subCategory', 'উপ-খাত')} htmlFor={subFieldId}>
           <Select
             id={subFieldId}
             name="subCategoryId"
@@ -199,7 +202,7 @@ export function CategoryPicker({
                required ক্যাটাগরি with it. */
             onChange={(e) => onChange(e.target.value || parentId)}
           >
-            <option value="">কোনোটি নয়</option>
+            <option value="">{t('entry.none', 'কোনোটি নয়')}</option>
             {children.map((child) => (
               <option key={child.id} value={child.id}>
                 {nameOf(child)}
@@ -207,8 +210,10 @@ export function CategoryPicker({
             ))}
           </Select>
           <p className="text-ink-muted text-xs">
-            ঐচ্ছিক। উপ-খাত দিলেও প্রতিবেদনে {kind === 'INCOME' ? 'আয়টি' : 'খরচটি'}{' '}
-            {nameOf(group.parent)}-এর মোটের সঙ্গেই যোগ হবে।
+            {t(
+              'entry.subCategoryHint',
+              'ঐচ্ছিক। উপ-খাত দিলেও প্রতিবেদনে এটি মূল খাতের মোটের সঙ্গেই যোগ হবে।',
+            )}
           </p>
         </Field>
       ) : null}
@@ -282,7 +287,7 @@ export function CategoryChips({
   if (shown.length === 0) return null;
 
   return (
-    <div className="chip-strip" aria-label="দ্রুত বাছাই">
+    <div className="chip-strip" aria-label={t('entry.quickPick', 'দ্রুত বাছাই')}>
       {shown.map(({ category, parentName }) => {
         const name = nameOf(category);
         const on = value === category.id;
@@ -297,7 +302,7 @@ export function CategoryChips({
             aria-pressed={on}
             /* Spelled out for a screen reader, which gets no help from a
                chevron. The visible chip says the same thing in less room. */
-            aria-label={parentName ? `${parentName}-এর ভেতরে ${name}` : name}
+            aria-label={parentName ? `${parentName} › ${name}` : name}
             className={cn(
               'press min-h-9 rounded-full px-3 text-xs',
               on ? 'bg-income font-medium text-white' : 'border-rule text-ink border',

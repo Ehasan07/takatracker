@@ -1,7 +1,7 @@
 'use client';
 
-import { toBengaliDigits } from '@hishab/shared';
 import { cn } from '@/lib/utils';
+import { fmtNumber } from '@/lib/format';
 
 /**
  * How much of a plan limit is gone. Shown next to the action it governs, so the
@@ -36,7 +36,7 @@ export function UsageMeter({
             exhausted ? 'text-expense font-semibold' : tight ? 'text-brass' : 'text-ink-muted',
           )}
         >
-          {toBengaliDigits(String(used))}/{toBengaliDigits(String(limit))}
+          {fmtNumber(String(used))}/{fmtNumber(String(limit))}
         </span>
       </div>
       <div className="bg-greenbar h-1 w-full rounded-full">

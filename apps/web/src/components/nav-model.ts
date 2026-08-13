@@ -21,6 +21,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
+import { t } from '@/lib/t';
 
 /**
  * One list of destinations, three presentations.
@@ -54,6 +55,39 @@ export interface Group {
 }
 
 export const MORE_HREF = '/more';
+
+/**
+ * A destination's key in the string catalogue, derived from its `href`.
+ *
+ * No second field to keep in step: the href is already unique, already stable,
+ * and already the thing every other lookup here is keyed on. `/admin/tenants`
+ * becomes `nav.admin.tenants`, and the dashboard's bare `/` is spelled out
+ * because `nav.` on its own reads as a mistake.
+ */
+function keyOf(href: string): string {
+  return href === '/' ? 'nav.dashboard' : `nav.${href.slice(1).replace(/\//g, '.')}`;
+}
+
+/**
+ * The three translated reads. Functions rather than pre-translated fields, so
+ * that a workspace's own wording override — which arrives after this module is
+ * evaluated — is picked up on the next render rather than never.
+ */
+export function labelOf(item: Destination): string {
+  return t(keyOf(item.href), item.label);
+}
+
+export function tabLabelOf(item: Destination): string {
+  return t(`${keyOf(item.href)}.tab`, item.tabLabel ?? item.label);
+}
+
+export function blurbOf(item: Destination): string | undefined {
+  return item.blurb === undefined ? undefined : t(`${keyOf(item.href)}.blurb`, item.blurb);
+}
+
+export function groupTitleOf(group: Group): string {
+  return group.title === '' ? '' : t(`nav.group.${group.id}`, group.title);
+}
 
 /**
  * The five that earn a permanent seat.
@@ -366,32 +400,41 @@ export const ROUTE_TITLES: Record<string, string> = {
  */
 const ROUTE_PATTERNS: {
   match: RegExp;
+  key: string;
   title: string;
   parent: (groups: RegExpMatchArray) => string;
 }[] = [
   {
     match: /^\/loans\/([^/]+)\/statement\/?$/,
+    key: 'nav.loans.statement',
     title: 'ঋণের বিবরণী',
     parent: (groups) => `/loans/${groups[1]}`,
   },
 ];
 
-/** Exact, then the id-bearing patterns, then longest prefix. */
+/**
+ * Exact, then the id-bearing patterns, then longest prefix.
+ *
+ * Translated on the way out rather than in `ROUTE_TITLES`, which is a
+ * module-level constant and so would be resolved once, before a workspace's own
+ * wording override has been fetched.
+ */
 export function titleFor(pathname: string): string {
   const exact = ROUTE_TITLES[pathname];
-  if (exact) return exact;
+  if (exact) return t(keyOf(pathname), exact);
 
   for (const pattern of ROUTE_PATTERNS) {
-    if (pattern.match.test(pathname)) return pattern.title;
+    if (pattern.match.test(pathname)) return t(pattern.key, pattern.title);
   }
 
   const segments = pathname.split('/').filter(Boolean);
   for (let depth = segments.length - 1; depth > 0; depth -= 1) {
     const candidate = `/${segments.slice(0, depth).join('/')}`;
     const hit = ROUTE_TITLES[candidate];
-    if (hit) return hit;
+    if (hit) return t(keyOf(candidate), hit);
   }
-  return 'হিসাব';
+  /* The brand, not a translation of it. */
+  return 'Taka Tracker';
 }
 
 const PRIMARY_HREFS = new Set(PRIMARY.map((item) => item.href));

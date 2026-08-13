@@ -4,13 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Info, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
-import { formatMinor, parseMoneyToMinor, toBengaliDigits, toLocalDateString } from '@hishab/shared';
+import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
@@ -146,7 +147,7 @@ function ProgressRing({ percent }: { percent: number }) {
         className="fill-ink"
         style={{ fontSize: 10 }}
       >
-        {toBengaliDigits(String(Math.trunc(percent)))}%
+        {fmtNumber(String(Math.trunc(percent)))}%
       </text>
     </svg>
   );
@@ -236,7 +237,7 @@ export default function SavingsPage() {
                   <p className="text-ink-muted truncate text-xs">
                     {labelOf(PLAN_TYPES, plan.planType)}
                     {plan.institution ? ` · ${plan.institution}` : ''} ·{' '}
-                    {toBengaliDigits(String(plan.profitRateBps / 100))}%
+                    {fmtNumber(String(plan.profitRateBps / 100))}%
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -280,7 +281,7 @@ export default function SavingsPage() {
 
               {plan.progress.missedCount > 0 ? (
                 <p className="text-expense mt-2 text-xs">
-                  {toBengaliDigits(String(plan.progress.missedCount))}টি কিস্তি বাকি পড়েছে
+                  {fmtNumber(String(plan.progress.missedCount))}টি কিস্তি বাকি পড়েছে
                 </p>
               ) : null}
             </li>
@@ -316,7 +317,7 @@ export default function SavingsPage() {
               {(detail.data.installments ?? []).map((row, i) => (
                 <li key={row.id} className="flex items-center gap-2 py-2">
                   <span className="text-ink-muted w-8 shrink-0 text-xs">
-                    {toBengaliDigits(String(i + 1))}
+                    {fmtNumber(String(i + 1))}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-ink text-sm">{row.dueDate}</p>

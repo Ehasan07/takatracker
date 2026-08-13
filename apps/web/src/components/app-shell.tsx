@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useIsDesktop, useKeyboardInset } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/t';
 import {
   HUB_DESTINATIONS,
   MORE_HREF,
@@ -16,6 +17,9 @@ import {
   OPERATOR_PRIMARY,
   OPERATOR_SIDEBAR_GROUPS,
   SIDEBAR_GROUPS,
+  groupTitleOf,
+  labelOf,
+  tabLabelOf,
   isPrimaryRoute,
   parentOf,
   titleFor,
@@ -265,7 +269,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             The group titles are <p>, not headings: the sidebar is chrome, and
             three more headings would clutter a screen reader's document
             outline. `aria-labelledby` still names each list. */}
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="প্রধান মেনু">
+        <nav
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+          aria-label={t('shell.mainMenu', 'প্রধান মেনু')}
+        >
           {sidebarGroups.map((group) => (
             <div key={group.id}>
               {group.title ? (
@@ -273,7 +280,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   id={`nav-${group.id}`}
                   className="text-ink-muted px-3 pb-0.5 pt-2 text-[11px] font-medium tracking-wide"
                 >
-                  {group.title}
+                  {groupTitleOf(group)}
                 </p>
               ) : null}
               <ul
@@ -294,7 +301,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       )}
                     >
                       <item.icon className="h-5 w-5 shrink-0" aria-hidden />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{labelOf(item)}</span>
                     </Link>
                   </li>
                 ))}
@@ -316,11 +323,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={openQuickAdd}
-              title="নতুন লেনদেন (N)"
+              title={`${t('shell.newTransaction', 'নতুন লেনদেন')} (N)`}
               className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium"
             >
               <Plus className="h-4 w-4" aria-hidden />
-              নতুন লেনদেন
+              {t('shell.newTransaction', 'নতুন লেনদেন')}
             </button>
           )}
         </div>
@@ -340,7 +347,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={goBack}
-                aria-label="পিছনে"
+                aria-label={t('shell.back', 'পিছনে')}
                 className="press touch-target text-ink absolute inset-y-0 left-0 flex items-center justify-center"
               >
                 <ChevronLeft className="h-6 w-6" aria-hidden />
@@ -370,7 +377,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             otherwise sit on top of the field being typed into. */}
         <button
           type="button"
-          aria-label="নতুন লেনদেন"
+          aria-label={t('shell.newTransaction', 'নতুন লেনদেন')}
           onClick={openQuickAdd}
           className={cn(
             'press bg-brand text-brand-contrast fixed right-4 z-30 h-14 w-14 items-center justify-center rounded-full shadow-lg',
@@ -394,7 +401,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             and everything else lives one tap deeper in আরও. */}
         <nav
           data-testid="bottom-nav"
-          aria-label="প্রধান মেনু"
+          aria-label={t('shell.mainMenu', 'প্রধান মেনু')}
           className="chrome-blur border-rule safe-bottom safe-x z-30 grid shrink-0 grid-cols-5 border-t md:hidden"
         >
           {tabs.map((item) => {
@@ -419,9 +426,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <item.icon className="h-5 w-5" aria-hidden />
                 </span>
-                <span className="w-full truncate px-0.5 text-center">
-                  {item.tabLabel ?? item.label}
-                </span>
+                <span className="w-full truncate px-0.5 text-center">{tabLabelOf(item)}</span>
               </Link>
             );
           })}

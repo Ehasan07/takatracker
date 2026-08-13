@@ -6,8 +6,33 @@
 
 /* Bumped with the shell precache list below: `activate` deletes every cache
  * whose key does not start with VERSION, which is how an old inventory is
- * retired rather than left to shadow the new one. */
-const VERSION = 'hishab-v3';
+ * retired rather than left to shadow the new one.
+ *
+ * It has to be bumped on any release that changes the shell, and not only when
+ * `SHELL_ASSETS` gains a route. The reason is that this file's own bytes are
+ * what the browser compares to decide whether a new worker exists at all: if
+ * `sw.js` is byte-identical after a deploy, no worker installs, `activate`
+ * never runs, and the previous shell is served from the previous cache for as
+ * long as it survives eviction. An installed app then keeps opening on the
+ * release before last — and worse, if a chunk it names *has* been evicted, its
+ * hashed URL is gone from the server and the launch breaks outright.
+ *
+ * v4: the language switch, and every screen that now reads its strings through
+ * `lib/t.ts`.
+ *
+ * ## Why the release id is in here too
+ *
+ * Bumping the number by hand is a step somebody eventually forgets, and the
+ * failure is silent: the deploy succeeds, nothing looks wrong, and every
+ * installed app quietly keeps running the previous release. So the release
+ * stamp is substituted into this file by `infra/deploy/20-release.sh` before
+ * the build, which makes these bytes different on *every* deploy whether or not
+ * anyone remembered the number above. The script fails the release if the
+ * placeholder is missing, so it cannot rot into a no-op either.
+ *
+ * It stays `__BUILD__` in development, where a stable key is what you want. */
+const BUILD = '__BUILD__';
+const VERSION = `hishab-v4-${BUILD}`;
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 

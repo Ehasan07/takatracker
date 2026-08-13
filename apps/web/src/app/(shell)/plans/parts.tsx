@@ -1,13 +1,16 @@
 'use client';
 
 import { FEATURES, isFeatureKey, type FeatureDefinition } from '@hishab/core';
-import { toBengaliDigits } from '@hishab/shared';
 import { RotateCw, TriangleAlert } from 'lucide-react';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. Re-exported under the old name so the call sites stay as they are. */
+import { fmtNumber as bnNum } from '@/lib/format';
+
+export { bnNum };
 
 /**
  * Kept local to the route rather than shared out of `loans/`, so a change in

@@ -3,12 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CornerDownRight, Info, Pencil, Plus, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError, type CategoryDto } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,7 @@ interface Group {
   children: CategoryRow[];
 }
 
-const bn = (n: number): string => toBengaliDigits(String(n));
+const bn = (n: number): string => fmtNumber(String(n));
 const usageLabel = (c: CategoryRow): string =>
   c.usageCount > 0 ? `${bn(c.usageCount)}টি লেনদেন` : 'কোনো লেনদেন নেই';
 

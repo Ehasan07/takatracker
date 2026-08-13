@@ -5,7 +5,7 @@ import { ArrowLeft, Check, ChevronRight, Info, Plus, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
-import { parseMoneyToMinor, toBengaliDigits } from '@hishab/shared';
+import { parseMoneyToMinor } from '@hishab/shared';
 import { QueryError } from '@/app/(shell)/loans/parts';
 import { Money } from '@/components/money';
 import { QuickAddSheet } from '@/components/quick-add-sheet';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { useKeyboardInset } from '@/hooks/use-device';
 import { api, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
@@ -355,7 +356,7 @@ export default function OnboardingPage() {
                 </p>
               ) : room !== null ? (
                 <p className="text-ink-muted text-xs">
-                  আপনার প্ল্যানে আর {toBengaliDigits(String(room))}টি অ্যাকাউন্ট যোগ করা যাবে।
+                  আপনার প্ল্যানে আর {fmtNumber(String(room))}টি অ্যাকাউন্ট যোগ করা যাবে।
                 </p>
               ) : null}
             </div>
@@ -548,7 +549,7 @@ export default function OnboardingPage() {
             {saveDrafts.isPending
               ? 'যোগ হচ্ছে…'
               : drafts.length > 0
-                ? `${toBengaliDigits(String(drafts.length))}টি যোগ করে এগোন`
+                ? `${fmtNumber(String(drafts.length))}টি যোগ করে এগোন`
                 : 'পরের ধাপ'}
           </Button>
         ) : null}
@@ -602,7 +603,7 @@ function Stepper({ current, onGoTo }: { current: number; onGoTo: (step: StepId) 
               type="button"
               disabled={index > current}
               aria-current={active ? 'step' : undefined}
-              aria-label={`ধাপ ${toBengaliDigits(String(index + 1))} — ${entry.title}`}
+              aria-label={`ধাপ ${fmtNumber(String(index + 1))} — ${entry.title}`}
               onClick={() => {
                 haptic('tap');
                 onGoTo(entry.id);
@@ -623,7 +624,7 @@ function Stepper({ current, onGoTo }: { current: number; onGoTo: (step: StepId) 
                 {done ? (
                   <Check className="h-3.5 w-3.5" aria-hidden />
                 ) : (
-                  toBengaliDigits(String(index + 1))
+                  fmtNumber(String(index + 1))
                 )}
               </span>
               <span

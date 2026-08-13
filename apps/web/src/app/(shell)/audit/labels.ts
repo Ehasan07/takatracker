@@ -1,12 +1,12 @@
-import {
-  DEFAULT_TIMEZONE,
-  formatLedgerDate,
-  fromLocalDateString,
-  toBengaliDigits,
-  toLocalDateString,
-} from '@hishab/shared';
+import { DEFAULT_TIMEZONE, toLocalDateString } from '@hishab/shared';
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import { fmtDate, fmtNumber, fmtNumber as bnNum } from '@/lib/format';
+
+export { bnNum };
 
 /**
  * Every action `AUDIT_ACTIONS` can hold (apps/api/src/audit/audit.service.ts),
@@ -451,25 +451,9 @@ export const legDirectionLabel = (value: string | null): string =>
  * `fromLocalDateString` throws on anything else, and a malformed date in one
  * old row must not blank the whole log.
  */
-export function bnDateish(value: string): string {
-  const iso = value.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    try {
-      return formatLedgerDate(fromLocalDateString(iso));
-    } catch {
-      return toBengaliDigits(value);
-    }
-  }
-  if (/^\d{4}-\d{2}$/.test(value)) {
-    try {
-      // Day and month names only — a cycle is a month, not a date.
-      return formatLedgerDate(fromLocalDateString(`${value}-01`)).replace(/^\S+\s/, '');
-    } catch {
-      return toBengaliDigits(value);
-    }
-  }
-  return toBengaliDigits(value);
-}
+import { fmtDateish as bnDateish } from '@/lib/format';
+
+export { bnDateish };
 
 /** Basis points as a percentage: 1250 → "১২.৫%". Integer maths, no rounding. */
 export function bpsToPercent(bps: number): string {
@@ -477,7 +461,7 @@ export function bpsToPercent(bps: number): string {
   const frac = Math.abs(bps) % 100;
   const sign = bps < 0 ? '-' : '';
   const tail = frac === 0 ? '' : `.${String(frac).padStart(2, '0').replace(/0$/, '')}`;
-  return `${sign}${toBengaliDigits(`${whole}${tail}`)}%`;
+  return `${sign}${fmtNumber(`${whole}${tail}`)}%`;
 }
 
 export function bnBytes(bytes: number): string {
@@ -501,9 +485,9 @@ export function dayHeading(key: string): string {
   if (key === today) return 'আজ';
   if (key === yesterday) return 'গতকাল';
   try {
-    return formatLedgerDate(fromLocalDateString(key));
+    return fmtDate(key);
   } catch {
-    return toBengaliDigits(key);
+    return fmtNumber(key);
   }
 }
 
@@ -511,7 +495,7 @@ export function dayHeading(key: string): string {
 export function bnTime(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '—';
-  return toBengaliDigits(
+  return fmtNumber(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: DEFAULT_TIMEZONE,
       hour: '2-digit',

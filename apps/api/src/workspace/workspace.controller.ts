@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { MAX_CUSTOM_UNITS, MAX_UNIT_LENGTH } from '@hishab/shared';
+import { LOCALES, MAX_CUSTOM_UNITS, MAX_UNIT_LENGTH } from '@hishab/shared';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
@@ -23,6 +23,14 @@ const patchSchema = z.object({
     .array(z.string().trim().max(MAX_UNIT_LENGTH))
     .max(MAX_CUSTOM_UNITS * 2)
     .optional(),
+  /**
+   * The books' language.
+   *
+   * Workspace-wide rather than per-member: two people sharing one set of books
+   * must not see two different names for the same category, or a report one of
+   * them mails the other will not agree with itself.
+   */
+  locale: z.enum(LOCALES).optional(),
 });
 
 @Controller('workspace')

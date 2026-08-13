@@ -41,6 +41,7 @@ import { Skeleton, SkeletonCard } from '@/components/skeleton';
 import { Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { t } from '@/lib/t';
 import { Delta, Panel, PanelSkeleton, QueryError } from './parts';
 import {
   fetchBalanceSheet,
@@ -182,11 +183,11 @@ function ReportsBody({ today }: { today: Date }) {
       onChange={(e) => navigate(range, e.target.value === 'INCOME' ? 'INCOME' : 'EXPENSE')}
       className="w-auto"
     >
-      <option value="EXPENSE">খরচ</option>
-      <option value="INCOME">আয়</option>
+      <option value="EXPENSE">{t('entry.tab.expense', 'খরচ')}</option>
+      <option value="INCOME">{t('entry.tab.income', 'আয়')}</option>
     </Select>
   );
-  const asOfText = `আজকের হিসাবে · ${bnDate(isoOf(today))}`;
+  const asOfText = `${t('reports.asOf', 'আজকের হিসাবে')} · ${bnDate(isoOf(today))}`;
   const comparison = comparisonLabel(range);
 
   const summaryLoading = income.isPending || expense.isPending;
@@ -202,17 +203,17 @@ function ReportsBody({ today }: { today: Date }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       <header className="hidden items-baseline justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">রিপোর্ট</h1>
+        <h1 className="text-ink text-2xl font-semibold">{t('nav.reports', 'রিপোর্ট')}</h1>
       </header>
 
       <RangeBar range={range} onChange={(next) => navigate(next, kind)} today={today} />
 
       {/* Income, spending and the difference for the chosen period, each against
           the previous equivalent one. */}
-      <Panel title="সারসংক্ষেপ" scope={rangeText}>
+      <Panel title={t('reports.summary', 'সারসংক্ষেপ')} scope={rangeText}>
         {summaryError ? (
           <QueryError
-            message="সারসংক্ষেপ আনা যায়নি।"
+            message={t('reports.summaryFailed', 'সারসংক্ষেপ আনা যায়নি।')}
             onRetry={() => {
               void income.refetch();
               void expense.refetch();
@@ -224,9 +225,21 @@ function ReportsBody({ today }: { today: Date }) {
           <dl className="divide-rule mt-3 grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {(
               [
-                ['আয়', incomeMinor, prevIncomeMinor, 'up', 'text-income'],
-                ['খরচ', expenseMinor, prevExpenseMinor, 'down', 'text-expense'],
-                ['নিট', incomeMinor - expenseMinor, prevIncomeMinor - prevExpenseMinor, 'up', ''],
+                [t('dashboard.income', 'আয়'), incomeMinor, prevIncomeMinor, 'up', 'text-income'],
+                [
+                  t('dashboard.expense', 'খরচ'),
+                  expenseMinor,
+                  prevExpenseMinor,
+                  'down',
+                  'text-expense',
+                ],
+                [
+                  t('dashboard.net', 'নিট'),
+                  incomeMinor - expenseMinor,
+                  prevIncomeMinor - prevExpenseMinor,
+                  'up',
+                  '',
+                ],
               ] as const
             ).map(([label, amount, prior, goodWhen, tone], i) => (
               <div key={label} className={cn('min-w-0 py-2', i > 0 && 'sm:pl-4')}>
@@ -248,7 +261,9 @@ function ReportsBody({ today }: { today: Date }) {
                       comparison={comparison}
                     />
                   ) : prevIncome.isError || prevExpense.isError ? (
-                    <p className="text-ink-muted mt-1 text-xs">তুলনার হিসাব আনা যায়নি</p>
+                    <p className="text-ink-muted mt-1 text-xs">
+                      {t('reports.comparisonFailed', 'তুলনার হিসাব আনা যায়নি')}
+                    </p>
                   ) : (
                     <Skeleton className="mt-1 h-3 w-28" />
                   )}
@@ -261,9 +276,12 @@ function ReportsBody({ today }: { today: Date }) {
 
       {/* Net worth: the number people open a finance app to see — and the first
           one on this screen that the range does not touch. */}
-      <Panel title="নিট সম্পদ" scope={asOfText}>
+      <Panel title={t('reports.netWorth', 'নিট সম্পদ')} scope={asOfText}>
         {sheet.isError ? (
-          <QueryError message="নিট সম্পদ আনা যায়নি।" onRetry={() => void sheet.refetch()} />
+          <QueryError
+            message={t('reports.netWorthFailed', 'নিট সম্পদ আনা যায়নি।')}
+            onRetry={() => void sheet.refetch()}
+          />
         ) : sheet.isPending ? (
           <PanelSkeleton rows={1} />
         ) : (
@@ -272,9 +290,9 @@ function ReportsBody({ today }: { today: Date }) {
             <dl className="border-rule mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
               {(
                 [
-                  ['সম্পদ', sheet.data.assetsMinor, 'text-income'],
-                  ['দায়', sheet.data.liabilitiesMinor, 'text-expense'],
-                  ['হাতে নগদ', sheet.data.liquidMinor, ''],
+                  [t('reports.assets', 'সম্পদ'), sheet.data.assetsMinor, 'text-income'],
+                  [t('reports.liabilities', 'দায়'), sheet.data.liabilitiesMinor, 'text-expense'],
+                  [t('reports.liquid', 'হাতে নগদ'), sheet.data.liquidMinor, ''],
                 ] as const
               ).map(([label, amount, tone]) => (
                 <div key={label} className="min-w-0">
@@ -294,10 +312,10 @@ function ReportsBody({ today }: { today: Date }) {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Trend */}
-        <Panel title="মাসভিত্তিক আয় ও খরচ" scope={rangeText}>
+        <Panel title={t('reports.trend', 'মাসভিত্তিক আয় ও খরচ')} scope={rangeText}>
           {trend.isError ? (
             <QueryError
-              message="মাসভিত্তিক হিসাব আনা যায়নি।"
+              message={t('reports.trendFailed', 'মাসভিত্তিক হিসাব আনা যায়নি।')}
               onRetry={() => void trend.refetch()}
             />
           ) : trend.isPending ? (
@@ -305,8 +323,11 @@ function ReportsBody({ today }: { today: Date }) {
           ) : trendPoints.length === 0 ? (
             <p className="text-ink-muted mt-3 text-sm">
               {trendBounds.truncated
-                ? `এই চিত্র সর্বোচ্চ ${bnNum(MAX_TREND_MONTHS)} মাস পিছিয়ে যেতে পারে, তাই এই সময়ের মাসগুলো দেখানো যাচ্ছে না।`
-                : 'এই সময়ের কোনো মাস দেখানো যাচ্ছে না।'}
+                ? t(
+                    'reports.trendTooFar',
+                    'এই চিত্র সর্বোচ্চ {n} মাস পিছিয়ে যেতে পারে, তাই এই সময়ের মাসগুলো দেখানো যাচ্ছে না।',
+                  ).replace('{n}', bnNum(MAX_TREND_MONTHS))
+                : t('reports.trendEmpty', 'এই সময়ের কোনো মাস দেখানো যাচ্ছে না।')}
             </p>
           ) : (
             <>
@@ -324,12 +345,12 @@ function ReportsBody({ today }: { today: Date }) {
                 </div>
               </div>
               <p className="text-ink-muted mt-2 text-xs">
-                {bnNum(trendPoints.length)}টি মাস
+                {t('reports.monthCount', '{n}টি মাস').replace('{n}', bnNum(trendPoints.length))}
                 {trendBounds.partialMonths
-                  ? ' · এই চিত্র পূর্ণ মাস দেখায়, নির্বাচিত সময়ের অংশবিশেষ নয়'
+                  ? ` · ${t('reports.wholeMonths', 'এই চিত্র পূর্ণ মাস দেখায়, নির্বাচিত সময়ের অংশবিশেষ নয়')}`
                   : ''}
                 {trendBounds.truncated
-                  ? ` · ${bnNum(MAX_TREND_MONTHS)} মাসের বেশি পুরোনো মাস পাওয়া যায় না`
+                  ? ` · ${t('reports.trendLimit', '{n} মাসের বেশি পুরোনো মাস পাওয়া যায় না').replace('{n}', bnNum(MAX_TREND_MONTHS))}`
                   : ''}
               </p>
             </>
@@ -338,19 +359,21 @@ function ReportsBody({ today }: { today: Date }) {
 
         {/* Category split */}
         <Panel
-          title="খাতভিত্তিক হিসাব"
+          title={t('reports.byCategory', 'খাতভিত্তিক হিসাব')}
           scope={rangeText}
-          action={kindSelect('খাতভিত্তিক হিসাবে আয় না খরচ')}
+          action={kindSelect(t('reports.byCategoryKind', 'খাতভিত্তিক হিসাবে আয় না খরচ'))}
         >
           {byCategory.isError ? (
             <QueryError
-              message="খাতভিত্তিক হিসাব আনা যায়নি।"
+              message={t('reports.byCategoryFailed', 'খাতভিত্তিক হিসাব আনা যায়নি।')}
               onRetry={() => void byCategory.refetch()}
             />
           ) : byCategory.isPending ? (
             <PanelSkeleton rows={4} />
           ) : byCategory.data.nodes.length === 0 ? (
-            <p className="text-ink-muted mt-3 text-sm">এই সময়ে কিছু নেই।</p>
+            <p className="text-ink-muted mt-3 text-sm">
+              {t('reports.emptyPeriod', 'এই সময়ে কিছু নেই।')}
+            </p>
           ) : (
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="h-40 w-full sm:w-40 sm:shrink-0">
@@ -471,13 +494,16 @@ function ReportsBody({ today }: { today: Date }) {
           kind={kind}
           period={range}
           rangeText={rangeText}
-          action={kindSelect('ট্যাগভিত্তিক হিসাবে আয় না খরচ')}
+          action={kindSelect(t('reports.byTagKind', 'ট্যাগভিত্তিক হিসাবে আয় না খরচ'))}
         />
 
         {/* Cash flow */}
-        <Panel title="নগদ প্রবাহ" scope={rangeText}>
+        <Panel title={t('reports.cashFlow', 'নগদ প্রবাহ')} scope={rangeText}>
           {cashFlow.isError ? (
-            <QueryError message="নগদ প্রবাহ আনা যায়নি।" onRetry={() => void cashFlow.refetch()} />
+            <QueryError
+              message={t('reports.cashFlowFailed', 'নগদ প্রবাহ আনা যায়নি।')}
+              onRetry={() => void cashFlow.refetch()}
+            />
           ) : cashFlow.isPending ? (
             <PanelSkeleton rows={4} />
           ) : (
@@ -485,10 +511,14 @@ function ReportsBody({ today }: { today: Date }) {
               <dl className="divide-rule mt-2 divide-y text-sm">
                 {(
                   [
-                    ['শুরুর জের', cashFlow.data.openingMinor, ''],
-                    ['এসেছে', cashFlow.data.inflowMinor, 'text-income'],
-                    ['গেছে', -cashFlow.data.outflowMinor, 'text-expense'],
-                    ['শেষের জের', cashFlow.data.closingMinor, 'font-semibold'],
+                    [t('reports.opening', 'শুরুর জের'), cashFlow.data.openingMinor, ''],
+                    [t('reports.inflow', 'এসেছে'), cashFlow.data.inflowMinor, 'text-income'],
+                    [t('reports.outflow', 'গেছে'), -cashFlow.data.outflowMinor, 'text-expense'],
+                    [
+                      t('reports.closing', 'শেষের জের'),
+                      cashFlow.data.closingMinor,
+                      'font-semibold',
+                    ],
                   ] as const
                 ).map(([label, amount, tone]) => (
                   <div key={label} className="flex items-center justify-between gap-3 py-1.5">
@@ -500,11 +530,15 @@ function ReportsBody({ today }: { today: Date }) {
                 ))}
               </dl>
               <p className="text-ink-muted mt-2 text-xs">
-                শুরুর জের {bnDate(range.from)}-এর আগের অবস্থা; শেষের জের {bnDate(range.to)} শেষে।
+                {t(
+                  'reports.cashFlowHint',
+                  'শুরুর জের নির্বাচিত সময়ের আগের অবস্থা; শেষের জের সময়ের শেষে।',
+                )}
               </p>
               {cashFlow.data.accounts.length ? (
                 <p className="text-ink-muted mt-1 text-xs">
-                  হিসাবের অ্যাকাউন্ট: {cashFlow.data.accounts.join(', ')}
+                  {t('reports.accountsCounted', 'হিসাবের অ্যাকাউন্ট')}:{' '}
+                  {cashFlow.data.accounts.join(', ')}
                 </p>
               ) : null}
             </>
@@ -512,24 +546,29 @@ function ReportsBody({ today }: { today: Date }) {
         </Panel>
 
         {/* Balance sheet — the second panel the range does not touch. */}
-        <Panel title="সম্পদ ও দায়" scope={asOfText}>
+        <Panel title={t('reports.balanceSheet', 'সম্পদ ও দায়')} scope={asOfText}>
           {sheet.isError ? (
-            <QueryError message="সম্পদ ও দায় আনা যায়নি।" onRetry={() => void sheet.refetch()} />
+            <QueryError
+              message={t('reports.balanceSheetFailed', 'সম্পদ ও দায় আনা যায়নি।')}
+              onRetry={() => void sheet.refetch()}
+            />
           ) : sheet.isPending ? (
             <PanelSkeleton rows={4} />
           ) : (
             <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
               {(
                 [
-                  ['সম্পদ', sheet.data.assets],
-                  ['দায়', sheet.data.liabilities],
+                  [t('reports.assets', 'সম্পদ'), sheet.data.assets],
+                  [t('reports.liabilities', 'দায়'), sheet.data.liabilities],
                 ] as const
               ).map(([title, lines]) => (
                 <div key={title}>
                   <h3 className="text-ink text-xs font-semibold">{title}</h3>
                   <ul className="divide-rule mt-1 divide-y">
                     {lines.length === 0 ? (
-                      <li className="text-ink-muted py-1.5 text-xs">কিছু নেই</li>
+                      <li className="text-ink-muted py-1.5 text-xs">
+                        {t('reports.none', 'কিছু নেই')}
+                      </li>
                     ) : (
                       lines.map((line) => (
                         <li
@@ -556,15 +595,18 @@ function ReportsBody({ today }: { today: Date }) {
       <Sheet
         open={drilldownId !== null}
         onOpenChange={(open) => !open && setDrilldownId(null)}
-        title={drilldown.data?.category.name ?? 'বিস্তারিত'}
+        title={drilldown.data?.category.name ?? t('reports.detail', 'বিস্তারিত')}
         description={
           drilldown.data
-            ? `${rangeText} · মোট ${formatMinor(drilldown.data.totalMinor)}`
+            ? `${rangeText} · ${t('reports.total', 'মোট')} ${formatMinor(drilldown.data.totalMinor)}`
             : rangeText
         }
       >
         {drilldown.isError ? (
-          <QueryError message="বিস্তারিত আনা যায়নি।" onRetry={() => void drilldown.refetch()} />
+          <QueryError
+            message={t('reports.detailFailed', 'বিস্তারিত আনা যায়নি।')}
+            onRetry={() => void drilldown.refetch()}
+          />
         ) : drilldown.isPending ? (
           <div className="space-y-2" aria-hidden>
             {Array.from({ length: 4 }, (_, i) => (
@@ -572,13 +614,17 @@ function ReportsBody({ today }: { today: Date }) {
             ))}
           </div>
         ) : drilldown.data.items.length === 0 ? (
-          <p className="text-ink-muted py-2 text-sm">এই সময়ে কিছু নেই।</p>
+          <p className="text-ink-muted py-2 text-sm">
+            {t('reports.emptyPeriod', 'এই সময়ে কিছু নেই।')}
+          </p>
         ) : (
           <ul className="divide-rule divide-y">
             {drilldown.data.items.map((item) => (
               <li key={item.transactionId} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-ink truncate text-sm">{item.description || 'লেনদেন'}</p>
+                  <p className="text-ink truncate text-sm">
+                    {item.description || t('entry.transaction', 'লেনদেন')}
+                  </p>
                   <p className="text-ink-muted text-xs">{bnDate(item.date)}</p>
                 </div>
                 <Money minor={item.amountMinor} className="shrink-0 text-sm" />

@@ -8,11 +8,11 @@ import {
   MAX_CUSTOM_UNITS,
   MAX_UNIT_LENGTH,
   normaliseUnit,
-  toBengaliDigits,
 } from '@hishab/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { ApiError, api } from '@/lib/api';
+import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { fetchWorkspaceSettings, workspaceSettingsKey } from '@/lib/workspace-units';
 
@@ -43,7 +43,7 @@ interface SettingsDto {
   quantityUnits: string[];
 }
 
-const bn = (value: number | string): string => toBengaliDigits(String(value));
+const bn = (value: number | string): string => fmtNumber(String(value));
 
 export function UnitSettings() {
   const queryClient = useQueryClient();

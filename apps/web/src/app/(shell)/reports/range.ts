@@ -16,7 +16,6 @@
  */
 
 import { presetRange, type DatePreset } from '@hishab/core';
-import { formatLedgerDate, fromLocalDateString, toBengaliDigits } from '@hishab/shared';
 
 export type NamedPreset = DatePreset | 'lastYear';
 export type ReportPreset = NamedPreset | 'custom';
@@ -248,19 +247,13 @@ export function withinWindow<T extends { month: string }>(
  * Bengali labels
  * ---------------------------------------------------------------------- */
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import { fmtDate as bnDate, fmtNumber as bnNum } from '@/lib/format';
 
-/** "১৫ জুলাই ২০২৬". Never throws: a bad date must not take the screen down. */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const iso = value.slice(0, 10);
-  if (!isIsoDate(iso)) return toBengaliDigits(value);
-  try {
-    return formatLedgerDate(fromLocalDateString(iso));
-  } catch {
-    return toBengaliDigits(value);
-  }
-}
+export { bnDate, bnNum };
 
 export function rangeLabel(range: ReportRange): string {
   if (range.preset === 'custom') return `${bnDate(range.from)} — ${bnDate(range.to)}`;

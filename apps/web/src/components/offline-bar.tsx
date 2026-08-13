@@ -3,8 +3,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CloudOff, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
-import { toBengaliDigits } from '@hishab/shared';
 import { endpoints } from '@/lib/api';
+import { t } from '@/lib/t';
+import { fmtNumber } from '@/lib/format';
 import {
   countQueued,
   discardQueued,
@@ -29,17 +30,19 @@ const EMPTY: QueueCounts = { pending: 0, failed: 0, held: 0 };
 /** How often a backed-off row gets another chance while a tab is open. */
 const RETRY_INTERVAL_MS = 30_000;
 
-const bn = (value: number): string => toBengaliDigits(String(value));
+const bn = (value: number): string => fmtNumber(String(value));
 
 /** A queued row is a verb and a path; the user needs a noun. */
 function mutationLabel(item: QueuedMutation): string {
   if (item.path.startsWith('/transactions')) {
-    return item.method === 'DELETE' ? 'লেনদেন মুছে ফেলা' : 'লেনদেন সংরক্ষণ';
+    return item.method === 'DELETE'
+      ? t('offline.deleteTxn', 'লেনদেন মুছে ফেলা')
+      : t('offline.saveTxn', 'লেনদেন সংরক্ষণ');
   }
-  if (item.path.startsWith('/loans')) return 'ঋণের হিসাব';
-  if (item.path.startsWith('/accounts')) return 'অ্যাকাউন্ট';
-  if (item.path.startsWith('/categories')) return 'ক্যাটাগরি';
-  return 'পরিবর্তন';
+  if (item.path.startsWith('/loans')) return t('offline.loan', 'ঋণের হিসাব');
+  if (item.path.startsWith('/accounts')) return t('entry.account', 'অ্যাকাউন্ট');
+  if (item.path.startsWith('/categories')) return t('entry.category', 'ক্যাটাগরি');
+  return t('offline.change', 'পরিবর্তন');
 }
 
 export function OfflineBar() {
@@ -138,10 +141,12 @@ export function OfflineBar() {
   /* "সংযোগ ফিরেছে" is reassurance, and it must not lead a sentence whose point
    * is that a change did not go through. */
   const parts: string[] = [];
-  if (!online) parts.push('অফলাইন');
-  else if (failed === 0) parts.push('সংযোগ ফিরেছে');
-  if (pending > 0) parts.push(`${bn(pending)}টি পরিবর্তন অপেক্ষমাণ`);
-  if (failed > 0) parts.push(`${bn(failed)}টি পরিবর্তন সার্ভার নেয়নি`);
+  if (!online) parts.push(t('offline.offline', 'অফলাইন'));
+  else if (failed === 0) parts.push(t('offline.back', 'সংযোগ ফিরেছে'));
+  if (pending > 0)
+    parts.push(t('offline.pendingN', '{n}টি পরিবর্তন অপেক্ষমাণ').replace('{n}', bn(pending)));
+  if (failed > 0)
+    parts.push(t('offline.failedN', '{n}টি পরিবর্তন সার্ভার নেয়নি').replace('{n}', bn(failed)));
 
   return (
     <div
@@ -165,7 +170,7 @@ export function OfflineBar() {
             aria-expanded={showFailures}
             className="press text-ink min-h-9 shrink-0 rounded-md px-2 text-xs font-medium underline"
           >
-            {showFailures ? 'লুকান' : 'বিস্তারিত'}
+            {showFailures ? t('offline.hide', 'লুকান') : t('offline.details', 'বিস্তারিত')}
           </button>
         ) : null}
       </div>
@@ -184,7 +189,7 @@ export function OfflineBar() {
               <div className="min-w-0 flex-1">
                 <p className="text-ink font-medium">{mutationLabel(item)}</p>
                 <p className="text-ink-muted">
-                  {item.failureMessage ?? 'সার্ভার পরিবর্তনটি নেয়নি'}
+                  {item.failureMessage ?? t('offline.refused', 'সার্ভার পরিবর্তনটি নেয়নি')}
                 </p>
               </div>
               <button

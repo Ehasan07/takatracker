@@ -1,4 +1,5 @@
-import { COMMON_QUANTITY_UNITS, toBengaliDigits } from '@hishab/shared';
+import { COMMON_QUANTITY_UNITS } from '@hishab/shared';
+import { fmtNumber } from '@/lib/format';
 
 /**
  * Quantity arithmetic, on its own with no React and no imports from the app.
@@ -40,5 +41,5 @@ export function fromMilli(milli: number): string {
   const fraction = String(milli % 1000)
     .padStart(3, '0')
     .replace(/0+$/, '');
-  return toBengaliDigits(fraction ? `${whole}.${fraction}` : String(whole));
+  return fmtNumber(fraction ? `${whole}.${fraction}` : String(whole));
 }

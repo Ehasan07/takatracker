@@ -1,4 +1,3 @@
-import { DEFAULT_TIMEZONE, formatLedgerDate, toBengaliDigits } from '@hishab/shared';
 import {
   ACTION_GROUPS as TENANT_ACTION_GROUPS,
   actionLabel as tenantActionLabel,
@@ -6,7 +5,11 @@ import {
 } from '../audit/labels';
 import type { TenantFeature } from './types';
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. Re-exported under the old name so the call sites stay as they are. */
+import { fmtNumber as bnNum } from '@/lib/format';
+
+export { bnNum };
 
 /**
  * A quantity that may not be whole.
@@ -70,35 +73,16 @@ export function bnPercent(ratio: number): string {
 }
 
 /** "১০ আগস্ট ২০২৬", tolerant of a malformed row. */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return toBengaliDigits(value);
-  return formatLedgerDate(at);
-}
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are.
 
-/** "১৪:০৫" in Dhaka time. */
-export function bnTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return '—';
-  return toBengaliDigits(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: DEFAULT_TIMEZONE,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(at),
-  );
-}
+   `bnDate` here is the *timestamp* one — an operator screen's rows are events,
+   not ledger days — so it maps to `fmtStamp` rather than to `fmtDate`. */
+import { fmtStamp as bnDate, fmtStampTime as bnDateTime, fmtTime as bnTime } from '@/lib/format';
 
-/** "১০ আগস্ট ২০২৬, ১৪:০৫" — an operator screen is minute-precise. */
-export function bnDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return toBengaliDigits(value);
-  return `${formatLedgerDate(at)}, ${bnTime(value)}`;
-}
+export { bnDate, bnDateTime, bnTime };
 
 /** How long until `iso`, in words. Negative reads as "expired". */
 export function bnRemaining(iso: string): string {

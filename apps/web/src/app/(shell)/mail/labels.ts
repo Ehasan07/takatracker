@@ -1,56 +1,17 @@
-import {
-  DEFAULT_TIMEZONE,
-  formatLedgerDate,
-  fromLocalDateString,
-  toBengaliDigits,
-} from '@hishab/shared';
 import type { MailAccountStatus, MailFolder } from './types';
 
-export const bnNum = (value: number | string): string => toBengaliDigits(String(value));
+/* One implementation, in `lib/format.ts`, which follows the workspace's
+   language. There were ten near-identical copies of these across the app and
+   every one of them hardcoded Bengali digits. The old names are re-exported so
+   the call sites in this folder stay as they are. */
+import {
+  fmtClock as bnClock,
+  fmtDate as bnDate,
+  fmtDateTime as bnDateTime,
+  fmtNumber as bnNum,
+} from '@/lib/format';
 
-/**
- * The contract says `YYYY-MM-DD`, but a stray ISO timestamp must not take the
- * screen down: `fromLocalDateString` throws on anything else.
- */
-export function bnDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const iso = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return toBengaliDigits(value);
-  try {
-    return formatLedgerDate(fromLocalDateString(iso));
-  } catch {
-    return toBengaliDigits(value);
-  }
-}
-
-/** "৭ আগস্ট ২০২৬, ১১:০৫" — when the message reached the mailbox. */
-export function bnDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const when = new Date(iso);
-  if (Number.isNaN(when.getTime())) return toBengaliDigits(iso);
-  const clock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: DEFAULT_TIMEZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(when);
-  return `${formatLedgerDate(when)}, ${toBengaliDigits(clock)}`;
-}
-
-/** Just the clock, for rows whose date is already obvious from the group above. */
-export function bnClock(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const when = new Date(iso);
-  if (Number.isNaN(when.getTime())) return '';
-  return toBengaliDigits(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: DEFAULT_TIMEZONE,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(when),
-  );
-}
+export { bnClock, bnDate, bnDateTime, bnNum };
 
 /**
  * The four folders the worker knows how to fill.

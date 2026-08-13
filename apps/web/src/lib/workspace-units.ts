@@ -26,6 +26,8 @@ import { api } from '@/lib/api';
 
 interface WorkspaceSettingsDto {
   quantityUnits: string[];
+  /** The books' language. Read by the language switch; see `language-settings.tsx`. */
+  locale: 'bn' | 'en';
 }
 
 export const workspaceSettingsKey = ['workspace', 'settings'] as const;
