@@ -194,11 +194,16 @@ export interface SignedUpUser {
   refreshToken: string;
 }
 
-export async function signup(ctx: TestContext, email = uniqueEmail()): Promise<SignedUpUser> {
+export async function signup(
+  ctx: TestContext,
+  email = uniqueEmail(),
+  /** The books' language. Defaults to Bengali, which is what signup defaults to. */
+  locale: 'bn' | 'en' = 'bn',
+): Promise<SignedUpUser> {
   const res = await ctx
     .http()
     .post('/v1/auth/signup')
-    .send({ email, password: 'hishab1234', name: 'পরীক্ষা ব্যবহারকারী' })
+    .send({ email, password: 'hishab1234', name: 'পরীক্ষা ব্যবহারকারী', locale })
     .expect(201);
 
   return {

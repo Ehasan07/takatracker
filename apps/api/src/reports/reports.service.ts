@@ -17,7 +17,7 @@ import {
   type CategoryTotal,
   type TrendPoint,
 } from '@hishab/core';
-import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
+import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
 import type { AccountType } from '@prisma/client';
 import { minorToNumber } from '../common/bigint-json';
 import { AccountsService } from '../accounts/accounts.service';
@@ -102,8 +102,21 @@ export interface TagReport {
   rows: TagTotalRow[];
 }
 
-/** The Bengali label for the bucket of transactions carrying no tag at all. */
-const UNTAGGED_LABEL = 'ট্যাগবিহীন';
+/**
+ * The buckets that are not a row in any table.
+ *
+ * Every other name on a report comes from a category or a tag, which each carry
+ * both languages. These two are invented by the report itself, so they have to
+ * carry their own pair or an English reader gets one Bengali line in the middle
+ * of an otherwise English table — and it is the line most likely to need acting
+ * on, because it is the money that has not been filed.
+ */
+const UNTAGGED_LABEL: Record<Locale, string> = { bn: 'ট্যাগবিহীন', en: 'Untagged' };
+const UNCATEGORISED: Record<Locale, string> = { bn: 'খাত ছাড়া', en: 'Uncategorised' };
+/** The report's own word for a row whose category is filed under no name at all. */
+const UNFILED: Record<Locale, string> = { bn: 'অশ্রেণিবদ্ধ', en: 'Unfiled' };
+/** A category id the name map does not have. Should not happen; says so if it does. */
+const UNKNOWN_CATEGORY: Record<Locale, string> = { bn: 'অজানা', en: 'Unknown' };
 
 @Injectable()
 export class ReportsService {
@@ -146,14 +159,16 @@ export class ReportsService {
       where: { workspaceId: ctx.workspaceId, deletedAt: null },
       select: { id: true, name: true, nameBn: true, parentId: true },
     });
-    const nameById = new Map(cats.map((c) => [c.id, c.nameBn ?? c.name]));
+    const nameById = new Map(cats.map((c) => [c.id, displayName(c, ctx.locale)]));
     const parentOf = new Map(cats.map((c) => [c.id, c.parentId]));
 
     const rows: CategoryTotal[] = grouped.map((g) => {
       const parentId = g.categoryId ? parentOf.get(g.categoryId) : null;
       return {
         categoryId: g.categoryId,
-        name: g.categoryId ? (nameById.get(g.categoryId) ?? 'অজানা') : 'অশ্রেণিবদ্ধ',
+        name: g.categoryId
+          ? (nameById.get(g.categoryId) ?? UNKNOWN_CATEGORY[ctx.locale])
+          : UNFILED[ctx.locale],
         totalMinor: minorToNumber(g._sum.amountMinor ?? 0n),
         parentName: parentId ? (nameById.get(parentId) ?? undefined) : undefined,
       };
@@ -254,7 +269,7 @@ export class ReportsService {
       if (totalMinor === 0 && transactionCount === 0) continue;
       rows.push({
         tagId: tag.id,
-        name: tag.nameBn ?? tag.name,
+        name: displayName(tag, ctx.locale),
         color: tag.color,
         icon: tag.icon,
         totalMinor,
@@ -268,7 +283,7 @@ export class ReportsService {
 
     rows.push({
       tagId: null,
-      name: UNTAGGED_LABEL,
+      name: UNTAGGED_LABEL[ctx.locale],
       color: null,
       icon: null,
       totalMinor: totals.untaggedMinor,
@@ -597,7 +612,7 @@ export class ReportsService {
     }));
 
     return {
-      category: { id: category.id, name: category.nameBn ?? category.name, kind: category.kind },
+      category: { id: category.id, name: displayName(category, ctx.locale), kind: category.kind },
       totalMinor: items.reduce((s, i) => s + i.amountMinor, 0),
       items,
     };
@@ -667,7 +682,7 @@ export class ReportsService {
 
       const category = row.entries[0]?.category;
       const categoryKey = category?.id ?? 'none';
-      const name = category ? (category.nameBn ?? category.name) : 'খাত ছাড়া';
+      const name = category ? displayName(category, ctx.locale) : UNCATEGORISED[ctx.locale];
       const seen = bucket.byCategory.get(categoryKey) ?? { name, totalMilli: 0 };
       seen.totalMilli += milli;
       bucket.byCategory.set(categoryKey, seen);

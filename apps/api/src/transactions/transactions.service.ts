@@ -11,9 +11,12 @@ import {
   type SearchDoc,
 } from '@hishab/core';
 import {
+  compareByDisplayName,
+  displayName,
   fromLocalDateString,
   toBengaliDigits,
   toLocalDateString,
+  type Locale,
   type ReconcileInput,
   type SimpleTransactionInput,
   type TransactionQuery,
@@ -37,6 +40,16 @@ export interface TenantContext {
   id: string;
   workspaceId: string;
   timezone: string;
+  /**
+   * Which of a category's or tag's two names a response carries.
+   *
+   * Required rather than optional on purpose. Every real caller hands over an
+   * `AuthUser`, which has read it from the membership row already; a caller
+   * that has to invent one — a job, a test — is a caller that has to decide
+   * what language its output is in, and a silent default is how a background
+   * task ends up mailing somebody a report in the wrong one.
+   */
+  locale: Locale;
 }
 
 /** A tag as it rides along on a transaction. Enough to render a chip, no more. */
@@ -145,6 +158,17 @@ export type ListTransactionsQuery = TransactionQuery;
  * with no ceiling is a write path somebody will paste a thousand ids into.
  */
 export const MAX_TAGS_PER_TRANSACTION = 20;
+
+/**
+ * The two names the summary invents rather than reads from a row.
+ *
+ * Every other name it prints comes from a category, which carries both
+ * languages. These do not, so they carry their own pair — otherwise an English
+ * reader gets one Bengali line in an otherwise English breakdown, and it is the
+ * line most worth acting on, because it is the money nobody has filed.
+ */
+const OTHER_CATEGORY: Record<Locale, string> = { bn: 'অন্যান্য', en: 'Other' };
+const UNFILED: Record<Locale, string> = { bn: 'অশ্রেণিবদ্ধ', en: 'Unfiled' };
 
 @Injectable()
 export class TransactionsService {
@@ -286,7 +310,7 @@ export class TransactionsService {
       after: { type: input.type, amountMinor: input.amountMinor, date: input.date },
     });
 
-    return this.present(created, tz);
+    return this.present(created, ctx);
   }
 
   private static toEntryData(
@@ -402,7 +426,7 @@ export class TransactionsService {
       after: TransactionsService.auditSnapshot(updated),
     });
 
-    return this.present(updated, tz);
+    return this.present(updated, ctx);
   }
 
   async remove(ctx: TenantContext, id: string): Promise<{ id: string }> {
@@ -496,7 +520,7 @@ export class TransactionsService {
       include: txInclude,
     });
     if (!tx) throw new NotFoundException('লেনদেন পাওয়া যায়নি');
-    return this.present(tx, ctx.timezone);
+    return this.present(tx, ctx);
   }
 
   async list(
@@ -576,7 +600,7 @@ export class TransactionsService {
 
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
-    const items = page.map((row) => this.present(row, tz, query.accountId));
+    const items = page.map((row) => this.present(row, ctx, query.accountId));
 
     if (query.accountId) {
       await this.attachRunningBalance(ctx.workspaceId, query.accountId, items, page);
@@ -765,7 +789,7 @@ export class TransactionsService {
       after: { deltaMinor: delta, actualBalanceMinor: input.actualBalanceMinor },
     });
 
-    return { delta, transaction: this.present(created, tz) };
+    return { delta, transaction: this.present(created, ctx) };
   }
 
   /** Month totals for the dashboard. */
@@ -818,19 +842,30 @@ export class TransactionsService {
       where: { id: { in: ids }, workspaceId: ctx.workspaceId },
       select: { id: true, name: true, nameBn: true },
     });
-    const nameById = new Map(cats.map((c) => [c.id, c.nameBn ?? c.name]));
+    const nameById = new Map(cats.map((c) => [c.id, displayName(c, ctx.locale)]));
 
     return grouped
       .map((g) => ({
         categoryId: g.categoryId,
-        name: g.categoryId ? (nameById.get(g.categoryId) ?? 'অন্যান্য') : 'অশ্রেণিবদ্ধ',
+        name: g.categoryId
+          ? (nameById.get(g.categoryId) ?? OTHER_CATEGORY[ctx.locale])
+          : UNFILED[ctx.locale],
         totalMinor: minorToNumber(g._sum.amountMinor ?? 0n),
       }))
       .sort((a, b) => b.totalMinor - a.totalMinor);
   }
 
   /** Collapse balanced double-entry lines back into what the user typed. */
-  private present(tx: TxWithEntries, tz: string, focusAccountId?: string): TransactionView {
+  /**
+   * Take the whole context, not a timezone string.
+   *
+   * Every caller already had one and pulled `ctx.timezone` out of it. Adding a
+   * second scalar parameter for the locale would have made five call sites read
+   * `present(row, tz, locale, query.accountId)` — three positional arguments of
+   * which two are strings, which is the shape that eventually gets swapped.
+   */
+  private present(tx: TxWithEntries, ctx: TenantContext, focusAccountId?: string): TransactionView {
+    const tz = ctx.timezone;
     const realEntries = tx.entries.filter((e) => !e.account.systemKey);
     const nominalEntry = tx.entries.find((e) => e.account.systemKey);
 
@@ -872,7 +907,7 @@ export class TransactionsService {
       counterAccountId: tx.type === 'TRANSFER' ? (counter?.accountId ?? null) : null,
       counterAccountName: tx.type === 'TRANSFER' ? (counter?.account.name ?? null) : null,
       categoryId: category?.id ?? null,
-      categoryName: category ? (category.nameBn ?? category.name) : null,
+      categoryName: category ? displayName(category, ctx.locale) : null,
       personId: tx.personId,
       personName: tx.person?.name ?? null,
       quantityMilli: tx.quantityMilli == null ? null : minorToNumber(tx.quantityMilli),
@@ -889,12 +924,11 @@ export class TransactionsService {
       tags: [...tx.tags]
         .sort(
           (a, b) =>
-            a.tag.sortOrder - b.tag.sortOrder ||
-            (a.tag.nameBn ?? a.tag.name).localeCompare(b.tag.nameBn ?? b.tag.name, 'bn'),
+            a.tag.sortOrder - b.tag.sortOrder || compareByDisplayName(a.tag, b.tag, ctx.locale),
         )
         .map((link) => ({
           id: link.tag.id,
-          name: link.tag.nameBn ?? link.tag.name,
+          name: displayName(link.tag, ctx.locale),
           color: link.tag.color,
           icon: link.tag.icon,
         })),

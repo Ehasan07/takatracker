@@ -33,7 +33,7 @@ async function signup(page: Page): Promise<void> {
 
 async function addCashAccount(page: Page): Promise<void> {
   await page.goto('/accounts');
-  await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+  await pressAdd(page, 'নতুন অ্যাকাউন্ট যোগ করুন');
   await page.getByLabel('নাম').fill('নগদ');
   await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -61,6 +61,22 @@ async function openEntrySheet(page: Page) {
  */
 const results = (sheet: ReturnType<Page['getByRole']>) =>
   sheet.getByRole('list', { name: 'খোঁজার ফলাফল' });
+
+/**
+ * Press "add", whichever of the two buttons this width is showing.
+ *
+ * The খাত and ট্যাগ screens both carry a compact "নতুন" in a header that is
+ * `hidden md:flex`, and a full-width "নতুন খাত যোগ করুন" that is `md:hidden`.
+ * Both are in the DOM at every width; exactly one is visible. A locator naming
+ * either one alone passes at two of the suite's four widths and times out at
+ * the other two, which reads as a broken feature rather than a broken selector.
+ */
+async function pressAdd(page: Page, phoneLabel: string): Promise<void> {
+  const compact = page.getByRole('button', { name: 'নতুন', exact: true });
+  const full = page.getByRole('button', { name: phoneLabel, exact: true });
+  await ((await compact.isVisible()) ? compact : full).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+}
 
 test.describe('খাত search', () => {
   test('typing Banglish finds the Bengali খাত and fills both boxes', async ({ page }) => {
@@ -195,5 +211,81 @@ test.describe('নিজের একক', () => {
 
     await page.reload();
     await expect(page.getByRole('button', { name: 'ভরি এককটি সরান' })).toBeHidden();
+  });
+});
+
+/**
+ * Two names, two columns.
+ *
+ * The sheets used to carry one name box and send it as *both* columns —
+ * `{ name, nameBn: name }`. That was harmless while every screen was Bengali
+ * and became a data loss the moment a box could prefill with the English name:
+ * saving an untouched খাত would overwrite the Bengali one with it. The browser
+ * is the only place that can prove the two boxes stay apart, because the bug
+ * lives in what the form sends, not in what the API accepts.
+ */
+test.describe('বাংলা আর ইংরেজি নাম', () => {
+  test('a খাত keeps both names, and neither box overwrites the other', async ({ page }) => {
+    await signup(page);
+    await page.goto('/categories');
+
+    await pressAdd(page, 'নতুন খাত যোগ করুন');
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('নাম', { exact: true }).fill('গাড়ির তেল');
+    await sheet.getByLabel('ইংরেজি নাম (ঐচ্ছিক)').fill('Fuel');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    /* The list is Bengali, because this workspace is. The English name is
+       stored, not shown — which is exactly the state stage one delivers. */
+    await expect(page.getByText('গাড়ির তেল').first()).toBeVisible();
+
+    // Reopen: each box shows its own column, not the same string twice.
+    await page.getByRole('button', { name: 'গাড়ির তেল সম্পাদনা' }).click();
+    const again = page.getByRole('dialog');
+    await expect(again.getByLabel('নাম', { exact: true })).toHaveValue('গাড়ির তেল');
+    await expect(again.getByLabel('ইংরেজি নাম (ঐচ্ছিক)')).toHaveValue('Fuel');
+
+    /* Save without touching anything. The old one-box form would have written
+       whichever string was in the box into both columns. */
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await page.getByRole('button', { name: 'গাড়ির তেল সম্পাদনা' }).click();
+    const third = page.getByRole('dialog');
+    await expect(third.getByLabel('নাম', { exact: true })).toHaveValue('গাড়ির তেল');
+    await expect(third.getByLabel('ইংরেজি নাম (ঐচ্ছিক)')).toHaveValue('Fuel');
+  });
+
+  test('leaving the English box empty mirrors the name, as it always did', async ({ page }) => {
+    await signup(page);
+    await page.goto('/categories');
+
+    await pressAdd(page, 'নতুন খাত যোগ করুন');
+    await page.getByRole('dialog').getByLabel('নাম', { exact: true }).fill('বাজার খরচ');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    /* Empty, not prefilled with the Bengali name. A box labelled "ইংরেজি নাম"
+       showing Bengali would claim an English name had been set. */
+    await page.getByRole('button', { name: 'বাজার খরচ সম্পাদনা' }).click();
+    await expect(page.getByRole('dialog').getByLabel('ইংরেজি নাম (ঐচ্ছিক)')).toHaveValue('');
+  });
+
+  test('a tag keeps both names too', async ({ page }) => {
+    await signup(page);
+    await page.goto('/tags');
+
+    await pressAdd(page, 'নতুন ট্যাগ যোগ করুন');
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('নাম', { exact: true }).fill('শ্বশুরবাড়ি');
+    await sheet.getByLabel('ইংরেজি নাম (ঐচ্ছিক)').fill('In-laws');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await page.getByRole('button', { name: 'শ্বশুরবাড়ি সম্পাদনা' }).click();
+    const again = page.getByRole('dialog');
+    await expect(again.getByLabel('নাম', { exact: true })).toHaveValue('শ্বশুরবাড়ি');
+    await expect(again.getByLabel('ইংরেজি নাম (ঐচ্ছিক)')).toHaveValue('In-laws');
   });
 });

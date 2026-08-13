@@ -25,9 +25,10 @@ import { Field, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useDisplayName } from '@/lib/display-name';
 import { TagDot } from './parts';
 import { invalidateTagData } from './queries';
-import { tagName, type MergeTagResult, type TagDto } from './types';
+import { type MergeTagResult, type TagDto } from './types';
 
 const bn = (value: number | string): string => toBengaliDigits(String(value));
 
@@ -45,6 +46,7 @@ export function MergeSheet({
   onMerged: (result: MergeTagResult) => void;
 }) {
   const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
   const [intoId, setIntoId] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
@@ -77,8 +79,8 @@ export function MergeSheet({
     },
   });
 
-  const fromName = source ? tagName(source) : '';
-  const intoName = into ? tagName(into) : '';
+  const fromName = source ? nameOf(source) : '';
+  const intoName = into ? nameOf(into) : '';
 
   return (
     <Sheet
@@ -113,7 +115,7 @@ export function MergeSheet({
                 <option value="">বেছে নিন</option>
                 {candidates.map((tag) => (
                   <option key={tag.id} value={tag.id}>
-                    {tagName(tag)}
+                    {nameOf(tag)}
                     {tag.transactionCount > 0 ? ` — ${bn(tag.transactionCount)}টি লেনদেন` : ''}
                   </option>
                 ))}

@@ -44,6 +44,7 @@ import * as React from 'react';
 import type { CategoryDto } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { useDisplayName } from '@/lib/display-name';
 import { CategorySearch } from './category-search';
 import { Field, Select } from './ui/field';
 
@@ -54,8 +55,6 @@ export interface CategoryGroup {
   parent: CategoryDto;
   children: CategoryDto[];
 }
-
-export const categoryName = (c: CategoryDto): string => c.nameBn ?? c.name;
 
 /**
  * Group one kind's flat list the way `(shell)/categories/page.tsx` groups it.
@@ -134,6 +133,7 @@ export function CategoryPicker({
    */
   unknownName?: string | null;
 }) {
+  const { name: nameOf } = useDisplayName();
   const groups = React.useMemo(() => groupCategories(categories, kind), [categories, kind]);
   const { parentId, childId } = selectionOf(value, groups);
 
@@ -166,16 +166,16 @@ export function CategoryPicker({
           {parentUnknown ? <option value={parentId}>{unknownName ?? '…'}</option> : null}
           {groups.map(({ parent, children: kids }) => (
             <React.Fragment key={parent.id}>
-              <option value={parent.id}>{categoryName(parent)}</option>
+              <option value={parent.id}>{nameOf(parent)}</option>
               {/* Children in document order right below their parent, so the
                   dropdown reads as the tree it is. The group's own name is on
                   the heading because a bare "রিকশা" three rows down from
                   যাতায়াত is exactly the ambiguity being fixed. */}
               {kids.length > 0 ? (
-                <optgroup label={`${categoryName(parent)}-এর উপ-খাত`}>
+                <optgroup label={`${nameOf(parent)}-এর উপ-খাত`}>
                   {kids.map((child) => (
                     <option key={child.id} value={child.id}>
-                      {categoryName(child)}
+                      {nameOf(child)}
                     </option>
                   ))}
                 </optgroup>
@@ -202,13 +202,13 @@ export function CategoryPicker({
             <option value="">কোনোটি নয়</option>
             {children.map((child) => (
               <option key={child.id} value={child.id}>
-                {categoryName(child)}
+                {nameOf(child)}
               </option>
             ))}
           </Select>
           <p className="text-ink-muted text-xs">
             ঐচ্ছিক। উপ-খাত দিলেও প্রতিবেদনে {kind === 'INCOME' ? 'আয়টি' : 'খরচটি'}{' '}
-            {categoryName(group.parent)}-এর মোটের সঙ্গেই যোগ হবে।
+            {nameOf(group.parent)}-এর মোটের সঙ্গেই যোগ হবে।
           </p>
         </Field>
       ) : null}
@@ -252,6 +252,7 @@ export function CategoryChips({
   onChange: (categoryId: string) => void;
   max?: number;
 }) {
+  const { name: nameOf } = useDisplayName();
   const shown = React.useMemo(() => {
     const groups = groupCategories(categories, kind);
     /* Built off the same grouping as the selects, so a chip and a box can never
@@ -261,7 +262,7 @@ export function CategoryChips({
     for (const { parent, children } of groups) {
       flat.push(parent);
       for (const child of children) {
-        parentNameOf.set(child.id, categoryName(parent));
+        parentNameOf.set(child.id, nameOf(parent));
         flat.push(child);
       }
     }
@@ -276,14 +277,14 @@ export function CategoryChips({
     return [...recent, ...rest]
       .slice(0, max)
       .map((category) => ({ category, parentName: parentNameOf.get(category.id) ?? null }));
-  }, [categories, kind, recentIds, max]);
+  }, [categories, kind, recentIds, max, nameOf]);
 
   if (shown.length === 0) return null;
 
   return (
     <div className="chip-strip" aria-label="দ্রুত বাছাই">
       {shown.map(({ category, parentName }) => {
-        const name = categoryName(category);
+        const name = nameOf(category);
         const on = value === category.id;
         return (
           <button

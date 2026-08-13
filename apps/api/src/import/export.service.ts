@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
+import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
 import type { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { minorToNumber } from '../common/bigint-json';
@@ -41,17 +41,29 @@ const BOM = '\uFEFF';
  * export can be edited in a spreadsheet and imported straight back. An export
  * nobody can re-import is not really an export.
  */
-const CSV_HEADERS = [
-  'তারিখ',
-  'বিবরণ',
-  'ক্যাটাগরি',
-  'অ্যাকাউন্ট',
-  'জমা',
-  'খরচ',
-  'রেফারেন্স',
-  'ধরন',
-  'মন্তব্য',
-] as const;
+/**
+ * The column titles, in the language the books are kept in.
+ *
+ * Nine strings and the only ones in the file, so they are a table rather than a
+ * catalogue key. An English workspace exporting to Excel and getting Bengali
+ * headers over English category names is a file whose two halves disagree —
+ * and a spreadsheet header is the one string a reader has to understand before
+ * any of the numbers under it mean anything.
+ */
+const CSV_HEADERS: Record<Locale, readonly string[]> = {
+  bn: ['তারিখ', 'বিবরণ', 'ক্যাটাগরি', 'অ্যাকাউন্ট', 'জমা', 'খরচ', 'রেফারেন্স', 'ধরন', 'মন্তব্য'],
+  en: [
+    'Date',
+    'Description',
+    'Category',
+    'Account',
+    'Credit',
+    'Debit',
+    'Reference',
+    'Type',
+    'Notes',
+  ],
+};
 
 /**
  * Characters that make a spreadsheet treat a cell as a formula rather than as
@@ -159,9 +171,9 @@ export class ExportService {
       orderBy: [{ date: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     });
 
-    const lines = [csvLine(CSV_HEADERS)];
+    const lines = [csvLine(CSV_HEADERS[ctx.locale])];
     for (const tx of rows) {
-      lines.push(csvLine(ExportService.csvRow(tx, ctx.timezone, query.accountId)));
+      lines.push(csvLine(ExportService.csvRow(tx, ctx.timezone, ctx.locale, query.accountId)));
     }
 
     this.audit.emit({
@@ -198,6 +210,7 @@ export class ExportService {
   private static csvRow(
     tx: TxWithEntries,
     timezone: string,
+    locale: Locale,
     accountId?: string,
   ): (string | null)[] {
     const real = tx.entries.filter((e) => !e.account.systemKey);
@@ -216,7 +229,7 @@ export class ExportService {
     return [
       toLocalDateString(tx.date, timezone),
       tx.description ?? tx.payee ?? '',
-      categorised?.category ? (categorised.category.nameBn ?? categorised.category.name) : '',
+      categorised?.category ? displayName(categorised.category, locale) : '',
       focus?.account.name ?? '',
       signed > 0 ? takaPlain(signed) : '',
       signed < 0 ? takaPlain(-signed) : '',

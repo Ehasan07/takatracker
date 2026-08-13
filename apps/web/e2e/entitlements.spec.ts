@@ -76,7 +76,9 @@ test.describe('categories and sub-categories', () => {
 
     // Nest রিকশা under যাতায়াত.
     await page.getByRole('button', { name: 'যাতায়াত-এ উপ-খাত যোগ করুন' }).click();
-    await page.getByLabel('নাম').fill('রিকশা');
+    /* `exact`, because the sheet now also carries "ইংরেজি নাম (ঐচ্ছিক)" and a
+       substring match finds both. */
+    await page.getByLabel('নাম', { exact: true }).fill('রিকশা');
     await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
     await expect(page.getByText('রিকশা')).toBeVisible();

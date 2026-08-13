@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { useIsDesktop } from '@/hooks/use-device';
-import { ApiError, endpoints, type CategoryDto } from '@/lib/api';
+import { ApiError, endpoints } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
@@ -57,10 +58,6 @@ function categoryKindFor(direction: '' | Direction): 'INCOME' | 'EXPENSE' | null
   if (direction === 'IN') return 'INCOME';
   if (direction === 'OUT') return 'EXPENSE';
   return null;
-}
-
-function categoryName(category: CategoryDto): string {
-  return category.nameBn?.trim() || category.name;
 }
 
 /** Bengali for whatever went wrong, whoever it came from. */
@@ -170,6 +167,7 @@ function ReviewForm({
   onSticky: (pick: StickyPick) => void;
 }) {
   const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
 
@@ -460,7 +458,7 @@ function ReviewForm({
             <option value="">{wantedKind === null ? 'আগে দিক বেছে নিন' : 'খাত বেছে নিন'}</option>
             {liveCategories.map((category) => (
               <option key={category.id} value={category.id}>
-                {categoryName(category)}
+                {nameOf(category)}
               </option>
             ))}
           </Select>

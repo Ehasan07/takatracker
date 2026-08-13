@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { searchAliasField, searchDocs, searchField, type SearchDoc } from '@hishab/core';
-import { toBengaliDigits, type CreateCategoryInput } from '@hishab/shared';
+import {
+  displayName,
+  toBengaliDigits,
+  type CreateCategoryInput,
+  type Locale,
+} from '@hishab/shared';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -96,7 +101,19 @@ export class CategoriesService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(workspaceId: string, query: ListCategoriesQuery = {}): Promise<CategoryView[]> {
+  /**
+   * `locale` decides `parentName` and nothing else.
+   *
+   * The row's own two names are both returned — the client picks, as the
+   * pickers already do. `parentName` is the one field this endpoint collapses
+   * into a single string, because it is a name *about* another row rather than
+   * this one's, and the search result list prints it as a prefix.
+   */
+  async list(
+    workspaceId: string,
+    query: ListCategoriesQuery = {},
+    locale: Locale = 'bn',
+  ): Promise<CategoryView[]> {
     const kind = parseKind(query.kind);
     const q = parseSearchQuery(query.q);
 
@@ -112,7 +129,7 @@ export class CategoriesService {
       include: { _count: { select: { entries: true } } },
     });
 
-    const nameById = new Map(rows.map((c) => [c.id, c.nameBn ?? c.name]));
+    const nameById = new Map(rows.map((c) => [c.id, displayName(c, locale)]));
 
     const views: CategoryView[] = rows.map((c) => ({
       id: c.id,
@@ -136,6 +153,7 @@ export class CategoriesService {
     workspaceId: string,
     actorUserId: string,
     input: CategoryWriteInput,
+    locale: Locale = 'bn',
   ): Promise<CategoryView> {
     const parentId = await this.resolveParent(workspaceId, input.kind, input.parentId);
     await this.assertNameFree(
@@ -169,7 +187,25 @@ export class CategoriesService {
       after: { name: created.nameBn ?? created.name, kind: created.kind },
     });
 
-    return { ...created, parentName: null, usageCount: 0 };
+    /* The parent's name, not a hardcoded null.
+     *
+     * This returned `parentName: null` for every row including the ones that do
+     * have a parent — a `CategoryView` that contradicts its own `parentId`. It
+     * went unnoticed because the categories screen refetches after a save, so
+     * the lie was overwritten within a render; a caller that trusted the
+     * response, as the search result list now would, gets an orphaned sub-খাত. */
+    const parent = parentId
+      ? await this.prisma.category.findFirst({
+          where: { id: parentId, workspaceId },
+          select: { name: true, nameBn: true },
+        })
+      : null;
+
+    return {
+      ...created,
+      parentName: parent ? displayName(parent, locale) : null,
+      usageCount: 0,
+    };
   }
 
   async update(
@@ -177,6 +213,7 @@ export class CategoriesService {
     actorUserId: string,
     id: string,
     input: Partial<CategoryWriteInput>,
+    locale: Locale = 'bn',
   ): Promise<CategoryView> {
     const existing = await this.prisma.category.findFirst({
       where: { id, workspaceId, deletedAt: null },
@@ -223,7 +260,9 @@ export class CategoriesService {
       },
     });
 
-    const [updated] = await this.list(workspaceId).then((all) => all.filter((c) => c.id === id));
+    const [updated] = await this.list(workspaceId, {}, locale).then((all) =>
+      all.filter((c) => c.id === id),
+    );
     return updated!;
   }
 

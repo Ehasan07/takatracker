@@ -47,7 +47,7 @@ export class CategoriesController {
    */
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('kind') kind?: unknown, @Query('q') q?: unknown) {
-    return this.categories.list(user.workspaceId, { kind, q });
+    return this.categories.list(user.workspaceId, { kind, q }, user.locale);
   }
 
   @Post()
@@ -55,7 +55,7 @@ export class CategoriesController {
     @CurrentUser() user: AuthUser,
     @Body(zodPipe(categoryBodySchema)) body: ReturnType<typeof categoryBodySchema.parse>,
   ) {
-    return this.categories.create(user.workspaceId, user.id, body);
+    return this.categories.create(user.workspaceId, user.id, body, user.locale);
   }
 
   @Patch(':id')
@@ -64,7 +64,7 @@ export class CategoriesController {
     @Param('id') id: string,
     @Body(zodPipe(updateCategorySchema)) body: ReturnType<typeof updateCategorySchema.parse>,
   ) {
-    return this.categories.update(user.workspaceId, user.id, id, body);
+    return this.categories.update(user.workspaceId, user.id, id, body, user.locale);
   }
 
   @Delete(':id')

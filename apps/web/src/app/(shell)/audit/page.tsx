@@ -27,6 +27,7 @@ import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/field';
 import { endpoints } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { ChangeBlock, type NameResolver } from './diff';
@@ -110,16 +111,22 @@ export default function AuditPage() {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
 
+  const { name: displayNameOf } = useDisplayName();
   const resolve: NameResolver = React.useMemo(() => {
     const accountNames = new Map((accounts.data ?? []).map((a) => [a.id, a.name]));
+    /* The *current* name of the row an entry points at, which is a different
+       thing from the name recorded in the entry itself. That one stays exactly
+       as it was written: a log whose account of the past changes with a
+       settings toggle is not a log. This map only fills in a name for an id
+       that the entry carries bare. */
     const categoryNames = new Map(
-      (categories.data ?? []).map((c) => [c.id, c.nameBn ?? c.name] as const),
+      (categories.data ?? []).map((c) => [c.id, displayNameOf(c)] as const),
     );
     return {
       account: (id) => accountNames.get(id),
       category: (id) => categoryNames.get(id),
     };
-  }, [accounts.data, categories.data]);
+  }, [accounts.data, categories.data, displayNameOf]);
 
   const rows = React.useMemo(
     () => (log.data?.pages ?? []).flatMap((page) => page.items),

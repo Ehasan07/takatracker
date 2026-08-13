@@ -45,11 +45,12 @@ import {
   type CategoryDto,
   type TransactionDto,
 } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { TagDot } from '../tags/parts';
 import { fetchTags, tagKeys } from '../tags/queries';
-import { tagName, type TagDto } from '../tags/types';
+import { type TagDto } from '../tags/types';
 
 /**
  * The khata.
@@ -674,6 +675,7 @@ function FilterBar({
   panelOpen: boolean;
   onPanelToggle: () => void;
 }) {
+  const { name: displayNameOf } = useDisplayName();
   const [typed, setTyped] = React.useState(filters.q);
   const [moreOpen, setMoreOpen] = React.useState(Boolean(filters.source || filters.personId));
 
@@ -738,14 +740,14 @@ function FilterBar({
 
   const categoryName = (id: string): string => {
     const hit = categories.find((c) => c.id === id);
-    return hit ? (hit.nameBn ?? hit.name) : id;
+    return hit ? displayNameOf(hit) : id;
   };
 
   /* A tag arrived at from the by-tag report may be filtering the list before
      the tag list itself has loaded, so the id stands in for one render. */
   const tagLabel = (id: string): string => {
     const hit = tags.find((t) => t.id === id);
-    return hit ? tagName(hit) : 'ট্যাগ';
+    return hit ? displayNameOf(hit) : 'ট্যাগ';
   };
 
   const chipLabel = (key: FilterKey): string => {
@@ -868,7 +870,7 @@ function FilterBar({
             <option value="">সব ক্যাটাগরি</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.nameBn ?? c.name}
+                {displayNameOf(c)}
               </option>
             ))}
           </Select>
@@ -886,7 +888,7 @@ function FilterBar({
               <option value="">সব ট্যাগ</option>
               {tags.map((tag) => (
                 <option key={tag.id} value={tag.id}>
-                  {tagName(tag)}
+                  {displayNameOf(tag)}
                 </option>
               ))}
             </Select>

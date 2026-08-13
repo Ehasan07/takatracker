@@ -37,6 +37,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
 import * as React from 'react';
 import { api, type CategoryDto } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 
 type Kind = 'INCOME' | 'EXPENSE';
@@ -62,6 +63,7 @@ export function CategorySearch({
   onPick: (categoryId: string) => void;
   idPrefix: string;
 }) {
+  const { name: nameOf } = useDisplayName();
   const [typed, setTyped] = React.useState('');
   const [query, setQuery] = React.useState('');
 
@@ -172,9 +174,7 @@ export function CategorySearch({
                     {row.parentName} ›
                   </span>
                 ) : null}
-                <span className="text-ink min-w-0 flex-1 truncate text-sm">
-                  {row.nameBn ?? row.name}
-                </span>
+                <span className="text-ink min-w-0 flex-1 truncate text-sm">{nameOf(row)}</span>
               </button>
             </li>
           ))}

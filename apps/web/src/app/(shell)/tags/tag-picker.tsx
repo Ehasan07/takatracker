@@ -40,9 +40,10 @@ import { Input } from '@/components/ui/field';
 import { ApiError, api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { useDisplayName } from '@/lib/display-name';
 import { TagDot } from './parts';
 import { fetchTags, tagKeys } from './queries';
-import { tagName, type TagDto } from './types';
+import { type TagDto } from './types';
 
 const bn = (value: number | string): string => toBengaliDigits(String(value));
 
@@ -57,6 +58,7 @@ export function TagPicker({
   idPrefix?: string;
 }) {
   const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
   const [typed, setTyped] = React.useState('');
   const [query, setQuery] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
@@ -211,7 +213,7 @@ export function TagPicker({
         <ul className="flex flex-wrap gap-1.5" aria-label="বেছে নেওয়া ট্যাগ">
           {selected.map((tag, i) => {
             const id = value[i]!;
-            const name = tag ? tagName(tag) : '…';
+            const name = tag ? nameOf(tag) : '…';
             return (
               <li key={id}>
                 <span className="border-income bg-income/10 text-ink flex min-h-9 items-center gap-1 rounded-full border pl-2.5 pr-1 text-xs">
@@ -311,7 +313,7 @@ export function TagPicker({
                   )}
                 >
                   <TagDot color={tag.color} />
-                  <span className="text-ink min-w-0 flex-1 truncate text-sm">{tagName(tag)}</span>
+                  <span className="text-ink min-w-0 flex-1 truncate text-sm">{nameOf(tag)}</span>
                   {tag.transactionCount > 0 ? (
                     <span className="text-ink-muted shrink-0 text-xs">
                       {bn(tag.transactionCount)}

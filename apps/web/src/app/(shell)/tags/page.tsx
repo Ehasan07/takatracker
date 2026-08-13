@@ -35,11 +35,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
 import { ApiError, api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useDisplayName } from '@/lib/display-name';
 import { MergeSheet, mergeMessage } from './merge-sheet';
 import { ConfirmSheet, QueryError, TagDot, Toast } from './parts';
 import { fetchTags, invalidateTagData, tagKeys } from './queries';
 import { TagSheet } from './tag-sheet';
-import { tagName, type DeleteTagResult, type TagDto } from './types';
+import { type DeleteTagResult, type TagDto } from './types';
 
 const bn = (value: number | string): string => toBengaliDigits(String(value));
 
@@ -48,6 +49,7 @@ const countLabel = (tag: TagDto): string =>
 
 export default function TagsPage() {
   const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
 
   const [typed, setTyped] = React.useState('');
   const [query, setQuery] = React.useState('');
@@ -196,14 +198,14 @@ export default function TagsPage() {
               <div className="flex items-center gap-1 px-2 py-1.5">
                 <button
                   type="button"
-                  aria-label={`${tagName(tag)} সম্পাদনা`}
+                  aria-label={`${nameOf(tag)} সম্পাদনা`}
                   onClick={() => openEdit(tag)}
                   className="press hover:bg-greenbar flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <TagDot color={tag.color} />
-                      <span className="text-ink truncate text-sm font-medium">{tagName(tag)}</span>
+                      <span className="text-ink truncate text-sm font-medium">{nameOf(tag)}</span>
                     </span>
                     <span className="text-ink-muted block truncate text-xs">
                       {countLabel(tag)}
@@ -230,7 +232,7 @@ export default function TagsPage() {
 
                 <button
                   type="button"
-                  aria-label={`${tagName(tag)} ট্যাগটি সরান`}
+                  aria-label={`${nameOf(tag)} ট্যাগটি সরান`}
                   onClick={() => openDelete(tag)}
                   className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
                 >
@@ -278,7 +280,7 @@ export default function TagsPage() {
           if (!open) setDeleting(null);
         }}
         title="ট্যাগটি সরাবেন?"
-        description={deleting ? tagName(deleting) : undefined}
+        description={deleting ? nameOf(deleting) : undefined}
         body={
           deleting ? (
             <div className="flex flex-col gap-2">

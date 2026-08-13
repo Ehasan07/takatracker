@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError, type CategoryDto } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 
@@ -30,12 +31,12 @@ interface Group {
 }
 
 const bn = (n: number): string => toBengaliDigits(String(n));
-const nameOf = (c: CategoryRow): string => c.nameBn ?? c.name;
 const usageLabel = (c: CategoryRow): string =>
   c.usageCount > 0 ? `${bn(c.usageCount)}টি লেনদেন` : 'কোনো লেনদেন নেই';
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
   const [kind, setKind] = React.useState<Kind>('EXPENSE');
   const [editing, setEditing] = React.useState<CategoryRow | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -295,6 +296,7 @@ function CategoryLine({
   onDelete: () => void;
   nested?: boolean;
 }) {
+  const { name: nameOf } = useDisplayName();
   return (
     <div className={cn('flex items-center gap-1 px-2 py-1.5', nested && 'pl-1')}>
       {nested ? (
@@ -417,7 +419,17 @@ function CategorySheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  /* For naming the parent this খাত will sit under — a name *about* another row,
+     so it follows the reader's language. The two boxes below do not: each edits
+     one specific column and must show that column. */
+  const { name: nameOf } = useDisplayName();
+  /* Two boxes, two columns, and neither ever written from the other's value.
+     One box that wrote both — `{ name, nameBn: name }` — was fine while every
+     screen was Bengali and becomes a data loss as soon as the box can prefill
+     with the English name: saving an untouched খাত would overwrite the Bengali
+     one with it. */
   const [name, setName] = React.useState('');
+  const [nameEn, setNameEn] = React.useState('');
   const [kind, setKind] = React.useState<Kind>(defaultKind);
   /* One box, comma separated, prefilled with whatever is already stored: the API
      replaces the list whole, so a blind save must send back what it was shown. */
@@ -427,6 +439,10 @@ function CategorySheet({
   React.useEffect(() => {
     if (!open) return;
     setName(editing ? (editing.nameBn ?? editing.name) : '');
+    /* Empty when the two columns hold the same string — what every খাত the
+       user made before this box existed looks like. Showing the Bengali name
+       in a box labelled "ইংরেজি নাম" would claim an English name was set. */
+    setNameEn(editing && editing.name !== (editing.nameBn ?? editing.name) ? editing.name : '');
     setKind(editing ? (editing.kind as Kind) : parent ? (parent.kind as Kind) : defaultKind);
     setAliases(editing ? (editing.searchAliases ?? []).join(', ') : '');
     setError(null);
@@ -437,11 +453,20 @@ function CategorySheet({
       editing
         ? api(`/categories/${editing.id}`, {
             method: 'PATCH',
-            body: { name, nameBn: name, searchAliases: aliases },
+            /* No English name given means the two mirror, exactly as every খাত
+               made before this box did. `name` is NOT NULL, so it can never be
+               written as the empty string. */
+            body: { name: nameEn.trim() || name, nameBn: name, searchAliases: aliases },
           })
         : api('/categories', {
             method: 'POST',
-            body: { name, nameBn: name, kind, parentId: parent?.id, searchAliases: aliases },
+            body: {
+              name: nameEn.trim() || name,
+              nameBn: name,
+              kind,
+              parentId: parent?.id,
+              searchAliases: aliases,
+            },
           }),
     onSuccess: () => {
       haptic('success');
@@ -456,7 +481,7 @@ function CategorySheet({
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? 'খাত সম্পাদনা' : parent ? 'নতুন উপ-খাত' : 'নতুন খাত'}
-      description={parent ? `${parent.nameBn ?? parent.name}-এর ভেতরে` : undefined}
+      description={parent ? `${nameOf(parent)}-এর ভেতরে` : undefined}
     >
       <form
         className="flex flex-col gap-4"
@@ -477,10 +502,23 @@ function CategorySheet({
           />
         </Field>
 
+        <Field label="ইংরেজি নাম (ঐচ্ছিক)" htmlFor="cat-name-en">
+          <Input
+            id="cat-name-en"
+            value={nameEn}
+            onChange={(e) => setNameEn(e.target.value)}
+            maxLength={60}
+            placeholder={parent ? 'Electricity bill' : 'Fuel'}
+          />
+        </Field>
+        <p className="text-ink-muted -mt-2 text-xs">
+          অ্যাপ ইংরেজিতে দেখলে এই নামটি দেখাবে। না দিলে উপরের নামটিই থাকবে।
+        </p>
+
         {parent ? (
           <p className="text-ink-muted -mt-2 text-xs">
-            এটি {parent.kind === 'INCOME' ? 'আয়ের' : 'খরচের'} খাত {parent.nameBn ?? parent.name}-এর
-            ভেতরে বসবে। প্রতিবেদনে এর খরচ {parent.nameBn ?? parent.name}-এর মোটের সঙ্গেই যোগ হবে।
+            এটি {parent.kind === 'INCOME' ? 'আয়ের' : 'খরচের'} খাত {nameOf(parent)}-এর ভেতরে বসবে।
+            প্রতিবেদনে এর খরচ {nameOf(parent)}-এর মোটের সঙ্গেই যোগ হবে।
           </p>
         ) : editing ? (
           /* Flipping a category from expense to income would silently invert

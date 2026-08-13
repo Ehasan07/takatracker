@@ -24,6 +24,20 @@ export interface AuthUser {
    */
   currency: string;
   /**
+   * The language the books are read in — `Workspace.locale`, not the person's.
+   *
+   * Here for the same reason `timezone` and `currency` are: the membership row
+   * is already being read to authorise the request. It decides which of a
+   * category's two names a response carries, and that decision cannot be left
+   * to the client for the places where the server collapses the pair into one
+   * string — a report row, a CSV column, a transaction's `categoryName`.
+   *
+   * The workspace's and not the member's, because a shared workspace must not
+   * show two people two different names for the same row: a report mailed
+   * between them would not agree with itself.
+   */
+  locale: 'bn' | 'en';
+  /**
    * The operator's user id when this request is a support session, otherwise
    * null.
    *

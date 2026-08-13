@@ -74,9 +74,18 @@ export interface MergeTagResult {
   message: string;
 }
 
-/** Display name: the Bengali one when there is one. */
-export const tagName = (tag: { name: string; nameBn?: string | null }): string =>
-  tag.nameBn ?? tag.name;
+/**
+ * A tag's display name is `useDisplayName()` in `lib/display-name.ts`, not a
+ * helper here.
+ *
+ * There used to be a `tagName` that always returned the Bengali one. It was
+ * correct while the app had a single language and became the reason a tag was
+ * the one thing on an English screen still in Bengali. Resolving a name needs
+ * the workspace's locale, which a module-level function cannot reach, so the
+ * resolution moved to a hook and the rule itself to `@hishab/shared` — where
+ * the API reads the same one, and a report row cannot disagree with the chip
+ * that filed it.
+ */
 
 /**
  * The colours a tag may be given.

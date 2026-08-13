@@ -11,8 +11,9 @@ import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { useDisplayName } from '@/lib/display-name';
 import { invalidateTagData } from './queries';
-import { DEFAULT_TAG_COLOUR, TAG_COLOURS, safeColour, tagName, type TagDto } from './types';
+import { DEFAULT_TAG_COLOUR, TAG_COLOURS, safeColour, type TagDto } from './types';
 
 export function TagSheet({
   open,
@@ -26,7 +27,14 @@ export function TagSheet({
   onSaved?: (tag: TagDto) => void;
 }) {
   const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
+  /* Two boxes, two columns, and neither ever written from the other's value.
+     One box that wrote both — `{ name, nameBn: name }` — was fine while every
+     screen was Bengali and became a data loss the moment the box could prefill
+     with the English name: saving an untouched tag would overwrite the Bengali
+     one with it. */
   const [name, setName] = React.useState('');
+  const [nameEn, setNameEn] = React.useState('');
   const [colour, setColour] = React.useState<string | null>(DEFAULT_TAG_COLOUR);
   /* One box, comma separated, prefilled with what is stored: `PATCH` replaces
      the list whole, so a blind save has to send back what it was shown. */
@@ -35,7 +43,11 @@ export function TagSheet({
 
   React.useEffect(() => {
     if (!open) return;
-    setName(editing ? tagName(editing) : '');
+    setName(editing ? (editing.nameBn ?? editing.name) : '');
+    /* Empty when the two columns hold the same string, which is what a tag made
+       before this box existed looks like. Showing the Bengali name in a box
+       labelled "ইংরেজি নাম" would be claiming an English name was set. */
+    setNameEn(editing && editing.name !== (editing.nameBn ?? editing.name) ? editing.name : '');
     setColour(editing ? safeColour(editing.color) : DEFAULT_TAG_COLOUR);
     setAliases(editing ? editing.searchAliases.join(', ') : '');
     setError(null);
@@ -43,7 +55,15 @@ export function TagSheet({
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, nameBn: name, color: colour, searchAliases: aliases };
+      /* No English name given means the two mirror, exactly as every tag made
+         before this box did. `name` is NOT NULL, so it can never be the empty
+         string. */
+      const body = {
+        name: nameEn.trim() || name,
+        nameBn: name,
+        color: colour,
+        searchAliases: aliases,
+      };
       return editing
         ? api<TagDto>(`/tags/${editing.id}`, { method: 'PATCH', body })
         : api<TagDto>('/tags', { method: 'POST', body });
@@ -64,7 +84,7 @@ export function TagSheet({
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? 'ট্যাগ সম্পাদনা' : 'নতুন ট্যাগ'}
-      description={editing ? tagName(editing) : 'কার জন্য বা কোন কাজে — যেমন পারিবারিক, রমজান'}
+      description={editing ? nameOf(editing) : 'কার জন্য বা কোন কাজে — যেমন পারিবারিক, রমজান'}
     >
       <form
         className="flex flex-col gap-4"
@@ -85,6 +105,19 @@ export function TagSheet({
             placeholder="যেমন: শ্বশুরবাড়ি"
           />
         </Field>
+
+        <Field label="ইংরেজি নাম (ঐচ্ছিক)" htmlFor="tag-name-en">
+          <Input
+            id="tag-name-en"
+            value={nameEn}
+            onChange={(e) => setNameEn(e.target.value)}
+            maxLength={60}
+            placeholder="In-laws"
+          />
+        </Field>
+        <p className="text-ink-muted -mt-2 text-xs">
+          অ্যাপ ইংরেজিতে দেখলে এই নামটি দেখাবে। না দিলে উপরের নামটিই থাকবে।
+        </p>
 
         <div className="flex flex-col gap-1.5">
           <span className="text-ink text-sm font-medium" id="tag-colour-label">
