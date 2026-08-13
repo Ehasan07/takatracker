@@ -26,21 +26,25 @@
  *     supply. Picking a child there fills both boxes, and the ক্যাটাগরি box then
  *     reads যাতায়াত: the answer the screenshot could not give.
  *
- *  3. **Two native selects, and no search box.** The tag picker searches through
- *     `GET /tags?q=`, because the API transliterates and `poribar` finds পরিবার.
- *     A category list is a few dozen rows, so the temptation here is to add a box
- *     that filters the fetched array — which would look identical and silently
- *     lose Banglish, since `rickshaw` and রিকশা share no characters. Nothing in
- *     this file filters anything: the whole tree is in the two selects, where the
- *     platform's own type-ahead handles it and the OS wheel handles it on a
- *     phone. If a filter is ever wanted, it has to go through `/categories?q=`,
- *     which already ranks aliases and pulls a matched child's parent back in.
+ *  3. **A search box above two native selects.** The whole tree is in the
+ *     selects, where the platform's type-ahead handles it on a desktop and the
+ *     OS wheel handles it on a phone — but a wheel through forty rows is slow
+ *     when you already know the name, and desktop type-ahead only matches from
+ *     the first character of the label.
+ *
+ *     The search is `CategorySearch`, and it goes through `GET /categories?q=`
+ *     rather than filtering the array this component already holds. That is the
+ *     whole point: a local filter would look identical and silently lose
+ *     Banglish, since `rickshaw` and রিকশা share no characters. The API
+ *     transliterates, ranks the workspace's aliases, and pulls a matched child's
+ *     parent back in. Nothing in this file filters anything, which is unchanged.
  */
 
 import * as React from 'react';
 import type { CategoryDto } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { CategorySearch } from './category-search';
 import { Field, Select } from './ui/field';
 
 type Kind = 'INCOME' | 'EXPENSE';
@@ -142,6 +146,11 @@ export function CategoryPicker({
 
   return (
     <>
+      {/* Above the selects, because it is the faster path for anybody who knows
+          the name — and picking a result fills both boxes below, so the two
+          controls agree rather than competing. */}
+      <CategorySearch kind={kind} idPrefix={idPrefix} onPick={onChange} />
+
       <Field label="ক্যাটাগরি" htmlFor={categoryFieldId}>
         <Select
           id={categoryFieldId}

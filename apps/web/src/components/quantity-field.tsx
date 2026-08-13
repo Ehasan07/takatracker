@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { Field, Input } from '@/components/ui/field';
-import { COMMON_UNITS, toMilli, type QuantityValue } from './quantity';
+import { useQuantityUnits } from '@/lib/workspace-units';
+import { toMilli, type QuantityValue } from './quantity';
 
 export { COMMON_UNITS, fromMilli, toMilli, type QuantityValue } from './quantity';
 
@@ -34,6 +35,9 @@ export function QuantityField({
   onChange: (next: QuantityValue | null) => void;
 }) {
   const [text, setText] = React.useState('');
+  /* Called before the early return so the hook order is the same on both
+     branches. It costs one cached request whether or not the field is open. */
+  const units = useQuantityUnits();
 
   if (!value) {
     return (
@@ -81,7 +85,8 @@ export function QuantityField({
           {/* A `<datalist>`, so the field stays free text. No fixed list
               survives contact with a Bangladeshi kitchen — হালি, বস্তা, গজ and
               a dozen others are all real, and a picker that cannot say the true
-              one teaches people to leave the field empty. */}
+              one teaches people to leave the field empty. The workspace's own
+              units are in here too, added from সেটিংস › পরিমাণের একক. */}
           <Input
             id="qty-unit"
             list="qty-units"
@@ -90,7 +95,7 @@ export function QuantityField({
             maxLength={20}
           />
           <datalist id="qty-units">
-            {COMMON_UNITS.map((u) => (
+            {units.map((u) => (
               <option key={u} value={u} />
             ))}
           </datalist>

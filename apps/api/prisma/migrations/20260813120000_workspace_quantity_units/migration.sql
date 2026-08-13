@@ -1,0 +1,19 @@
+-- The units this workspace offers itself, beside the eight the build ships.
+--
+-- The quantity field is already free text, so a unit nobody anticipated can be
+-- typed today and saves correctly. What could not be done was *offering* it
+-- again: the suggestion list was a constant in the web bundle, so a shop that
+-- counts in `গজ` or a pharmacy that counts in `স্ট্রিপ` retyped it on every
+-- entry, and one typo produced two units the report then refused to add
+-- together — correctly, and unhelpfully.
+--
+-- Why a column on the workspace and not a distinct-query over Transaction:
+-- `SELECT DISTINCT quantityUnit` would build the list for free and would also
+-- make every typo permanent, since the misspelling is in a saved row and the
+-- suggestion list is exactly where it would come back from. A curated list can
+-- be corrected; a derived one cannot.
+--
+-- `TEXT[]` and not a table for the same reason `Category.searchAliases` is:
+-- it is a short ordered list owned entirely by one row, never queried across
+-- workspaces, and never referenced by anything else.
+ALTER TABLE "Workspace" ADD COLUMN "quantityUnits" TEXT[] NOT NULL DEFAULT '{}';

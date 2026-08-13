@@ -299,6 +299,11 @@ model Workspace {
   /// Recording money into a card mutes that cycle. On by default; the manual
   /// control stays either way.
   autoMuteOnCardPayment      Boolean @default(true)
+  /// Units this workspace added to the quantity field's suggestions. The eight
+  /// common ones ship in the client and are not stored here; this is only what
+  /// somebody added themselves. Suggestions, never a constraint — the field
+  /// stays free text whatever is in this list.
+  quantityUnits              String[] @default([])
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   deletedAt    DateTime?

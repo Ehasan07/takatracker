@@ -1,4 +1,4 @@
-import { toBengaliDigits } from '@hishab/shared';
+import { COMMON_QUANTITY_UNITS, toBengaliDigits } from '@hishab/shared';
 
 /**
  * Quantity arithmetic, on its own with no React and no imports from the app.
@@ -9,8 +9,14 @@ import { toBengaliDigits } from '@hishab/shared';
  * reach them directly, the way `fx-convert.ts` is reachable.
  */
 
-/** Offered, not enforced. The field stays free text; see `UNIT_NOTE`. */
-export const COMMON_UNITS = ['কেজি', 'গ্রাম', 'লিটার', 'পিস', 'ডজন', 'হালি', 'বস্তা', 'প্যাকেট'];
+/**
+ * Offered, not enforced. The field stays free text.
+ *
+ * The list itself moved to `@hishab/shared` when a workspace gained the ability
+ * to add its own: the API refuses a custom unit that duplicates a shipped one,
+ * and that check has to read the same eight strings this dropdown shows.
+ */
+export const COMMON_UNITS: readonly string[] = COMMON_QUANTITY_UNITS;
 
 export interface QuantityValue {
   /** Thousandths of `unit`. 500 is half a kilo. */

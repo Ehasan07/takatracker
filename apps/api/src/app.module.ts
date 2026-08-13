@@ -18,6 +18,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { FxModule } from './fx/fx.module';
 import { PeopleModule } from './people/people.module';
 import { TranslationsModule } from './translations/translations.module';
+import { WorkspaceModule } from './workspace/workspace.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
 import { TagsModule } from './tags/tags.module';
@@ -43,6 +44,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     PeopleModule,
     FxModule,
     TranslationsModule,
+    WorkspaceModule,
     MailAccountsModule,
     ImportModule,
     AttachmentsModule,

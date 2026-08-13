@@ -11,6 +11,7 @@ import { SessionsList } from '@/components/sessions-list';
 import { IngestionSettings } from '@/components/ingestion-settings';
 import { MailSettings } from '@/components/mail-settings';
 import { TelegramSettings } from '@/components/telegram-settings';
+import { UnitSettings } from '@/components/unit-settings';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 
@@ -103,6 +104,8 @@ export default function SettingsPage() {
           ক্যাটাগরি দেখুন
         </Link>
       </section>
+
+      <UnitSettings />
 
       <TelegramSettings />
 

@@ -334,3 +334,131 @@ describe('sub-categories', () => {
     expect(drill.body.items).toHaveLength(3);
   });
 });
+
+/**
+ * `GET /categories?q=` — the endpoint the entry sheet's খাত search reads.
+ *
+ * The ranking itself is @hishab/core's and tested there. What is asserted here
+ * is the contract the picker depends on and would break silently without: that
+ * a matched child arrives with its parent's name attached, that a parent pulled
+ * in only for context is flagged so the flat list can drop it, that Banglish
+ * finds a Bengali row, and that the family somebody searched for is first.
+ */
+describe('category search', () => {
+  let ctx: TestContext;
+  let user: Awaited<ReturnType<typeof signup>>;
+  let transportId: string;
+  let rickshawId: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    user = await signup(ctx);
+
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    transportId = cats.body.find((c: { nameBn: string }) => c.nameBn === 'যাতায়াত').id;
+
+    const child = await ctx
+      .http()
+      .post('/v1/categories')
+      .set(auth(user))
+      .send({ name: 'Rickshaw', nameBn: 'রিকশা', kind: 'EXPENSE', parentId: transportId })
+      .expect(201);
+    rickshawId = child.body.id;
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  const search = (q: string, kind = 'EXPENSE') =>
+    ctx
+      .http()
+      .get(`/v1/categories?kind=${kind}&q=${encodeURIComponent(q)}`)
+      .set(auth(user));
+
+  it('finds a sub-category and names the খাত it sits under', async () => {
+    const res = await search('রিকশা').expect(200);
+    const hit = res.body.find((c: { id: string }) => c.id === rickshawId);
+    expect(hit).toBeDefined();
+    expect(hit.matched).toBe(true);
+    /* The picker prints `যাতায়াত › রিকশা` from this field. Without it a flat
+       result list shows a bare "রিকশা" — the exact ambiguity the two-select
+       picker exists to remove. */
+    expect(hit.parentName).toBe('যাতায়াত');
+  });
+
+  it('flags a parent it pulled in only for context', async () => {
+    /* A খাত of the workspace's own, so no seeded alias can match it. The
+       default যাতায়াত is not usable for this: it ships `Rickshaw` in its
+       aliases, so a search for রিকশা matches the parent for real. */
+    const gym = await ctx
+      .http()
+      .post('/v1/categories')
+      .set(auth(user))
+      .send({ name: 'Gymkhana', nameBn: 'জিমখানা', kind: 'EXPENSE' })
+      .expect(201);
+    const court = await ctx
+      .http()
+      .post('/v1/categories')
+      .set(auth(user))
+      .send({
+        name: 'Badminton court',
+        nameBn: 'ব্যাডমিন্টন কোর্ট',
+        kind: 'EXPENSE',
+        parentId: gym.body.id,
+      })
+      .expect(201);
+
+    const res = await search('ব্যাডমিন্টন').expect(200);
+    const child = res.body.find((c: { id: string }) => c.id === court.body.id);
+    expect(child.matched).toBe(true);
+
+    const parent = res.body.find((c: { id: string }) => c.id === gym.body.id);
+    expect(parent).toBeDefined();
+    /* Present so a tree renderer has something to hang the child under, and
+       `false` so the picker's flat list — which prints the parent as a prefix
+       on the child's own row — knows to drop the redundant line. */
+    expect(parent.matched).toBe(false);
+  });
+
+  it('finds a Bengali row from Banglish', async () => {
+    /* The whole reason this goes through the API. `rickshaw` and রিকশা share no
+       characters, so a client-side filter over the fetched array cannot do it. */
+    const res = await search('rickshaw').expect(200);
+    expect(res.body.some((c: { id: string }) => c.id === rickshawId)).toBe(true);
+  });
+
+  it('puts the family that was searched for first', async () => {
+    /* Families are ordered by their best-ranked member and the parent is
+       printed above its children, so "first" means the family — not necessarily
+       the single highest-scoring row. Here both really match: রিকশা by name,
+       যাতায়াত through the `Rickshaw` alias it ships with. */
+    const res = await search('রিকশা').expect(200);
+    const top = res.body.slice(0, 2).map((c: { id: string }) => c.id);
+    expect(top).toContain(rickshawId);
+    expect(res.body[0].id).toBe(transportId);
+  });
+
+  it('does not drag a parent’s children in when the parent is what matched', async () => {
+    const res = await search('যাতায়াত').expect(200);
+    expect(res.body.some((c: { id: string }) => c.id === transportId)).toBe(true);
+    expect(res.body.some((c: { id: string }) => c.id === rickshawId)).toBe(false);
+  });
+
+  it('never returns the other side of the ledger', async () => {
+    /* An income sheet offering খরচের খাত saves a transaction nobody can read
+       back. `kind` scopes the rows before anything is matched. */
+    const res = await search('রিকশা', 'INCOME').expect(200);
+    expect(res.body.every((c: { kind: string }) => c.kind === 'INCOME')).toBe(true);
+  });
+
+  it('is private to one workspace', async () => {
+    const stranger = await signup(ctx);
+    const res = await ctx
+      .http()
+      .get('/v1/categories?kind=EXPENSE&q=rickshaw')
+      .set(auth(stranger))
+      .expect(200);
+    expect(res.body.some((c: { id: string }) => c.id === rickshawId)).toBe(false);
+  });
+});

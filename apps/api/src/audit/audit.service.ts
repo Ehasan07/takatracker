@@ -33,6 +33,10 @@ export const AUDIT_ACTIONS = [
   'tag.updated',
   'tag.deleted',
   'tag.merged',
+  /* Settings that describe the books rather than a person: the quantity units
+   * offered, and whatever joins them. Worth a line because "why does the
+   * dropdown say গজ now" is a question a shared workspace can actually ask. */
+  'workspace.settings_updated',
   'attachment.uploaded',
   'attachment.deleted',
   'import.uploaded',

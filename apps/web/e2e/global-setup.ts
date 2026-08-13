@@ -1,7 +1,66 @@
 import { execFileSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const DEFAULT_E2E_DATABASE_URL =
   'postgresql://hishab:hishab@localhost:5433/hishab_e2e?schema=public';
+
+const MIGRATIONS_DIR = join(__dirname, '..', '..', 'api', 'prisma', 'migrations');
+
+/**
+ * Refuse to run against a schema older than the code.
+ *
+ * A missing *database* already fails loudly above. A database that is merely
+ * **out of date** does not: the tables are all there, the truncate succeeds, and
+ * the run proceeds — until the first signup hits a column the schema has not got
+ * and forty-odd specs fail with "could not create an account". Every one of them
+ * points at the application, and none of them names the one-line cause.
+ *
+ * The check is a name comparison against `_prisma_migrations`, not
+ * `prisma migrate status` — a string set difference costs one query on a
+ * connection already being opened, where spawning the Prisma CLI costs seconds
+ * on every run of the suite.
+ */
+function assertMigrated(psqlUrl: string, url: string, name: string): void {
+  const onDisk = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+  let applied: string[];
+  try {
+    const out = execFileSync(
+      'psql',
+      [
+        psqlUrl,
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-t',
+        '-A',
+        '-c',
+        'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
+      ],
+      { stdio: 'pipe' },
+    ).toString();
+    applied = out
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    /* No `_prisma_migrations` table at all: the database was created but never
+       migrated. Reported by the same message as a partial one. */
+    applied = [];
+  }
+
+  const pending = onDisk.filter((migration) => !applied.includes(migration));
+  if (pending.length === 0) return;
+
+  throw new Error(
+    `[e2e] the "${name}" database is ${pending.length} migration(s) behind the code:\n` +
+      pending.map((m) => `  - ${m}`).join('\n') +
+      `\nEvery spec would fail on a missing column and blame the application. Run:\n` +
+      `  DATABASE_URL="${url}" pnpm --filter @hishab/api exec prisma migrate deploy`,
+  );
+}
 
 /** Same rule as apps/api/test/harness.ts: only ever truncate a throwaway. */
 function assertE2eDatabase(url: string): string {
@@ -66,4 +125,9 @@ export default function globalSetup(): void {
         `  DATABASE_URL="${url}" pnpm --filter @hishab/api exec prisma migrate deploy`,
     );
   }
+
+  /* After the truncate, not before: an unreachable database should report that
+     rather than "0 migrations applied", which would send somebody to the wrong
+     command. */
+  assertMigrated(psqlUrl, url, name);
 }
