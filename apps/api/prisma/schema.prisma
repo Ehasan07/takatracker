@@ -90,6 +90,10 @@ model RefreshToken {
 enum EmailTokenPurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
+  /// A code that signs somebody in, worth as much as the password. Audited as
+  /// its own action, because unlike a reset it leaves the account looking
+  /// untouched to the person who owns it.
+  SIGN_IN
 }
 
 /// One-shot links sent by email.

@@ -1,0 +1,21 @@
+-- Signing in with a code emailed to the address on the account.
+--
+-- The third purpose an email token can serve, beside proving an address and
+-- resetting a password. It reuses every property the other two already have:
+-- only the hash is stored, five wrong guesses burn the row, one outbound mail
+-- per minute per user per purpose.
+--
+-- ## Why this is not merely a convenience
+--
+-- A code that signs somebody in is worth exactly as much as the password. That
+-- is not a new exposure — whoever can read the inbox could already reset the
+-- password — but it is a quieter one: a reset stops the owner's own password
+-- working, which they notice, while a code sign-in leaves the account looking
+-- untouched. So the route writes its own audit action rather than reusing
+-- `auth.login`, and "somebody signed in with an emailed code" becomes a
+-- question the activity log can answer.
+--
+-- The TTL lives in code (`TTL_BY_PURPOSE`) at ten minutes rather than the reset
+-- link's hour: a sign-in code is typed by somebody already looking at the app,
+-- so a short window costs them nothing and shrinks the guessing window.
+ALTER TYPE "EmailTokenPurpose" ADD VALUE 'SIGN_IN';

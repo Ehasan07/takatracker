@@ -35,6 +35,18 @@ const tokenField = z.string().min(1).max(512);
 
 const verifyConfirmSchema = z.object({ token: tokenField });
 const forgotPasswordSchema = z.object({ email: z.string().email() });
+
+const signInCodeRequestSchema = z.object({ email: z.string().email() });
+
+const signInCodeVerifySchema = z.object({
+  email: z.string().email(),
+  /* Digits only, exactly six. Trimmed and stripped first, because a code
+     pasted out of a mail client arrives with whitespace attached. */
+  code: z
+    .string()
+    .transform((value) => value.replace(/\D/g, ''))
+    .pipe(z.string().length(6)),
+});
 const resetPasswordSchema = z.object({
   token: tokenField,
   password: z.string().min(8, 'কমপক্ষে ৮ অক্ষর').max(200),
@@ -257,6 +269,50 @@ export class AuthController {
       ip: req.ip,
       userAgent: req.header('user-agent') ?? undefined,
     });
+  }
+
+  /**
+   * Ask for a sign-in code. Always 200, always the same body.
+   *
+   * The same account-enumeration defence as `password/forgot`, and for a route
+   * that matters more: this one hands out a way *in* rather than a way to
+   * change the password. See `requestSignInCode`.
+   *
+   * Throttled harder than login. A wrong password costs an attacker nothing but
+   * a request; this sends a real email to a real person every time it succeeds,
+   * so the rate limit is protecting the account holder's inbox as much as the
+   * server.
+   */
+  @Post('otp/request')
+  @HttpCode(200)
+  @Throttle(rate(3))
+  async requestSignInCode(
+    @Body(zodPipe(signInCodeRequestSchema)) body: z.infer<typeof signInCodeRequestSchema>,
+    @Req() req: Request,
+  ) {
+    await this.auth.requestSignInCode(body.email, {
+      ip: req.ip,
+      userAgent: req.header('user-agent') ?? undefined,
+    });
+    return { message: 'এই ঠিকানায় অ্যাকাউন্ট থাকলে একটি কোড পাঠানো হয়েছে।' };
+  }
+
+  /** Trade the code for a session. Audited as `auth.signin_code`, not `auth.login`. */
+  @Post('otp/verify')
+  @HttpCode(200)
+  @Throttle(rate(10))
+  async verifySignInCode(
+    @Body(zodPipe(signInCodeVerifySchema)) body: z.infer<typeof signInCodeVerifySchema>,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.signInWithCode(body.email, body.code, {
+      deviceId: req.header('x-device-id') ?? undefined,
+      userAgent: req.header('user-agent') ?? undefined,
+      ip: req.ip,
+    });
+    this.setCookies(res, result);
+    return result;
   }
 
   @Post('password/reset')

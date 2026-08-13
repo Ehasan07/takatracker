@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { jwtAccessSecret } from '../common/env';
 import { MailModule } from '../mail/mail.module';
 import { AccountService } from './account.service';
+import { BreachedPasswordService } from './breached-password.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { EmailTokenService } from './email-token.service';
@@ -33,7 +34,14 @@ import { SessionsService } from './sessions.service';
     MailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, EmailTokenService, AccountService, SessionsService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    EmailTokenService,
+    AccountService,
+    SessionsService,
+    BreachedPasswordService,
+  ],
   exports: [AuthService, AccountService, SessionsService],
 })
 export class AuthModule {}

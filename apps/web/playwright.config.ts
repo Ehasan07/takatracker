@@ -63,6 +63,9 @@ export default defineConfig({
         NODE_ENV: 'test',
         API_PORT,
         DATABASE_URL,
+        /* No test may depend on api.pwnedpasswords.com being reachable. The
+           local refusal list still applies, which is what the specs exercise. */
+        HIBP_DISABLED: '1',
         JWT_ACCESS_SECRET: 'e2e-access-secret',
         JWT_REFRESH_SECRET: 'e2e-refresh-secret',
         CORS_ORIGINS: BASE_URL,

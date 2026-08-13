@@ -352,3 +352,72 @@ describe('auth', () => {
       .expect(401);
   });
 });
+
+/**
+ * The other half of the password rule.
+ *
+ * Eight characters was the whole of it, so `password` — eight characters, and
+ * the single most-breached string there is — opened a real account on the live
+ * site. NIST 800-63B asks for both halves: length instead of composition rules,
+ * *and* a check against known-compromised secrets.
+ *
+ * The suite runs with `HIBP_DISABLED=1`, so what is exercised here is the local
+ * refusal list and the fact that all three password paths consult it. The range
+ * API itself has its own unit test with `fetch` stubbed.
+ */
+describe('breached passwords', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('refuses to open an account on a password from a breach list', async () => {
+    const res = await ctx
+      .http()
+      .post('/v1/auth/signup')
+      .send({
+        email: uniqueEmail('breach'),
+        password: 'password',
+        name: 'পরীক্ষা',
+        locale: 'bn',
+      })
+      .expect(400);
+
+    /* Names the reason rather than inventing a rule. "Must contain a symbol"
+       teaches somebody to append `!` to the password they already reuse. */
+    expect(JSON.stringify(res.body)).toContain('ফাঁস');
+  });
+
+  it('still accepts an ordinary password of the same length', async () => {
+    /* The check must refuse *breached* passwords, not short or simple ones —
+       adding composition rules is the failure mode this is meant to avoid. */
+    await ctx
+      .http()
+      .post('/v1/auth/signup')
+      .send({
+        email: uniqueEmail('fine'),
+        password: 'amar khatar chabi',
+        name: 'পরীক্ষা',
+        locale: 'bn',
+      })
+      .expect(201);
+  });
+
+  it('refuses one on the way through a password change, too', async () => {
+    /* A change or a reset is exactly when somebody reaches for the password
+       they use everywhere else. Checking only at signup would leave the widest
+       door open. */
+    const user = await signup(ctx);
+    await ctx
+      .http()
+      .post('/v1/auth/password/change')
+      .set(auth(user))
+      .send({ currentPassword: 'hishab1234', newPassword: '12345678' })
+      .expect(400);
+  });
+});

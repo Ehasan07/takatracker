@@ -132,6 +132,50 @@ export function passwordResetEmail(params: {
 }
 
 /**
+ * A code that signs somebody in.
+ *
+ * ## Why there is no button in it
+ *
+ * Every other mail here carries a link, because a link is the kindest thing to
+ * put in front of somebody on a laptop. This one deliberately does not. A
+ * clickable sign-in link is a session handed to whoever opens the mail — a
+ * forwarded message, a shared tab, a preview pane that fetches URLs — and
+ * unlike a reset link it leaves no trace for the owner, because their password
+ * still works. A code has to be carried back to a screen the person is already
+ * looking at, which is exactly the friction that makes it safe to offer.
+ *
+ * ## Why it says what to do if it was not you
+ *
+ * A reset mail can say "do nothing, your password is unchanged" because that
+ * is true. This one cannot: the code in it *is* a way in for ten minutes. So it
+ * says the honest thing instead — ignore it and it expires, and if these keep
+ * arriving, change the password.
+ */
+export function signInCodeEmail(params: {
+  to: string;
+  name: string;
+  /** Six digits. Unspaced, for the same reason as the verification code. */
+  code: string;
+  expiresInMinutes: number;
+}): MailMessage {
+  const { text, html } = render({
+    heading: 'লগইনের কোড',
+    lines: [
+      `আসসালামু আলাইকুম ${params.name},`,
+      `${BRAND}-এ লগইন করতে অ্যাপে এই কোডটি লিখুন:`,
+      params.code,
+    ],
+    footer: [
+      `কোডটি ${toBengaliDigits(params.expiresInMinutes)} মিনিট কাজ করবে, এবং একবারই।`,
+      'কোডটি কাউকে দেবেন না — যে এটি জানে, সে আপনার হিসাবে ঢুকতে পারবে।',
+      'আপনি লগইনের চেষ্টা না করে থাকলে কোডটি ব্যবহার না করলেই মেয়াদ শেষ হয়ে যাবে। বারবার এমন মেইল এলে পাসওয়ার্ড বদলে নিন।',
+    ],
+  });
+
+  return { to: params.to, subject: `${BRAND} — লগইনের কোড`, text, html };
+}
+
+/**
  * Sent after a reset succeeds, and after a signed-in user changes their
  * password from Settings. This is the only warning a user gets if somebody else
  * did it, so it goes out even though nothing is asked of them — and it never

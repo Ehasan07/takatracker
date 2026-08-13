@@ -13,6 +13,7 @@ import { MailService } from '../mail/mail.service';
 import { toBengaliDigits } from '../mail/mail.templates';
 import { PrismaService } from '../prisma/prisma.service';
 import { ARGON_OPTIONS, primaryWorkspaceId } from './auth.helpers';
+import { BreachedPasswordService, BREACHED_PASSWORD_MESSAGE } from './breached-password.service';
 import { EmailTokenService, RESET_TTL_MS, VERIFY_TTL_MS } from './email-token.service';
 import { SessionsService, type SessionRequestContext } from './sessions.service';
 
@@ -66,6 +67,7 @@ export class AccountService {
     private readonly mail: MailService,
     private readonly audit: AuditService,
     private readonly sessions: SessionsService,
+    private readonly breached: BreachedPasswordService,
   ) {}
 
   // --- email verification ----------------------------------------------------
@@ -462,6 +464,13 @@ export class AccountService {
       });
     }
 
+    /* Checked on every path that sets a password, not only on signup. A reset
+     * is the exact moment somebody reaches for the password they use
+     * everywhere else, which is the one most likely to be in a dump. */
+    if (await this.breached.isBreached(password)) {
+      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
+    }
+
     const passwordHash = await argon2.hash(password, ARGON_OPTIONS);
     const now = new Date();
 
@@ -638,6 +647,10 @@ export class AccountService {
 
     // Resolved before the transaction: it reads the same rows the transaction
     // then updates, and it is a read-only decision, not part of the atom.
+    if (await this.breached.isBreached(newPassword)) {
+      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
+    }
+
     const currentFamilyId = await this.sessions.currentFamilyId(userId, ctx);
     const passwordHash = await argon2.hash(newPassword, ARGON_OPTIONS);
     const now = new Date();

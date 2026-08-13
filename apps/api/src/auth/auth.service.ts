@@ -1,5 +1,11 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { DEFAULT_CATEGORIES, DEFAULT_PLAN_CODE, SYSTEM_ACCOUNT_SEED } from '@hishab/core';
@@ -9,6 +15,20 @@ import { jwtAccessSecret } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountService } from './account.service';
 import { ARGON_OPTIONS } from './auth.helpers';
+import { BreachedPasswordService, BREACHED_PASSWORD_MESSAGE } from './breached-password.service';
+import { EmailTokenService, SIGN_IN_TTL_MS } from './email-token.service';
+import { MailService } from '../mail/mail.service';
+
+/**
+ * One sentence for every way a code sign-in can fail.
+ *
+ * Wrong code, no such address, expired, or five wrong guesses already spent —
+ * telling them apart would turn the verify route into the account-enumeration
+ * oracle that the request route goes out of its way not to be. The attempt
+ * counter still does its work underneath; the caller simply is not told which
+ * of the four happened.
+ */
+const SIGN_IN_REFUSAL = 'কোডটি মেলেনি বা মেয়াদ শেষ';
 
 export interface TokenPair {
   accessToken: string;
@@ -44,6 +64,9 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly account: AccountService,
+    private readonly emailTokens: EmailTokenService,
+    private readonly mail: MailService,
+    private readonly breached: BreachedPasswordService,
   ) {}
 
   private static hashToken(token: string): string {
@@ -54,6 +77,13 @@ export class AuthService {
     const email = input.email.toLowerCase().trim();
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('এই ইমেইলে ইতিমধ্যে অ্যাকাউন্ট আছে');
+
+    /* Length alone was the whole rule, so `password` opened accounts. See
+     * `BreachedPasswordService`: this is the other half of NIST 800-63B, and
+     * the half that stops credential stuffing rather than encouraging it. */
+    if (await this.breached.isBreached(input.password)) {
+      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
+    }
 
     const passwordHash = await argon2.hash(input.password, ARGON_OPTIONS);
 
@@ -199,6 +229,133 @@ export class AuthService {
       userAgent,
     });
     return this.issue(user, workspace, { deviceId, userAgent });
+  }
+
+  // --- signing in with a code ------------------------------------------------
+
+  /**
+   * Ask for a sign-in code. Answers identically on every path.
+   *
+   * The same rule as `forgotPassword`, for the same reason: an anonymous caller
+   * must not be able to learn which addresses have accounts here. Unknown
+   * address, known address, cooling down, mail server down — one response, and
+   * the mail is fired without being awaited so that an address that exists is
+   * not measurably slower than one that does not.
+   */
+  async requestSignInCode(rawEmail: string, meta: AuthMeta = {}): Promise<void> {
+    const email = rawEmail.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, name: true },
+    });
+    if (!user) {
+      this.logger.debug('Sign-in code requested for an address with no account');
+      return;
+    }
+
+    if (await this.emailTokens.isCoolingDown(user.id, 'SIGN_IN')) return;
+
+    const { code } = await this.emailTokens.issue(user.id, 'SIGN_IN', meta.ip);
+
+    void this.mail.sendSignInCode({
+      to: user.email,
+      name: user.name,
+      code,
+      expiresInMinutes: SIGN_IN_TTL_MS / 60_000,
+    });
+
+    const workspace = await this.defaultWorkspace(user.id).catch(() => null);
+    if (workspace) {
+      this.audit.emit({
+        workspaceId: workspace.id,
+        actorUserId: user.id,
+        action: 'auth.signin_code_requested',
+        entity: 'User',
+        entityId: user.id,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+    }
+  }
+
+  /**
+   * Trade a code for a session.
+   *
+   * ## Why this is audited as its own action
+   *
+   * A code that signs somebody in is worth as much as the password, and whoever
+   * can read the inbox could already have reset it. What is different is that a
+   * reset stops the owner's own password working — they notice — while this
+   * leaves the account looking untouched. `auth.signin_code` rather than
+   * `auth.login` is what makes "somebody signed in with an emailed code" a
+   * question the activity log can answer.
+   *
+   * ## Why it also verifies the address
+   *
+   * Typing back a code that was mailed to an address *is* proof of the address,
+   * which is exactly what the verification flow asks for. Leaving the nag up
+   * after somebody has demonstrably read their email would be asking them to
+   * prove a thing they just proved.
+   */
+  async signInWithCode(rawEmail: string, code: string, meta: AuthMeta = {}): Promise<AuthResult> {
+    const email = rawEmail.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    /* One message for every failure — wrong code, no such address, expired, or
+     * five wrong guesses already spent. See `SIGN_IN_REFUSAL`. */
+    /* One message for every failure, and `never` so the compiler knows the
+       code below is only reached with a user in hand. */
+    if (!user) throw new UnauthorizedException(SIGN_IN_REFUSAL);
+
+    const check = await this.emailTokens.checkCode(user.id, 'SIGN_IN', code);
+    if (check.status !== 'OK') {
+      const failed = await this.defaultWorkspace(user.id).catch(() => null);
+      if (failed) {
+        this.audit.emit({
+          workspaceId: failed.id,
+          actorUserId: user.id,
+          action: 'auth.login_failed',
+          entity: 'User',
+          entityId: user.id,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+        });
+      }
+      throw new UnauthorizedException(SIGN_IN_REFUSAL);
+    }
+
+    /* Claim it before anything else. `checkCode` deliberately does not burn the
+     * row — its contract is to *check* — so a caller that forgets this leaves a
+     * code that works twice, which for a sign-in code means a session that can
+     * be minted again from an email somebody already read. `claim` is an atomic
+     * compare-and-set on `usedAt: null`, so a double-tapped button and a replay
+     * are the same case and exactly one of them wins.
+     *
+     * Found by the test that asked for the same code twice, not by reading. */
+    if (!(await this.emailTokens.claim(check.id))) {
+      throw new UnauthorizedException(SIGN_IN_REFUSAL);
+    }
+
+    const workspace = await this.defaultWorkspace(user.id);
+
+    /* The address is proven by the fact that they read the code. */
+    if (!user.emailVerifiedAt) {
+      await this.prisma.user
+        .update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } })
+        .catch(() => undefined);
+    }
+
+    this.audit.emit({
+      workspaceId: workspace.id,
+      actorUserId: user.id,
+      action: 'auth.signin_code',
+      entity: 'User',
+      entityId: user.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return this.issue(user, workspace, { deviceId: meta.deviceId, userAgent: meta.userAgent });
   }
 
   private static dummyHashCache: string | null = null;

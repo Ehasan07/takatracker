@@ -26,6 +26,13 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 export const RESET_TTL_MS = 60 * 60 * 1000;
+/**
+ * Shorter than either, because a sign-in code is worth as much as the password
+ * and is typed by somebody already looking at the app. There is no reason for
+ * one to sit in an inbox for an hour, and every minute it does is guessing
+ * time somebody else could use.
+ */
+export const SIGN_IN_TTL_MS = 10 * 60 * 1000;
 
 /** One outbound mail per minute per user per purpose. */
 export const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -33,6 +40,7 @@ export const RESEND_COOLDOWN_MS = 60 * 1000;
 const TTL_BY_PURPOSE: Record<EmailTokenPurpose, number> = {
   VERIFY_EMAIL: VERIFY_TTL_MS,
   RESET_PASSWORD: RESET_TTL_MS,
+  SIGN_IN: SIGN_IN_TTL_MS,
 };
 
 /**

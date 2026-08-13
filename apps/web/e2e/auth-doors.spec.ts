@@ -58,4 +58,29 @@ test.describe('the way in', () => {
        sentence is the feature, not decoration around it. */
     await expect(page.getByText('অ্যাকাউন্ট আছে কি নেই', { exact: false })).toBeVisible();
   });
+
+  test('offers a way in without a password, and asks for the code', async ({ page }) => {
+    await page.goto('/login');
+
+    /* Not a tab strip — one link that swaps the second field. */
+    await page.getByRole('button', { name: 'পাসওয়ার্ড ছাড়া, ইমেইলে কোড নিয়ে ঢুকুন' }).click();
+    await expect(page.getByLabel('পাসওয়ার্ড')).toBeHidden();
+
+    await page.getByLabel('ইমেইল').fill(`nobody-${Date.now()}@example.test`);
+    await page.getByRole('button', { name: 'কোড পাঠান' }).click();
+
+    /* The API answers identically whether or not the address is registered, so
+       the screen has to as well: it always moves on to the code box. A screen
+       that stopped here for an unknown address would hand back exactly the
+       enumeration oracle the route refuses to be. */
+    await expect(page.getByLabel('ইমেইলে পাঠানো কোড')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'কোড দিয়ে ঢুকুন' })).toBeVisible();
+  });
+
+  test('and the password is still one tap away', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByRole('button', { name: 'পাসওয়ার্ড ছাড়া, ইমেইলে কোড নিয়ে ঢুকুন' }).click();
+    await page.getByRole('button', { name: 'পাসওয়ার্ড দিয়ে ঢুকুন' }).click();
+    await expect(page.getByLabel('পাসওয়ার্ড')).toBeVisible();
+  });
 });

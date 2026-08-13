@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { passwordChangedEmail, passwordResetEmail, verificationEmail } from './mail.templates';
+import {
+  passwordChangedEmail,
+  passwordResetEmail,
+  signInCodeEmail,
+  verificationEmail,
+} from './mail.templates';
 import {
   LogMailTransport,
   SmtpMailTransport,
@@ -137,6 +142,17 @@ export class MailService {
         expiresInMinutes: params.expiresInMinutes,
       }),
     );
+  }
+
+  sendSignInCode(params: {
+    to: string;
+    name: string;
+    code: string;
+    expiresInMinutes: number;
+  }): Promise<MailSendResult> {
+    /* No URL, unlike every other method here. See the template: a clickable
+       sign-in link is a session handed to whoever opens the mail. */
+    return this.send(signInCodeEmail(params));
   }
 
   sendPasswordChanged(params: {

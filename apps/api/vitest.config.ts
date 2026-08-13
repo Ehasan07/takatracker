@@ -28,7 +28,11 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.e2e-spec.ts', 'src/**/*.spec.ts'],
     // Reaches the worker before any test file imports PrismaClient.
-    env: { DATABASE_URL },
+    /* `HIBP_DISABLED` so the suite never reaches api.pwnedpasswords.com. A
+       test that quietly depends on somebody else's uptime is a test that fails
+       on a plane; the local refusal list is exercised instead, and the network
+       path has its own test that stubs `fetch`. */
+    env: { DATABASE_URL, HIBP_DISABLED: '1' },
     // Suites share one Postgres database; run them one at a time.
     fileParallelism: false,
     // Wiped once, before anything runs — never between suites. See harness.ts.

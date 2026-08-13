@@ -12,6 +12,12 @@ export const AUDIT_ACTIONS = [
   'auth.login_failed',
   'auth.logout',
   'auth.refresh_reuse_detected',
+  /* Signing in with a code emailed to the address, rather than with the
+   * password. Its own action and not `auth.login`, because it is the one way
+   * in that leaves the owner's password working and so gives them no other
+   * sign it happened. */
+  'auth.signin_code_requested',
+  'auth.signin_code',
   'account.created',
   'account.updated',
   'account.archived',
