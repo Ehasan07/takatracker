@@ -438,3 +438,216 @@ describe('shared spending belongs to one workspace', () => {
     expect(strangerGroups.body.map((g: { name: string }) => g.name)).toEqual(['নিজের গ্রুপ']);
   });
 });
+
+/**
+ * Two people, two workspaces, one dinner.
+ *
+ * The rule this whole milestone is built around: **nothing is written into
+ * another person's ledger without them asking for it.** Accepting an invitation
+ * gives the inviter no write access — it says "send me the bills I am on, as
+ * drafts". Everything below is a test of that sentence.
+ */
+describe('inviting somebody who keeps their own books', () => {
+  let ctx: TestContext;
+  let host: Awaited<ReturnType<typeof signup>>;
+  let guest: Awaited<ReturnType<typeof signup>>;
+  let hostAccount: string;
+  let guestAccount: string;
+  let groupId: string;
+  let hostMemberId: string;
+  let guestMemberId: string;
+  let inviteUrl: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    host = await signup(ctx);
+    guest = await signup(ctx);
+
+    const make = async (as: typeof host, name: string) =>
+      (
+        await ctx
+          .http()
+          .post('/v1/accounts')
+          .set(auth(as))
+          .send({ name, type: 'CASH', openingBalance: 5_000_000 })
+          .expect(201)
+      ).body.id;
+    hostAccount = await make(host, 'নগদ');
+    guestAccount = await make(guest, 'নগদ');
+
+    const group = await ctx
+      .http()
+      .post('/v1/split/groups')
+      .set(auth(host))
+      .send({ name: 'বন্ধুদের ডিনার', members: [{ name: 'অতিথি' }] })
+      .expect(201);
+    groupId = group.body.id;
+    hostMemberId = group.body.members.find((m: { isSelf: boolean }) => m.isSelf).id;
+    guestMemberId = group.body.members.find((m: { isSelf: boolean }) => !m.isSelf).id;
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('hands out a link, and only its hash is kept', async () => {
+    const res = await ctx
+      .http()
+      .post(`/v1/split/groups/${groupId}/members/${guestMemberId}/invite`)
+      .set(auth(host))
+      .expect(201);
+
+    expect(res.body.url).toMatch(/^\/split\/join\/[A-Za-z0-9_-]{20,}$/);
+    inviteUrl = res.body.url;
+
+    const token = inviteUrl.replace('/split/join/', '');
+    const rows = await ctx.prisma.splitInvite.findMany({ where: { memberId: guestMemberId } });
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows)).not.toContain(token);
+  });
+
+  it('refuses an invitation nobody handed out', async () => {
+    await ctx.http().post('/v1/split/join/no-such-token').set(auth(guest)).expect(404);
+  });
+
+  it('links the two workspaces when the guest accepts', async () => {
+    const res = await ctx.http().post(`/v1${inviteUrl}`).set(auth(guest)).expect(201);
+    expect(res.body.groupName).toBe('বন্ধুদের ডিনার');
+    /* No bills yet, so nothing to mirror. */
+    expect(res.body.drafts).toBe(0);
+  });
+
+  it('cannot be accepted twice', async () => {
+    await ctx.http().post(`/v1${inviteUrl}`).set(auth(guest)).expect(404);
+  });
+
+  it('sends a new bill to the guest as a draft, not as an entry', async () => {
+    await ctx
+      .http()
+      .post(`/v1/split/groups/${groupId}/expenses`)
+      .set(auth(host))
+      .send({
+        description: 'রাতের খাবার',
+        date: '2026-08-14',
+        totalMinor: 200_000,
+        payerMemberId: hostMemberId,
+        splitMethod: 'EQUAL',
+        shares: [{ memberId: hostMemberId }, { memberId: guestMemberId }],
+        accountId: hostAccount,
+      })
+      .expect(201);
+
+    const inbox = await ctx.http().get('/v1/split/inbox').set(auth(guest)).expect(200);
+    expect(inbox.body).toHaveLength(1);
+    expect(inbox.body[0].amountMinor).toBe(100_000);
+    expect(inbox.body[0].payerName).toBe('আমি');
+
+    /* Nothing has reached the guest's books. This is the whole point: an
+       invitation lets somebody put a draft in front of you, never an entry. */
+    const summary = await ctx
+      .http()
+      .get('/v1/transactions/summary?month=2026-08')
+      .set(auth(guest))
+      .expect(200);
+    expect(summary.body.expenseMinor).toBe(0);
+  });
+
+  it('shows the guest their share and nothing else about the group', async () => {
+    /* A shared dinner must not disclose what a third person earns or owes. */
+    const inbox = await ctx.http().get('/v1/split/inbox').set(auth(guest)).expect(200);
+    const body = JSON.stringify(inbox.body);
+    expect(body).not.toContain('200000');
+    expect(body).not.toContain(hostMemberId);
+    expect(body).not.toContain(groupId);
+  });
+
+  it('posts the guest’s own entries only once they accept', async () => {
+    const inbox = await ctx.http().get('/v1/split/inbox').set(auth(guest)).expect(200);
+    await ctx
+      .http()
+      .post(`/v1/split/inbox/${inbox.body[0].id}/accept`)
+      .set(auth(guest))
+      .send({})
+      .expect(201);
+
+    const summary = await ctx
+      .http()
+      .get('/v1/transactions/summary?month=2026-08')
+      .set(auth(guest))
+      .expect(200);
+    expect(summary.body.expenseMinor).toBe(100_000);
+
+    /* Their share is an expense and a debt. No cash left their account, because
+       none did. */
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(guest)).expect(200);
+    expect(accounts.body.find((a: { id: string }) => a.id === guestAccount).balanceMinor).toBe(
+      5_000_000,
+    );
+    expect(summary.body.netWorthMinor).toBe(5_000_000 - 100_000);
+  });
+
+  it('does not offer the same draft twice', async () => {
+    const inbox = await ctx.http().get('/v1/split/inbox').set(auth(guest)).expect(200);
+    expect(inbox.body).toHaveLength(0);
+  });
+
+  it('leaves the host’s receivable exactly as it was', async () => {
+    /* What the guest does in their own books is their business. The host lent
+       ৳1,000 either way. */
+    const group = await ctx.http().get(`/v1/split/groups/${groupId}`).set(auth(host)).expect(200);
+    const guestPosition = group.body.members.find(
+      (m: { id: string }) => m.id === guestMemberId,
+    ).netMinor;
+    expect(guestPosition).toBe(-100_000);
+  });
+
+  it('a declined draft posts nothing and cannot be revived', async () => {
+    await ctx
+      .http()
+      .post(`/v1/split/groups/${groupId}/expenses`)
+      .set(auth(host))
+      .send({
+        description: 'চা',
+        date: '2026-08-15',
+        totalMinor: 10_000,
+        payerMemberId: hostMemberId,
+        splitMethod: 'EQUAL',
+        shares: [{ memberId: hostMemberId }, { memberId: guestMemberId }],
+        accountId: hostAccount,
+      })
+      .expect(201);
+
+    const inbox = await ctx.http().get('/v1/split/inbox').set(auth(guest)).expect(200);
+    const draftId = inbox.body[0].id;
+    await ctx.http().post(`/v1/split/inbox/${draftId}/decline`).set(auth(guest)).expect(201);
+
+    await ctx
+      .http()
+      .post(`/v1/split/inbox/${draftId}/accept`)
+      .set(auth(guest))
+      .send({})
+      .expect(404);
+
+    const summary = await ctx
+      .http()
+      .get('/v1/transactions/summary?month=2026-08')
+      .set(auth(guest))
+      .expect(200);
+    expect(summary.body.expenseMinor).toBe(100_000);
+  });
+
+  it('never shows one workspace another workspace’s inbox', async () => {
+    const hostInbox = await ctx.http().get('/v1/split/inbox').set(auth(host)).expect(200);
+    expect(hostInbox.body).toHaveLength(0);
+  });
+
+  it('records the link on both sides', async () => {
+    const hostLog = await ctx.http().get('/v1/audit?limit=50').set(auth(host)).expect(200);
+    expect(hostLog.body.items.map((r: { action: string }) => r.action)).toContain('split.invited');
+
+    const guestLog = await ctx.http().get('/v1/audit?limit=50').set(auth(guest)).expect(200);
+    expect(guestLog.body.items.map((r: { action: string }) => r.action)).toContain(
+      'split.mirror_accepted',
+    );
+  });
+});

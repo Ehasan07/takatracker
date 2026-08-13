@@ -118,6 +118,9 @@ export default function SplitGroupPage() {
                       </span>
                     ) : null}
                   </span>
+                  {!member.isSelf && !member.removedAt ? (
+                    <InviteButton groupId={groupId} memberId={member.id} />
+                  ) : null}
                   {member.netMinor === 0 ? (
                     <span className="text-ink-muted shrink-0 text-xs">
                       {t('split.square', 'হিসাব শেষ')}
@@ -232,6 +235,60 @@ export default function SplitGroupPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Invite one member to keep their own side of the books.
+ *
+ * The link is shown once and copied here, like every other credential this
+ * product hands out: only its hash is stored, so there is nothing to read back
+ * later.
+ */
+function InviteButton({ groupId, memberId }: { groupId: string; memberId: string }) {
+  const [link, setLink] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  const invite = useMutation({
+    mutationFn: () =>
+      api<{ url: string }>(`/split/groups/${groupId}/members/${memberId}/invite`, {
+        method: 'POST',
+        body: {},
+      }),
+    onSuccess: (res) => {
+      haptic('success');
+      setLink(`${window.location.origin}${res.url}`);
+    },
+  });
+
+  if (link) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          void navigator.clipboard.writeText(link).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          );
+        }}
+        className="press text-brand shrink-0 text-xs underline"
+      >
+        {copied ? t('split.copied', 'কপি হয়েছে') : t('split.copyInvite', 'লিংক কপি করুন')}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => invite.mutate()}
+      disabled={invite.isPending}
+      aria-label={t('split.invite', 'আমন্ত্রণ পাঠান')}
+      title={t('split.invite', 'আমন্ত্রণ পাঠান')}
+      className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md disabled:opacity-50"
+    >
+      <UserPlus className="h-3.5 w-3.5" aria-hidden />
+    </button>
   );
 }
 

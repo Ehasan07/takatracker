@@ -223,6 +223,26 @@ export const EN: Record<string, string> = {
   'split.recordPayment': 'Record the payment',
   'split.betweenOthers':
     'This is between two other people — nothing is added to your books, only the group’s balances change.',
+  'split.inbox': 'Waiting for your say-so',
+  'split.inboxHint':
+    'Somebody shared an expense with you. It reaches your books only if you accept it.',
+  'split.accept': 'Add',
+  'split.decline': 'No',
+  'split.invite': 'Send an invitation',
+  'split.copyInvite': 'Copy the link',
+  'split.copied': 'Copied',
+  'split.joinTitle': 'Join this group?',
+  'split.joinExplain':
+    'If you accept, the expenses you are on will arrive as drafts for you to review.',
+  'split.joinPoint1': 'Nothing reaches your books without your say-so.',
+  'split.joinPoint2': 'You see your own share only — not the rest of the group’s figures.',
+  'split.joinPoint3': 'Whoever invited you cannot see your books.',
+  'split.joinYes': 'Yes, join',
+  'split.joinFailed': 'That invitation no longer works',
+  'split.joined': 'Joined',
+  'split.joinedWithDrafts': 'Earlier expenses are waiting as drafts — take a look.',
+  'split.joinedEmpty': 'New expenses will arrive as drafts for you.',
+  'split.goToSplit': 'Go to Split',
 
   // --- the four financial statements -----------------------------------------
   'statements.title': 'Financial statements',

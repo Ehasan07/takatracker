@@ -398,6 +398,8 @@ model Workspace {
   sharedExpenses      SharedExpense[]
   sharedExpenseShares SharedExpenseShare[]
   splitSettlements    SplitSettlement[]
+  splitInvites        SplitInvite[]
+  splitMirrors        SplitMirror[]
   savingsPlans SavingsPlan[]
   savingsInstallments SavingsInstallment[]
   policies     InsurancePolicy[]
@@ -1468,6 +1470,7 @@ model SplitGroup {
   members     SplitGroupMember[]
   expenses    SharedExpense[]
   settlements SplitSettlement[]
+  invites     SplitInvite[]
 
   @@index([workspaceId, deletedAt])
 }
@@ -1499,6 +1502,12 @@ model SplitGroupMember {
   paidFor    SharedExpense[]      @relation("SharedExpensePayer")
   settledFrom SplitSettlement[]   @relation("SettlementFrom")
   settledTo   SplitSettlement[]   @relation("SettlementTo")
+  invite      SplitInvite?
+  mirrors     SplitMirror[]
+  /// Set when this member accepted an invitation: their own workspace, so a
+  /// bill added here can reach their books as a draft.
+  linkedWorkspaceId String?
+  linkedUserId      String?
 
   @@unique([groupId, personId])
   @@index([workspaceId, groupId])
@@ -1539,6 +1548,7 @@ model SharedExpense {
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   group       SplitGroup           @relation(fields: [groupId], references: [id], onDelete: Cascade)
   payer       SplitGroupMember     @relation("SharedExpensePayer", fields: [payerMemberId], references: [id], onDelete: Cascade)
+  mirrors     SplitMirror[]
   category    Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   transaction Transaction?         @relation(fields: [transactionId], references: [id], onDelete: SetNull)
   shares      SharedExpenseShare[]
@@ -1604,4 +1614,77 @@ model SplitSettlement {
   transaction Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, groupId, date])
+}
+
+/// Where a shared bill stands in somebody else's books.
+enum SplitMirrorStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+/// An invitation for a group member who has an account of their own.
+///
+/// The token is the credential and only its hash is stored, exactly as with
+/// refresh tokens, email tokens and statement links. One invite per member: a
+/// second one supersedes the first rather than both staying live.
+model SplitInvite {
+  id          String @id @default(cuid())
+  /// The workspace doing the inviting.
+  workspaceId String
+  groupId     String
+  memberId    String @unique
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  acceptedAt DateTime?
+  acceptedByUserId    String?
+  acceptedWorkspaceId String?
+  revokedAt DateTime?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  group     SplitGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member    SplitGroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, groupId])
+}
+
+/// One shared bill as it appears in the *other* person's books.
+///
+/// Nothing is written into somebody's ledger without them asking for it — the
+/// rule the mailbox ingestion already follows. An accepted invite makes the
+/// counterpart's share arrive here as a draft; they accept and it posts as their
+/// expense and their payable, or they decline and the inviter's side is
+/// unaffected either way.
+model SplitMirror {
+  id String @id @default(cuid())
+  /// The workspace this draft belongs to — the invitee's, not the inviter's.
+  workspaceId String
+  /// The expense in the inviter's workspace that produced it.
+  expenseId   String
+  memberId    String
+
+  description String
+  date        DateTime
+  amountMinor BigInt
+  /// Whose bill it was, for the row's own sentence. Denormalised: the invitee
+  /// cannot read the other workspace's rows and must still see a name.
+  payerName   String
+  groupName   String
+
+  status      SplitMirrorStatus @default(PENDING)
+  /// Set once accepted, so a draft can never post twice.
+  transactionId String?  @unique
+  reviewedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  expense   SharedExpense    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  member    SplitGroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, workspaceId])
+  @@index([workspaceId, status, createdAt(sort: Desc)])
 }

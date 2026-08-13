@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Plus, UsersRound } from 'lucide-react';
+import { Check, ChevronRight, Plus, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { Money } from '@/components/money';
@@ -10,10 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api } from '@/lib/api';
-import { fmtNumber } from '@/lib/format';
+import { fmtDate, fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { t } from '@/lib/t';
-import { fetchGroups, splitKeys, type GroupPurpose, type GroupSummary } from './queries';
+import {
+  fetchGroups,
+  fetchInbox,
+  splitKeys,
+  type GroupPurpose,
+  type GroupSummary,
+} from './queries';
 
 /**
  * Groups you spend with.
@@ -69,6 +75,10 @@ export default function SplitGroupsPage() {
         </Button>
       </header>
 
+      {/* Bills somebody else recorded, waiting to be let in. Above the groups
+          because it is the only part of this screen with something to decide. */}
+      <InboxCard />
+
       {groups.isLoading ? (
         <div className="rounded-card border-rule bg-surface overflow-hidden border">
           <SkeletonRows rows={3} />
@@ -93,6 +103,80 @@ export default function SplitGroupsPage() {
 
       <NewGroupSheet open={adding} onOpenChange={setAdding} />
     </div>
+  );
+}
+
+/**
+ * Shared bills offered by somebody else's workspace.
+ *
+ * Nothing here has touched the ledger. Accepting an invitation lets another
+ * person put a draft in front of you and nothing more — the same rule the
+ * mailbox ingestion follows, and the reason this is a list of decisions rather
+ * than a list of entries.
+ *
+ * Renders nothing when the list is empty, so a screen that has never been
+ * invited to anything does not carry an empty box forever.
+ */
+function InboxCard() {
+  const queryClient = useQueryClient();
+  const inbox = useQuery({ queryKey: splitKeys.inbox(), queryFn: fetchInbox });
+
+  const decide = useMutation({
+    mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>
+      api(`/split/inbox/${id}/${accept ? 'accept' : 'decline'}`, { method: 'POST', body: {} }),
+    onSuccess: () => {
+      haptic('tap');
+      void queryClient.invalidateQueries({ queryKey: splitKeys.inbox() });
+      void queryClient.invalidateQueries({ queryKey: ['summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+
+  const rows = inbox.data ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="rounded-card border-brand/40 bg-brand-tint border p-4">
+      <h2 className="text-ink text-sm font-medium">
+        {t('split.inbox', 'আপনার অনুমতির অপেক্ষায়')}
+      </h2>
+      <p className="text-ink-muted mt-1 text-xs">
+        {t('split.inboxHint', 'অন্য কেউ খরচ ভাগ করেছেন। আপনি রাজি হলে তবেই আপনার খাতায় উঠবে।')}
+      </p>
+      <ul className="divide-rule mt-3 divide-y">
+        {rows.map((row) => (
+          <li key={row.id} className="flex flex-wrap items-center gap-2 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-ink truncate text-sm font-medium">{row.description}</p>
+              <p className="text-ink-muted truncate text-xs">
+                {row.groupName} · {row.payerName} · {fmtDate(row.date)}
+              </p>
+            </div>
+            <Money minor={row.amountMinor} className="shrink-0 text-sm font-medium" />
+            <div className="flex shrink-0 gap-1">
+              <Button
+                type="button"
+                size="sm"
+                disabled={decide.isPending}
+                onClick={() => decide.mutate({ id: row.id, accept: true })}
+              >
+                <Check className="h-4 w-4" aria-hidden />
+                {t('split.accept', 'যোগ করুন')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={decide.isPending}
+                onClick={() => decide.mutate({ id: row.id, accept: false })}
+              >
+                {t('split.decline', 'না')}
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

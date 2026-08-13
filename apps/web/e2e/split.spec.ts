@@ -162,6 +162,69 @@ test.describe('spending together', () => {
     await expect(page.getByText('করিম')).toBeVisible({ timeout: 15_000 });
   });
 
+  test('invites somebody who keeps their own books, and asks before writing', async ({
+    page,
+    browser,
+  }) => {
+    /* Chromium refuses `clipboard.readText()` without this, and the test reads
+       the link the way a person would rather than reaching into the API. */
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    await signup(page);
+    await addCashAccount(page);
+    await makeGroup(page);
+
+    /* The host mints a link for one member. */
+    await page.getByRole('button', { name: 'আমন্ত্রণ পাঠান' }).first().click();
+    const copy = page.getByRole('button', { name: 'লিংক কপি করুন' });
+    await expect(copy).toBeVisible({ timeout: 15_000 });
+
+    /* Read the URL from the clipboard the same way a person would — by copying
+       it — rather than reaching into the API. */
+    await copy.click();
+    const url = await page.evaluate(() => navigator.clipboard.readText());
+    expect(url).toContain('/split/join/');
+
+    /* A second person, their own account, their own books. */
+    const other = await browser.newContext();
+    const guest = await other.newPage();
+    await signup(guest);
+    await addCashAccount(guest);
+
+    await guest.goto(url);
+    /* It asks. Following a link is not consent to have somebody else's records
+       attached to your ledger. */
+    await expect(guest.getByRole('heading', { name: 'গ্রুপে যুক্ত হবেন?' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(guest.getByText('আপনার অনুমতি ছাড়া কিছুই আপনার খাতায় উঠবে না।')).toBeVisible();
+    await guest.getByRole('button', { name: 'হ্যাঁ, যুক্ত হব' }).click();
+    await expect(guest.getByText('যুক্ত হয়েছেন', { exact: false })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    /* The host records a bill. */
+    await page.getByRole('button', { name: 'খরচ', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কত টাকা').fill('2000');
+    await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* It arrives as a decision, not as an entry. */
+    await guest.goto('/split');
+    await expect(guest.getByText('আপনার অনুমতির অপেক্ষায়')).toBeVisible({ timeout: 15_000 });
+
+    await guest.goto('/');
+    await expect(guest.getByRole('main')).not.toContainText('৳666.67');
+
+    await guest.goto('/split');
+    await guest.getByRole('button', { name: 'যোগ করুন' }).first().click();
+    await expect(guest.getByText('আপনার অনুমতির অপেক্ষায়')).toBeHidden({ timeout: 15_000 });
+
+    await other.close();
+  });
+
   test('nothing scrolls sideways on a phone', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);

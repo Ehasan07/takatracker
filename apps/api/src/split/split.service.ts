@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type SplitMethod as PrismaSplitMethod } from '@prisma/client';
 import {
@@ -57,6 +58,12 @@ import type { TenantContext } from '../transactions/transactions.service';
 
 /** Every amount in this file is in the workspace's currency. */
 const CURRENCY = 'BDT';
+
+/** How long an invitation link stays good. */
+const INVITE_DAYS = 30;
+
+/** Only the hash is stored, as with every other token in this codebase. */
+const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
 export interface CreateGroupInput {
   name: string;
@@ -468,6 +475,20 @@ export class SplitService {
       });
     });
 
+    /* Anybody who accepted an invitation gets this bill as a draft in their own
+       books. Awaited rather than emitted: a draft that quietly failed to arrive
+       is a debt one side is tracking and the other has never heard of. */
+    const linked = members.filter((m) => m.linkedWorkspaceId && !m.isSelf);
+    if (linked.length > 0) {
+      const full = await this.prisma.sharedExpense.findUniqueOrThrow({
+        where: { id: expense.id },
+        include: { shares: true, payer: { select: { displayName: true } } },
+      });
+      for (const member of linked) {
+        await this.mirrorOne(member.linkedWorkspaceId as string, member.id, full, group.name);
+      }
+    }
+
     await this.audit.record({
       workspaceId: ctx.workspaceId,
       actorUserId: ctx.id,
@@ -792,6 +813,256 @@ export class SplitService {
       });
     }
     return result;
+  }
+
+  // --- inviting somebody who has an account ---------------------------------
+
+  /**
+   * A link that lets a group member keep their own side of the books.
+   *
+   * ## The rule this is built around
+   *
+   * **Nothing is written into another person's ledger without them asking for
+   * it.** Accepting an invitation does not hand the inviter write access to
+   * anybody's books; it says "send me the bills I am on, as drafts". Each one
+   * arrives in the invitee's own inbox and posts only when they accept it. That
+   * is the same principle the mailbox ingestion already follows, and the reason
+   * this is a separate milestone from the splitting itself.
+   *
+   * ## What the other side can see
+   *
+   * Their share, the description, the date, who paid and which group. Not the
+   * total, not the other members, not anybody else's share. A shared dinner
+   * should not disclose what a third person earns or owes.
+   *
+   * The token is the credential; only its hash is stored. One live invite per
+   * member — a second supersedes the first, so a link that was forwarded to the
+   * wrong person can be replaced rather than merely regretted.
+   */
+  async invite(ctx: TenantContext, groupId: string, memberId: string) {
+    await this.requireGroup(ctx.workspaceId, groupId);
+    const member = await this.prisma.splitGroupMember.findFirst({
+      where: { id: memberId, groupId, workspaceId: ctx.workspaceId },
+    });
+    if (!member) throw new NotFoundException('সদস্য পাওয়া যায়নি');
+    if (member.isSelf) throw new BadRequestException('নিজেকে আমন্ত্রণ পাঠানোর দরকার নেই');
+    if (member.linkedWorkspaceId) {
+      throw new BadRequestException('এই সদস্য আগেই যুক্ত হয়েছেন');
+    }
+
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000);
+
+    await this.prisma.splitInvite.upsert({
+      where: { memberId },
+      create: {
+        workspaceId: ctx.workspaceId,
+        groupId,
+        memberId,
+        tokenHash: hashToken(token),
+        expiresAt,
+        createdByUserId: ctx.id || null,
+      },
+      update: {
+        tokenHash: hashToken(token),
+        expiresAt,
+        revokedAt: null,
+        acceptedAt: null,
+      },
+    });
+
+    await this.audit.record({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'split.invited',
+      entity: 'SplitGroupMember',
+      entityId: memberId,
+      after: { groupId },
+    });
+
+    return { url: `/split/join/${token}`, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * Accept an invitation: link this workspace to that member.
+   *
+   * Every bill the member is already on is mirrored as a pending draft, because
+   * the trip usually happened before somebody thought to invite anybody. They
+   * are drafts, not entries — nothing posts until each is accepted.
+   */
+  async acceptInvite(ctx: TenantContext, token: string) {
+    const invite = await this.prisma.splitInvite.findUnique({
+      where: { tokenHash: hashToken(token) },
+      include: { member: true, group: { select: { name: true } } },
+    });
+
+    /* One message for unknown, revoked, expired and already-used. Telling a
+       stranger which would confirm that a particular invitation exists. */
+    if (
+      !invite ||
+      invite.revokedAt ||
+      invite.acceptedAt ||
+      invite.expiresAt.getTime() <= Date.now()
+    ) {
+      throw new NotFoundException('আমন্ত্রণটি আর কাজ করছে না');
+    }
+
+    if (invite.workspaceId === ctx.workspaceId) {
+      throw new BadRequestException('এটি আপনার নিজের গ্রুপ');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.splitInvite.update({
+        where: { id: invite.id },
+        data: {
+          acceptedAt: new Date(),
+          acceptedByUserId: ctx.id || null,
+          acceptedWorkspaceId: ctx.workspaceId,
+        },
+      });
+      await tx.splitGroupMember.update({
+        where: { id: invite.memberId },
+        data: { linkedWorkspaceId: ctx.workspaceId, linkedUserId: ctx.id || null },
+      });
+    });
+
+    const existing = await this.prisma.sharedExpense.findMany({
+      where: {
+        workspaceId: invite.workspaceId,
+        groupId: invite.groupId,
+        deletedAt: null,
+        shares: { some: { memberId: invite.memberId } },
+      },
+      include: {
+        shares: { where: { memberId: invite.memberId } },
+        payer: { select: { displayName: true } },
+      },
+    });
+
+    for (const expense of existing) {
+      await this.mirrorOne(ctx.workspaceId, invite.memberId, expense, invite.group.name);
+    }
+
+    return { groupName: invite.group.name, drafts: existing.length };
+  }
+
+  /** One pending draft in the invitee's workspace. Never posts by itself. */
+  private async mirrorOne(
+    intoWorkspaceId: string,
+    memberId: string,
+    expense: {
+      id: string;
+      description: string;
+      date: Date;
+      payerMemberId: string;
+      payer: { displayName: string };
+      shares: { memberId: string; amountMinor: bigint }[];
+    },
+    groupName: string,
+  ) {
+    /* A bill this member paid produces nothing: they already have their own
+       record of paying it, and what the other side owes is the inviter's
+       receivable, not their liability. */
+    if (expense.payerMemberId === memberId) return;
+    const share = expense.shares.find((s) => s.memberId === memberId);
+    if (!share) return;
+
+    await this.prisma.splitMirror.upsert({
+      where: { expenseId_workspaceId: { expenseId: expense.id, workspaceId: intoWorkspaceId } },
+      create: {
+        workspaceId: intoWorkspaceId,
+        expenseId: expense.id,
+        memberId,
+        description: expense.description,
+        date: expense.date,
+        amountMinor: share.amountMinor,
+        payerName: expense.payer.displayName,
+        groupName,
+      },
+      update: {},
+    });
+  }
+
+  /** Bills waiting for this workspace to say yes or no. */
+  async listMirrors(ctx: TenantContext) {
+    const rows = await this.prisma.splitMirror.findMany({
+      where: { workspaceId: ctx.workspaceId, status: 'PENDING' },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      description: row.description,
+      date: toLocalDateString(row.date, ctx.timezone),
+      amountMinor: minorToNumber(row.amountMinor),
+      payerName: row.payerName,
+      groupName: row.groupName,
+    }));
+  }
+
+  /**
+   * Accept one, and post it the way the owner's own side would have been.
+   *
+   * Their share becomes an expense and a payable to the person who paid — the
+   * same two entries a bill somebody else paid produces in `createExpense`, for
+   * the same reason: no cash moved, and a debt exists until it is settled.
+   */
+  async acceptMirror(ctx: TenantContext, mirrorId: string, categoryId?: string) {
+    const mirror = await this.prisma.splitMirror.findFirst({
+      where: { id: mirrorId, workspaceId: ctx.workspaceId, status: 'PENDING' },
+    });
+    if (!mirror) throw new NotFoundException('খসড়াটি পাওয়া যায়নি');
+
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const payable = await this.accounts.loanControlAccount(ctx.workspaceId, 'BORROWED');
+    const amount = minorToNumber(mirror.amountMinor);
+    const entries = [
+      draft(system.expenseAccountId, 'DEBIT', amount, categoryId ?? null),
+      draft(payable, 'CREDIT', amount),
+    ];
+    assertBalanced(entries);
+
+    await this.prisma.$transaction(async (tx) => {
+      const transaction = await tx.transaction.create({
+        data: {
+          workspaceId: ctx.workspaceId,
+          date: mirror.date,
+          type: 'EXPENSE',
+          description: `${mirror.description} — ${mirror.groupName}`,
+          notes: `${mirror.payerName} দিয়েছেন`,
+          createdByUserId: ctx.id || null,
+          entries: { create: entries.map((e) => entryData(e, ctx.workspaceId)) },
+        },
+      });
+      await tx.splitMirror.update({
+        where: { id: mirror.id },
+        data: { status: 'ACCEPTED', transactionId: transaction.id, reviewedAt: new Date() },
+      });
+    });
+
+    await this.audit.record({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'split.mirror_accepted',
+      entity: 'SplitMirror',
+      entityId: mirror.id,
+      after: { amountMinor: amount },
+    });
+
+    return { id: mirror.id, status: 'ACCEPTED' as const };
+  }
+
+  /** Decline. The inviter's receivable is untouched — that is between people. */
+  async declineMirror(ctx: TenantContext, mirrorId: string) {
+    const mirror = await this.prisma.splitMirror.findFirst({
+      where: { id: mirrorId, workspaceId: ctx.workspaceId, status: 'PENDING' },
+    });
+    if (!mirror) throw new NotFoundException('খসড়াটি পাওয়া যায়নি');
+
+    await this.prisma.splitMirror.update({
+      where: { id: mirror.id },
+      data: { status: 'DECLINED', reviewedAt: new Date() },
+    });
+    return { id: mirror.id, status: 'DECLINED' as const };
   }
 
   // --- helpers --------------------------------------------------------------

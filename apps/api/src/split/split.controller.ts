@@ -153,6 +153,22 @@ export class SplitController {
     return this.split.removeExpense(user, id, expenseId);
   }
 
+  /**
+   * Invite a member who has an account of their own.
+   *
+   * Accepting does not give this workspace write access to theirs. It says
+   * "send me the bills I am on, as drafts" — each one posts only when they
+   * accept it, which is the same rule the mailbox ingestion follows.
+   */
+  @Post(':id/members/:memberId/invite')
+  invite(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.split.invite(user, id, memberId);
+  }
+
   @Get(':id/settlements')
   settlements(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.split.listSettlements(user, id);

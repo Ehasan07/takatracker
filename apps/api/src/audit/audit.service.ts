@@ -63,6 +63,11 @@ export const AUDIT_ACTIONS = [
   'split.expense_added',
   'split.expense_deleted',
   'split.settled',
+  /* Linking two workspaces so a shared bill can reach both sets of books.
+     Worth a record on both sides: it is the one place this product lets one
+     person's action produce a draft in somebody else's ledger. */
+  'split.invited',
+  'split.mirror_accepted',
   'ingestion.message_received',
   'ingestion.draft_accepted',
   'ingestion.draft_rejected',

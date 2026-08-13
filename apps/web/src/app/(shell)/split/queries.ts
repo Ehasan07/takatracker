@@ -82,9 +82,20 @@ export const splitKeys = {
   group: (id: string) => ['split', 'group', id] as const,
   expenses: (id: string) => ['split', 'group', id, 'expenses'] as const,
   settlements: (id: string) => ['split', 'group', id, 'settlements'] as const,
+  inbox: () => ['split', 'inbox'] as const,
 };
 
+export interface InboxDraft {
+  id: string;
+  description: string;
+  date: string;
+  amountMinor: number;
+  payerName: string;
+  groupName: string;
+}
+
 export const fetchGroups = () => api<GroupSummary[]>('/split/groups');
+export const fetchInbox = () => api<InboxDraft[]>('/split/inbox');
 export const fetchGroup = (id: string) => api<GroupDetail>(`/split/groups/${id}`);
 export const fetchExpenses = (id: string) =>
   api<SharedExpenseView[]>(`/split/groups/${id}/expenses`);

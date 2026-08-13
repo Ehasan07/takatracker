@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
+import { SplitInboxController } from './split-inbox.controller';
 import { SplitController } from './split.controller';
 import { SplitService } from './split.service';
 
@@ -10,7 +11,7 @@ import { SplitService } from './split.service';
  */
 @Module({
   imports: [AccountsModule],
-  controllers: [SplitController],
+  controllers: [SplitController, SplitInboxController],
   providers: [SplitService],
   exports: [SplitService],
 })
