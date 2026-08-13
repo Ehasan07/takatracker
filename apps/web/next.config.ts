@@ -47,6 +47,21 @@ const nextConfig: NextConfig = {
           { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
+      {
+        /* Shared statements. The page already carries a robots meta tag and the
+           API sends this header on its own response, but neither covers the
+           HTML a crawler actually fetches — and this is the one URL in the
+           product that is reachable with no session, so it gets the header a
+           crawler reads before parsing anything.
+
+           `noarchive` matters as much as `noindex` here: a cache copy of
+           somebody's ledger outlives the link they revoked. */
+        source: '/s/:path*',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive, nosnippet' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
     ];
   },
 };

@@ -90,6 +90,15 @@ test.describe('sharing a statement', () => {
     await guest.goto(url);
 
     await expect(guest.getByRole('heading', { name: 'করিম' })).toBeVisible({ timeout: 15_000 });
+
+    /* Written the way the workspace is, not the way the database is. The first
+       version printed the API's `YYYY-MM-DD` straight through, so a Bengali
+       statement was dated 2026-03-01 — the kind of thing that never fails a
+       test and always fails a reader. */
+    const body = await guest.locator('main').innerText();
+    expect(body).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(body).toMatch(/[০-৯]/);
+
     /* A document, not the app: no navigation to wander into. */
     await expect(guest.getByTestId('bottom-nav')).toHaveCount(0);
     await expect(guest.getByTestId('sidebar')).toHaveCount(0);

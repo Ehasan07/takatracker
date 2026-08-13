@@ -1,4 +1,4 @@
-import { formatMinor, type Locale } from '@hishab/shared';
+import { formatLedgerDate, formatMinor, fromLocalDateString, type Locale } from '@hishab/shared';
 import { PrintButton } from './print-button';
 
 /**
@@ -133,12 +133,38 @@ const T: Record<Locale, Words> = {
 
 export function StatementDocument({ statement }: { statement: PublicStatement }) {
   const t = T[statement.locale] ?? T.bn;
+  /* Bengali digits when the books are Bengali. The sender chose that for their
+     workspace, and dates below are formatted the same way — a page with
+     ১ মার্চ ২০২৬ in one column and 50,000 in the next reads as a bug. */
   const money = (minor: number): string =>
-    formatMinor(minor, { currency: statement.currency, bengaliNumerals: false });
+    formatMinor(minor, {
+      currency: statement.currency,
+      bengaliNumerals: statement.locale === 'bn',
+    });
+
+  /**
+   * Dates in the reader's script, not ISO.
+   *
+   * The API speaks `YYYY-MM-DD` because that is what a date column is, and the
+   * first version printed it straight through — so a Bengali statement was
+   * headed `2026-03-01`. `formatLedgerDate` is the same function the owner's
+   * own screens use, taking its locale from the workspace rather than from a
+   * module-level setting there is nobody signed in to have set.
+   */
+  const date = (iso: string | null | undefined): string => {
+    if (!iso) return '—';
+    try {
+      return formatLedgerDate(fromLocalDateString(iso.slice(0, 10)), statement.locale);
+    } catch {
+      /* Anything unparseable is shown as it arrived. A statement with one odd
+         date is worth more than a statement with a gap in it. */
+      return iso;
+    }
+  };
 
   const period =
     statement.from || statement.to
-      ? `${statement.from ?? '…'} — ${statement.to ?? '…'}`
+      ? `${statement.from ? date(statement.from) : '…'} — ${statement.to ? date(statement.to) : '…'}`
       : t.wholeLife;
 
   const ledgerRows = (statement.data.rows as Row[] | undefined) ?? null;
@@ -166,9 +192,9 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
       </header>
 
       {ledgerRows ? (
-        <LedgerTable rows={ledgerRows} data={statement.data} money={money} t={t} />
+        <LedgerTable rows={ledgerRows} data={statement.data} money={money} date={date} t={t} />
       ) : instalments ? (
-        <InstalmentTable rows={instalments} data={statement.data} money={money} t={t} />
+        <InstalmentTable rows={instalments} data={statement.data} money={money} date={date} t={t} />
       ) : null}
 
       <p className="text-ink-muted mt-6 text-xs">{t.note}</p>
@@ -190,11 +216,13 @@ function LedgerTable({
   rows,
   data,
   money,
+  date,
   t,
 }: {
   rows: Row[];
   data: Record<string, unknown>;
   money: (minor: number) => string;
+  date: (iso: string | null | undefined) => string;
   t: Words;
 }) {
   const opening = typeof data.openingMinor === 'number' ? data.openingMinor : 0;
@@ -230,7 +258,7 @@ function LedgerTable({
             ) : (
               rows.map((row, i) => (
                 <tr key={`${row.date}-${i}`} className="border-rule border-b last:border-0">
-                  <Td>{row.date}</Td>
+                  <Td>{date(row.date)}</Td>
                   <Td>{row.description ?? ''}</Td>
                   <Td align="right">{row.debitMinor ? money(row.debitMinor) : ''}</Td>
                   <Td align="right">{row.creditMinor ? money(row.creditMinor) : ''}</Td>
@@ -249,11 +277,13 @@ function InstalmentTable({
   rows,
   data,
   money,
+  date,
   t,
 }: {
   rows: Instalment[];
   data: Record<string, unknown>;
   money: (minor: number) => string;
+  date: (iso: string | null | undefined) => string;
   t: Words;
 }) {
   const paid = typeof data.paidMinor === 'number' ? data.paidMinor : 0;
@@ -287,9 +317,9 @@ function InstalmentTable({
             ) : (
               rows.map((row) => (
                 <tr key={row.dueDate} className="border-rule border-b last:border-0">
-                  <Td>{row.dueDate}</Td>
+                  <Td>{date(row.dueDate)}</Td>
                   <Td align="right">{money(row.expectedMinor)}</Td>
-                  <Td>{row.paidDate ?? '—'}</Td>
+                  <Td>{date(row.paidDate)}</Td>
                   <Td>{row.status === 'PAID' ? t.paid : t.due}</Td>
                 </tr>
               ))
