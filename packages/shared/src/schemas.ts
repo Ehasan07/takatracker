@@ -301,6 +301,22 @@ export const reconcileSchema = z.object({
   actualBalanceMinor: minorAmount,
   note: z.string().max(500).optional(),
 });
+
+/**
+ * What an asset is worth now.
+ *
+ * `valueMinor` is the new value, not the change: somebody looking at a plot of
+ * land knows what it is worth today and does not know what it was carried at.
+ * Asking for the difference would make them do arithmetic to avoid doing
+ * arithmetic. Negative is allowed for a liability, whose value is negative.
+ */
+export const revalueSchema = z.object({
+  valueMinor: z.number().int(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'তারিখ YYYY-MM-DD আকারে দিন'),
+  note: z.string().trim().max(500).optional(),
+});
+export type RevalueInput = z.infer<typeof revalueSchema>;
+
 export type ReconcileInput = z.infer<typeof reconcileSchema>;
 
 // --- Ingestion (M7+, defined now so the contract is stable) ----------------

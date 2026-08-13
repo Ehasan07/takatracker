@@ -134,7 +134,7 @@ export interface SystemAccounts {
 export interface SimpleTransaction {
   type: Extract<
     TransactionType,
-    'INCOME' | 'EXPENSE' | 'TRANSFER' | 'ADJUSTMENT' | 'OPENING_BALANCE'
+    'INCOME' | 'EXPENSE' | 'TRANSFER' | 'ADJUSTMENT' | 'REVALUATION' | 'OPENING_BALANCE'
   >;
   amountMinor: number;
   accountId: string;
@@ -201,7 +201,12 @@ export function expandSimpleTransaction(
         entry(input.accountId, 'CREDIT', amountMinor, currency),
       ];
     }
+    /* All three move an account's value against equity and none of them is
+       income or spending. They are separate types so a reader can tell a
+       correction from a market movement from an opening figure — the ledger
+       shape is identical, the meaning is not. */
     case 'ADJUSTMENT':
+    case 'REVALUATION':
     case 'OPENING_BALANCE': {
       if (amountMinor === 0) throw new InvalidEntryError('Adjustment cannot be zero');
       const magnitude = Math.abs(amountMinor);

@@ -10,6 +10,7 @@ import {
   PiggyBank,
   Plus,
   Scale,
+  TrendingUp,
   Tags,
 } from 'lucide-react';
 import * as React from 'react';
@@ -21,7 +22,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
 import { api, ApiError, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
 import { t } from '@/lib/t';
-import { fmtNumber } from '@/lib/format';
+import { fmtDate, fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,15 @@ const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
   { value: 'LIABILITY', label: 'ঋণ / দায়', group: 'liability' },
   { value: 'PAYABLE', label: 'দেনা (যা আমি দেব)', group: 'liability' },
 ];
+
+/**
+ * The accounts whose value can change without a transaction.
+ *
+ * Cash does not appreciate. If a wallet disagrees with the ledger one of them is
+ * wrong, and the fix is a reconciliation — offering a revaluation there would
+ * let a bookkeeping error be filed as a market gain.
+ */
+const REVALUABLE = new Set(['ASSET', 'LIABILITY']);
 
 const TYPE_GROUPS = ['liquid', 'asset', 'liability'] as const;
 
@@ -95,6 +105,7 @@ export default function AccountsPage() {
   const entitlements = useQuery({ queryKey: ['entitlements'], queryFn: endpoints.entitlements });
   const [addOpen, setAddOpen] = React.useState(false);
   const [reconciling, setReconciling] = React.useState<AccountDto | null>(null);
+  const [revaluing, setRevaluing] = React.useState<AccountDto | null>(null);
   const [editing, setEditing] = React.useState<AccountDto | null>(null);
   const [archiving, setArchiving] = React.useState<AccountDto | null>(null);
   const [showArchived, setShowArchived] = React.useState(false);
@@ -262,14 +273,29 @@ export default function AccountsPage() {
                   <BellOff className="h-4 w-4" aria-hidden />
                 </button>
               ) : null}
-              <button
-                type="button"
-                aria-label={`${account.name} — ${t('account.reconcile', 'মেলান')}`}
-                onClick={() => setReconciling(account)}
-                className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
-              >
-                <Scale className="h-4 w-4" aria-hidden />
-              </button>
+              {/* Two different questions wearing one icon would be worse than
+                  two icons. Cash and bank accounts get "মেলান" — the ledger may
+                  be wrong about money that already exists. Land, gold and a car
+                  get "মূল্যায়ন" — the ledger is right and the world moved. */}
+              {REVALUABLE.has(account.type) ? (
+                <button
+                  type="button"
+                  aria-label={`${account.name} — ${t('account.revalue', 'মূল্যায়ন')}`}
+                  onClick={() => setRevaluing(account)}
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                >
+                  <TrendingUp className="h-4 w-4" aria-hidden />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`${account.name} — ${t('account.reconcile', 'মেলান')}`}
+                  onClick={() => setReconciling(account)}
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                >
+                  <Scale className="h-4 w-4" aria-hidden />
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -383,6 +409,11 @@ export default function AccountsPage() {
       <ReconcileSheet
         account={reconciling}
         onClose={() => setReconciling(null)}
+        onSaved={() => invalidateAccountData(queryClient)}
+      />
+      <RevalueSheet
+        account={revaluing}
+        onClose={() => setRevaluing(null)}
         onSaved={() => invalidateAccountData(queryClient)}
       />
     </div>
@@ -1056,6 +1087,152 @@ function ReconcileSheet({
         <Button type="submit" size="block" disabled={save.isPending}>
           মেলান
         </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/**
+ * What an asset is worth now.
+ *
+ * Asks for the new value, not the change: somebody looking at a plot of land
+ * knows what it is worth today and does not know what the ledger has been
+ * carrying it at. Asking for the difference would make them do arithmetic in
+ * order to avoid doing arithmetic.
+ *
+ * The history is on the sheet because a single current figure is not a
+ * revaluation model — IFRS wants to see the movements, and so does anybody
+ * asked to believe a number.
+ */
+function RevalueSheet({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: AccountDto | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { currency, currencyInfo } = useWorkspaceSettings();
+  const [value, setValue] = React.useState('');
+  const [note, setNote] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setValue(account ? formatMinor(account.balanceMinor, { symbol: false, currency }) : '');
+    setNote('');
+    setError(null);
+  }, [account, currency]);
+
+  const history = useQuery({
+    queryKey: ['accounts', account?.id, 'revaluations'],
+    queryFn: () =>
+      api<{ id: string; date: string; note: string; deltaMinor: number }[]>(
+        `/accounts/${account!.id}/revaluations`,
+      ),
+    enabled: account !== null,
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      api<{ deltaMinor: number }>(`/accounts/${account!.id}/revalue`, {
+        method: 'POST',
+        body: {
+          valueMinor: parseMoneyToMinor(value, currency),
+          date: toLocalDateString(new Date()),
+          note: note.trim() || undefined,
+        },
+      }),
+    onSuccess: () => {
+      haptic('success');
+      onSaved();
+      onClose();
+    },
+    onError: (err) => {
+      haptic('warn');
+      setError(
+        err instanceof ApiError ? err.message : t('common.saveFailed', 'সংরক্ষণ করা যায়নি'),
+      );
+    },
+  });
+
+  return (
+    <Sheet
+      open={account !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title={t('account.revalueTitle', 'বর্তমান মূল্য')}
+      description={account?.name}
+    >
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          if (!value.trim()) {
+            setError(t('account.valueRequired', 'এখনকার মূল্য লিখুন'));
+            return;
+          }
+          save.mutate();
+        }}
+      >
+        <p className="text-ink-muted text-sm">
+          {t(
+            'account.revalueHint',
+            'এখন এটির বাজারমূল্য কত? পার্থক্যটি নিট সম্পদে যোগ হবে — আয় হিসেবে নয়, এবং নগদ প্রবাহেও যাবে না।',
+          )}
+        </p>
+
+        <Field
+          label={`${t('account.currentValue', 'এখনকার মূল্য')} (${currencyInfo.symbol})`}
+          htmlFor="revalue-value"
+        >
+          <Input
+            id="revalue-value"
+            inputMode="decimal"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+          />
+        </Field>
+
+        <Field label={t('account.revalueNote', 'কেন')} htmlFor="revalue-note">
+          <Input
+            id="revalue-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            placeholder={t('account.revalueNotePlaceholder', 'যেমন: বাজারদর অনুযায়ী')}
+          />
+        </Field>
+
+        {error ? (
+          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {save.isPending ? t('common.saving', 'সংরক্ষণ হচ্ছে…') : t('common.save', 'সংরক্ষণ করুন')}
+        </Button>
+
+        {(history.data ?? []).length > 0 ? (
+          <div>
+            <h3 className="text-ink-muted text-sm font-medium">
+              {t('account.revalueHistory', 'আগের মূল্যায়ন')}
+            </h3>
+            <ul className="divide-rule border-rule mt-2 divide-y rounded-md border">
+              {(history.data ?? []).map((row) => (
+                <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <span className="min-w-0">
+                    <span className="text-ink block truncate text-sm">{row.note}</span>
+                    <span className="text-ink-muted text-xs">{fmtDate(row.date)}</span>
+                  </span>
+                  <Money minor={row.deltaMinor} signed colored className="shrink-0 text-sm" />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </form>
     </Sheet>
   );

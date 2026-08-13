@@ -742,6 +742,118 @@ export class TransactionsService {
     }
   }
 
+  /**
+   * Mark an asset to what it is worth now.
+   *
+   * ## Why this is not `reconcile`
+   *
+   * Reconciling says the ledger was wrong about money that already existed;
+   * revaluing says the world moved. The entries are identical — the account
+   * against equity — and the meaning is not, which is why `REVALUATION` is its
+   * own transaction type. A reader looking at the statement of changes in net
+   * worth and asking "why did I get ৳2,00,000 richer without earning anything"
+   * needs the answer to be nameable.
+   *
+   * ## Why only non-monetary accounts
+   *
+   * Cash does not appreciate. If a bank balance disagrees with the ledger, one
+   * of them is wrong and the fix is a reconciliation, not a revaluation —
+   * offering both on a wallet would let somebody quietly paper over a
+   * bookkeeping error as a market gain.
+   *
+   * ## What it deliberately does not do
+   *
+   * It never touches income or expense, so a revaluation cannot inflate a
+   * month's earnings, and it never touches a liquid account, so it stays out of
+   * the cash flow statement entirely. Both are what IFRS's revaluation model
+   * requires and both fall out of posting against equity.
+   */
+  async revalue(
+    ctx: TenantContext,
+    accountId: string,
+    input: { valueMinor: number; date: string; note?: string },
+  ): Promise<{ deltaMinor: number; transaction: TransactionView | null }> {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, workspaceId: ctx.workspaceId, deletedAt: null, systemKey: null },
+    });
+    if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
+
+    if (account.type !== 'ASSET' && account.type !== 'LIABILITY') {
+      throw new BadRequestException(
+        'শুধু সম্পদ (জমি, স্বর্ণ, গাড়ি) বা দায়ের হিসাবের মূল্যায়ন বদলানো যায় — নগদ বা ব্যাংকের জন্য “সমন্বয়” ব্যবহার করুন',
+      );
+    }
+
+    const balances = await this.accounts.balances(ctx.workspaceId);
+    const deltaMinor = input.valueMinor - (balances.get(accountId) ?? 0);
+    if (deltaMinor === 0) return { deltaMinor: 0, transaction: null };
+
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const entries = expandSimpleTransaction(
+      { type: 'REVALUATION', amountMinor: deltaMinor, accountId },
+      system,
+    );
+    assertBalanced(entries);
+
+    const created = await this.prisma.transaction.create({
+      data: {
+        workspaceId: ctx.workspaceId,
+        createdByUserId: ctx.id,
+        date: fromLocalDateString(input.date, ctx.timezone),
+        type: 'REVALUATION',
+        description: input.note?.trim() || 'পুনর্মূল্যায়ন',
+        source: 'MANUAL',
+        entries: {
+          create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
+        },
+      },
+      include: txInclude,
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'account.revalued',
+      entity: 'Account',
+      entityId: accountId,
+      before: { valueMinor: balances.get(accountId) ?? 0 },
+      after: { valueMinor: input.valueMinor, deltaMinor, note: input.note ?? null },
+    });
+
+    return { deltaMinor, transaction: this.present(created, ctx) };
+  }
+
+  /** Every revaluation of one account, newest first. The history IFRS expects. */
+  async revaluations(ctx: TenantContext, accountId: string) {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        workspaceId: ctx.workspaceId,
+        deletedAt: null,
+        type: 'REVALUATION',
+        entries: { some: { accountId } },
+      },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        date: true,
+        description: true,
+        entries: { where: { accountId }, select: { direction: true, amountMinor: true } },
+      },
+    });
+
+    return rows.map((row) => {
+      const entry = row.entries[0];
+      const magnitude = entry ? minorToNumber(entry.amountMinor) : 0;
+      return {
+        id: row.id,
+        date: toLocalDateString(row.date, ctx.timezone),
+        note: row.description,
+        /* Signed the way a reader means it: positive is worth more than before. */
+        deltaMinor: entry?.direction === 'DEBIT' ? magnitude : -magnitude,
+      };
+    });
+  }
+
   /** Reconcile: user enters the real balance, we book the difference. */
   async reconcile(
     ctx: TenantContext,

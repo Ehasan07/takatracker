@@ -268,6 +268,9 @@ export const EN: Record<string, string> = {
   'statements.basisPeriod': 'Period',
   'statements.basisCost':
     'Land, gold and other assets are shown at cost; they have not been revalued.',
+  'statements.revalued': 'revalued',
+  'statements.basisRevalued':
+    'Some assets are shown at current market value — itemised under "other movements" above.',
   'statements.basisPrepared': 'Prepared on',
   'statements.basisUnaudited':
     'These are personal accounts and are unaudited. Bookkeeping is double entry.',
@@ -343,6 +346,15 @@ export const EN: Record<string, string> = {
   'account.type.MOBILE_WALLET': 'Mobile wallet',
   'account.type.SAVINGS': 'Savings / DPS',
   'account.type.ASSET': 'Asset (land, gold, a car)',
+  'account.revalue': 'Revalue',
+  'account.revalueTitle': 'Current value',
+  'account.revalueHint':
+    'What is it worth now? The difference goes to net worth — not to income, and not to the cash flow.',
+  'account.currentValue': 'Value now',
+  'account.valueRequired': 'Enter what it is worth now',
+  'account.revalueNote': 'Why',
+  'account.revalueNotePlaceholder': 'e.g. current market rate',
+  'account.revalueHistory': 'Earlier revaluations',
   'account.type.RECEIVABLE': 'Receivable (owed to me)',
   'account.type.CREDIT_CARD': 'Credit card',
   'account.type.LIABILITY': 'Loan / liability',

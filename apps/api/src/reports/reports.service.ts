@@ -168,6 +168,14 @@ export interface ChangesInNetWorth {
   surplusMinor: number;
   /** Everything that changed net worth without passing through income or expense. */
   otherMinor: number;
+  /** What that line is made of, so far as revaluations explain it. */
+  revaluations: {
+    id: string;
+    date: string;
+    accountName: string;
+    note: string | null;
+    deltaMinor: number;
+  }[];
   closingMinor: number;
   /** `closingMinor − openingMinor`, stated so nobody has to subtract. */
   movementMinor: number;
@@ -870,9 +878,49 @@ export class ReportsService {
          number the month somebody revalues their land, and the line that says
          so rather than hiding it. */
       otherMinor: movementMinor - statement.surplusMinor,
+      /* Itemised, because "other movements: ৳2,00,000" is not an explanation.
+         It is also what tells the basis-of-preparation footer to stop saying
+         assets are carried at cost — a claim that becomes false the moment one
+         of them is revalued, and a false basis makes the whole statement
+         uncheckable. */
+      revaluations: await this.revaluationsInPeriod(ctx, period),
       closingMinor,
       movementMinor,
     };
+  }
+
+  /** Every revaluation inside a window, so the "other" line can be read. */
+  private async revaluationsInPeriod(ctx: TenantContext, period: PeriodQuery) {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        workspaceId: ctx.workspaceId,
+        deletedAt: null,
+        type: 'REVALUATION',
+        date: this.range(period, ctx.timezone),
+      },
+      orderBy: { date: 'asc' },
+      select: {
+        id: true,
+        date: true,
+        description: true,
+        entries: {
+          where: { account: { systemKey: null } },
+          select: { direction: true, amountMinor: true, account: { select: { name: true } } },
+        },
+      },
+    });
+
+    return rows.map((row) => {
+      const entry = row.entries[0];
+      const magnitude = entry ? minorToNumber(entry.amountMinor) : 0;
+      return {
+        id: row.id,
+        date: toLocalDateString(row.date, ctx.timezone),
+        accountName: entry?.account.name ?? '',
+        note: row.description,
+        deltaMinor: entry?.direction === 'DEBIT' ? magnitude : -magnitude,
+      };
+    });
   }
 
   /** Every transaction behind one slice of the pie. */

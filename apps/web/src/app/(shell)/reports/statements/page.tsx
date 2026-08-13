@@ -7,6 +7,7 @@ import * as React from 'react';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Field, Input } from '@/components/ui/field';
+import { toLocalDateString } from '@hishab/shared';
 import { fmtDate, fmtDateObject, fmtNumber } from '@/lib/format';
 import { t } from '@/lib/t';
 import {
@@ -37,8 +38,18 @@ import type { CategoryNode } from '../types';
  * screens answer the first; these answer the second. Both are wanted.
  */
 
-const today = (): string => new Date().toISOString().slice(0, 10);
-const firstOfYear = (): string => `${new Date().getFullYear()}-01-01`;
+/**
+ * Today, and the start of this year, in the *workspace's* day.
+ *
+ * `new Date().toISOString().slice(0, 10)` is the obvious version and it is
+ * wrong here by up to six hours: Dhaka is UTC+6, so between midnight and 6am
+ * the UTC date is still yesterday. The default window would have ended before
+ * today, and anything recorded that morning — a revaluation, a bill — would be
+ * missing from a statement that looked complete. Caught by a test that revalued
+ * land at 5am and could not find it afterwards.
+ */
+const today = (): string => toLocalDateString(new Date());
+const firstOfYear = (): string => `${today().slice(0, 4)}-01-01`;
 
 export default function StatementsPage() {
   const [from, setFrom] = React.useState(firstOfYear);
@@ -122,7 +133,11 @@ export default function StatementsPage() {
           {sheet.data ? <BalanceSheet data={sheet.data} asOf={to} /> : null}
           {flow.data ? <CashFlow data={flow.data} /> : null}
           {changes.data ? <NetWorthChanges data={changes.data} /> : null}
-          <BasisOfPreparation from={from} to={to} />
+          <BasisOfPreparation
+            from={from}
+            to={to}
+            revalued={(changes.data?.revaluations.length ?? 0) > 0}
+          />
         </>
       )}
     </div>
@@ -329,6 +344,15 @@ function NetWorthChanges({ data }: { data: import('../types').NetWorthChangesDto
       />
       <Row label={t('statements.surplus', 'উদ্বৃত্ত')} minor={data.surplusMinor} />
       <Row label={t('statements.other', 'অন্যান্য পরিবর্তন')} minor={data.otherMinor} />
+      {/* "Other movements: ৳2,00,000" is not an explanation. */}
+      {data.revaluations.map((r) => (
+        <Row
+          key={r.id}
+          label={`${r.accountName} — ${r.note ?? t('statements.revalued', 'পুনর্মূল্যায়ন')}`}
+          minor={r.deltaMinor}
+          indent
+        />
+      ))}
       <Row
         label={t('statements.closingNetWorth', 'শেষের নিট সম্পদ')}
         minor={data.closingMinor}
@@ -350,7 +374,16 @@ function NetWorthChanges({ data }: { data: import('../types').NetWorthChangesDto
  * anybody being handed the page: a reader cannot check a statement whose basis
  * is not stated. Cash basis, one currency, assets at what they cost, unaudited.
  */
-function BasisOfPreparation({ from, to }: { from: string; to: string }) {
+function BasisOfPreparation({
+  from,
+  to,
+  revalued,
+}: {
+  from: string;
+  to: string;
+  /** True once anything has been marked to a current value in this period. */
+  revalued: boolean;
+}) {
   return (
     <section className="rounded-card border-rule loan-print-block border border-dashed p-4">
       <h2 className="text-ink-muted text-sm font-medium">
@@ -367,10 +400,19 @@ function BasisOfPreparation({ from, to }: { from: string; to: string }) {
           {t('statements.basisPeriod', 'সময়কাল')}: {fmtDate(from)} — {fmtDate(to)}
         </li>
         <li>
-          {t(
-            'statements.basisCost',
-            'জমি, স্বর্ণ ও অন্যান্য সম্পদ ক্রয়মূল্যে দেখানো — পুনর্মূল্যায়ন করা হয়নি।',
-          )}
+          {/* IFRS lets you use either the cost model or the revaluation model
+              and requires the statement to say which. Saying "at cost" after a
+              revaluation would be a false basis, which makes everything above
+              it uncheckable. */}
+          {revalued
+            ? t(
+                'statements.basisRevalued',
+                'কিছু সম্পদ বর্তমান বাজারমূল্যে দেখানো হয়েছে — নিচের "অন্যান্য পরিবর্তন" অংশে বিস্তারিত।',
+              )
+            : t(
+                'statements.basisCost',
+                'জমি, স্বর্ণ ও অন্যান্য সম্পদ ক্রয়মূল্যে দেখানো — পুনর্মূল্যায়ন করা হয়নি।',
+              )}
         </li>
         <li>
           {t('statements.basisPrepared', 'তৈরির তারিখ')}: {fmtDateObject(new Date())}

@@ -9,7 +9,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { createAccountSchema, reconcileSchema, updateAccountSchema } from '@hishab/shared';
+import {
+  createAccountSchema,
+  reconcileSchema,
+  revalueSchema,
+  updateAccountSchema,
+} from '@hishab/shared';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
@@ -64,5 +69,27 @@ export class AccountsController {
     @Body(zodPipe(reconcileSchema)) body: ReturnType<typeof reconcileSchema.parse>,
   ) {
     return this.transactions.reconcile(user, id, body);
+  }
+
+  /**
+   * Mark an asset to what it is worth now.
+   *
+   * Separate from `reconcile` on purpose: reconciling says the ledger was wrong
+   * about money that already existed, revaluing says the world moved. Only
+   * `ASSET` and `LIABILITY` accounts accept it — cash does not appreciate, and
+   * offering it on a wallet would let a bookkeeping error be filed as a gain.
+   */
+  @Post(':id/revalue')
+  revalue(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(revalueSchema)) body: ReturnType<typeof revalueSchema.parse>,
+  ) {
+    return this.transactions.revalue(user, id, body);
+  }
+
+  @Get(':id/revaluations')
+  revaluations(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.transactions.revaluations(user, id);
   }
 }

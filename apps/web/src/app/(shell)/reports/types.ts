@@ -83,6 +83,14 @@ export interface NetWorthChangesDto {
   expenseMinor: number;
   surplusMinor: number;
   otherMinor: number;
+  /** What the "other" line is made of, so far as revaluations explain it. */
+  revaluations: {
+    id: string;
+    date: string;
+    accountName: string;
+    note: string | null;
+    deltaMinor: number;
+  }[];
   closingMinor: number;
   movementMinor: number;
 }

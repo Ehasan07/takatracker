@@ -356,6 +356,82 @@ describe('reports', () => {
     expect(res.body.surplusMinor).toBe(5_000_000);
   });
 
+  it('revalues an asset without inventing income', async () => {
+    /* Land bought at ৳500,000 is now worth ৳700,000. Net worth rises ৳200,000
+       and the household earned nothing — which is exactly the case the
+       statement of changes in net worth exists to explain, and exactly the case
+       a report that folded it into the surplus would get wrong. */
+    const accounts = await get('/v1/accounts').expect(200);
+    const land = accounts.body.find((a: { name: string }) => a.name === 'জমি');
+
+    const before = await get('/v1/reports/balance-sheet').expect(200);
+    const beforeIncome = await get(
+      `/v1/reports/income-statement?from=${day('01')}&to=${day('28')}`,
+    ).expect(200);
+    const beforeFlow = await get('/v1/reports/cash-flow').expect(200);
+
+    const res = await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/revalue`)
+      .set(auth(user))
+      .send({ valueMinor: 70_000_000, date: day('22'), note: 'বাজারদর অনুযায়ী' })
+      .expect(201);
+    expect(res.body.deltaMinor).toBe(20_000_000);
+
+    const after = await get('/v1/reports/balance-sheet').expect(200);
+    expect(after.body.netWorthMinor).toBe(before.body.netWorthMinor + 20_000_000);
+    /* Land is not current, so a revaluation must not make anybody look liquid. */
+    expect(after.body.currentAssetsMinor).toBe(before.body.currentAssetsMinor);
+
+    /* Not income, and not a cash flow. Both fall out of posting against equity,
+       and both are what the revaluation model requires. */
+    const afterIncome = await get(
+      `/v1/reports/income-statement?from=${day('01')}&to=${day('28')}`,
+    ).expect(200);
+    expect(afterIncome.body.incomeMinor).toBe(beforeIncome.body.incomeMinor);
+    expect(afterIncome.body.surplusMinor).toBe(beforeIncome.body.surplusMinor);
+
+    const afterFlow = await get('/v1/reports/cash-flow').expect(200);
+    expect(afterFlow.body.closingMinor).toBe(beforeFlow.body.closingMinor);
+    expect(afterFlow.body.investingMinor).toBe(beforeFlow.body.investingMinor);
+  });
+
+  it('shows the revaluation on the line that explains net worth', async () => {
+    const res = await get(`/v1/reports/net-worth-changes?from=${day('01')}&to=${day('28')}`).expect(
+      200,
+    );
+
+    /* `otherMinor` is the balancing figure and its job is to be visible: this is
+       where a reader looks when net worth moved and no income did. */
+    expect(res.body.otherMinor).toBe(20_000_000);
+    expect(res.body.openingMinor + res.body.surplusMinor + res.body.otherMinor).toBe(
+      res.body.closingMinor,
+    );
+  });
+
+  it('keeps the history of what an asset was worth', async () => {
+    const accounts = await get('/v1/accounts').expect(200);
+    const land = accounts.body.find((a: { name: string }) => a.name === 'জমি');
+    const history = await get(`/v1/accounts/${land.id}/revaluations`).expect(200);
+
+    expect(history.body).toHaveLength(1);
+    expect(history.body[0].deltaMinor).toBe(20_000_000);
+    expect(history.body[0].note).toBe('বাজারদর অনুযায়ী');
+  });
+
+  it('refuses to revalue cash, which does not appreciate', async () => {
+    /* If a wallet disagrees with the ledger one of them is wrong, and the fix is
+       a reconciliation. Offering a revaluation here would let a bookkeeping
+       error be filed as a market gain. */
+    const res = await ctx
+      .http()
+      .post(`/v1/accounts/${cashId}/revalue`)
+      .set(auth(user))
+      .send({ valueMinor: 999_999, date: day('22') })
+      .expect(400);
+    expect(res.body.message).toMatch(/সমন্বয়/);
+  });
+
   it('drills into one category and lists what is behind it', async () => {
     const res = await get(`/v1/reports/category/${foodId}`).expect(200);
     expect(res.body.category.name).toBe('খাবার ও বাজার');

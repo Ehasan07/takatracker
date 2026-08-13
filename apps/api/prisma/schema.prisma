@@ -1294,6 +1294,11 @@ enum TransactionType {
   SAVINGS_WITHDRAWAL
   PREMIUM_PAID
   ADJUSTMENT
+  /// Marking an asset to what it is worth now — land, gold, a vehicle.
+  /// Distinct from ADJUSTMENT so a revaluation can be told apart from a cash
+  /// reconciliation on the statement of changes in net worth, which is the one
+  /// place a reader goes to ask why net worth moved without any income.
+  REVALUATION
   OPENING_BALANCE
 }
 

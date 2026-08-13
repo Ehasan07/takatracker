@@ -21,6 +21,9 @@ export const AUDIT_ACTIONS = [
   'account.created',
   'account.updated',
   'account.archived',
+  /* Marking land, gold or a vehicle to what it is worth now. Worth recording:
+     it moves net worth without any income, and somebody will ask why. */
+  'account.revalued',
   'transaction.created',
   'transaction.updated',
   'transaction.deleted',

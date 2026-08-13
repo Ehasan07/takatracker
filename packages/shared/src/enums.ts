@@ -26,6 +26,10 @@ export const TRANSACTION_TYPES = [
   'SAVINGS_WITHDRAWAL',
   'PREMIUM_PAID',
   'ADJUSTMENT',
+  /* Marking an asset to what it is worth now. Same entries as an adjustment,
+     different meaning: a correction says the ledger was wrong, a revaluation
+     says the world moved. */
+  'REVALUATION',
   'OPENING_BALANCE',
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
