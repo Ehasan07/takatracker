@@ -150,4 +150,47 @@ test.describe('sharing a statement', () => {
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
     await stranger.close();
   });
+
+  test('is a branded document, and invites the reader in', async ({ page, browser }) => {
+    await signup(page);
+    await lend(page);
+
+    await page.goto('/people');
+    await shareButton(page).first().click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByRole('button', { name: 'লিংক তৈরি করুন' }).click();
+    const url = await sheet.getByLabel('শেয়ার লিংক').inputValue();
+
+    const stranger = await browser.newContext({ viewport: page.viewportSize() ?? undefined });
+    const guest = await stranger.newPage();
+    await guest.goto(url);
+    await expect(guest.getByRole('heading', { name: 'করিম' })).toBeVisible({ timeout: 15_000 });
+
+    /* The only page in this product somebody outside it ever sees. It says
+       whose product it is. */
+    await expect(guest.getByText('Taka Tracker').first()).toBeVisible();
+
+    /* And gives them a way in. This is the whole reason a shared statement is
+       worth more than a screenshot. */
+    const join = guest.getByRole('link', { name: 'ফ্রি অ্যাকাউন্ট খুলুন' });
+    await expect(join).toBeVisible();
+    await expect(join).toHaveAttribute('href', '/signup');
+
+    /* On paper it is a statement, not an advertisement. */
+    await expect(guest.locator('aside').filter({ has: join })).toHaveClass(/print:hidden/);
+
+    /* A reference and a life, the way a bank statement carries them. */
+    await expect(guest.getByText(/রেফারেন্স/)).toBeVisible();
+    await expect(guest.getByText(/লিংকের মেয়াদ/)).toBeVisible();
+
+    await stranger.close();
+  });
+
+  test('a dead link still says whose page it is', async ({ page }) => {
+    await page.goto('/s/definitely-not-a-real-token');
+    await expect(page.getByText('লিংকটি আর কাজ করছে না')).toBeVisible({ timeout: 15_000 });
+    /* Forwarded on, or opened a month late — an unsigned sentence on a blank
+       page reads as a broken site rather than an expired credential. */
+    await expect(page.getByText('Taka Tracker').first()).toBeVisible();
+  });
 });

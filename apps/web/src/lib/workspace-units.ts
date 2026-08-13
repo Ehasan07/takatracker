@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { unitSuggestions } from '@hishab/shared';
+import { commonUnits, normaliseUnitList, unitGroups } from '@hishab/shared';
 import { api } from '@/lib/api';
 
 /**
@@ -36,9 +36,8 @@ export function fetchWorkspaceSettings(): Promise<WorkspaceSettingsDto> {
   return api<WorkspaceSettingsDto>('/workspace/settings');
 }
 
-/** Shipped units first, then the workspace's own, in the order it chose. */
-export function useQuantityUnits(): string[] {
-  const settings = useQuery({
+function useSettings() {
+  return useQuery({
     queryKey: workspaceSettingsKey,
     queryFn: fetchWorkspaceSettings,
     /* Half an hour. Somebody who just added a unit gets it immediately through
@@ -47,6 +46,34 @@ export function useQuantityUnits(): string[] {
     staleTime: 30 * 60_000,
     retry: false,
   });
+}
 
-  return unitSuggestions(settings.data?.quantityUnits);
+/**
+ * Everything the unit picker shows, in the workspace's language.
+ *
+ * The language comes from the workspace rather than from the display locale,
+ * because the answer is *stored*: it becomes the string a report groups by for
+ * as long as the row exists. A person reading their books in English while the
+ * workspace is Bengali should still be adding to the same কেজি total everybody
+ * else is, not starting a parallel one.
+ */
+export function useUnitOptions(): {
+  common: string[];
+  groups: { label: string; units: string[] }[];
+  custom: string[];
+  /** What the field starts on when somebody opens it: the first shortcut. */
+  fallback: string;
+} {
+  const settings = useSettings();
+  /* Bengali until the answer lands. The fetch is allowed to fail — see above —
+     and a picker offering the shipped catalogue is a working picker. */
+  const locale = settings.data?.locale === 'en' ? 'en' : 'bn';
+
+  const common = commonUnits(locale);
+  return {
+    common,
+    groups: unitGroups(locale),
+    custom: normaliseUnitList(settings.data?.quantityUnits ?? []),
+    fallback: common[0] ?? 'কেজি',
+  };
 }

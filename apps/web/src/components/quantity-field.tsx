@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 import { Field, Input } from '@/components/ui/field';
-import { useQuantityUnits } from '@/lib/workspace-units';
 import { fmtNumber } from '@/lib/format';
 import { t } from '@/lib/t';
+import { useUnitOptions } from '@/lib/workspace-units';
 import { toMilli, type QuantityValue } from './quantity';
+import { UnitPicker } from './unit-picker';
 
 export { COMMON_UNITS, fromMilli, toMilli, type QuantityValue } from './quantity';
 
@@ -37,15 +38,15 @@ export function QuantityField({
   onChange: (next: QuantityValue | null) => void;
 }) {
   const [text, setText] = React.useState('');
-  /* Called before the early return so the hook order is the same on both
-     branches. It costs one cached request whether or not the field is open. */
-  const units = useQuantityUnits();
+  /* Before the early return, so the hook order is the same on both branches.
+     It costs one cached request whether or not the field is open. */
+  const { fallback } = useUnitOptions();
 
   if (!value) {
     return (
       <button
         type="button"
-        onClick={() => onChange({ milli: 0, unit: 'কেজি' })}
+        onClick={() => onChange({ milli: 0, unit: fallback })}
         className="press text-brand self-start text-sm underline"
       >
         {t('quantity.open', 'পরিমাণ লিখবেন? (কত কেজি, কত লিটার)')}
@@ -84,23 +85,7 @@ export function QuantityField({
         </Field>
 
         <Field label={t('quantity.unit', 'একক')} htmlFor="qty-unit">
-          {/* A `<datalist>`, so the field stays free text. No fixed list
-              survives contact with a Bangladeshi kitchen — হালি, বস্তা, গজ and
-              a dozen others are all real, and a picker that cannot say the true
-              one teaches people to leave the field empty. The workspace's own
-              units are in here too, added from সেটিংস › পরিমাণের একক. */}
-          <Input
-            id="qty-unit"
-            list="qty-units"
-            value={value.unit}
-            onChange={(e) => onChange({ ...value, unit: e.target.value })}
-            maxLength={20}
-          />
-          <datalist id="qty-units">
-            {units.map((u) => (
-              <option key={u} value={u} />
-            ))}
-          </datalist>
+          <UnitPicker value={value.unit} onChange={(unit) => onChange({ ...value, unit })} />
         </Field>
       </div>
 

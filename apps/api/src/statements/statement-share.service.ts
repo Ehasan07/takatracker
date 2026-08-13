@@ -68,6 +68,14 @@ export interface ResolvedShare {
   subjectId: string;
   from: string | null;
   to: string | null;
+  /**
+   * When the link dies, shown to the reader.
+   *
+   * They are holding it already, so this gives nothing away — and it is the
+   * difference between somebody printing the statement now and finding a dead
+   * link the week their insurer asks for it.
+   */
+  expiresAt: string;
 }
 
 @Injectable()
@@ -232,6 +240,7 @@ export class StatementShareService {
       subjectId: row.subjectId,
       from: row.fromDate ? toLocalDateString(row.fromDate, 'UTC') : null,
       to: row.toDate ? toLocalDateString(row.toDate, 'UTC') : null,
+      expiresAt: row.expiresAt.toISOString(),
     };
   }
 

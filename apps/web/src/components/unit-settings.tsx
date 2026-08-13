@@ -7,7 +7,10 @@ import {
   COMMON_QUANTITY_UNITS,
   MAX_CUSTOM_UNITS,
   MAX_UNIT_LENGTH,
+  UNIT_CATALOGUE,
   normaliseUnit,
+  shippedUnits,
+  unitGroups,
 } from '@hishab/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
@@ -45,6 +48,9 @@ interface SettingsDto {
 
 const bn = (value: number | string): string => fmtNumber(String(value));
 
+/** One per unit, not per spelling — `shippedUnits()` counts কেজি and kg twice. */
+const SHIPPED_COUNT = UNIT_CATALOGUE.reduce((total, group) => total + group.units.length, 0);
+
 export function UnitSettings() {
   const queryClient = useQueryClient();
   const [typed, setTyped] = React.useState('');
@@ -80,7 +86,10 @@ export function UnitSettings() {
 
   const typedName = typed.trim().replace(/\s+/g, ' ');
   const key = normaliseUnit(typedName);
-  const isShipped = COMMON_QUANTITY_UNITS.some((u) => normaliseUnit(u) === key);
+  /* The whole shipped catalogue, both languages — not just the eight
+     shortcuts. The API drops a duplicate silently, so a check against a shorter
+     list would leave the button enabled, accept the tap and show nothing. */
+  const isShipped = shippedUnits().some((u) => normaliseUnit(u) === key);
   const isMine = units.some((u) => normaliseUnit(u) === key);
   const isFull = units.length >= MAX_CUSTOM_UNITS;
   const canAdd = typedName !== '' && !isShipped && !isMine && !isFull;
@@ -102,8 +111,9 @@ export function UnitSettings() {
     <section className="rounded-card border-rule bg-surface border p-4">
       <h2 className="text-ink-muted text-sm font-medium">পরিমাণের একক</h2>
       <p className="text-ink-muted mt-1 text-sm">
-        লেনদেনে পরিমাণ লেখার সময় যে এককগুলো সাজেশনে আসবে। নিচের {bn(COMMON_QUANTITY_UNITS.length)}
-        টি সবার জন্যই থাকে — আপনার দরকারি একক এখানে যোগ করুন।
+        লেনদেনে পরিমাণ লেখার সময় যে এককগুলো তালিকায় আসবে। কেজি-লিটার থেকে মণ, ভরি, কাঠা, বিঘা,
+        পাউন্ড, গ্যালন — {bn(SHIPPED_COUNT)}টি একক সবার জন্যই থাকে। এর বাইরে কিছু লাগলে এখানে যোগ
+        করুন।
       </p>
       {/* Said plainly, because a list of units looks like a list of *permitted*
           units, and believing that costs a trip to this screen every time
@@ -112,6 +122,24 @@ export function UnitSettings() {
         এখানে যোগ না করলেও চলবে — লেনদেনের ঘরে যেকোনো একক সরাসরি লিখতে পারেন। এই তালিকা শুধু টাইপিং
         বাঁচায়।
       </p>
+
+      {/* Folded away by default. Fifty-six chips is not a list somebody reads;
+          it is a wall they scroll past to reach the box they came for. Open,
+          it answers the only question this screen is asked — "is the one I
+          need already here?" — grouped the way the picker groups it. */}
+      <details className="border-rule mt-3 rounded-md border">
+        <summary className="press text-ink-muted flex min-h-11 cursor-pointer items-center px-3 text-sm">
+          আগে থেকেই আছে এমন একক দেখুন
+        </summary>
+        <div className="space-y-3 px-3 pb-3">
+          {unitGroups('bn').map((group) => (
+            <div key={group.label}>
+              <p className="text-ink-muted text-xs font-medium">{group.label}</p>
+              <p className="text-ink-muted mt-0.5 text-xs">{group.units.join(' · ')}</p>
+            </div>
+          ))}
+        </div>
+      </details>
 
       <ul className="mt-3 flex flex-wrap gap-1.5">
         {COMMON_QUANTITY_UNITS.map((unit) => (
@@ -150,7 +178,10 @@ export function UnitSettings() {
         <Input
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
-          placeholder="যেমন গজ, ভরি, স্ট্রিপ"
+          /* গজ, ভরি and স্ট্রিপ used to be the examples here and all three now
+             ship, so the placeholder was telling people to add what they
+             already had. */
+          placeholder="যেমন তোলা, খাঁচা, ফাইল"
           maxLength={MAX_UNIT_LENGTH}
           aria-label="নতুন একক"
           className="min-w-40 flex-1"

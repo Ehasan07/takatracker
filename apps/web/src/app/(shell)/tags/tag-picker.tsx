@@ -36,6 +36,7 @@ import { Check, Plus, Search, X } from 'lucide-react';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';
+import { useOnline } from '@/hooks/use-online';
 import { ApiError, api } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
@@ -109,6 +110,17 @@ export function TagPicker({
     queryFn: () => fetchTags(''),
     staleTime: 30_000,
   });
+
+  /* Come back by ourselves. `retry: 0` is right for the reason given in
+     `providers.tsx`, but it means a single dropped request on mobile data
+     leaves this list broken until somebody notices a small button — and the
+     person is mid-transaction, looking at the amount, not at us. */
+  const online = useOnline();
+  const refetchAll = all.refetch;
+  const allFailed = all.isError;
+  React.useEffect(() => {
+    if (online && allFailed) void refetchAll();
+  }, [online, allFailed, refetchAll]);
 
   const found = useQuery({
     queryKey: tagKeys.list(query),
@@ -282,7 +294,14 @@ export function TagPicker({
           role="alert"
           className="border-rule flex items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2"
         >
-          <p className="text-ink-muted text-xs">ট্যাগের তালিকা আনা যায়নি।</p>
+          {/* Two different problems, and they need two different sentences. One
+              dropped request on mobile data used to read the same as a broken
+              server, and the only way out of either was to notice a small
+              button. Now the offline case says so, and the list comes back on
+              its own when the network does. */}
+          <p className="text-ink-muted text-xs">
+            {online ? 'ট্যাগের তালিকা আনা যায়নি।' : 'ইন্টারনেট নেই — ট্যাগের তালিকা আসেনি।'}
+          </p>
           <Button variant="outline" size="sm" onClick={() => void all.refetch()}>
             আবার
           </Button>

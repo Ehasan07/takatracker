@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import { BrandMark } from '@/components/brand-mark';
 import { StatementDocument, type PublicStatement } from './document';
 
 /**
@@ -47,13 +49,26 @@ export default async function SharedStatementPage({
 
   if (!response.ok) {
     /* One message for every reason — unknown, revoked, expired. Telling a
-       stranger which would confirm that somebody's statement was shared. */
+       stranger which would confirm that somebody's statement was shared.
+
+       Branded, because this is a real destination: a link forwarded on, or
+       opened a month late, lands here, and an unsigned sentence on a blank
+       page looks like a broken site rather than an expired credential. */
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
-        <h1 className="text-ink text-xl font-semibold">লিংকটি আর কাজ করছে না</h1>
-        <p className="text-ink-muted text-sm">
-          যিনি পাঠিয়েছেন তাঁর কাছে নতুন একটি লিংক চেয়ে নিন।
-        </p>
+      <main className="bg-paper flex min-h-dvh flex-col items-center justify-center gap-4 px-4 text-center">
+        <BrandMark size="md" />
+        <div>
+          <h1 className="text-ink text-xl font-semibold">লিংকটি আর কাজ করছে না</h1>
+          <p className="text-ink-muted mt-1 text-sm">
+            যিনি পাঠিয়েছেন তাঁর কাছে নতুন একটি লিংক চেয়ে নিন।
+          </p>
+        </div>
+        <Link
+          href="/"
+          className="press border-rule text-ink hover:bg-greenbar inline-flex min-h-11 items-center rounded-md border px-4 text-sm"
+        >
+          Taka Tracker কী?
+        </Link>
       </main>
     );
   }

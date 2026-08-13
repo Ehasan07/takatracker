@@ -211,6 +211,30 @@ describe('sharing a statement', () => {
     expect(read.body).not.toHaveProperty('workspaceId');
   });
 
+  it('carries what a document needs on its face', async () => {
+    /* A reference to quote on the phone, when it was drawn, and when the link
+       dies. The last one is not a leak — the reader is holding the link — and
+       it is the difference between printing it now and finding it dead the
+       week an insurer asks. */
+    const made = await share({ kind: 'PERSON', subjectId: personId, expiresInDays: 30 }).expect(
+      201,
+    );
+    const read = await ctx
+      .http()
+      .get(`/v1/public/statement/${tokenOf(made.body.url)}`)
+      .expect(200);
+
+    expect(read.body.reference).toMatch(/^[A-Z0-9]{8}$/);
+    expect(Date.parse(read.body.issuedAt)).not.toBeNaN();
+    const daysLeft = (Date.parse(read.body.expiresAt) - Date.now()) / 86_400_000;
+    expect(daysLeft).toBeGreaterThan(29);
+    expect(daysLeft).toBeLessThanOrEqual(30);
+
+    /* The reference is a fragment of the row id, which is not the secret. The
+       token is, and it must not have followed it onto the page. */
+    expect(JSON.stringify(read.body)).not.toContain(tokenOf(made.body.url));
+  });
+
   it('is not indexable', async () => {
     const made = await share({ kind: 'PERSON', subjectId: personId }).expect(201);
     const read = await ctx

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 import { Languages } from 'lucide-react';
+import { BrandMark } from '@/components/brand-mark';
 import { CONTACT, CONTENT_BN, SITE, SOCIAL } from './content';
 import { CONTENT_EN } from './content.en';
 
@@ -28,18 +29,8 @@ export function MarketingHeader() {
   return (
     <header className="border-rule bg-paper/85 sticky top-0 z-40 border-b backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link
-          href="/"
-          className="press flex min-h-11 items-center gap-2 font-semibold"
-          onClick={() => setOpen(false)}
-        >
-          <span
-            aria-hidden
-            className="bg-brand text-brand-contrast flex h-7 w-7 items-center justify-center rounded-md text-sm font-bold"
-          >
-            ৳
-          </span>
-          <span className="text-ink">{SITE.name}</span>
+        <Link href="/" className="press flex min-h-11 items-center" onClick={() => setOpen(false)}>
+          <BrandMark />
         </Link>
 
         <nav aria-label="প্রধান" className="ml-4 hidden items-center gap-1 md:flex">

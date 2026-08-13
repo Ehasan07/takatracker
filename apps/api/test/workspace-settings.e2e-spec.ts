@@ -36,12 +36,12 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(user))
-      .send({ quantityUnits: ['গজ', 'ভরি', 'স্ট্রিপ'] })
+      .send({ quantityUnits: ['তোলা', 'খাঁচা', 'ফাইল'] })
       .expect(200);
-    expect(saved.body.quantityUnits).toEqual(['গজ', 'ভরি', 'স্ট্রিপ']);
+    expect(saved.body.quantityUnits).toEqual(['তোলা', 'খাঁচা', 'ফাইল']);
 
     const read = await ctx.http().get('/v1/workspace/settings').set(auth(user)).expect(200);
-    expect(read.body.quantityUnits).toEqual(['গজ', 'ভরি', 'স্ট্রিপ']);
+    expect(read.body.quantityUnits).toEqual(['তোলা', 'খাঁচা', 'ফাইল']);
   });
 
   it('refuses a second spelling of a unit the build already ships', async () => {
@@ -52,9 +52,9 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(user))
-      .send({ quantityUnits: [' কেজি ', COMMON_QUANTITY_UNITS[0], 'গজ'] })
+      .send({ quantityUnits: [' কেজি ', COMMON_QUANTITY_UNITS[0], 'তোলা'] })
       .expect(200);
-    expect(res.body.quantityUnits).toEqual(['গজ']);
+    expect(res.body.quantityUnits).toEqual(['তোলা']);
   });
 
   it('refuses a repeat within one submission', async () => {
@@ -63,9 +63,9 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(user))
-      .send({ quantityUnits: ['গজ', 'গজ', ' গজ'] })
+      .send({ quantityUnits: ['তোলা', 'তোলা', ' তোলা'] })
       .expect(200);
-    expect(res.body.quantityUnits).toEqual(['গজ']);
+    expect(res.body.quantityUnits).toEqual(['তোলা']);
   });
 
   it('caps the list rather than letting the dropdown grow past a screen', async () => {
@@ -100,7 +100,7 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(mine))
-      .send({ quantityUnits: ['গজ'] })
+      .send({ quantityUnits: ['তোলা'] })
       .expect(200);
 
     const other = await ctx.http().get('/v1/workspace/settings').set(auth(theirs)).expect(200);
@@ -113,7 +113,7 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(user))
-      .send({ quantityUnits: ['গজ'] })
+      .send({ quantityUnits: ['তোলা'] })
       .expect(200);
 
     const cleared = await ctx
@@ -132,7 +132,7 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(user))
-      .send({ quantityUnits: ['গজ'] })
+      .send({ quantityUnits: ['তোলা'] })
       .expect(200);
 
     const untouched = await ctx
@@ -141,7 +141,7 @@ describe('workspace settings: quantity units', () => {
       .set(auth(user))
       .send({})
       .expect(200);
-    expect(untouched.body.quantityUnits).toEqual(['গজ']);
+    expect(untouched.body.quantityUnits).toEqual(['তোলা']);
   });
 
   it('removing a unit leaves transactions already recorded in it alone', async () => {
@@ -150,7 +150,7 @@ describe('workspace settings: quantity units', () => {
       .http()
       .patch('/v1/workspace/settings')
       .set(auth(user))
-      .send({ quantityUnits: ['গজ'] })
+      .send({ quantityUnits: ['তোলা'] })
       .expect(200);
 
     /* A fresh signup has the seeded categories but no accounts — the first one
@@ -181,7 +181,7 @@ describe('workspace settings: quantity units', () => {
         categoryId,
         description: 'কাপড়',
         quantityMilli: 3_000,
-        quantityUnit: 'গজ',
+        quantityUnit: 'তোলা',
       })
       .expect(201);
 
@@ -198,7 +198,7 @@ describe('workspace settings: quantity units', () => {
       .get(`/v1/transactions/${txn.body.id}`)
       .set(auth(user))
       .expect(200);
-    expect(after.body.quantityUnit).toBe('গজ');
+    expect(after.body.quantityUnit).toBe('তোলা');
     expect(after.body.quantityMilli).toBe(3_000);
 
     const report = await ctx
@@ -206,7 +206,7 @@ describe('workspace settings: quantity units', () => {
       .get('/v1/reports/by-quantity?from=2026-08-01&to=2026-08-31')
       .set(auth(user))
       .expect(200);
-    expect(report.body.units.some((row: { unit: string }) => row.unit === 'গজ')).toBe(true);
+    expect(report.body.units.some((row: { unit: string }) => row.unit === 'তোলা')).toBe(true);
   });
 
   it('requires a signed-in user', async () => {

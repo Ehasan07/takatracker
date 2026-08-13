@@ -37,6 +37,16 @@ export type PublicStatement = {
   locale: Locale;
   from: string | null;
   to: string | null;
+  /**
+   * A short code printed on the document, so a phone call about it has
+   * something to quote. Derived from the share row's id — which is not the
+   * secret; the token is — and never enough on its own to reach anything.
+   */
+  reference: string;
+  /** When this link stops working, so the reader knows to print it. */
+  expiresAt: string;
+  /** When this copy was drawn. A statement with no issue date is a screenshot. */
+  issuedAt: string;
   /** The name at the top: the person, the loan number, the plan, the insurer. */
   title: string;
   subtitle: string | null;
@@ -77,6 +87,11 @@ export class PublicStatementService {
       locale,
       from: share.from,
       to: share.to,
+      /* The tail of the id, upper-cased: short enough to read down a phone,
+         long enough to tell two of somebody's links apart. */
+      reference: share.id.slice(-8).toUpperCase(),
+      expiresAt: share.expiresAt,
+      issuedAt: new Date().toISOString(),
     };
 
     if (share.kind === 'PERSON') {

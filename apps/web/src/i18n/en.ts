@@ -191,6 +191,11 @@ export const EN: Record<string, string> = {
   'quantity.remove': 'Remove',
   'quantity.howMuch': 'How much',
   'quantity.unit': 'Unit',
+  'quantity.unitCommon': 'Most used',
+  'quantity.unitMine': 'Your units',
+  'quantity.unitOther': 'Type another unit…',
+  'quantity.unitOwnHint': 'e.g. tola, crate',
+  'quantity.unitFromList': 'Pick from the list',
   'quantity.hint': 'At month end you will see how much was bought — under “Quantity” in reports.',
 
   // --- another currency ------------------------------------------------------

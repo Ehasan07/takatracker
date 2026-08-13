@@ -177,25 +177,61 @@ test.describe('নিজের একক', () => {
     await page.goto('/settings');
     const input = page.getByLabel('নতুন একক');
     await expect(input).toBeVisible();
-    await input.fill('গজ');
+    await input.fill('তোলা');
     await page.getByRole('button', { name: 'যোগ করুন' }).click();
 
     /* Rendered from the server's answer, not the submitted string — so seeing
        it here means it was stored and cleaned, not just echoed. */
-    await expect(page.getByRole('button', { name: 'গজ এককটি সরান' })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'তোলা এককটি সরান' })).toBeVisible({
       timeout: 15_000,
     });
     const sheet = await openEntrySheet(page);
     await sheet.getByRole('button', { name: /পরিমাণ লিখবেন/ }).click();
 
-    /* A `<datalist>` cannot be opened from Playwright, so the option itself is
-       asserted: it is in the document, attached to the field, which is what
-       decides whether the browser offers it. */
-    const option = sheet.locator('#qty-units option[value="গজ"]');
-    await expect(option).toHaveCount(1);
+    /* A real `<select>` now, so the option can be chosen rather than merely
+       asserted to exist. It used to be a `<datalist>`, which Safari on iOS
+       renders as nothing at all — most of this product's traffic had no
+       dropdown whatsoever. */
+    const unit = sheet.getByLabel('একক');
+    await unit.selectOption('তোলা');
+    await expect(unit).toHaveValue('তোলা');
 
-    // The eight shipped ones are still there beside it.
-    await expect(sheet.locator('#qty-units option[value="কেজি"]')).toHaveCount(1);
+    // The shipped catalogue is still there beside it.
+    await unit.selectOption('কেজি');
+    await expect(unit).toHaveValue('কেজি');
+  });
+
+  test('offers the units this country actually buys in', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    const sheet = await openEntrySheet(page);
+    await sheet.getByRole('button', { name: /পরিমাণ লিখবেন/ }).click();
+    const unit = sheet.getByLabel('একক');
+
+    /* Gold is priced in ভরি, land in কাঠা, rice in মণ — and none of the three
+       is in any international unit list. Imperial is here for the half of a
+       Dhaka supermarket labelled in pounds. */
+    for (const local of ['ভরি', 'কাঠা', 'মণ', 'পাউন্ড', 'গ্যালন']) {
+      await unit.selectOption(local);
+      await expect(unit).toHaveValue(local);
+    }
+  });
+
+  test('still takes a unit nobody thought of', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    const sheet = await openEntrySheet(page);
+    await sheet.getByRole('button', { name: /পরিমাণ লিখবেন/ }).click();
+
+    /* The list is a shortcut, never a whitelist. A picker that cannot say the
+       true unit teaches people to leave the field empty, which is worse than
+       an odd string in it. */
+    await sheet.getByLabel('একক').selectOption({ label: 'অন্য একক লিখুন…' });
+    const typed = sheet.getByLabel('একক');
+    await typed.fill('খাঁচা');
+    await expect(typed).toHaveValue('খাঁচা');
   });
 
   test('refuses to add a unit the app already offers, and says why', async ({ page }) => {
@@ -207,24 +243,30 @@ test.describe('নিজের একক', () => {
        twice in the dropdown with only one of them removable here. */
     await expect(page.getByRole('button', { name: 'যোগ করুন' })).toBeDisabled();
     await expect(page.getByText('তালিকায় আগে থেকেই আছে', { exact: false })).toBeVisible();
+
+    /* And against the whole catalogue, not only the eight shortcuts. The API
+       drops a duplicate silently, so a check against a shorter list would
+       accept the tap and then show nothing. */
+    await page.getByLabel('নতুন একক').fill('ভরি');
+    await expect(page.getByRole('button', { name: 'যোগ করুন' })).toBeDisabled();
   });
 
   test('removing a unit is immediate and needs no confirmation', async ({ page }) => {
     await signup(page);
     await page.goto('/settings');
 
-    await page.getByLabel('নতুন একক').fill('ভরি');
+    await page.getByLabel('নতুন একক').fill('খাঁচা');
     await page.getByRole('button', { name: 'যোগ করুন' }).click();
-    const remove = page.getByRole('button', { name: 'ভরি এককটি সরান' });
+    const remove = page.getByRole('button', { name: 'খাঁচা এককটি সরান' });
     await expect(remove).toBeVisible({ timeout: 15_000 });
 
     /* No dialog: removing a suggestion is not destructive. Transactions already
-       saved in ভরি keep it, and the report keeps grouping them. */
+       saved in খাঁচা keep it, and the report keeps grouping them. */
     await remove.click();
     await expect(remove).toBeHidden({ timeout: 15_000 });
 
     await page.reload();
-    await expect(page.getByRole('button', { name: 'ভরি এককটি সরান' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'খাঁচা এককটি সরান' })).toBeHidden();
   });
 });
 
