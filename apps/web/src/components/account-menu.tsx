@@ -152,9 +152,37 @@ export function greetingFor(now: Date): string {
   return t('greeting.night', 'শুভ রাত্রি');
 }
 
-/** First name only — a full legal name in a greeting reads like a summons. */
+/**
+ * The part of a name a greeting should use.
+ *
+ * First word only, because a full legal name in a greeting reads like a
+ * summons — but *not* when the first word is an initial. `S M MEJBA UL HAQUE`
+ * greeted somebody as "S", which is not a name, it is a letter. Bangladeshi
+ * names carry initials constantly: `S M`, `Md.`, `A K M`, `S.M.` written solid.
+ *
+ * So initials are skipped until a real word turns up, and the honorific
+ * prefixes people write in front of their names go with them — `Md. Karim`
+ * should say Karim. If the whole name is initials there is nothing better to
+ * fall back to than the whole name.
+ */
+const HONORIFICS = new Set(['md', 'mst', 'mt', 'mr', 'mrs', 'ms', 'dr', 'engr', 'prof']);
+
+/** `S`, `S.`, `S.M.`, `মো:` — a token with no word in it. */
+function isInitial(token: string): boolean {
+  const letters = token.replace(/[.-]/g, '');
+  return letters.length <= 2 && !/\d/.test(letters);
+}
+
 export function firstNameOf(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? '';
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+
+  const real = words.find(
+    (word) => !isInitial(word) && !HONORIFICS.has(word.replace(/[.-]/g, '').toLowerCase()),
+  );
+  /* Nothing but initials — `S M K` — so the whole thing is the best there is.
+     Greeting somebody by one arbitrary letter of their own name is worse. */
+  return real ?? words.join(' ');
 }
 
 export function useGreeting(): { greeting: string; name: string } {

@@ -81,9 +81,20 @@ export class SmsSender {
       const body = (await response.text()).trim();
 
       /* The provider answers 200 with a body that says what happened, so the
-         status alone proves nothing. Anything that is not a success token is
-         treated as a refusal and logged verbatim. */
-      const ok = response.ok && /^(smsid|ok|success)/i.test(body);
+       * status alone proves nothing. A queued message reads:
+       *
+       *     SMS SUBMITTED: ID - bw-rdC40009596a7dbb6b78f3a
+       *
+       * That exact shape was read off the live gateway, not guessed. The first
+       * version of this line matched `smsid|ok|success` — invented from what
+       * such an API usually says — and would have logged every successful send
+       * as a refusal while the message went out anyway: the audit trail wrong
+       * in the one direction nobody would think to check.
+       *
+       * Anything else is treated as a refusal and logged verbatim, because the
+       * error strings are not documented and a wrong guess in *that* direction
+       * only costs a noisy log line. */
+      const ok = response.ok && /submitted|^smsid|^success/i.test(body);
       if (!ok) {
         this.logger.warn(`SMS refused for ${maskPhone(phone)}: ${body.slice(0, 200)}`);
         return { ok: false, failure: 'REJECTED', detail: body.slice(0, 200) };

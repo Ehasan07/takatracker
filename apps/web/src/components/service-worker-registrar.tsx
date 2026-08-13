@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
+import { isRefreshing } from '@/lib/api';
 
 /**
  * Registers the service worker and shows the custom
@@ -61,6 +62,44 @@ const DISMISS_KEY = 'hishab.install-prompt.dismissed';
  */
 let refreshing = false;
 
+/**
+ * Reload, but never on top of a token rotation.
+ *
+ * Reloading mid-refresh is not merely wasteful: the request is cancelled after
+ * the server has already spent the refresh token, the browser keeps the old one
+ * in its cookie, and the next load presents it. The server reads that as a
+ * replayed token — correctly, that is what reuse detection is for — revokes the
+ * whole family, and the person is signed out of their own books by an update
+ * they never asked for. It was visible in production as three
+ * `Refresh token reuse detected` lines and a dashboard with no name on it.
+ *
+ * So the reload waits for the rotation to land. The ceiling is there because a
+ * refresh that never settles must not leave the page waiting forever; taking
+ * the update on the *next* launch is a small cost, and signing somebody out is
+ * not.
+ */
+export const RELOAD_POLL_MS = 400;
+export const RELOAD_GIVE_UP_MS = 10_000;
+
+/**
+ * The decision on its own, so it can be tested without a browser.
+ *
+ * Two ways to say yes and they mean different things: the rotation finished, or
+ * it never will. The second is a deliberate surrender — a refresh that hangs
+ * must not leave the page pinned to an old build forever.
+ */
+export function shouldReloadNow(busy: boolean, elapsedMs: number): boolean {
+  return !busy || elapsedMs > RELOAD_GIVE_UP_MS;
+}
+
+function reloadOnceItIsSafe(startedAt = Date.now()): void {
+  if (shouldReloadNow(isRefreshing(), Date.now() - startedAt)) {
+    window.location.reload();
+    return;
+  }
+  window.setTimeout(() => reloadOnceItIsSafe(startedAt), RELOAD_POLL_MS);
+}
+
 function adoptUpdates(): void {
   const container = navigator.serviceWorker;
 
@@ -75,7 +114,7 @@ function adoptUpdates(): void {
   container.addEventListener('controllerchange', () => {
     if (!hadController || refreshing) return;
     refreshing = true;
-    window.location.reload();
+    reloadOnceItIsSafe();
   });
 
   if (!hadController) return;

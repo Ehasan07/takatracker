@@ -46,6 +46,23 @@ export class QueuedOfflineError extends Error {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
+/**
+ * True while a token rotation is on the wire.
+ *
+ * The mutex above is per *page load*, which is enough for the case it was
+ * written for — several 401s at once — and not enough for a reload. A refresh
+ * that is cancelled halfway leaves the server having already spent the token
+ * while the browser still holds the old one in its cookie; the next load
+ * presents it, and the server correctly reads that as a replay and revokes the
+ * whole family. The person is signed out of their own books by an update.
+ *
+ * Anything that deliberately reloads the page has to wait for this to be
+ * false. See `adoptUpdates` in `service-worker-registrar.tsx`.
+ */
+export function isRefreshing(): boolean {
+  return refreshInFlight !== null;
+}
+
 async function refreshSession(): Promise<boolean> {
   refreshInFlight ??= (async () => {
     try {

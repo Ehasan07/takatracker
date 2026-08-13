@@ -49,7 +49,17 @@ export function LanguageSettings() {
     retry: false,
   });
 
-  const current = settings.data?.locale ?? 'bn';
+  /**
+   * `undefined` until the server has answered, and deliberately not `'bn'`.
+   *
+   * Defaulting to Bengali drew the Bengali button as the current choice
+   * whatever the workspace actually reads in — and because the handler returns
+   * early on the button that is already selected, pressing it did nothing at
+   * all. On a slow connection somebody switching *back* to Bengali tapped a
+   * live-looking button and watched nothing happen.
+   */
+  const current = settings.data?.locale;
+  const loading = settings.isPending;
 
   const save = useMutation({
     mutationFn: (locale: Locale) =>
@@ -93,7 +103,10 @@ export function LanguageSettings() {
                 save.mutate(locale);
               }}
               aria-pressed={on}
-              disabled={save.isPending}
+              /* Nothing is pressable until it is known which one is already
+                 chosen; otherwise one of the two is a button that silently
+                 does nothing. */
+              disabled={loading || save.isPending}
               className={
                 on
                   ? 'border-brand bg-brand-tint text-brand min-h-11 rounded-md border text-sm font-semibold'
@@ -106,7 +119,7 @@ export function LanguageSettings() {
         })}
       </div>
 
-      <p className="text-ink-muted mt-2 text-xs">{LABELS[current].note}</p>
+      <p className="text-ink-muted mt-2 text-xs">{current ? LABELS[current].note : '…'}</p>
 
       {/* Said plainly. "Language" on a settings page normally means the reader's
           own, and this one is the books'. */}

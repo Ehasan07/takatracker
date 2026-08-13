@@ -70,8 +70,14 @@ async function switchTo(page: Page, label: 'English' | 'বাংলা'): Promi
    *
    * The reload is the thing being waited for, so it is the thing to wait on.
    */
+  /* Both buttons are disabled until the server has said which language the
+     workspace is already in — see `language-settings.tsx`. Clicking before
+     that lands on a control that cannot act. */
+  const button = page.getByRole('group', { name: 'ভাষা' }).getByRole('button', { name: label });
+  await expect(button).toBeEnabled({ timeout: 15_000 });
+
   const reloaded = page.waitForEvent('load');
-  await page.getByRole('group', { name: 'ভাষা' }).getByRole('button', { name: label }).click();
+  await button.click();
   await reloaded;
 }
 
@@ -127,10 +133,6 @@ test.describe('language', () => {
   test('and switching back gives Bengali again', async ({ page }) => {
     await signup(page);
     await switchTo(page, 'English');
-    await expect(page.getByText('Language'))
-      .toBeHidden({ timeout: 15_000 })
-      .catch(() => undefined);
-
     await switchTo(page, 'বাংলা');
     await page.goto('/');
     await expect(page.getByText('এই মাসের হিসাব').first()).toBeVisible({ timeout: 15_000 });
