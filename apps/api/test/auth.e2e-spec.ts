@@ -298,7 +298,7 @@ describe('auth', () => {
     expect(res.body.passwordHash).toBeUndefined();
   });
 
-  it('rotates refresh tokens and revokes the family when one is replayed', async () => {
+  it('rotates refresh tokens and revokes the family when a used one is replayed', async () => {
     const user = await signup(ctx);
 
     const first = await ctx
@@ -309,11 +309,87 @@ describe('auth', () => {
     const rotated = first.body.refreshToken as string;
     expect(rotated).not.toBe(user.refreshToken);
 
-    // Replaying the original token is the stolen-token signal.
+    /* Spend the replacement first. That is what makes the replay theft rather
+       than a dropped response: two parties now hold tokens from one family, and
+       there is no innocent way that happens. */
+    const second = await ctx
+      .http()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: rotated })
+      .expect(200);
+
     await ctx.http().post('/v1/auth/refresh').send({ refreshToken: user.refreshToken }).expect(401);
 
     // …and it takes the whole family down with it.
-    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: rotated }).expect(401);
+    await ctx
+      .http()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: second.body.refreshToken })
+      .expect(401);
+  });
+
+  it('keeps the session when the rotation never reached the browser', async () => {
+    /* Production, not theory: one user closed the app and opened it again and
+       got ten "reuse detected" warnings in twenty-five seconds. The server had
+       spent the token and set a new one in a `Set-Cookie` the phone never
+       received — a lost signal, a backgrounded app the OS killed, a reload from
+       a service-worker update. The old rule read that as theft. */
+    const user = await signup(ctx);
+
+    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: user.refreshToken }).expect(200);
+
+    /* The replacement is never presented — nobody has it. Asking again with the
+       only token this browser has must work. */
+    const again = await ctx
+      .http()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: user.refreshToken })
+      .expect(200);
+
+    const recovered = again.body.refreshToken as string;
+    await ctx
+      .http()
+      .get('/v1/auth/me')
+      .set('Authorization', `Bearer ${again.body.accessToken}`)
+      .expect(200);
+
+    // And the recovered token is itself a working, rotatable one.
+    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: recovered }).expect(200);
+  });
+
+  it('leaves exactly one live token in the family after a recovery', async () => {
+    /* The whole scheme rests on one live token per family. The replacement the
+       browser never saw has to be retired, or a recovery would quietly leave
+       two usable tokens behind. */
+    const user = await signup(ctx);
+
+    const first = await ctx
+      .http()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: user.refreshToken })
+      .expect(200);
+    const orphaned = first.body.refreshToken as string;
+
+    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: user.refreshToken }).expect(200);
+
+    // The one that never arrived is dead, and using it does not resurrect it.
+    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: orphaned }).expect(401);
+  });
+
+  it('still calls it theft once the window has passed', async () => {
+    const user = await signup(ctx);
+
+    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: user.refreshToken }).expect(200);
+
+    /* Age the rotation past the grace window. A phone coming back from a
+       tunnel is seconds late; somebody replaying a copied cookie is not
+       racing the real holder by under a minute. */
+    await ctx.prisma.refreshToken.updateMany({
+      where: { userId: user.id, usedAt: { not: null } },
+      data: { usedAt: new Date(Date.now() - 5 * 60_000) },
+    });
+
+    await ctx.http().post('/v1/auth/refresh').send({ refreshToken: user.refreshToken }).expect(401);
   });
 
   it('refuses unauthenticated access to /me', async () => {

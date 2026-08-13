@@ -62,6 +62,16 @@ const ACCESS_TTL = process.env.JWT_ACCESS_TTL ?? '15m';
 /** The same window, in seconds, for the `expiresIn` a client schedules refreshes on. */
 const ACCESS_TTL_SECONDS = 15 * 60;
 
+/**
+ * How long after a rotation a replay can still be a dropped response.
+ *
+ * Sixty seconds. A phone that lost signal mid-request, or an app the OS killed
+ * while it was backgrounded, is back within a few of them; somebody replaying a
+ * cookie they copied is not racing the legitimate holder by less than a minute.
+ * See `recoverLostRotation`.
+ */
+const ROTATION_GRACE_MS = 60_000;
+
 /** Moved to auth.helpers.ts to keep this file out of an import cycle; re-exported so existing importers are undisturbed. */
 export { ARGON_OPTIONS } from './auth.helpers';
 
@@ -541,6 +551,32 @@ export class AuthService {
   /**
    * Rotate a refresh token. Replaying an already-used token revokes the whole
    * family — the classic stolen-token defence (spec §9).
+   *
+   * ## Except when the replay is the network, not a thief
+   *
+   * Rotation has a gap the client cannot close: the server marks the old token
+   * spent and sets the new one in a `Set-Cookie` the browser may never receive.
+   * A phone that loses signal mid-request, an iOS app killed while
+   * backgrounded, a page reloaded by a service-worker update — all of them
+   * leave the server having spent a token the browser still holds. The next
+   * open presents it, and the strict rule reads a dropped response as theft and
+   * signs somebody out of their own books.
+   *
+   * That is not theoretical. It happened in production: ten "reuse detected"
+   * warnings in twenty-five seconds for one user who had done nothing but close
+   * the app and open it again.
+   *
+   * So the replay is only theft if somebody actually *used* what the replay
+   * would have produced. Within a short window, if the replacement token has
+   * never been presented, the only consistent explanation is that it never
+   * arrived — so the child is revoked, a fresh one is issued in the same
+   * family, and the session lives. If the child *has* been used, two parties
+   * hold tokens from one family and the family goes, exactly as before.
+   *
+   * This is what RFC 9700 §4.14.2 describes as the alternative to blind
+   * revocation, and it costs nothing a thief could use: they would still have
+   * to present a token whose successor is unused, inside the window, and every
+   * such event is logged.
    */
   async refresh(token: string, deviceId?: string, userAgent?: string): Promise<AuthResult> {
     const tokenHash = AuthService.hashToken(token);
@@ -550,6 +586,11 @@ export class AuthService {
     });
 
     if (!stored) throw new UnauthorizedException('সেশন মেয়াদোত্তীর্ণ');
+
+    if (stored.usedAt && !stored.revokedAt) {
+      const recovered = await this.recoverLostRotation(stored, deviceId, userAgent);
+      if (recovered) return recovered;
+    }
 
     if (stored.usedAt || stored.revokedAt) {
       await this.prisma.refreshToken.updateMany({
@@ -586,6 +627,69 @@ export class AuthService {
       where: { id: stored.id },
       data: { usedAt: new Date(), replacedBy: AuthService.hashToken(next.refreshToken) },
     });
+
+    return next;
+  }
+
+  /**
+   * The replay that is a dropped response rather than a stolen token.
+   *
+   * Returns a new session when the evidence says the browser never received
+   * the last rotation, and `null` when it cannot tell — in which case the
+   * caller falls through to revoking the family, which is still the default.
+   *
+   * Two conditions, both required:
+   *
+   *  - **The window.** A thief who copied a cookie is not racing us by two
+   *    minutes; a phone that lost signal mid-request is back within seconds.
+   *  - **The successor is untouched.** This is the real test. If the token this
+   *    one was replaced by has been used, two parties are holding tokens from
+   *    one family and there is no innocent explanation. If it has not, nobody
+   *    has ever presented it, and the only way that happens is that it never
+   *    arrived.
+   */
+  private async recoverLostRotation(
+    stored: { id: string; familyId: string; usedAt: Date | null; replacedBy: string | null },
+    deviceId?: string,
+    userAgent?: string,
+  ): Promise<AuthResult | null> {
+    if (!stored.usedAt || !stored.replacedBy) return null;
+    if (Date.now() - stored.usedAt.getTime() > ROTATION_GRACE_MS) return null;
+
+    const child = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: stored.replacedBy },
+      include: { user: true },
+    });
+    if (!child || child.usedAt || child.revokedAt) return null;
+    if (child.expiresAt.getTime() < Date.now()) return null;
+
+    const workspace = await this.defaultWorkspace(child.userId).catch(() => null);
+    if (!workspace) return null;
+
+    /* The child is retired rather than handed out: we hold its hash, not the
+       token itself, so there is nothing to give back. Revoking it keeps one
+       live token per family, which is the property the whole scheme rests on. */
+    await this.prisma.refreshToken.update({
+      where: { id: child.id },
+      data: { revokedAt: new Date() },
+    });
+
+    const next = await this.issue(child.user, workspace, {
+      deviceId,
+      userAgent,
+      familyId: stored.familyId,
+    });
+
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { usedAt: new Date(), replacedBy: AuthService.hashToken(next.refreshToken) },
+    });
+
+    /* Logged every time. It is a legitimate path, but it is also the one a
+       thief would have to walk, so it must never be silent. */
+    this.logger.warn(
+      `Refresh replay inside the grace window for user ${child.userId}; the last rotation never reached the client, so the session was kept`,
+    );
 
     return next;
   }
