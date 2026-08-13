@@ -6,6 +6,7 @@ import * as React from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
+import { PasswordInput } from '@/components/ui/password-input';
 import { fmtNumber } from '@/lib/format';
 
 /**
@@ -102,10 +103,9 @@ function LoginForm() {
 
       {mode === 'password' ? (
         <Field label="পাসওয়ার্ড" htmlFor="password">
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="current-password"
             required
             value={password}

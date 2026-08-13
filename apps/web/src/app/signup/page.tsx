@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { PasswordInput } from '@/components/ui/password-input';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import {
@@ -174,10 +175,9 @@ export default function SignupPage() {
         </Field>
 
         <Field label="পাসওয়ার্ড" htmlFor="password">
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="new-password"
             required
             minLength={8}

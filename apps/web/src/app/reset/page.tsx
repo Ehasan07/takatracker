@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { Field, Input } from '@/components/ui/field';
+import { Field } from '@/components/ui/field';
+import { PasswordInput } from '@/components/ui/password-input';
 import { api, ApiError } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
@@ -187,10 +188,9 @@ function ResetForm() {
         htmlFor="reset-password"
         error={tooShort ? `কমপক্ষে ${MIN_LENGTH} অক্ষর` : undefined}
       >
-        <Input
+        <PasswordInput
           id="reset-password"
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={MIN_LENGTH}
@@ -222,10 +222,9 @@ function ResetForm() {
         htmlFor="reset-confirm"
         error={mismatch ? 'দুই ঘরের পাসওয়ার্ড এক হয়নি' : undefined}
       >
-        <Input
+        <PasswordInput
           id="reset-confirm"
           name="confirm"
-          type="password"
           autoComplete="new-password"
           required
           value={confirm}

@@ -105,6 +105,8 @@ export const EN: Record<string, string> = {
   'common.searchResults': 'Search results',
   'common.clearSearch': 'Clear the search',
   'common.close': 'Close',
+  'password.show': 'Show',
+  'password.hide': 'Hide',
   'common.new': 'New',
   'common.edit': 'Edit',
   'common.delete': 'Delete',

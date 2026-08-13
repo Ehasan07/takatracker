@@ -104,3 +104,34 @@ test.describe('the way in', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 });
+
+test.describe('the password box', () => {
+  test('can be looked at, and starts hidden', async ({ page }) => {
+    /* Every one of these is filled on a phone keyboard, where a mis-hit is
+       invisible until the form comes back "পাসওয়ার্ড ভুল" — and the person
+       cannot tell whether they typed the wrong password or the right one
+       badly. The usual next step is a reset nobody needed. */
+    await page.goto('/login');
+
+    const box = page.getByLabel('পাসওয়ার্ড');
+    await expect(box).toHaveAttribute('type', 'password');
+
+    const reveal = page.getByRole('button', { name: 'দেখান' });
+    await expect(reveal).toBeVisible();
+    await reveal.click();
+
+    await expect(box).toHaveAttribute('type', 'text');
+    await expect(page.getByRole('button', { name: 'লুকান' })).toBeVisible();
+  });
+
+  test('is hidden again on the next screen that asks for one', async ({ page }) => {
+    /* Shoulders. Revealing is something somebody does deliberately, not a
+       preference that follows them around. */
+    await page.goto('/login');
+    await page.getByRole('button', { name: 'দেখান' }).click();
+    await expect(page.getByLabel('পাসওয়ার্ড')).toHaveAttribute('type', 'text');
+
+    await page.goto('/signup');
+    await expect(page.getByLabel('পাসওয়ার্ড')).toHaveAttribute('type', 'password');
+  });
+});

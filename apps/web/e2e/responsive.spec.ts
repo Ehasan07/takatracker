@@ -38,6 +38,14 @@ async function signup(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'ড্যাশবোর্ড' })).toBeVisible();
 }
 
+/** The add button, whichever of the two this width shows. */
+async function pressAdd(page: Page, phoneLabel: string): Promise<void> {
+  const compact = page.getByRole('button', { name: 'নতুন', exact: true });
+  const full = page.getByRole('button', { name: phoneLabel, exact: true });
+  await ((await compact.isVisible()) ? compact : full).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+}
+
 test.describe('responsive shell', () => {
   test('shows the bottom tab bar below 768px and the sidebar above it', async ({
     page,
@@ -71,6 +79,42 @@ test.describe('responsive shell', () => {
         `${path} overflows at ${page.viewportSize()?.width}px`,
       ).toBeLessThanOrEqual(overflow.clientWidth + 1);
     }
+  });
+
+  test('the entry sheet never overflows sideways either', async ({ page }) => {
+    /* The page-level check above never opened a dialog, which is exactly where
+       this was reported from: a phone screenshot with the keypad's third
+       column, the amount and the tab strip all cut off at the same right edge.
+       A sheet is `position: fixed` and can be wider than the document without
+       the document itself scrolling, so it has to be measured on its own. */
+    await signup(page);
+    await page.goto('/accounts');
+    await pressAdd(page, 'নতুন অ্যাকাউন্ট যোগ করুন');
+    await page.getByLabel('নাম').fill('নগদ');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await page.goto('/transactions');
+    await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    const viewport = page.viewportSize()?.width ?? 0;
+    const box = await sheet.boundingBox();
+    expect(box, 'the sheet should be laid out').not.toBeNull();
+    expect(box!.x, `sheet starts off-screen at ${viewport}px`).toBeGreaterThanOrEqual(-1);
+    expect(box!.x + box!.width, `sheet runs past ${viewport}px`).toBeLessThanOrEqual(viewport + 1);
+
+    /* And nothing inside it sticks out — a `chip-strip` scrolls on purpose, so
+       the check is on the sheet's own scroll width, not on every descendant. */
+    const inner = await sheet.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(inner.scrollWidth, `sheet content overflows at ${viewport}px`).toBeLessThanOrEqual(
+      inner.clientWidth + 1,
+    );
   });
 
   test('every nav target is at least 44x44', async ({ page }) => {
