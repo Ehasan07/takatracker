@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, FileText, Printer, Share2 } from 'lucide-react';
+import { Download, FileText, Link2, Printer, Share2 } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
@@ -72,6 +72,7 @@ export function StatementView({
   isError,
   onRetry,
   fileBaseName,
+  onShareLink,
   children,
 }: {
   heading: string;
@@ -83,6 +84,16 @@ export function StatementView({
   isError: boolean;
   onRetry: () => void;
   fileBaseName: string;
+  /**
+   * Open the link sheet, on screens that can mint one.
+   *
+   * It belongs in the same row as the other four ways of sending a statement,
+   * not in a corner of the page. It was in a corner, labelled "শেয়ার", beside
+   * a button in this row also labelled "শেয়ার" — so the person who wanted a
+   * link pressed the one that copies a six-line text summary, which is what
+   * happened the first time somebody tried it.
+   */
+  onShareLink?: () => void;
   /** Anything that belongs above the table on both screen and paper. */
   children?: React.ReactNode;
 }) {
@@ -198,7 +209,16 @@ export function StatementView({
 
       {/* Exports */}
       <div className="no-print flex flex-col gap-1.5">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div
+          className={`grid grid-cols-2 gap-2 ${onShareLink ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}
+        >
+          {/* First, because it is the only one that puts the statement in
+              somebody else's hands without them needing this app. */}
+          {onShareLink ? (
+            <ExportButton icon={<Link2 className="h-4 w-4" aria-hidden />} onClick={onShareLink}>
+              লিংক
+            </ExportButton>
+          ) : null}
           <ExportButton icon={<FileText className="h-4 w-4" aria-hidden />} onClick={printThisPage}>
             পিডিএফ
           </ExportButton>
@@ -208,11 +228,17 @@ export function StatementView({
           <ExportButton icon={<Printer className="h-4 w-4" aria-hidden />} onClick={printThisPage}>
             প্রিন্ট
           </ExportButton>
+          {/* Renamed from "শেয়ার". It sends six lines of text to WhatsApp; the
+              button beside it sends the whole statement. Both were called the
+              same thing, and the wrong one is the one people pressed. */}
           <ExportButton icon={<Share2 className="h-4 w-4" aria-hidden />} onClick={onShare}>
-            শেয়ার
+            সারাংশ
           </ExportButton>
         </div>
         <p className="text-ink-muted text-xs">
+          {onShareLink
+            ? 'লিংক — যাকে পাঠাবেন তিনি অ্যাকাউন্ট ছাড়াই পুরো বিবরণী দেখতে ও প্রিন্ট করতে পারবেন। সারাংশ — শুধু কয়েক লাইনের হিসাব, হোয়াটসঅ্যাপে পাঠানোর জন্য। '
+            : ''}
           পিডিএফ ও প্রিন্ট — দুটিই ব্রাউজারের প্রিন্ট উইন্ডো খোলে; সেখানে গন্তব্য হিসেবে “Save as
           PDF” বেছে নিলে পিডিএফ সংরক্ষিত হবে। এক্সেল ফাইলটি .csv ফরম্যাটে নামে।
         </p>

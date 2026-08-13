@@ -5,6 +5,7 @@ import { fmtDate, fmtDateObject } from '@/lib/format';
 import { t } from '@/lib/t';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
+import { ACCOUNT_CLASS, LIQUID_TYPES } from '@hishab/core';
 import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useGreeting } from '@/components/account-menu';
@@ -34,7 +35,6 @@ export default function DashboardPage() {
     queryFn: () => endpoints.transactions({ limit: 5 }),
   });
 
-  const totalBalance = (accounts.data ?? []).reduce((sum, a) => sum + a.balanceMinor, 0);
   const topCategories = (summary.data?.expenseByCategory ?? []).slice(0, 5);
   const largest = topCategories[0]?.totalMinor ?? 0;
 
@@ -122,17 +122,53 @@ export default function DashboardPage() {
             href="/accounts"
             className="press text-ink-muted hover:text-ink flex items-center gap-1 text-sm font-medium"
           >
-            {t('dashboard.totalBalance', 'মোট ব্যালেন্স')}
+            {t('dashboard.liquid', 'হাতে ও ব্যাংকে')}
             <ChevronRight className="h-4 w-4" aria-hidden />
           </Link>
           <p className="mt-1">
-            <Money minor={totalBalance} className="text-2xl font-semibold" />
+            <Money minor={summary.data?.liquidMinor ?? 0} className="text-2xl font-semibold" />
           </p>
+
+          {/* Two figures, because they answer two different questions and the
+              old screen answered neither. It added every account of every type
+              together and called the result "মোট ব্যালেন্স": a ৳10,00,000 plot
+              of land sat in the same total as ৳3,600 of cash, so the headline
+              said a person could spend ten lakh they could not touch. It also
+              left out money lent, which lives in a hidden control account.
+
+              Above: what can be spent today. Below: what it is all worth. That
+              split is the current/non-current distinction every balance sheet
+              is required to make, and the reason it is required is exactly the
+              mistake this screen was making. */}
+          <p className="text-ink-muted mt-3 flex items-baseline justify-between gap-3 text-sm">
+            <span>{t('dashboard.netWorth', 'নিট সম্পদ')}</span>
+            <Money
+              minor={summary.data?.netWorthMinor ?? 0}
+              colored
+              className="text-ink shrink-0 font-medium"
+            />
+          </p>
+          <p className="text-ink-muted text-xs">
+            {t('dashboard.netWorthHint', 'জমি, সঞ্চয়, পাওনা — সব ধরে, দায় বাদ দিয়ে')}
+          </p>
+
           {/* Never a bare number: the breakdown is always visible. */}
-          <ul className="divide-rule mt-3 divide-y">
+          <ul className="divide-rule mt-3 divide-y border-t pt-1">
             {(accounts.data ?? []).map((account) => (
               <li key={account.id} className="flex items-center justify-between gap-3 py-1.5">
-                <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
+                <span className="text-ink min-w-0 truncate text-sm">
+                  {account.name}
+                  {/* Says why a line is not in the figure above it. Without
+                      this the breakdown looks like it should add up to the
+                      headline, and it deliberately does not. */}
+                  {LIQUID_TYPES.includes(account.type) ? null : (
+                    <span className="text-ink-muted ml-1.5 text-xs">
+                      {ACCOUNT_CLASS[account.type] === 'LIABILITY'
+                        ? t('dashboard.isLiability', '· দায়')
+                        : t('dashboard.isAsset', '· সম্পদ')}
+                    </span>
+                  )}
+                </span>
                 <Money minor={account.balanceMinor} className="shrink-0 text-sm" />
               </li>
             ))}

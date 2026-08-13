@@ -169,6 +169,28 @@ describe('reports', () => {
     expect(JSON.stringify(res.body)).not.toContain('SYSTEM_');
   });
 
+  it('gives the dashboard the same two figures the balance sheet does', async () => {
+    /* The dashboard used to add up `GET /accounts` and call it "মোট ব্যালেন্স".
+       That summed a ৳500,000 plot of land with ৳3,600 of cash — telling
+       somebody they had half a million to spend — while leaving out the money
+       they had lent, which lives in a hidden control account. Wrong in both
+       directions from one line of arithmetic on a screen.
+
+       This is the assertion that stops it coming back: the headline figures
+       come from `buildBalanceSheet`, so the dashboard and the balance sheet
+       cannot disagree about whether land is money. */
+    const summary = await get('/v1/transactions/summary').expect(200);
+    const sheet = await get('/v1/reports/balance-sheet').expect(200);
+
+    expect(summary.body.liquidMinor).toBe(sheet.body.liquidMinor);
+    expect(summary.body.netWorthMinor).toBe(sheet.body.netWorthMinor);
+
+    // And the two are genuinely different numbers here, or the test proves nothing.
+    expect(summary.body.liquidMinor).not.toBe(summary.body.netWorthMinor);
+    // Land is worth ৳500,000 and is not spendable balance.
+    expect(summary.body.liquidMinor).toBeLessThan(50_000_000);
+  });
+
   it('closes the cash flow exactly on the liquid balance', async () => {
     const res = await get('/v1/reports/cash-flow').expect(200);
     expect(res.body.openingMinor).toBe(5_100_000);

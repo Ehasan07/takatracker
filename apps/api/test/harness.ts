@@ -112,6 +112,12 @@ export async function createTestApp(): Promise<TestContext> {
 /** Order matters only for readability — CASCADE does the work. */
 export const TEST_TABLES = [
   'AuditEvent',
+  /* Shared spending, before the ledger it points at. */
+  'SplitSettlement',
+  'SharedExpenseShare',
+  'SharedExpense',
+  'SplitGroupMember',
+  'SplitGroup',
   'LedgerEntry',
   'Transaction',
   'TransactionDraft',

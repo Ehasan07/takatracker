@@ -186,6 +186,40 @@ test.describe('sharing a statement', () => {
     await stranger.close();
   });
 
+  test('the party ledger can send itself, and says which button does what', async ({
+    page,
+    browser,
+  }) => {
+    await signup(page);
+    await lend(page);
+
+    /* The statement a creditor actually asks for — every loan with one person
+       on one running balance — and the screen had no way to send it at all. */
+    await page.goto('/people');
+    await page
+      .getByRole('list', { name: 'মানুষজন' })
+      .getByRole('link', { name: 'হিসাবের খাতা' })
+      .first()
+      .click();
+
+    /* Two buttons on this screen were both called "শেয়ার": one copies six
+       lines of text to WhatsApp, the other mints a link to the whole
+       statement. The first person to try it pressed the wrong one. */
+    await expect(page.getByRole('button', { name: 'সারাংশ' })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'লিংক', exact: true }).click();
+
+    const sheet = page.getByRole('dialog');
+    await sheet.getByRole('button', { name: 'লিংক তৈরি করুন' }).click();
+    const url = await sheet.getByLabel('শেয়ার লিংক').inputValue();
+    expect(url).toContain('/s/');
+
+    const stranger = await browser.newContext();
+    const guest = await stranger.newPage();
+    await guest.goto(url);
+    await expect(guest.getByRole('heading', { name: 'করিম' })).toBeVisible({ timeout: 15_000 });
+    await stranger.close();
+  });
+
   test('a dead link still says whose page it is', async ({ page }) => {
     await page.goto('/s/definitely-not-a-real-token');
     await expect(page.getByText('লিংকটি আর কাজ করছে না')).toBeVisible({ timeout: 15_000 });

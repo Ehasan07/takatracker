@@ -10,6 +10,7 @@ import { ImportModule } from './import/import.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { LoansModule } from './loans/loans.module';
+import { SplitModule } from './split/split.module';
 import { MailAccountsModule } from './mail-accounts/mail-accounts.module';
 import { SavingsModule } from './savings/savings.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
@@ -42,6 +43,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     SavingsModule,
     InsuranceModule,
     LoansModule,
+    SplitModule,
     PeopleModule,
     FxModule,
     TranslationsModule,

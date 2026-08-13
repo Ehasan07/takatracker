@@ -1,14 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronRight, Link2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { ShareStatementSheet } from '@/components/share-statement-sheet';
 import { SkeletonRows } from '@/components/skeleton';
-import { t } from '@/lib/t';
 import { bnDate, bnNum, directionLabel } from '../../labels';
 import { QueryError, StatusPill } from '../../parts';
 import { fetchLoans, fetchPartyLedger, loanKeys } from '../../queries';
@@ -56,30 +55,13 @@ export default function PartyLedgerPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-      <div className="no-print flex items-center justify-between gap-2">
-        <Link
-          href="/loans"
-          className="press text-ink-muted hover:text-ink flex min-h-11 w-fit items-center gap-1.5 text-sm"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          ধার-দেনা
-        </Link>
-
-        {/* This is the statement a creditor actually asks for — every loan with
-            one person on one running balance — and it was the one screen with
-            no way to send it. The people list had the button; somebody standing
-            on the ledger they wanted to share had to go back and find the row. */}
-        {person ? (
-          <button
-            type="button"
-            onClick={() => setSharing(true)}
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
-          >
-            <Link2 className="h-4 w-4" aria-hidden />
-            {t('share.short', 'শেয়ার')}
-          </button>
-        ) : null}
-      </div>
+      <Link
+        href="/loans"
+        className="press text-ink-muted hover:text-ink no-print flex min-h-11 w-fit items-center gap-1.5 text-sm"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        ধার-দেনা
+      </Link>
 
       {sharing && person ? (
         <ShareStatementSheet
@@ -191,6 +173,10 @@ export default function PartyLedgerPage() {
         isError={ledger.isError}
         onRetry={() => void ledger.refetch()}
         fileBaseName={`party-${person?.name ?? personId}-ledger`}
+        /* Every loan with one person on one running balance — the statement a
+           creditor actually asks for, and until now the one screen with no way
+           to send it. */
+        onShareLink={person ? () => setSharing(true) : undefined}
       />
     </div>
   );

@@ -18,6 +18,7 @@ import {
   Tag as TagIcon,
   Tags,
   Users,
+  UsersRound,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -177,6 +178,13 @@ export const GROUPS: Group[] = [
         icon: ShieldCheck,
         blurb: 'পলিসির প্রিমিয়াম কবে, কত, কোনটা বাকি',
         synonyms: 'insurance পলিসি প্রিমিয়াম লাইফ',
+      },
+      {
+        href: '/split',
+        label: 'ভাগাভাগি',
+        icon: UsersRound,
+        blurb: 'একসাথে খরচ — ট্রিপ, বাসা, অফিস; কে কত দেবে',
+        synonyms: 'split share group trip ভাগ শেয়ার গ্রুপ ট্রিপ মেস চাঁদা bill splitwise',
       },
     ],
   },

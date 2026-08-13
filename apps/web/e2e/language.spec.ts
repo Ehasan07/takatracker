@@ -94,7 +94,10 @@ test.describe('language', () => {
 
     await page.goto('/');
     await expect(page.getByText('This month').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Total balance').first()).toBeVisible();
+    /* Was "Total balance", which added land to cash and called the result a
+       balance. Two figures now, and both have to turn. */
+    await expect(page.getByText('Cash and bank').first()).toBeVisible();
+    await expect(page.getByText('Net worth').first()).toBeVisible();
 
     /* The one place a stray Bengali word is unmissable, and the one that cannot
        fall back to the full name because five cells at 320px will not hold it. */

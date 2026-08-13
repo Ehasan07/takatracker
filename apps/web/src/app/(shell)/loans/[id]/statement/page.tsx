@@ -1,13 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Link2, User } from 'lucide-react';
+import { ArrowLeft, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { ShareStatementSheet } from '@/components/share-statement-sheet';
-import { t } from '@/lib/t';
 import { bnDate, directionLabel, statusLabel } from '../../labels';
 import { fetchLoanStatement, loanKeys } from '../../queries';
 import { ALL_TIME, StatementView, filterQuery, type DateFilter } from '../../statement-view';
@@ -53,16 +52,6 @@ export default function LoanStatementPage() {
             পার্টি লেজার
           </Link>
         ) : null}
-        {/* Shares the window that is on screen, so what the creditor opens is
-            what the owner was looking at when they pressed it. */}
-        <button
-          type="button"
-          onClick={() => setSharing(true)}
-          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
-        >
-          <Link2 className="h-4 w-4" aria-hidden />
-          {t('share.short', 'শেয়ার')}
-        </button>
       </div>
 
       {sharing ? (
@@ -91,6 +80,9 @@ export default function LoanStatementPage() {
         isError={statement.isError}
         onRetry={() => void statement.refetch()}
         fileBaseName={`loan-${loan?.loanNumber ?? id}-statement`}
+        /* Shares the window that is on screen, so what the creditor opens is
+           what the owner was looking at when they pressed it. */
+        onShareLink={() => setSharing(true)}
       >
         {loan ? (
           <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4 sm:grid-cols-4">

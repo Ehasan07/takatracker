@@ -1,5 +1,6 @@
 'use client';
 
+import type { AccountType } from '@hishab/shared';
 import { enqueueMutation } from './offline-queue';
 
 /**
@@ -172,7 +173,11 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 export interface AccountDto {
   id: string;
   name: string;
-  type: string;
+  /* The real union, not `string`. The dashboard has to ask whether a line is
+     money, an asset or a liability, and a bare string turns that question into
+     a cast — which is how a screen ends up quietly classifying a type nobody
+     added to it. */
+  type: AccountType;
   currency: string;
   openingBalance: number;
   balanceMinor: number;
@@ -249,6 +254,12 @@ export interface SummaryDto {
   expenseMinor: number;
   netMinor: number;
   expenseByCategory: { categoryId: string | null; name: string; totalMinor: number }[];
+  /** Cash, bank and mobile wallet: what can be spent today. */
+  liquidMinor: number;
+  /** Every asset less every liability, control accounts included. */
+  netWorthMinor: number;
+  assetsMinor: number;
+  liabilitiesMinor: number;
 }
 
 export interface EntitlementsDto {

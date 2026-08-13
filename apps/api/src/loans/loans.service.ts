@@ -187,9 +187,13 @@ export interface StatementRowView {
 }
 
 export interface PartyLedgerRowView extends StatementRowView {
-  loanId: string;
-  loanNumber: string;
-  direction: LoanDirection;
+  /** Null on a row that came from shared spending rather than from a loan. */
+  loanId: string | null;
+  loanNumber: string | null;
+  direction: LoanDirection | null;
+  /** Set on a row that came from a split group, so the screen can name it. */
+  groupId?: string | null;
+  groupName?: string | null;
 }
 
 export interface LoanDetail {
@@ -463,9 +467,12 @@ interface Movement {
   deltaMinor: number;
   method: PaymentMethod | null;
   referenceNumber: string | null;
-  loanId: string;
-  loanNumber: string;
-  direction: LoanDirection;
+  /** Null when the movement came from shared spending rather than a loan. */
+  loanId: string | null;
+  loanNumber: string | null;
+  direction: LoanDirection | null;
+  groupId?: string | null;
+  groupName?: string | null;
 }
 
 @Injectable()
@@ -752,6 +759,16 @@ export class LoansService {
       });
     }
 
+    /* Shared spending sits in the same control accounts as lending, so it
+     * belongs in the same ledger. A person who owes you ৳2,000 from a trip and
+     * ৳5,000 from a loan owes you ৳7,000, and being shown two screens that each
+     * tell half of that is how somebody asks for the wrong amount back. */
+    const shared = await this.sharedMovements(ctx, person.id);
+    movements.push(...shared.movements);
+    receivableMinor += shared.receivableMinor;
+    payableMinor += shared.payableMinor;
+    movements.sort((a, b) => a.isoDate.localeCompare(b.isoDate));
+
     const { opening, inRange } = LoansService.splitByRange(movements, range);
     const built = LoansService.statementRows(opening, inRange);
 
@@ -767,6 +784,8 @@ export class LoansService {
           loanId: source.loanId,
           loanNumber: source.loanNumber,
           direction: source.direction,
+          groupId: source.groupId ?? null,
+          groupName: source.groupName ?? null,
         };
       }),
       closingMinor: built.closingMinor,
@@ -779,6 +798,153 @@ export class LoansService {
       receivableMinor,
       payableMinor,
     };
+  }
+
+  /**
+   * What one person owes, or is owed, from shared bills rather than from loans.
+   *
+   * The party ledger is a subsidiary ledger of the receivable and payable
+   * control accounts. Splitting posts to exactly those accounts — deliberately,
+   * because a share of a restaurant bill is money owed in precisely the way a
+   * loan is — so its rows belong here beside the loans, on one running balance.
+   *
+   * Signs follow the rest of this file: positive means the person owes the
+   * workspace owner.
+   *
+   *  - the owner paid, and this person had a share → they owe it
+   *  - this person paid, and the owner had a share → the owner owes it
+   *  - a settlement moves the balance towards zero from whichever side paid
+   *
+   * Bills between two *other* members never appear: they are a fact about a
+   * group, not about the owner's books, and they post no entry anywhere.
+   */
+  private async sharedMovements(
+    ctx: TenantContext,
+    personId: string,
+  ): Promise<{ movements: Movement[]; receivableMinor: number; payableMinor: number }> {
+    const memberships = await this.prisma.splitGroupMember.findMany({
+      where: { workspaceId: ctx.workspaceId, personId },
+      select: { id: true, groupId: true, group: { select: { id: true, name: true } } },
+    });
+    if (memberships.length === 0) {
+      return { movements: [], receivableMinor: 0, payableMinor: 0 };
+    }
+
+    const memberIds = memberships.map((m) => m.id);
+    const groupIds = [...new Set(memberships.map((m) => m.groupId))];
+    const groupName = new Map(memberships.map((m) => [m.groupId, m.group.name]));
+
+    const [expenses, settlements, selves] = await Promise.all([
+      this.prisma.sharedExpense.findMany({
+        where: { workspaceId: ctx.workspaceId, groupId: { in: groupIds }, deletedAt: null },
+        select: {
+          id: true,
+          groupId: true,
+          date: true,
+          description: true,
+          payerMemberId: true,
+          shares: { select: { memberId: true, amountMinor: true } },
+        },
+      }),
+      this.prisma.splitSettlement.findMany({
+        where: { workspaceId: ctx.workspaceId, groupId: { in: groupIds }, deletedAt: null },
+        select: {
+          id: true,
+          groupId: true,
+          date: true,
+          amountMinor: true,
+          fromMemberId: true,
+          toMemberId: true,
+        },
+      }),
+      this.prisma.splitGroupMember.findMany({
+        where: { workspaceId: ctx.workspaceId, groupId: { in: groupIds }, isSelf: true },
+        select: { id: true, groupId: true },
+      }),
+    ]);
+
+    const selfByGroup = new Map(selves.map((s) => [s.groupId, s.id]));
+    const theirs = new Set(memberIds);
+    const movements: Movement[] = [];
+    let receivableMinor = 0;
+    let payableMinor = 0;
+
+    for (const expense of expenses) {
+      const selfId = selfByGroup.get(expense.groupId);
+      const name = groupName.get(expense.groupId) ?? '';
+      const theirShare = expense.shares.find((s) => theirs.has(s.memberId));
+      const myShare = expense.shares.find((s) => s.memberId === selfId);
+
+      if (expense.payerMemberId === selfId && theirShare) {
+        const amount = minorToNumber(theirShare.amountMinor);
+        receivableMinor += amount;
+        movements.push({
+          isoDate: toLocalDateString(expense.date, ctx.timezone),
+          description: `${expense.description} — ${name}`,
+          deltaMinor: amount,
+          method: null,
+          referenceNumber: null,
+          loanId: null,
+          loanNumber: null,
+          direction: null,
+          groupId: expense.groupId,
+          groupName: name,
+        });
+      } else if (theirs.has(expense.payerMemberId) && myShare) {
+        const amount = minorToNumber(myShare.amountMinor);
+        payableMinor += amount;
+        movements.push({
+          isoDate: toLocalDateString(expense.date, ctx.timezone),
+          description: `${expense.description} — ${name}`,
+          deltaMinor: -amount,
+          method: null,
+          referenceNumber: null,
+          loanId: null,
+          loanNumber: null,
+          direction: null,
+          groupId: expense.groupId,
+          groupName: name,
+        });
+      }
+    }
+
+    for (const settlement of settlements) {
+      const selfId = selfByGroup.get(settlement.groupId);
+      const name = groupName.get(settlement.groupId) ?? '';
+      const amount = minorToNumber(settlement.amountMinor);
+
+      if (theirs.has(settlement.fromMemberId) && settlement.toMemberId === selfId) {
+        receivableMinor -= amount;
+        movements.push({
+          isoDate: toLocalDateString(settlement.date, ctx.timezone),
+          description: `পরিশোধ — ${name}`,
+          deltaMinor: -amount,
+          method: null,
+          referenceNumber: null,
+          loanId: null,
+          loanNumber: null,
+          direction: null,
+          groupId: settlement.groupId,
+          groupName: name,
+        });
+      } else if (settlement.fromMemberId === selfId && theirs.has(settlement.toMemberId)) {
+        payableMinor -= amount;
+        movements.push({
+          isoDate: toLocalDateString(settlement.date, ctx.timezone),
+          description: `পরিশোধ — ${name}`,
+          deltaMinor: amount,
+          method: null,
+          referenceNumber: null,
+          loanId: null,
+          loanNumber: null,
+          direction: null,
+          groupId: settlement.groupId,
+          groupName: name,
+        });
+      }
+    }
+
+    return { movements, receivableMinor, payableMinor };
   }
 
   // --- writes ----------------------------------------------------------------

@@ -99,8 +99,16 @@ test.describe('the way in', () => {
     await page.getByLabel('পাসওয়ার্ড').fill('whatever-is-wrong');
     await page.getByRole('button', { name: 'লগইন', exact: true }).click();
 
-    /* Refused, but for the password — not for the shape of what was typed. */
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+    /* Refused, but for the password — not for the shape of what was typed.
+
+       Matched on the message rather than on `getByRole('alert')`, which also
+       finds Next's own route announcer — an empty `role="alert"` div that is in
+       the page whether or not anything went wrong. Whenever it happened to be
+       present this assertion failed on a strict-mode violation and looked like
+       a broken login. */
+    await expect(page.getByText('ইমেইল/মোবাইল বা পাসওয়ার্ড ভুল')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page).toHaveURL(/\/login/);
   });
 });

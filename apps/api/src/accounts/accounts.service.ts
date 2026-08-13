@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { SYSTEM_ACCOUNT_KEYS, type SystemAccounts } from '@hishab/core';
+import { SYSTEM_ACCOUNT_KEYS, buildBalanceSheet, type SystemAccounts } from '@hishab/core';
 import { type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
 import { Prisma } from '@prisma/client';
 import type { Account, AccountType, LoanDirection } from '@prisma/client';
@@ -266,6 +266,47 @@ export class AccountsService {
     });
     const balances = await this.balances(workspaceId);
     return accounts.map((a) => AccountsService.present(a, balances.get(a.id) ?? 0));
+  }
+
+  /**
+   * Where this workspace stands right now, in two numbers.
+   *
+   * ## Why it is here and not on the reports service
+   *
+   * The dashboard needs it, and the dashboard is not a report. Injecting
+   * `ReportsService` into the transactions controller to reach it closed a
+   * module cycle — accounts → transactions → reports → accounts — that Nest
+   * refuses to build. The balances and the account types are already this
+   * service's own data, so this is where the question belongs.
+   *
+   * The *classification* is not duplicated: both this and the balance sheet
+   * call `buildBalanceSheet`, so the rule about whether a DPS is money is
+   * stated once, in `packages/core`, and neither screen can drift from it.
+   *
+   * Unlike `list`, this reads every account including the hidden control
+   * accounts — money lent out is part of what somebody is worth, and leaving it
+   * out was half of what made the old dashboard figure wrong.
+   */
+  async position(workspaceId: string): Promise<{
+    liquidMinor: number;
+    netWorthMinor: number;
+    assetsMinor: number;
+    liabilitiesMinor: number;
+  }> {
+    const accounts = await this.prisma.account.findMany({
+      where: { workspaceId, deletedAt: null },
+      select: { id: true, name: true, type: true },
+    });
+    const balances = await this.balances(workspaceId);
+    const sheet = buildBalanceSheet(
+      accounts.map((a) => ({ ...a, balanceMinor: balances.get(a.id) ?? 0 })),
+    );
+    return {
+      liquidMinor: sheet.liquidMinor,
+      netWorthMinor: sheet.netWorthMinor,
+      assetsMinor: sheet.assetsMinor,
+      liabilitiesMinor: sheet.liabilitiesMinor,
+    };
   }
 
   private static present(a: Account, balanceMinor: number): AccountWithBalance {

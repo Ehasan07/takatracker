@@ -170,13 +170,17 @@ const T: Record<Locale, Words> = {
 
 export function StatementDocument({ statement }: { statement: PublicStatement }) {
   const t = T[statement.locale] ?? T.bn;
-  const bn = statement.locale === 'bn';
 
-  /* Bengali digits when the books are Bengali. The sender chose that for their
-     workspace, and dates below are formatted the same way — a page with
-     ১ মার্চ ২০২৬ in one column and 50,000 in the next reads as a bug. */
+  /* Latin digits, because that is what every other screen in this product
+     shows. `Money` defaults `bengaliNumerals: false`, so the owner's own
+     dashboard reads ৳3,600.00 — and a statement rendered ৳৩,৬০০.০০ would be the
+     same figure in a different script from the app it came out of. This is the
+     copy a bank or an insurer keeps; it has to match.
+
+     Dates stay in Bengali. Those are prose rather than figures, and a Bengali
+     document with English month names reads wrong in the other direction. */
   const money = (minor: number): string =>
-    formatMinor(minor, { currency: statement.currency, bengaliNumerals: bn });
+    formatMinor(minor, { currency: statement.currency, bengaliNumerals: false });
 
   /**
    * Dates in the reader's script, not ISO.

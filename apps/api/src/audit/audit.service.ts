@@ -53,6 +53,13 @@ export const AUDIT_ACTIONS = [
    * emitted where it is written: this is the event a customer asks about. */
   'statement.shared',
   'statement.share_revoked',
+  /* Shared spending. A bill somebody else is being asked to pay their part of
+     is exactly the kind of record that gets queried later. */
+  'split.group_created',
+  'split.group_deleted',
+  'split.expense_added',
+  'split.expense_deleted',
+  'split.settled',
   'ingestion.message_received',
   'ingestion.draft_accepted',
   'ingestion.draft_rejected',
