@@ -332,3 +332,46 @@
 .toast-enter {
   animation: hishab-toast-in 200ms cubic-bezier(0.2, 0, 0, 1) both;
 }
+
+/**
+ * Printing a shared statement.
+ *
+ * The reader is a creditor or an insurer who was sent a link and wants it on
+ * paper or as a PDF. Everything here is about the document surviving the page
+ * break, which is where browser defaults let a table down.
+ */
+@media print {
+  /* Ink on white whatever the reader's theme is. A statement printed from a
+     dark screen wastes a cartridge and is harder to read. */
+  .statement,
+  .statement * {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+
+  /* The column titles repeat on every page. A two-page statement whose second
+     page has unlabelled columns of money is not a statement. */
+  .statement thead {
+    display: table-header-group;
+  }
+
+  /* No row split down the middle by a page break. */
+  .statement tr {
+    break-inside: avoid;
+  }
+
+  /* Rules print as hairlines rather than the screen's soft greys, which
+     disappear entirely on a cheap printer. */
+  .statement td,
+  .statement th {
+    border-color: #999 !important;
+  }
+
+  /* The URL of a shared statement is a credential. Browsers print link targets
+     in some configurations; this stops one ending up on paper on somebody's
+     desk. */
+  .statement a::after {
+    content: '' !important;
+  }
+}

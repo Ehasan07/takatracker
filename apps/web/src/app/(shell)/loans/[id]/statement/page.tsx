@@ -1,11 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, Link2, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';
 import { Money } from '@/components/money';
+import { ShareStatementSheet } from '@/components/share-statement-sheet';
+import { t } from '@/lib/t';
 import { bnDate, directionLabel, statusLabel } from '../../labels';
 import { fetchLoanStatement, loanKeys } from '../../queries';
 import { ALL_TIME, StatementView, filterQuery, type DateFilter } from '../../statement-view';
@@ -14,6 +16,7 @@ export default function LoanStatementPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const [filter, setFilter] = React.useState<DateFilter>(ALL_TIME);
+  const [sharing, setSharing] = React.useState(false);
   const range = filterQuery(filter);
 
   const statement = useQuery({
@@ -50,7 +53,27 @@ export default function LoanStatementPage() {
             পার্টি লেজার
           </Link>
         ) : null}
+        {/* Shares the window that is on screen, so what the creditor opens is
+            what the owner was looking at when they pressed it. */}
+        <button
+          type="button"
+          onClick={() => setSharing(true)}
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+        >
+          <Link2 className="h-4 w-4" aria-hidden />
+          {t('share.short', 'শেয়ার')}
+        </button>
       </div>
+
+      {sharing ? (
+        <ShareStatementSheet
+          open
+          onOpenChange={setSharing}
+          kind="LOAN"
+          subjectId={id}
+          subjectName={heading}
+        />
+      ) : null}
 
       {/* The phone gets this from the shell's title bar, which names this route
           explicitly; printing drops it either way via `no-print`. */}

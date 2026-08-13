@@ -49,6 +49,10 @@ export const AUDIT_ACTIONS = [
   'import.applied',
   'import.reverted',
   'export.downloaded',
+  /* A statement handed to somebody outside the workspace. Awaited rather than
+   * emitted where it is written: this is the event a customer asks about. */
+  'statement.shared',
+  'statement.share_revoked',
   'ingestion.message_received',
   'ingestion.draft_accepted',
   'ingestion.draft_rejected',

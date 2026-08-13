@@ -433,6 +433,33 @@ export const EN: Record<string, string> = {
   'verify.sending': 'Sending…',
   'verify.sendFailed': 'Could not send',
 
+  // --- sharing a statement ---------------------------------------------------
+  'share.title': 'Share a statement',
+  'share.short': 'Share',
+  'share.blurb':
+    'This makes a link. Whoever you send it to can read and print the statement without an account — and cannot change it.',
+  'share.from': 'From date',
+  'share.to': 'To date',
+  'share.wholeLife': 'Leave both empty for everything from the beginning to today.',
+  'share.wholeLifeShort': 'Everything',
+  'share.label': 'A note for yourself (optional)',
+  'share.labelHint': 'e.g. for BRAC Bank',
+  'share.create': 'Make the link',
+  'share.ready': 'Link ready — copy it now',
+  /* True and surprising, so it is said rather than implied. Only the hash is
+     stored, so there is genuinely nothing to show a second time. */
+  'share.onceOnly': 'This link cannot be shown again. If you lose it, make another.',
+  'share.link': 'Share link',
+  'share.copy': 'Copy',
+  'share.copied': 'Copied',
+  'share.existing': 'Links you have made',
+  /* `{date}` and `{n}` are filled in at the call site, in the reader's digits. */
+  'share.until': 'Works until {date}',
+  'share.views': 'opened {n} times',
+  'share.revoked': 'Revoked',
+  'share.expired': 'Expired',
+  'share.revokeOne': 'Revoke this link',
+
   // --- the wording editor ----------------------------------------------------
   'wording.title': 'Wording',
   'wording.blurb':

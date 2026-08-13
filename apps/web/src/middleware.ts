@@ -20,6 +20,12 @@ const PUBLIC_PATHS = [
   '/pricing',
   '/guide',
   '/en',
+  /* A shared statement. Opened by somebody with no account and no reason to
+     want one — a relative you lent money to, an insurer you pay a premium to.
+     Bouncing them to /login would make the link useless, which is the whole
+     feature. The token in the path is the credential; see
+     `StatementShareService`. */
+  '/s',
 ];
 
 /**

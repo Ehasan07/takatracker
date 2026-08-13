@@ -67,6 +67,7 @@ model User {
   sentInvitations  Invitation[]   @relation("InvitationSender")
   telegram         TelegramConnection[]
   auditEvents      AuditEvent[]         @relation("AuditActor")
+  statementShares  StatementShare[]     @relation("StatementShareAuthor")
 }
 
 /// Rotating refresh tokens. A whole family is revoked when a used token is
@@ -137,6 +138,50 @@ model EmailToken {
   @@index([userId, purpose])
   @@index([userId, purpose, createdAt])
   @@index([userId, channel, createdAt])
+  @@index([expiresAt])
+}
+
+/// What a shared statement covers. The link is scoped to one of these and one
+/// id; there is no code path from a share token to anything else.
+enum StatementKind {
+  PERSON
+  LOAN
+  SAVINGS
+  INSURANCE
+}
+
+/// A statement somebody outside the app can open, print, and nothing more.
+///
+/// The window is stored rather than passed in the URL, so the person holding a
+/// link to March cannot edit it into a link to everything. Only the token's
+/// hash is kept, exactly as with refresh tokens: a leaked backup must not hand
+/// anybody a working link.
+model StatementShare {
+  id          String        @id @default(cuid())
+  workspaceId String
+  kind        StatementKind
+  subjectId   String
+  /// Null means the whole life of the subject.
+  fromDate    DateTime?     @db.Date
+  toDate      DateTime?     @db.Date
+  tokenHash   String        @unique
+  /// The owner's own note — "for BRAC Bank", "March quarter".
+  label       String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdByUserId String?
+  /// There is no login on the far side, so the link is the credential. These
+  /// are how the owner notices a link being read more than they expected.
+  viewCount   Int           @default(0)
+  lastViewedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// The link outlives whoever made it: removing a colleague must neither
+  /// delete a customer's statement nor be blocked by one.
+  createdBy User?     @relation("StatementShareAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, kind, subjectId])
   @@index([expiresAt])
 }
 
@@ -346,6 +391,7 @@ model Workspace {
   mailMessages      MailMessage[]
   tags              Tag[]
   transactionTags   TransactionTag[]
+  statementShares StatementShare[]
   savingsPlans SavingsPlan[]
   savingsInstallments SavingsInstallment[]
   policies     InsurancePolicy[]

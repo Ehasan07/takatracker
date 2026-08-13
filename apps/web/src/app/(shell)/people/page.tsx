@@ -1,15 +1,17 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Merge, Pencil, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
+import { Link2, Merge, Pencil, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
+import { ShareStatementSheet } from '@/components/share-statement-sheet';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
+import { t } from '@/lib/t';
 import { haptic } from '@/lib/haptics';
 import { fetchPeople, invalidatePersonData, peopleKeys } from './queries';
 import {
@@ -41,6 +43,7 @@ export default function PeoplePage() {
   const [adding, setAdding] = React.useState(false);
   const [merging, setMerging] = React.useState<PersonDto | null>(null);
   const [deleting, setDeleting] = React.useState<PersonDto | null>(null);
+  const [sharing, setSharing] = React.useState<PersonDto | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -121,6 +124,7 @@ export default function PeoplePage() {
               onEdit={() => setEditing(person)}
               onMerge={() => setMerging(person)}
               onDelete={() => setDeleting(person)}
+              onShare={() => setSharing(person)}
             />
           ))}
         </ul>
@@ -139,6 +143,7 @@ export default function PeoplePage() {
                 onEdit={() => setEditing(person)}
                 onMerge={() => setMerging(person)}
                 onDelete={() => setDeleting(person)}
+                onShare={() => setSharing(person)}
               />
             ))}
           </ul>
@@ -161,6 +166,19 @@ export default function PeoplePage() {
           done(message);
         }}
       />
+      {/* Mounted with the person it is for, so closing it forgets the token
+          along with everything else. */}
+      {sharing ? (
+        <ShareStatementSheet
+          open
+          onOpenChange={(next) => {
+            if (!next) setSharing(null);
+          }}
+          kind="PERSON"
+          subjectId={sharing.id}
+          subjectName={sharing.name}
+        />
+      ) : null}
 
       <MergeSheet
         person={merging}
@@ -205,11 +223,13 @@ function PersonCard({
   onEdit,
   onMerge,
   onDelete,
+  onShare,
 }: {
   person: PersonDto;
   onEdit: () => void;
   onMerge: () => void;
   onDelete: () => void;
+  onShare: () => void;
 }) {
   const photo = safePhotoUri(person.photoUri);
   const position = positionLabel(person);
@@ -273,6 +293,18 @@ function PersonCard({
           >
             হিসাবের খাতা
           </Link>
+        ) : null}
+        {person.loanCount > 0 ? (
+          /* Next to the ledger it shares, and only when there is one. A share
+             button on somebody with no loans offers to send an empty page. */
+          <button
+            type="button"
+            onClick={onShare}
+            className="press text-ink hover:bg-greenbar flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
+          >
+            <Link2 className="h-3.5 w-3.5" aria-hidden />
+            {t('share.short', 'শেয়ার')}
+          </button>
         ) : null}
         <button
           type="button"
