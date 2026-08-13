@@ -350,3 +350,46 @@ describe('sub-category roll-up', () => {
     expect(nodes.reduce((s, n) => s + n.rolledUpMinor, 0)).toBe(200_000);
   });
 });
+
+describe('current and non-current (IAS 1.60)', () => {
+  const rows: AccountBalanceRow[] = [
+    { id: 'c1', name: 'নগদ', type: 'CASH', balanceMinor: 100_000 },
+    { id: 'b1', name: 'ব্যাংক', type: 'BANK', balanceMinor: 900_000 },
+    { id: 'r1', name: 'ঋণ পাওনা', type: 'RECEIVABLE', balanceMinor: 500_000 },
+    { id: 'd1', name: 'ডিপিএস', type: 'SAVINGS', balanceMinor: 2_000_000 },
+    { id: 'l1', name: 'জমি', type: 'ASSET', balanceMinor: 50_000_000 },
+    { id: 'cc', name: 'ক্রেডিট কার্ড', type: 'CREDIT_CARD', balanceMinor: -300_000 },
+    { id: 'ln', name: 'গাড়ির ঋণ', type: 'LIABILITY', balanceMinor: -1_500_000 },
+  ];
+
+  it('puts what turns into cash within a year on the current side', () => {
+    const sheet = buildBalanceSheet(rows);
+    // নগদ + ব্যাংক + পাওনা
+    expect(sheet.currentAssetsMinor).toBe(1_500_000);
+    // ডিপিএস + জমি
+    expect(sheet.nonCurrentAssetsMinor).toBe(52_000_000);
+    expect(sheet.currentAssetsMinor + sheet.nonCurrentAssetsMinor).toBe(sheet.assetsMinor);
+  });
+
+  it('does the same on the liabilities side', () => {
+    const sheet = buildBalanceSheet(rows);
+    expect(sheet.currentLiabilitiesMinor).toBe(300_000);
+    expect(sheet.nonCurrentLiabilitiesMinor).toBe(1_500_000);
+    expect(sheet.currentLiabilitiesMinor + sheet.nonCurrentLiabilitiesMinor).toBe(
+      sheet.liabilitiesMinor,
+    );
+  });
+
+  it('reports working capital, which is the number a lender reads first', () => {
+    const sheet = buildBalanceSheet(rows);
+    expect(sheet.workingCapitalMinor).toBe(1_200_000);
+  });
+
+  it('separates a DPS from a bank balance, which is the point', () => {
+    /* Both are "savings" in ordinary speech and only one of them can pay this
+       month's rent. Counting a term deposit as current is how a statement tells
+       somebody they are liquid when they are not. */
+    const sheet = buildBalanceSheet(rows);
+    expect(sheet.currentAssetsMinor).toBeLessThan(sheet.nonCurrentAssetsMinor);
+  });
+});

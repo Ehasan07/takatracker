@@ -204,6 +204,158 @@ describe('reports', () => {
     expect(sheet.body.liquidMinor).toBe(res.body.closingMinor);
   });
 
+  it('splits the cash flow into operating, investing and financing', async () => {
+    /* IAS 7's whole point: ৳80,000 of salary and ৳80,000 borrowed are the same
+       number and completely different facts. A lender reads the operating line
+       to see whether somebody lives within their means. */
+    const res = await get('/v1/reports/cash-flow').expect(200);
+
+    /* Salary in, rent and groceries and transport out. The land was bought
+       before this fixture's window opened, so investing is quiet here. */
+    expect(res.body.operatingMinor).toBe(5_000_000);
+    expect(res.body.investingMinor).toBe(0);
+    expect(res.body.financingMinor).toBe(0);
+  });
+
+  it('the three sections reconcile with the closing balance', async () => {
+    /* The check that makes it a report rather than arithmetic: opening plus the
+       three sections has to land exactly on what the accounts actually hold. A
+       movement classified into nothing, or counted twice, fails here. */
+    const res = await get('/v1/reports/cash-flow').expect(200);
+    expect(
+      res.body.openingMinor +
+        res.body.operatingMinor +
+        res.body.investingMinor +
+        res.body.financingMinor,
+    ).toBe(res.body.closingMinor);
+  });
+
+  it('files buying land as investing, not as spending', async () => {
+    /* A transfer from a bank account to a land account is an investing outflow;
+       a transfer between two bank accounts is not a cash flow at all. Same
+       transaction type, different sections — which is why the classification
+       reads the account on the other side rather than the type. */
+    const land = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নতুন জমি', type: 'ASSET' })
+      .expect(201);
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        type: 'TRANSFER',
+        date: day('20'),
+        amountMinor: 1_000_000,
+        accountId: cashId,
+        counterAccountId: land.body.id,
+        description: 'জমির কিস্তি',
+      })
+      .expect(201);
+
+    const res = await get('/v1/reports/cash-flow').expect(200);
+    expect(res.body.investingMinor).toBe(-1_000_000);
+    /* Spending is untouched: land is not consumed, it is still yours. */
+    expect(res.body.operatingMinor).toBe(5_000_000);
+    expect(
+      res.body.openingMinor +
+        res.body.operatingMinor +
+        res.body.investingMinor +
+        res.body.financingMinor,
+    ).toBe(res.body.closingMinor);
+  });
+
+  it('files lending money as financing', async () => {
+    const person = await ctx
+      .http()
+      .post('/v1/loans')
+      .set(auth(user))
+      .send({
+        direction: 'LENT',
+        personName: 'নগদ ধার',
+        principalMinor: 500_000,
+        loanDate: day('21'),
+        accountId: cashId,
+      })
+      .expect(201);
+    expect(person.body.loan.id).toBeTruthy();
+
+    const res = await get('/v1/reports/cash-flow').expect(200);
+    expect(res.body.financingMinor).toBe(-500_000);
+    expect(
+      res.body.openingMinor +
+        res.body.operatingMinor +
+        res.body.investingMinor +
+        res.body.financingMinor,
+    ).toBe(res.body.closingMinor);
+  });
+
+  it('gives an income statement with both sides and a comparative column', async () => {
+    const res = await get(
+      `/v1/reports/income-statement?from=${day('01')}&to=${day('28')}&compareFrom=${day('01')}&compareTo=${day('02')}`,
+    ).expect(200);
+
+    expect(res.body.incomeMinor).toBe(8_000_000);
+    expect(res.body.expenseMinor).toBe(3_000_000);
+    expect(res.body.surplusMinor).toBe(5_000_000);
+    /* ৳50,000 kept out of ৳80,000 earned: 62.5%, which is the single figure a
+       lender reads before any of the detail. */
+    expect(res.body.savingsRateBps).toBe(6250);
+
+    /* IAS 1 requires comparatives, and a period with nothing beside it tells a
+       reader the numbers but not the direction. */
+    expect(res.body.comparison.incomeMinor).toBe(8_000_000);
+    expect(res.body.comparison.expenseMinor).toBe(0);
+
+    /* A statement handed to a bank has to say what basis it is on. */
+    expect(res.body.basis).toBe('CASH');
+  });
+
+  it('agrees with the by-category report it is built from', async () => {
+    const statement = await get(
+      `/v1/reports/income-statement?from=${day('01')}&to=${day('28')}`,
+    ).expect(200);
+    const byCategory = await get('/v1/reports/by-category?kind=EXPENSE&flat=1').expect(200);
+    expect(statement.body.expenseMinor).toBe(byCategory.body.total);
+  });
+
+  it('splits the balance sheet into current and non-current (IAS 1.60)', async () => {
+    const res = await get('/v1/reports/balance-sheet').expect(200);
+
+    /* By the time this runs the two tests above have moved ৳10,000 into a land
+       account and lent ৳5,000, so:
+         cash   −11,000 − 10,000 − 5,000 = −26,000
+         bank    112,000
+         owed      5,000  (current: a loan to a relative is collected on demand)
+         current  86,000 + 5,000 = ৳91,000
+         land    500,000 + 10,000 = ৳510,000, none of it current */
+    expect(res.body.currentAssetsMinor).toBe(9_100_000);
+    expect(res.body.nonCurrentAssetsMinor).toBe(51_000_000);
+    expect(res.body.currentAssetsMinor + res.body.nonCurrentAssetsMinor).toBe(res.body.assetsMinor);
+
+    /* The car loan is long-term, so working capital is the whole current side. */
+    expect(res.body.nonCurrentLiabilitiesMinor).toBe(15_000_000);
+    expect(res.body.workingCapitalMinor).toBe(9_100_000);
+  });
+
+  it('reconciles net worth: opening + surplus + other = closing', async () => {
+    /* The check that makes the other three statements answerable to each other.
+       An income statement and a balance sheet can each be internally consistent
+       and still disagree, and nothing on either page would say so. */
+    const res = await get(`/v1/reports/net-worth-changes?from=${day('01')}&to=${day('28')}`).expect(
+      200,
+    );
+
+    expect(res.body.openingMinor + res.body.surplusMinor + res.body.otherMinor).toBe(
+      res.body.closingMinor,
+    );
+    expect(res.body.movementMinor).toBe(res.body.closingMinor - res.body.openingMinor);
+    expect(res.body.surplusMinor).toBe(5_000_000);
+  });
+
   it('drills into one category and lists what is behind it', async () => {
     const res = await get(`/v1/reports/category/${foodId}`).expect(200);
     expect(res.body.category.name).toBe('খাবার ও বাজার');

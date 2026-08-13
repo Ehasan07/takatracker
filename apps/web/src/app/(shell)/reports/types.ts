@@ -45,6 +45,46 @@ export interface BalanceSheetDto {
   liquidMinor: number;
   assets: BalanceLine[];
   liabilities: BalanceLine[];
+  /** IAS 1.60: what turns into cash within a year, and what does not. */
+  currentAssetsMinor: number;
+  nonCurrentAssetsMinor: number;
+  currentLiabilitiesMinor: number;
+  nonCurrentLiabilitiesMinor: number;
+  /** Current assets less current liabilities. */
+  workingCapitalMinor: number;
+  asOf?: string;
+}
+
+/** `GET /v1/reports/income-statement?from=&to=&compareFrom=&compareTo=` */
+export interface IncomeStatementFiguresDto {
+  incomeMinor: number;
+  expenseMinor: number;
+  surplusMinor: number;
+  /** Share of income kept, in basis points. 25% is 2500. */
+  savingsRateBps: number;
+  income: CategoryNode[];
+  expenses: CategoryNode[];
+}
+
+export interface IncomeStatementDto extends IncomeStatementFiguresDto {
+  from: string;
+  to: string;
+  basis: 'CASH';
+  comparison?: IncomeStatementFiguresDto & { from: string; to: string };
+}
+
+/** `GET /v1/reports/net-worth-changes?from=&to=` */
+export interface NetWorthChangesDto {
+  from: string;
+  to: string;
+  basis: 'CASH';
+  openingMinor: number;
+  incomeMinor: number;
+  expenseMinor: number;
+  surplusMinor: number;
+  otherMinor: number;
+  closingMinor: number;
+  movementMinor: number;
 }
 
 /**
@@ -107,6 +147,10 @@ export interface CashFlowDto {
   netMinor: number;
   closingMinor: number;
   accounts: string[];
+  /** IAS 7's three sections. Signed: negative is money leaving. */
+  operatingMinor: number;
+  investingMinor: number;
+  financingMinor: number;
 }
 
 /** `GET /v1/reports/category/:id?from=&to=` */

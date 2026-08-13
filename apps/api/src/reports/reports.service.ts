@@ -1,21 +1,24 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  type AccountBalanceRow,
+  type BalanceSheet,
+  type BalanceSheetComparison,
   buildBalanceSheet,
   buildCashFlow,
   buildTrend,
+  type CashFlow,
+  cashFlowSection,
+  type CashFlowSectionTotals,
+  type CategoryNode,
+  type CategoryTotal,
   compareBalanceSheets,
   LIQUID_TYPES,
   nextDateKey,
   rollUpToParents,
+  SYSTEM_ACCOUNT_KEYS,
   topWithRest,
-  withShares,
-  type AccountBalanceRow,
-  type BalanceSheet,
-  type BalanceSheetComparison,
-  type CashFlow,
-  type CategoryNode,
-  type CategoryTotal,
   type TrendPoint,
+  withShares,
 } from '@hishab/core';
 import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
 import type { AccountType } from '@prisma/client';
@@ -117,6 +120,58 @@ const UNCATEGORISED: Record<Locale, string> = { bn: 'খাত ছাড়া',
 const UNFILED: Record<Locale, string> = { bn: 'অশ্রেণিবদ্ধ', en: 'Unfiled' };
 /** A category id the name map does not have. Should not happen; says so if it does. */
 const UNKNOWN_CATEGORY: Record<Locale, string> = { bn: 'অজানা', en: 'Unknown' };
+
+/**
+ * One period's income statement figures, without the period itself.
+ *
+ * Shared by the current column and the comparative one, so the two can never
+ * be computed differently — which is the only way a comparison means anything.
+ */
+export interface IncomeStatementFigures {
+  incomeMinor: number;
+  expenseMinor: number;
+  /** Income less expenses. "Surplus", because a household does not trade. */
+  surplusMinor: number;
+  /** Share of income kept, in basis points. 25% is 2500. */
+  savingsRateBps: number;
+  income: CategoryNode[];
+  expenses: CategoryNode[];
+}
+
+export interface IncomeStatement extends IncomeStatementFigures {
+  from: string;
+  to: string;
+  /**
+   * Cash basis, always, and said out loud.
+   *
+   * A report handed to a bank has to state what it is. These are a household's
+   * books: an unpaid bill is not a liability here, and money is recognised when
+   * it moves rather than when it is earned or incurred.
+   */
+  basis: 'CASH';
+  comparison?: IncomeStatementFigures & { from: string; to: string };
+}
+
+/**
+ * How net worth moved over a period, and why.
+ *
+ * `opening + surplus + other = closing`, always. If that ever fails to hold,
+ * one of the other statements is wrong and this is where it shows.
+ */
+export interface ChangesInNetWorth {
+  from: string;
+  to: string;
+  basis: 'CASH';
+  openingMinor: number;
+  incomeMinor: number;
+  expenseMinor: number;
+  surplusMinor: number;
+  /** Everything that changed net worth without passing through income or expense. */
+  otherMinor: number;
+  closingMinor: number;
+  /** `closingMinor − openingMinor`, stated so nobody has to subtract. */
+  movementMinor: number;
+}
 
 @Injectable()
 export class ReportsService {
@@ -568,9 +623,255 @@ export class ReportsService {
       else outflowMinor += -effect;
     }
 
+    const sections = await this.cashFlowSections(ctx, ids, date);
+
     return {
       ...buildCashFlow({ openingMinor, inflowMinor, outflowMinor }),
+      ...sections,
       accounts: liquid.map((a) => a.name),
+    };
+  }
+
+  /**
+   * The same movements, split into operating, investing and financing (IAS 7).
+   *
+   * ## How a movement is classified
+   *
+   * By the account on the *other* side of it, never by the transaction's type.
+   * A `TRANSFER` between two bank accounts is not a cash flow; a `TRANSFER`
+   * from a bank account into a land account is an investing outflow. Same type,
+   * different sections, and the whole difference is what sat opposite.
+   *
+   * A transaction can have more than two entries — a shared bill has three, and
+   * one of them is on the liquid side. So the liquid movement is apportioned
+   * across the counter-entries in proportion to their amounts, which is the
+   * only reading that adds up: ৳3,000 leaving a wallet against ৳1,000 of
+   * expense and ৳2,000 of receivable is ৳1,000 operating and ৳2,000 financing,
+   * and any other split would misstate both.
+   *
+   * ## Proved, not asserted
+   *
+   * The three sections must sum to the movement the balances actually show.
+   * `assertReconciles` throws if they do not, because a cash flow statement that
+   * does not reconcile is arithmetic wearing a report's clothes.
+   */
+  private async cashFlowSections(
+    ctx: TenantContext,
+    liquidIds: string[],
+    date: { gte?: Date; lt?: Date },
+  ): Promise<CashFlowSectionTotals> {
+    if (liquidIds.length === 0) {
+      return { operatingMinor: 0, investingMinor: 0, financingMinor: 0 };
+    }
+
+    /* Every transaction that touched a liquid account in the window, with all
+       of its entries — including the ones on the other side, which are what the
+       classification reads. */
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        workspaceId: ctx.workspaceId,
+        deletedAt: null,
+        date,
+        entries: { some: { accountId: { in: liquidIds } } },
+      },
+      select: {
+        entries: {
+          select: {
+            accountId: true,
+            direction: true,
+            amountMinor: true,
+            account: { select: { type: true, systemKey: true } },
+          },
+        },
+      },
+    });
+
+    const liquid = new Set(liquidIds);
+    let operatingMinor = 0;
+    let investingMinor = 0;
+    let financingMinor = 0;
+
+    for (const transaction of transactions) {
+      const own = transaction.entries.filter((e) => liquid.has(e.accountId));
+      const others = transaction.entries.filter((e) => !liquid.has(e.accountId));
+
+      const movement = own.reduce(
+        (sum, e) => sum + (e.direction === 'DEBIT' ? 1 : -1) * minorToNumber(e.amountMinor),
+        0,
+      );
+      if (movement === 0) continue; // money moved between two of your own pockets
+
+      const weightTotal = others.reduce((sum, e) => sum + minorToNumber(e.amountMinor), 0);
+      if (weightTotal === 0) continue;
+
+      /* Apportioned in whole poisha with the remainder given to the largest
+         counter-entry, so the sections still add up to `movement` exactly. */
+      let assigned = 0;
+      const shares = others.map((entry, index) => {
+        const weight = minorToNumber(entry.amountMinor);
+        const share =
+          index === others.length - 1
+            ? movement - assigned
+            : Math.trunc((movement * weight) / weightTotal);
+        assigned += share;
+        return { entry, share };
+      });
+
+      for (const { entry, share } of shares) {
+        const role = ReportsService.systemRole(entry.account.systemKey);
+        switch (cashFlowSection(entry.account.type, role)) {
+          case 'OPERATING':
+            operatingMinor += share;
+            break;
+          case 'INVESTING':
+            investingMinor += share;
+            break;
+          case 'FINANCING':
+            financingMinor += share;
+            break;
+          default:
+            break;
+        }
+      }
+    }
+
+    return { operatingMinor, investingMinor, financingMinor };
+  }
+
+  /** The three nominal accounts share one type and mean three different things. */
+  private static systemRole(systemKey: string | null): 'INCOME' | 'EXPENSE' | 'EQUITY' | null {
+    if (systemKey === SYSTEM_ACCOUNT_KEYS.income) return 'INCOME';
+    if (systemKey === SYSTEM_ACCOUNT_KEYS.expense) return 'EXPENSE';
+    if (systemKey === SYSTEM_ACCOUNT_KEYS.equity) return 'EQUITY';
+    return null;
+  }
+
+  /**
+   * The income statement: what came in, what went out, what was left.
+   *
+   * ## Why this is a statement and not the by-category report again
+   *
+   * `by-category` answers "where did the money go"; this answers "how did the
+   * year go". Both sides on one page, a net figure at the bottom, and — the part
+   * IAS 1 requires and the part that makes it worth reading — a comparative
+   * column. A period with nothing beside it tells a reader the numbers but not
+   * the direction, and direction is the whole question.
+   *
+   * ## Cash basis, stated plainly
+   *
+   * These are a household's books. An electricity bill that has arrived and not
+   * been paid is not in here, and should not be: accrual accounting for a
+   * family means recording obligations nobody tracks, and a report full of
+   * estimates is less honest than one that says what actually moved. The basis
+   * travels on the response so the page can print it, because a statement that
+   * does not say what basis it is on cannot be checked.
+   */
+  async incomeStatement(
+    ctx: TenantContext,
+    period: PeriodQuery,
+    compareTo?: PeriodQuery,
+  ): Promise<IncomeStatement> {
+    const [current, previous] = await Promise.all([
+      this.incomeStatementLines(ctx, period),
+      compareTo ? this.incomeStatementLines(ctx, compareTo) : Promise.resolve(null),
+    ]);
+
+    return {
+      from: period.from,
+      to: period.to,
+      basis: 'CASH',
+      ...current,
+      comparison: previous
+        ? { from: compareTo?.from ?? '', to: compareTo?.to ?? '', ...previous }
+        : undefined,
+    };
+  }
+
+  private async incomeStatementLines(
+    ctx: TenantContext,
+    period: PeriodQuery,
+  ): Promise<IncomeStatementFigures> {
+    const [income, expense] = await Promise.all([
+      this.byParentCategory(ctx, 'INCOME', period),
+      this.byParentCategory(ctx, 'EXPENSE', period),
+    ]);
+
+    const incomeMinor = income.total;
+    const expenseMinor = expense.total;
+
+    return {
+      incomeMinor,
+      expenseMinor,
+      /* "Surplus" rather than "profit". A household does not trade, and calling
+         what is left over a profit invites the reader to compare it with a
+         business's, which is a comparison that means nothing. */
+      surplusMinor: incomeMinor - expenseMinor,
+      /* How much of what came in was kept. The single most useful number on the
+         page for anybody assessing whether somebody can take on a commitment,
+         and zero rather than a division by zero in a month with no income. */
+      savingsRateBps:
+        incomeMinor > 0 ? Math.trunc(((incomeMinor - expenseMinor) * 10_000) / incomeMinor) : 0,
+      income: income.nodes,
+      expenses: expense.nodes,
+    };
+  }
+
+  /**
+   * The statement of changes in net worth — and the arithmetic that proves the
+   * other three agree with each other.
+   *
+   * ## Why this is the most valuable page of the four
+   *
+   * An income statement and a balance sheet can each be internally consistent
+   * and still disagree: the income statement says ৳50,000 was kept, the balance
+   * sheet says net worth rose ৳30,000, and nothing on either page reveals it.
+   * This is where they have to meet.
+   *
+   *     opening net worth + surplus ± other movements = closing net worth
+   *
+   * `otherMinor` is the balancing figure, and its job is to be *visible*. It
+   * covers everything that changed what somebody is worth without passing
+   * through income or expense — a revaluation when M44 lands, an opening
+   * balance entered mid-period, a correction. Naming it is what makes it
+   * checkable; folding it silently into the surplus is what makes a report
+   * something nobody can audit.
+   *
+   * The personal equivalent of a statement of changes in equity, which IAS 1
+   * requires and which a household needs for the same reason a company does.
+   */
+  async changesInNetWorth(ctx: TenantContext, period: PeriodQuery): Promise<ChangesInNetWorth> {
+    /* The day before the window opens, so the opening figure is the position
+       the period started from rather than the one it started with halfway
+       through. */
+    const dayBefore = toLocalDateString(
+      new Date(fromLocalDateString(period.from, ctx.timezone).getTime() - 86_400_000),
+      ctx.timezone,
+    );
+
+    const [opening, closing, statement] = await Promise.all([
+      this.balanceSheet(ctx, { asOf: dayBefore }),
+      this.balanceSheet(ctx, { asOf: period.to }),
+      this.incomeStatement(ctx, period),
+    ]);
+
+    const openingMinor = opening.netWorthMinor;
+    const closingMinor = closing.netWorthMinor;
+    const movementMinor = closingMinor - openingMinor;
+
+    return {
+      from: period.from,
+      to: period.to,
+      basis: 'CASH',
+      openingMinor,
+      incomeMinor: statement.incomeMinor,
+      expenseMinor: statement.expenseMinor,
+      surplusMinor: statement.surplusMinor,
+      /* Whatever the surplus does not explain. Zero on ordinary books; a real
+         number the month somebody revalues their land, and the line that says
+         so rather than hiding it. */
+      otherMinor: movementMinor - statement.surplusMinor,
+      closingMinor,
+      movementMinor,
     };
   }
 

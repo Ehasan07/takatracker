@@ -27,7 +27,9 @@ import type {
   ByTagDto,
   CashFlowDto,
   DrilldownDto,
+  IncomeStatementDto,
   Kind,
+  NetWorthChangesDto,
   TrendPoint,
 } from './types';
 
@@ -42,6 +44,11 @@ export const reportKeys = {
   cashFlow: (period: Period) => ['reports', 'cash-flow', period.from, period.to] as const,
   drilldown: (id: string, period: Period) =>
     ['reports', 'drilldown', id, period.from, period.to] as const,
+  incomeStatement: (period: Period, compare?: Period) =>
+    ['reports', 'income-statement', period.from, period.to, compare?.from, compare?.to] as const,
+  netWorthChanges: (period: Period) =>
+    ['reports', 'net-worth-changes', period.from, period.to] as const,
+  balanceSheetAt: (asOf: string) => ['reports', 'balance-sheet', asOf] as const,
 };
 
 export function fetchByCategory(kind: Kind, period: Period): Promise<ByCategoryDto> {
@@ -62,6 +69,23 @@ export function fetchBalanceSheet(): Promise<BalanceSheetDto> {
 
 export function fetchCashFlow(period: Period): Promise<CashFlowDto> {
   return api<CashFlowDto>(`/reports/cash-flow?${periodQuery(period)}`);
+}
+
+export function fetchIncomeStatement(
+  period: Period,
+  compare?: Period,
+): Promise<IncomeStatementDto> {
+  const extra = compare ? `&compareFrom=${compare.from}&compareTo=${compare.to}` : '';
+  return api<IncomeStatementDto>(`/reports/income-statement?${periodQuery(period)}${extra}`);
+}
+
+export function fetchNetWorthChanges(period: Period): Promise<NetWorthChangesDto> {
+  return api<NetWorthChangesDto>(`/reports/net-worth-changes?${periodQuery(period)}`);
+}
+
+/** The sheet as at one day, which is what a statement for a period needs. */
+export function fetchBalanceSheetAt(asOf: string): Promise<BalanceSheetDto> {
+  return api<BalanceSheetDto>(`/reports/balance-sheet?asOf=${asOf}`);
 }
 
 export function fetchDrilldown(id: string, period: Period): Promise<DrilldownDto> {

@@ -55,6 +55,52 @@ export interface BalanceSheet {
   liquidMinor: number;
   assets: BalanceSheetLine[];
   liabilities: BalanceSheetLine[];
+  /**
+   * The same lines again, split the way IAS 1.60 requires.
+   *
+   * Current is what turns into cash within a year — money in hand, in a bank, in
+   * a wallet, and what somebody owes you. Non-current is what does not: land,
+   * gold, a car, a savings scheme with a term on it.
+   *
+   * This is not presentation fussiness. The dashboard used to add a
+   * ৳10,00,000 plot of land to ৳3,600 of cash and call the total a balance, and
+   * the reason a balance sheet is *required* to separate the two is exactly that
+   * mistake. Both totals are here so a reader never has to add a column to find
+   * out what is actually available.
+   */
+  currentAssetsMinor: number;
+  nonCurrentAssetsMinor: number;
+  currentLiabilitiesMinor: number;
+  nonCurrentLiabilitiesMinor: number;
+  /**
+   * Current assets less current liabilities: what is left after the next year's
+   * obligations. Negative is the signal a lender looks for first.
+   */
+  workingCapitalMinor: number;
+}
+
+/**
+ * Which side of the one-year line an account type sits on.
+ *
+ * `RECEIVABLE` is current and `SAVINGS` is not, which is the one pair worth
+ * arguing about. A loan to a relative is expected back in months and is
+ * routinely collected on demand; a DPS has a fixed term measured in years and
+ * cannot be drawn early without breaking it. Where a particular instrument
+ * genuinely disagrees, the honest fix is a field on the account, not a different
+ * default here.
+ */
+export function isCurrent(type: AccountType): boolean {
+  switch (type) {
+    case 'CASH':
+    case 'BANK':
+    case 'MOBILE_WALLET':
+    case 'RECEIVABLE':
+    case 'CREDIT_CARD':
+    case 'PAYABLE':
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -90,11 +136,23 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
     rows.filter((r) => LIQUID_TYPES.includes(r.type)).map((r) => r.balanceMinor),
   );
 
+  const currentAssetsMinor = sumMinor(
+    assets.filter((a) => isCurrent(a.type)).map((a) => a.amountMinor),
+  );
+  const currentLiabilitiesMinor = sumMinor(
+    liabilities.filter((l) => isCurrent(l.type)).map((l) => l.amountMinor),
+  );
+
   return {
     assetsMinor,
     liabilitiesMinor,
     netWorthMinor: assetsMinor - liabilitiesMinor,
     liquidMinor,
+    currentAssetsMinor,
+    nonCurrentAssetsMinor: assetsMinor - currentAssetsMinor,
+    currentLiabilitiesMinor,
+    nonCurrentLiabilitiesMinor: liabilitiesMinor - currentLiabilitiesMinor,
+    workingCapitalMinor: currentAssetsMinor - currentLiabilitiesMinor,
     assets: assets.sort((a, b) => b.amountMinor - a.amountMinor),
     liabilities: liabilities.sort((a, b) => b.amountMinor - a.amountMinor),
   };

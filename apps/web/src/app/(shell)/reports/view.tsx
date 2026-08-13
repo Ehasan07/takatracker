@@ -31,7 +31,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, FileText } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
@@ -51,6 +51,7 @@ import {
   fetchTrend,
   reportKeys,
 } from './queries';
+import Link from 'next/link';
 import { RangeBar } from './range-bar';
 import { QuantityPanel } from './quantity-panel';
 import { TagPanel } from './tag-panel';
@@ -202,8 +203,20 @@ function ReportsBody({ today }: { today: Date }) {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
-      <header className="hidden items-baseline justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">{t('nav.reports', 'রিপোর্ট')}</h1>
+      <header className="flex items-baseline justify-between gap-2">
+        <h1 className="text-ink hidden text-2xl font-semibold md:block">
+          {t('nav.reports', 'রিপোর্ট')}
+        </h1>
+        {/* These screens answer "where did the money go"; the statements answer
+            "what is my position". Different questions, both wanted, so the one
+            is a link from the other rather than a replacement for it. */}
+        <Link
+          href="/reports/statements"
+          className="press border-rule text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+        >
+          <FileText className="h-4 w-4" aria-hidden />
+          {t('statements.title', 'আর্থিক বিবৃতি')}
+        </Link>
       </header>
 
       <RangeBar range={range} onChange={(next) => navigate(next, kind)} today={today} />

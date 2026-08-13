@@ -128,6 +128,41 @@ export class ReportsController {
     return this.reports.byQuantity(user, this.period(user, from, to));
   }
 
+  /**
+   * `GET /v1/reports/income-statement` — what came in, what went out, what was
+   * left, for any window, with an optional comparative column.
+   *
+   * `compareFrom`/`compareTo` are a second window rather than a "previous
+   * period" flag: a reader comparing this quarter with the same quarter last
+   * year and a reader comparing it with last quarter both have a real question,
+   * and the server should not be guessing which.
+   */
+  @Get('income-statement')
+  incomeStatement(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('compareFrom') compareFrom?: string,
+    @Query('compareTo') compareTo?: string,
+  ) {
+    const comparison =
+      compareFrom && compareTo ? this.period(user, compareFrom, compareTo) : undefined;
+    return this.reports.incomeStatement(user, this.period(user, from, to), comparison);
+  }
+
+  /**
+   * `GET /v1/reports/net-worth-changes` — the reconciliation that makes the
+   * other three statements checkable against one another.
+   */
+  @Get('net-worth-changes')
+  changesInNetWorth(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.changesInNetWorth(user, this.period(user, from, to));
+  }
+
   @Get('cash-flow')
   cashFlow(@CurrentUser() user: AuthUser, @Query('from') from?: string, @Query('to') to?: string) {
     return this.reports.cashFlow(user, this.period(user, from, to));
