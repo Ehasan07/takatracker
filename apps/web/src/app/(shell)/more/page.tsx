@@ -1,7 +1,9 @@
 'use client';
 
-import { ChevronRight, Search, X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ChevronRight, LogOut, Search, X } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import {
   ALL_DESTINATIONS,
@@ -13,7 +15,10 @@ import {
   type Destination,
 } from '@/components/nav-model';
 import { AccountMenu } from '@/components/account-menu';
+import { api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { resetSessionForSignOut } from '@/lib/session-reset';
+import { t } from '@/lib/t';
 import { fmtNumber } from '@/lib/format';
 
 /**
@@ -93,6 +98,16 @@ export default function MorePage() {
           <Section key={group.id} title={groupTitleOf(group)} items={group.items} />
         ))
       )}
+
+      {/* Signing out, in the open.
+       *
+       * It was already reachable — the account row at the top opens a menu with
+       * it inside — but a control behind a disclosure is a control people report
+       * as missing, and this one was. On a phone the way out of an app is
+       * something you should be able to see, not remember. Hidden while
+       * searching, because a directory filtered down to two rows should not
+       * carry an unrelated red button under it. */}
+      {!searching ? <SignOutRow /> : null}
     </div>
   );
 }
@@ -124,5 +139,42 @@ function Section({ title, items }: { title: string; items: Destination[] }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * The way out.
+ *
+ * The same call the account menu makes, including the cache reset — a service
+ * worker holding the previous person's balances on a shared phone is the reason
+ * that reset exists, and a second sign-out path that skipped it would be a
+ * second way to leave them there.
+ */
+function SignOutRow() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = React.useState(false);
+
+  const signOut = async (): Promise<void> => {
+    setBusy(true);
+    haptic('tap');
+    await api('/auth/logout', { method: 'POST', body: {} }).catch(() => undefined);
+    await resetSessionForSignOut(queryClient);
+    router.push('/login');
+    router.refresh();
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void signOut()}
+      className="press rounded-card border-rule bg-surface text-expense flex min-h-14 w-full items-center gap-3 border px-3 text-sm font-medium disabled:opacity-60"
+    >
+      <span className="bg-greenbar text-expense flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
+        <LogOut className="h-5 w-5" aria-hidden />
+      </span>
+      {busy ? t('shell.signingOut', 'বেরিয়ে যাচ্ছে…') : t('shell.signOut', 'লগআউট')}
+    </button>
   );
 }

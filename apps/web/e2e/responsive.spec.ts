@@ -47,6 +47,26 @@ async function pressAdd(page: Page, phoneLabel: string): Promise<void> {
 }
 
 test.describe('responsive shell', () => {
+  test('carries the brand on a tab root and the page name inside', async ({ page }) => {
+    /* An installed app opening with nothing but the word ড্যাশবোর্ড could be
+       anybody's, and the home-screen icon is the only other place the brand
+       appears. On a screen you navigated *into*, "where am I" is worth more
+       than "whose app is this" — which by then the person knows.
+
+       Phones only: the bar is `md:hidden`, because from 768px up the sidebar is
+       on screen and already carries the mark. Asserting it at every width would
+       be asserting the sidebar's copy, which is a different thing. */
+    await signup(page);
+    if ((page.viewportSize()?.width ?? 0) >= 768) return;
+
+    const bar = page.locator('header').first();
+    await expect(bar.getByText('Taka Tracker')).toBeVisible();
+
+    await page.goto('/settings');
+    await expect(page.locator('header').first().getByText('Taka Tracker')).toHaveCount(0);
+    await expect(page.locator('header').first().getByRole('heading')).toContainText('সেটিংস');
+  });
+
   test('shows the bottom tab bar below 768px and the sidebar above it', async ({
     page,
   }, testInfo) => {

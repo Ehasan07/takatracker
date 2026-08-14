@@ -78,6 +78,15 @@ let refreshing = false;
  * the update on the *next* launch is a small cost, and signing somebody out is
  * not.
  */
+/**
+ * How rarely a resumed app re-checks for a release.
+ *
+ * A minute is short enough that somebody who switches back after lunch gets the
+ * new build, and long enough that flicking between two apps does not refetch
+ * `sw.js` on every flick.
+ */
+export const UPDATE_CHECK_THROTTLE_MS = 60_000;
+
 export const RELOAD_POLL_MS = 400;
 export const RELOAD_GIVE_UP_MS = 10_000;
 
@@ -122,6 +131,31 @@ function adoptUpdates(): void {
   /* Ask now. Browsers re-fetch `sw.js` on their own, but on a schedule measured
      in hours — far too slow to be how a release reaches an installed app. */
   void container.ready.then((registration) => registration.update()).catch(() => undefined);
+
+  /* And ask again every time the app comes back to the front.
+   *
+   * This is the whole reason an installed app was running a build from days
+   * ago. The check above happens when a *page loads*, and an installed app
+   * resumed from the background does not load a page — it is the same document
+   * it was when the person switched away. So on a phone the question was never
+   * asked again, and the app went on serving whatever was cached the day it was
+   * opened. A browser tab hid the problem by being reloaded now and then.
+   *
+   * `visibilitychange` is the event that means "somebody is looking at this
+   * again", which is exactly when a new release should be picked up and exactly
+   * when a reload costs nothing. `controllerchange` above does the reloading;
+   * this only asks the question.
+   *
+   * Throttled, because switching apps twice in a second should not fetch
+   * `sw.js` twice — and because the fetch is cheap but not free on a phone
+   * connection. */
+  let lastAsk = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastAsk < UPDATE_CHECK_THROTTLE_MS) return;
+    lastAsk = Date.now();
+    void container.ready.then((registration) => registration.update()).catch(() => undefined);
+  });
 }
 
 export function ServiceWorkerRegistrar() {

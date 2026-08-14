@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useIsDesktop, useKeyboardInset } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { BrandMark } from '@/components/brand-mark';
 import { t } from '@/lib/t';
 import {
   HUB_DESTINATIONS,
@@ -334,26 +335,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Fixed title bar — phones only. Mirrors a native navigation bar:
-            centred title, back arrow on anything that is not a tab root. */}
+        {/* Fixed title bar — phones only. Mirrors a native navigation bar, and
+            differs between the two kinds of screen for the reason a native app
+            does:
+
+            On a tab root the mark and the name sit on the left, because an
+            installed app opening with nothing but the word "ড্যাশবোর্ড" could be
+            anybody's, and the home screen icon is the only other place the brand
+            appears. On a screen you navigated *into*, the back arrow and the
+            centred page title take over — there "where am I" is worth more than
+            "whose app is this", which the person already knows by then. */}
         <header className="chrome-blur border-rule safe-top safe-x z-30 shrink-0 border-b md:hidden">
           <div
             className={cn(
-              'relative flex h-12 items-center justify-center',
-              showBack ? 'px-12' : 'px-3',
+              'relative flex h-12 items-center',
+              showBack ? 'justify-center px-12' : 'justify-start px-3',
             )}
           >
             {showBack ? (
-              <button
-                type="button"
-                onClick={goBack}
-                aria-label={t('shell.back', 'পিছনে')}
-                className="press touch-target text-ink absolute inset-y-0 left-0 flex items-center justify-center"
-              >
-                <ChevronLeft className="h-6 w-6" aria-hidden />
-              </button>
-            ) : null}
-            <h1 className="text-ink truncate text-base font-semibold">{titleFor(pathname)}</h1>
+              <>
+                <button
+                  type="button"
+                  onClick={goBack}
+                  aria-label={t('shell.back', 'পিছনে')}
+                  className="press touch-target text-ink absolute inset-y-0 left-0 flex items-center justify-center"
+                >
+                  <ChevronLeft className="h-6 w-6" aria-hidden />
+                </button>
+                <h1 className="text-ink truncate text-base font-semibold">{titleFor(pathname)}</h1>
+              </>
+            ) : (
+              <>
+                <BrandMark size="sm" />
+                {/* The page title still has to exist for a screen reader, and
+                    for the heading order — it is simply not the thing worth the
+                    width here. */}
+                <h1 className="sr-only">{titleFor(pathname)}</h1>
+              </>
+            )}
           </div>
         </header>
 

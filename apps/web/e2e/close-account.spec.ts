@@ -77,6 +77,17 @@ test.describe('closing an account', () => {
     });
   });
 
+  test('is reachable from the More hub without opening a menu first', async ({ page }) => {
+    /* It was always reachable — the account row at the top of আরও opens a menu
+       with it inside — and it was reported as missing anyway, which is what a
+       control behind a disclosure amounts to on a phone. */
+    await signup(page);
+    await page.goto('/more');
+
+    await page.getByRole('button', { name: 'লগআউট' }).click();
+    await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
+  });
+
   test('has a public page that says what goes and what stays', async ({ page }) => {
     /* The person most likely to need this has already uninstalled or cannot get
        back in, so it must work with no session at all. It is also the URL an
