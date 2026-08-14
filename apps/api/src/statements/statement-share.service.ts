@@ -264,7 +264,9 @@ export class StatementShareService {
           ? await this.prisma.loan.count({ where })
           : kind === 'SAVINGS'
             ? await this.prisma.savingsPlan.count({ where })
-            : await this.prisma.insurancePolicy.count({ where });
+            : kind === 'GROUP'
+              ? await this.prisma.splitGroup.count({ where })
+              : await this.prisma.insurancePolicy.count({ where });
 
     if (found !== 1) throw new NotFoundException('যেটির স্টেটমেন্ট চাইছেন সেটি পাওয়া যায়নি');
   }

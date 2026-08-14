@@ -32,7 +32,7 @@ import { PrintButton } from './print-button';
  */
 
 export interface PublicStatement {
-  kind: 'PERSON' | 'LOAN' | 'SAVINGS' | 'INSURANCE';
+  kind: 'PERSON' | 'LOAN' | 'SAVINGS' | 'INSURANCE' | 'GROUP';
   workspaceName: string;
   currency: string;
   locale: Locale;
@@ -60,6 +60,17 @@ type Instalment = {
   paidDate: string | null;
   status: string;
 };
+
+type GroupMember = {
+  name: string;
+  paidMinor: number;
+  shareMinor: number;
+  netMinor: number;
+  left: boolean;
+};
+
+type GroupExpense = { date: string; description: string; payer: string; totalMinor: number };
+type SettleUp = { from: string; to: string; amountMinor: number };
 
 /**
  * The document's own words, in both languages, keyed by the workspace's.
@@ -98,7 +109,18 @@ type Words = Record<
   | 'ctaTitle'
   | 'ctaBody'
   | 'ctaButton'
-  | 'ctaPricing',
+  | 'ctaPricing'
+  | 'groupTotal'
+  | 'member'
+  | 'memberPaid'
+  | 'memberShare'
+  | 'memberNet'
+  | 'settleUp'
+  | 'gets'
+  | 'owes'
+  | 'square'
+  | 'paidBy'
+  | 'left',
   string
 >;
 
@@ -134,6 +156,17 @@ const T: Record<Locale, Words> = {
       'আয়, খরচ, ধার-দেনা, সঞ্চয় আর বীমা — সব এক খাতায়, সম্পূর্ণ বাংলায়। নিজের হিসাব শুরু করুন।',
     ctaButton: 'ফ্রি অ্যাকাউন্ট খুলুন',
     ctaPricing: 'দাম দেখুন',
+    groupTotal: 'মোট খরচ',
+    member: 'কে',
+    memberPaid: 'দিয়েছেন',
+    memberShare: 'তার ভাগ',
+    memberNet: 'পাবেন / দেবেন',
+    settleUp: 'হিসাব মেটাতে',
+    gets: 'পাবেন',
+    owes: 'দেবেন',
+    square: 'হিসাব শেষ',
+    paidBy: 'দিয়েছেন',
+    left: 'গ্রুপ ছেড়েছেন',
   },
   en: {
     statement: 'Statement',
@@ -165,6 +198,17 @@ const T: Record<Locale, Words> = {
     ctaBody: 'Income, spending, loans, savings and insurance in one place. Start keeping your own.',
     ctaButton: 'Create a free account',
     ctaPricing: 'See pricing',
+    groupTotal: 'Total spent',
+    member: 'Who',
+    memberPaid: 'Paid',
+    memberShare: 'Their share',
+    memberNet: 'Gets back / owes',
+    settleUp: 'To settle up',
+    gets: 'gets back',
+    owes: 'owes',
+    square: 'all square',
+    paidBy: 'Paid by',
+    left: 'left the group',
   },
 };
 
@@ -215,6 +259,7 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
 
   const ledgerRows = (statement.data.rows as Row[] | undefined) ?? null;
   const instalments = (statement.data.items as Instalment[] | undefined) ?? null;
+  const groupMembers = (statement.data.members as GroupMember[] | undefined) ?? null;
 
   return (
     <div className="bg-paper min-h-dvh print:bg-white">
@@ -258,7 +303,9 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
           </div>
         </section>
 
-        {ledgerRows ? (
+        {groupMembers ? (
+          <GroupTables data={statement.data} money={money} date={date} t={t} />
+        ) : ledgerRows ? (
           <LedgerTable rows={ledgerRows} data={statement.data} money={money} date={date} t={t} />
         ) : instalments ? (
           <InstalmentTable
@@ -463,6 +510,130 @@ function InstalmentTable({
             </tbody>
           </table>
         </>
+      )}
+    </>
+  );
+}
+
+/**
+ * A trip or an event, as the people who were on it need to read it.
+ *
+ * Two tables and a list, in the order somebody asks the questions: where do I
+ * stand, what did we spend it on, and who should pay whom. The settle-up list
+ * is the reason most people open the link at all — working "you owe Karim
+ * ৳2,000" out of three columns is exactly the arithmetic that gets done wrong
+ * and then argued about.
+ */
+function GroupTables({
+  data,
+  money,
+  date,
+  t,
+}: {
+  data: Record<string, unknown>;
+  money: (minor: number) => string;
+  date: (iso: string | null | undefined) => string;
+  t: Words;
+}) {
+  const members = (data.members as GroupMember[] | undefined) ?? [];
+  const expenses = (data.expenses as GroupExpense[] | undefined) ?? [];
+  const settleUp = (data.settleUp as SettleUp[] | undefined) ?? [];
+  const total = typeof data.totalMinor === 'number' ? data.totalMinor : 0;
+
+  return (
+    <>
+      <dl className="border-rule mt-5 grid grid-cols-2 gap-3 border-y py-4 text-sm">
+        <Figure label={t.groupTotal} value={money(total)} strong />
+      </dl>
+
+      {/* Phone: one card per person. */}
+      <ul className="divide-rule mt-2 divide-y sm:hidden print:hidden">
+        {members.map((m) => (
+          <li key={m.name} className="py-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-ink text-sm font-medium">
+                {m.name}
+                {m.left ? <span className="text-ink-muted ml-1 text-xs">· {t.left}</span> : null}
+              </span>
+              <span className="money text-ink text-sm font-semibold">
+                {m.netMinor === 0
+                  ? t.square
+                  : `${money(Math.abs(m.netMinor))} ${m.netMinor > 0 ? t.gets : t.owes}`}
+              </span>
+            </div>
+            <p className="text-ink-muted mt-0.5 text-xs">
+              {t.memberPaid} {money(m.paidMinor)} · {t.memberShare} {money(m.shareMinor)}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      <table className="mt-4 hidden w-full border-collapse text-sm sm:table print:table">
+        <thead>
+          <tr className="border-rule border-b text-left">
+            <Th>{t.member}</Th>
+            <Th align="right">{t.memberPaid}</Th>
+            <Th align="right">{t.memberShare}</Th>
+            <Th align="right">{t.memberNet}</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {members.map((m) => (
+            <tr key={m.name} className="border-rule border-b last:border-0">
+              <Td>
+                {m.name}
+                {m.left ? <span className="text-ink-muted ml-1 text-xs">· {t.left}</span> : null}
+              </Td>
+              <Td align="right">{money(m.paidMinor)}</Td>
+              <Td align="right">{money(m.shareMinor)}</Td>
+              <Td align="right">{m.netMinor === 0 ? t.square : money(m.netMinor)}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {settleUp.length > 0 ? (
+        <div className="mt-6">
+          <h2 className="text-ink text-sm font-semibold">{t.settleUp}</h2>
+          <ul className="divide-rule border-rule mt-2 divide-y border-t">
+            {settleUp.map((s, i) => (
+              <li
+                key={`${s.from}-${s.to}-${i}`}
+                className="flex justify-between gap-3 py-2 text-sm"
+              >
+                <span className="text-ink min-w-0 truncate">
+                  {s.from} → {s.to}
+                </span>
+                <span className="money text-ink shrink-0 font-medium">{money(s.amountMinor)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {expenses.length > 0 ? (
+        <table className="mt-6 w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-rule border-b text-left">
+              <Th>{t.date}</Th>
+              <Th>{t.detail}</Th>
+              <Th>{t.paidBy}</Th>
+              <Th align="right">{t.amount}</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {expenses.map((e, i) => (
+              <tr key={`${e.date}-${i}`} className="border-rule border-b last:border-0">
+                <Td>{date(e.date)}</Td>
+                <Td>{e.description}</Td>
+                <Td>{e.payer}</Td>
+                <Td align="right">{money(e.totalMinor)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <Empty>{t.empty}</Empty>
       )}
     </>
   );

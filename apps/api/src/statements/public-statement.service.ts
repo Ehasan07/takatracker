@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { groupPositions, suggestSettlements } from '@hishab/core';
 import { fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
 import { minorToNumber } from '../common/bigint-json';
 import { LoansService } from '../loans/loans.service';
@@ -120,6 +121,10 @@ export class PublicStatementService {
       return { ...head, kind: share.kind, ...(await this.savings(share, workspace.timezone)) };
     }
 
+    if (share.kind === 'GROUP') {
+      return { ...head, kind: share.kind, ...(await this.group(share, workspace.timezone)) };
+    }
+
     return { ...head, kind: share.kind, ...(await this.insurance(share, workspace.timezone)) };
   }
 
@@ -177,6 +182,135 @@ export class PublicStatementService {
         paidMinor,
         dueMinor,
         totalMinor: paidMinor + dueMinor,
+      },
+    };
+  }
+
+  /**
+   * A whole trip or event: what it cost, and who carried what share.
+   *
+   * ## What the reader is given, and what they are not
+   *
+   * Everybody on the trip already knows what the trip cost and roughly who paid
+   * for what — that is the point of having been on it. So this shows the whole
+   * group: every bill, who paid it, and each member's total paid, total share
+   * and where they stand. Withholding that would make the page useless for the
+   * one thing anybody opens it for, which is checking their own number against
+   * everybody else's.
+   *
+   * What it does not carry is anything from outside the group. No account
+   * balances, no other people, no other spending — the owner's ledger stays
+   * theirs. The share row names one group and the queries filter on it.
+   *
+   * ## Why it reuses the statement link rather than growing its own
+   *
+   * Expiry, revocation, the view counter, the single-sentence 404, `noindex`,
+   * the rate limit and the hashed token are all already built and tested. A
+   * second kind of public link would be a second place for each of those to be
+   * got wrong.
+   */
+  private async group(share: ResolvedShare, timezone: string) {
+    const group = await this.prisma.splitGroup.findFirst({
+      where: { id: share.subjectId, workspaceId: share.workspaceId, deletedAt: null },
+      select: { id: true, name: true, purpose: true },
+    });
+    if (!group) throw new NotFoundException('লিংকটি আর কাজ করছে না।');
+
+    const [members, expenses, settlements] = await Promise.all([
+      this.prisma.splitGroupMember.findMany({
+        where: { groupId: group.id, workspaceId: share.workspaceId },
+        orderBy: [{ isSelf: 'desc' }, { createdAt: 'asc' }],
+        select: { id: true, displayName: true, isSelf: true, removedAt: true },
+      }),
+      this.prisma.sharedExpense.findMany({
+        where: {
+          workspaceId: share.workspaceId,
+          groupId: group.id,
+          deletedAt: null,
+          ...PublicStatementService.dateWindow('date', share, timezone),
+        },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          date: true,
+          description: true,
+          totalMinor: true,
+          payerMemberId: true,
+          shares: { select: { memberId: true, amountMinor: true } },
+        },
+      }),
+      this.prisma.splitSettlement.findMany({
+        where: {
+          workspaceId: share.workspaceId,
+          groupId: group.id,
+          deletedAt: null,
+          ...PublicStatementService.dateWindow('date', share, timezone),
+        },
+        orderBy: { date: 'asc' },
+        select: { fromMemberId: true, toMemberId: true, amountMinor: true },
+      }),
+    ]);
+
+    const nameOf = new Map(members.map((m) => [m.id, m.displayName]));
+    const paid = new Map<string, number>();
+    const owed = new Map<string, number>();
+    let totalMinor = 0;
+
+    for (const expense of expenses) {
+      const total = minorToNumber(expense.totalMinor);
+      totalMinor += total;
+      paid.set(expense.payerMemberId, (paid.get(expense.payerMemberId) ?? 0) + total);
+      for (const share_ of expense.shares) {
+        owed.set(
+          share_.memberId,
+          (owed.get(share_.memberId) ?? 0) + minorToNumber(share_.amountMinor),
+        );
+      }
+    }
+
+    const positions = groupPositions(
+      expenses.map((e) => ({
+        payerMemberId: e.payerMemberId,
+        shares: e.shares.map((x) => ({
+          memberId: x.memberId,
+          amountMinor: minorToNumber(x.amountMinor),
+        })),
+      })),
+      settlements.map((x) => ({
+        fromMemberId: x.fromMemberId,
+        toMemberId: x.toMemberId,
+        amountMinor: minorToNumber(x.amountMinor),
+      })),
+    );
+    const netOf = new Map(positions.map((p) => [p.memberId, p.netMinor]));
+
+    return {
+      title: group.name,
+      subtitle: null,
+      data: {
+        totalMinor,
+        /* Suggested payments are on here too: the reason somebody sends this
+           link is usually to say "so you owe Karim ৳2,000", and making the
+           reader work that out from three columns invites them to get it
+           wrong. */
+        settleUp: suggestSettlements(positions).map((s) => ({
+          from: nameOf.get(s.fromMemberId) ?? '',
+          to: nameOf.get(s.toMemberId) ?? '',
+          amountMinor: s.amountMinor,
+        })),
+        members: members.map((m) => ({
+          name: m.displayName,
+          paidMinor: paid.get(m.id) ?? 0,
+          shareMinor: owed.get(m.id) ?? 0,
+          netMinor: netOf.get(m.id) ?? 0,
+          left: m.removedAt !== null,
+        })),
+        expenses: expenses.map((e) => ({
+          date: toLocalDateString(e.date, timezone),
+          description: e.description,
+          payer: nameOf.get(e.payerMemberId) ?? '',
+          totalMinor: minorToNumber(e.totalMinor),
+        })),
       },
     };
   }
@@ -244,7 +378,7 @@ export class PublicStatementService {
    * means. `lt` on the following midnight rather than `lte` on the date, so a
    * row stamped at any time on the last day is inside.
    */
-  private static dateWindow(field: 'dueDate', share: ResolvedShare, timezone: string) {
+  private static dateWindow(field: 'dueDate' | 'date', share: ResolvedShare, timezone: string) {
     if (!share.from && !share.to) return {};
     const gte = share.from ? fromLocalDateString(share.from, timezone) : undefined;
     const lt = share.to

@@ -149,6 +149,8 @@ enum StatementKind {
   LOAN
   SAVINGS
   INSURANCE
+  /// A whole trip or event: what it cost and who carried what share of it.
+  GROUP
 }
 
 /// A statement somebody outside the app can open, print, and nothing more.
@@ -571,6 +573,18 @@ model Person {
   workspaceId String
   name        String
   phone       String?
+  /**
+   * The phone reduced to one spelling, for deciding whether two rows are the
+   * same person.
+   *
+   * `phone` keeps whatever was typed — "01712-345678", "+8801712345678", a
+   * landline — because that is the best record of how to reach somebody.
+   * `phoneKey` is `01712345678` and nothing else, and it is what the unique
+   * index is on. Two names are not evidence of two people; a number is.
+   */
+  phoneKey    String?
+  /** Lower-cased and trimmed. The other thing that identifies somebody. */
+  email       String?
   relation    String?
   note        String?
   photoUri    String?
@@ -584,6 +598,10 @@ model Person {
   splitMembers SplitGroupMember[]
 
   @@index([workspaceId])
+  /* One person per number, per workspace. Partial, because most people in a
+     household ledger have no number at all and many nulls must not collide. */
+  @@unique([workspaceId, phoneKey])
+  @@unique([workspaceId, email])
 }
 
 // ---------------------------------------------------------------------------

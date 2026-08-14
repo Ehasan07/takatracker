@@ -8,7 +8,7 @@ import {
   type SearchBucket,
   type SearchDoc,
 } from '@hishab/core';
-import { toBengaliDigits, toLocalDateString } from '@hishab/shared';
+import { toBengaliDigits, toLocalDateString, personIdentityKeys } from '@hishab/shared';
 import type { Person, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { MAX_SEARCH_QUERY_LENGTH } from '../categories/categories.service';
@@ -105,6 +105,8 @@ export interface PersonView {
 export interface PersonWriteInput {
   readonly name?: string;
   readonly phone?: string | null;
+  /** The second identity key; see `personIdentityKeys` in shared. */
+  readonly email?: string | null;
   readonly relation?: string | null;
   readonly note?: string | null;
   readonly photoUri?: string | null;
@@ -211,6 +213,10 @@ export class PeopleService {
         workspaceId: ctx.workspaceId,
         name,
         phone,
+        /* The unique index is on these, not on `phone` — see
+           `personIdentityKeys`. Written on every path that makes a person, or
+           two rows for one human slip in through whichever path forgot. */
+        ...personIdentityKeys({ phone, email: input.email }),
         relation: trimOrNull(input.relation),
         note: trimOrNull(input.note),
         photoUri: parsePhotoUri(input.photoUri),

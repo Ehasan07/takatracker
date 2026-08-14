@@ -1,12 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, HandCoins, PiggyBank, Plus, Trash2, UserPlus } from 'lucide-react';
+import { ArrowLeft, HandCoins, Link2, PiggyBank, Plus, Trash2, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
+import { ShareStatementSheet } from '@/components/share-statement-sheet';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
@@ -50,6 +51,7 @@ export default function SplitGroupPage() {
   const [adding, setAdding] = React.useState(false);
   const [addingMember, setAddingMember] = React.useState(false);
   const [settling, setSettling] = React.useState<Suggestion | null>(null);
+  const [sharing, setSharing] = React.useState(false);
 
   const group = useQuery({
     queryKey: splitKeys.group(groupId),
@@ -97,6 +99,14 @@ export default function SplitGroupPage() {
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
+                {/* One public link per trip: what it cost and who carried what
+                    share. The same statement-share machinery every other link
+                    uses, so it expires, can be taken back, and counts its own
+                    views. */}
+                <Button type="button" variant="outline" onClick={() => setSharing(true)}>
+                  <Link2 className="h-4 w-4" aria-hidden />
+                  {t('share.short', 'শেয়ার')}
+                </Button>
                 <Button type="button" variant="outline" onClick={() => setAddingMember(true)}>
                   <UserPlus className="h-4 w-4" aria-hidden />
                   {t('split.addPerson', 'সদস্য')}
@@ -228,6 +238,15 @@ export default function SplitGroupPage() {
           </section>
 
           <AddExpenseSheet open={adding} onOpenChange={setAdding} group={data} />
+          {sharing ? (
+            <ShareStatementSheet
+              open
+              onOpenChange={setSharing}
+              kind="GROUP"
+              subjectId={data.id}
+              subjectName={data.name}
+            />
+          ) : null}
           <AddMemberSheet open={addingMember} onOpenChange={setAddingMember} groupId={groupId} />
           <SettleSheet
             group={data}
@@ -566,18 +585,23 @@ function AddMemberSheet({
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = React.useState('');
+  const [phone, setPhone] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) {
       setName('');
+      setPhone('');
       setError(null);
     }
   }, [open]);
 
   const add = useMutation({
     mutationFn: () =>
-      api(`/split/groups/${groupId}/members`, { method: 'POST', body: { name: name.trim() } }),
+      api(`/split/groups/${groupId}/members`, {
+        method: 'POST',
+        body: { name: name.trim(), phone: phone.trim() || undefined },
+      }),
     onSuccess: () => {
       haptic('success');
       void queryClient.invalidateQueries({ queryKey: splitKeys.group(groupId) });
@@ -612,10 +636,23 @@ function AddMemberSheet({
             autoFocus
           />
         </Field>
+        <Field label={t('split.personPhone', 'মোবাইল নম্বর (ঐচ্ছিক)')} htmlFor="member-phone">
+          <Input
+            id="member-phone"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="01712345678"
+            maxLength={30}
+          />
+        </Field>
         <p className="text-ink-muted -mt-1 text-xs">
+          {/* The number is what makes this the same person. Without it, adding
+              করিম to a trip made a second করিম beside the one who had borrowed
+              money last year — two rows and two balances for one human. */}
           {t(
             'split.personHint',
-            'তাঁর অ্যাকাউন্ট লাগবে না। নামটি আপনার “মানুষজন” তালিকাতেও যোগ হবে, তাই ধার-দেনার হিসাব এক জায়গাতেই থাকবে।',
+            'তাঁর অ্যাকাউন্ট লাগবে না। নম্বর দিলে আগের সেই মানুষটির সঙ্গেই মিলে যাবে — ধার-দেনা আর ভাগাভাগি এক হিসাবেই থাকবে।',
           )}
         </p>
         {error ? (

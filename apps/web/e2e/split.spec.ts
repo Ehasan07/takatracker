@@ -272,6 +272,85 @@ test.describe('spending together', () => {
     await expect(page.getByRole('main')).toContainText('৳48,000.00', { timeout: 15_000 });
   });
 
+  test('one public link shows the whole trip, to somebody with no account', async ({
+    page,
+    browser,
+  }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await makeGroup(page);
+
+    await page.getByRole('button', { name: 'খরচ', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কত টাকা').fill('9000');
+    await sheet.getByLabel('কীসের খরচ').fill('হোটেল');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'শেয়ার', exact: true }).click();
+    const share = page.getByRole('dialog');
+    await share.getByRole('button', { name: 'লিংক তৈরি করুন' }).click();
+    const url = await share.getByLabel('শেয়ার লিংক').inputValue();
+
+    /* A browser that has never signed in — the whole point. */
+    const stranger = await browser.newContext();
+    const guest = await stranger.newPage();
+    await guest.goto(url);
+
+    await expect(guest.getByRole('heading', { name: 'কক্সবাজার ট্রিপ' })).toBeVisible({
+      timeout: 15_000,
+    });
+    /* What it cost, who carried what, and who should pay whom — the three
+       things anybody opens this for. */
+    await expect(guest.getByText('মোট খরচ')).toBeVisible();
+    await expect(guest.getByText('হিসাব মেটাতে')).toBeVisible();
+    /* `toContainText` rather than a visible-element assertion: the page carries
+       two renderings of the same rows — cards below 640px, a table above — and
+       `.first()` picks whichever comes first in the DOM, which is the hidden one
+       half the time. Asserting on the text is the question actually being
+       asked. */
+    await expect(guest.getByRole('main')).toContainText('৳9,000.00');
+    await expect(guest.getByRole('main')).toContainText('করিম');
+    await expect(guest.getByRole('main')).toContainText('হোটেল');
+
+    await stranger.close();
+  });
+
+  test('a member with a number is the person you already had', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    /* Lend to করিম on his number first. */
+    await page.goto('/loans');
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    let sheet = page.getByRole('dialog');
+    await sheet.getByLabel('ধরন').selectOption('LENT');
+    await sheet.getByLabel('নাম', { exact: true }).fill('করিম');
+    await sheet.getByLabel('মোবাইল নম্বর').fill('01712345678');
+    await sheet.getByLabel('মূল টাকা (৳)').fill('5000');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* Then add him to a trip by the same number, spelled differently. */
+    await page.goto('/split');
+    await page.getByRole('button', { name: 'নতুন গ্রুপ' }).first().click();
+    sheet = page.getByRole('dialog');
+    await sheet.getByLabel('গ্রুপের নাম').fill('ট্রিপ');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+    await page.getByRole('link', { name: /ট্রিপ/ }).click();
+    await page.getByRole('button', { name: 'সদস্য', exact: true }).click();
+    sheet = page.getByRole('dialog');
+    await sheet.getByLabel('নাম', { exact: true }).fill('করিম ভাই');
+    await sheet.getByLabel('মোবাইল নম্বর (ঐচ্ছিক)').fill('+8801712345678');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* One করিম on the people list, not two. */
+    await page.goto('/people');
+    await expect(page.getByRole('list', { name: 'মানুষজন' }).getByText(/করিম/)).toHaveCount(1);
+  });
+
   test('nothing scrolls sideways on a phone', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);

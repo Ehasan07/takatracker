@@ -10,7 +10,12 @@ import {
   type EntryDraft,
   type SplitInput,
 } from '@hishab/core';
-import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
+import {
+  fromLocalDateString,
+  personIdentityKeys,
+  storablePhone,
+  toLocalDateString,
+} from '@hishab/shared';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
 import { minorToNumber } from '../common/bigint-json';
@@ -71,7 +76,13 @@ export interface CreateGroupInput {
   currency?: string;
   note?: string;
   /** People to start with. A member row for the owner is always created. */
-  members?: { personId?: string; name?: string; shareWeight?: number }[];
+  members?: {
+    personId?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    shareWeight?: number;
+  }[];
 }
 
 export interface CreateExpenseInput {
@@ -185,7 +196,13 @@ export class SplitService {
     tx: Prisma.TransactionClient,
     ctx: TenantContext,
     groupId: string,
-    input: { personId?: string; name?: string; shareWeight?: number },
+    input: {
+      personId?: string;
+      name?: string;
+      phone?: string;
+      email?: string;
+      shareWeight?: number;
+    },
   ) {
     let personId = input.personId ?? null;
     let displayName = input.name?.trim() ?? '';
@@ -199,13 +216,46 @@ export class SplitService {
       displayName = displayName || person.name;
     } else {
       if (!displayName) throw new BadRequestException('সদস্যের নাম দিন');
-      /* A new name creates a `Person`, not a group-only row. The point is that
-         what they owe follows them out of this group and into the party ledger
-         beside anything else between the two of you. */
-      const person = await tx.person.create({
-        data: { workspaceId: ctx.workspaceId, name: displayName },
-      });
-      personId = person.id;
+
+      /* A number or an address identifies somebody; a name does not.
+       *
+       * This used to create a `Person` from the typed name alone, so adding
+       * করিম to a trip made a second করিম beside the one who had borrowed money
+       * last year — two rows, two balances, and no screen showing the ৳7,000 he
+       * actually owed. With a key, the same person is found and reused, and
+       * what they owe from the trip lands on the ledger they were already on.
+       */
+      const keys = personIdentityKeys({ phone: input.phone, email: input.email });
+      const existing =
+        keys.phoneKey || keys.email
+          ? await tx.person.findFirst({
+              where: {
+                workspaceId: ctx.workspaceId,
+                deletedAt: null,
+                OR: [
+                  ...(keys.phoneKey ? [{ phoneKey: keys.phoneKey }] : []),
+                  ...(keys.email ? [{ email: keys.email }] : []),
+                ],
+              },
+              select: { id: true, name: true },
+            })
+          : null;
+
+      if (existing) {
+        personId = existing.id;
+        displayName = displayName || existing.name;
+      } else {
+        const person = await tx.person.create({
+          data: {
+            workspaceId: ctx.workspaceId,
+            name: displayName,
+            phone: storablePhone(input.phone) ?? undefined,
+            phoneKey: keys.phoneKey,
+            email: keys.email,
+          },
+        });
+        personId = person.id;
+      }
     }
 
     const existing = await tx.splitGroupMember.findFirst({

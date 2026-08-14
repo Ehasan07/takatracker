@@ -25,6 +25,11 @@ const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'তারিখ YYYY-MM-DD
 const memberSchema = z.object({
   personId: z.string().min(1).optional(),
   name: z.string().trim().min(1).max(120).optional(),
+  /* What makes this the same person as one already on the books. Without it a
+     member is created from the name alone, and two people called করিম are two
+     people — see `personIdentityKeys`. */
+  phone: z.string().trim().max(30).optional(),
+  email: z.string().trim().max(200).optional(),
   shareWeight: z.number().int().min(0).max(1000).optional(),
 });
 

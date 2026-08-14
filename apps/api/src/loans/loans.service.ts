@@ -27,6 +27,7 @@ import {
   fromLocalDateString,
   toLocalDateString,
   type EntryDirection,
+  personIdentityKeys,
 } from '@hishab/shared';
 import { Prisma } from '@prisma/client';
 import type {
@@ -1555,7 +1556,16 @@ export class LoansService {
       }));
 
     if (!match) {
-      return tx.person.create({ data: { workspaceId, name, phone: trimmedPhone } });
+      /* Same keys as every other path that makes a person: a loan recorded
+         against a number somebody is already on must find them, not copy them. */
+      return tx.person.create({
+        data: {
+          workspaceId,
+          name,
+          phone: trimmedPhone,
+          ...personIdentityKeys({ phone: trimmedPhone }),
+        },
+      });
     }
 
     /* A number we did not have before is new information, so record it. A

@@ -809,3 +809,215 @@ describe('a common pot', () => {
     await post(`/v1/split/groups/${groupId}/pot`, {}).expect(400);
   });
 });
+
+/**
+ * One human, one row.
+ *
+ * A name is not an identity: two people called করিম are two people. Adding করিম
+ * to a trip used to create a second করিম beside the one who had borrowed money
+ * last year — two rows, two balances, and no screen that showed the ৳7,000 he
+ * actually owed. A number is an identity, so a number is what this matches on.
+ */
+describe('a person is their number, not their name', () => {
+  let ctx: TestContext;
+  let user: Awaited<ReturnType<typeof signup>>;
+  let accountId: string;
+
+  const post = (path: string, body: Record<string, unknown>) =>
+    ctx.http().post(path).set(auth(user)).send(body);
+  const get = (path: string) => ctx.http().get(path).set(auth(user));
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    user = await signup(ctx);
+    accountId = (
+      await post('/v1/accounts', { name: 'নগদ', type: 'CASH', openingBalance: 5_000_000 }).expect(
+        201,
+      )
+    ).body.id;
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('puts a trip share on the same ledger as an older loan', async () => {
+    /* করিম borrows ৳5,000 on his number… */
+    await post('/v1/loans', {
+      direction: 'LENT',
+      personName: 'করিম',
+      personPhone: '01712345678',
+      principalMinor: 500_000,
+      loanDate: '2026-08-01',
+      accountId,
+    }).expect(201);
+
+    /* …then joins a trip, entered by whatever spelling came to hand. */
+    const group = await post('/v1/split/groups', {
+      name: 'ট্রিপ',
+      members: [{ name: 'করিম ভাই', phone: '+8801712345678' }],
+    }).expect(201);
+
+    const people = await get('/v1/people').expect(200);
+    const karims = people.body.filter((p: { name: string }) => p.name.includes('করিম'));
+    expect(karims).toHaveLength(1);
+
+    const member = group.body.members.find((m: { isSelf: boolean }) => !m.isSelf);
+    expect(member.personId).toBe(karims[0].id);
+  });
+
+  it('so what he owes is one number, from both', async () => {
+    const people = await get('/v1/people').expect(200);
+    const karim = people.body.find((p: { name: string }) => p.name.includes('করিম'));
+    const group = (await get('/v1/split/groups').expect(200)).body[0];
+    const detail = await get(`/v1/split/groups/${group.id}`).expect(200);
+    const me = detail.body.members.find((m: { isSelf: boolean }) => m.isSelf);
+    const him = detail.body.members.find((m: { isSelf: boolean }) => !m.isSelf);
+
+    await post(`/v1/split/groups/${group.id}/expenses`, {
+      description: 'হোটেল',
+      date: '2026-08-05',
+      totalMinor: 400_000,
+      payerMemberId: me.id,
+      splitMethod: 'EQUAL',
+      shares: [{ memberId: me.id }, { memberId: him.id }],
+      accountId,
+    }).expect(201);
+
+    /* ৳5,000 lent + ৳2,000 of hotel = ৳7,000, on one party ledger. */
+    const ledger = await get(`/v1/loans/people/${karim.id}/ledger`).expect(200);
+    expect(ledger.body.netPositionMinor).toBe(700_000);
+  });
+
+  it('two people with no number are still two people', async () => {
+    const group = await post('/v1/split/groups', {
+      name: 'নাম মেলানোর পরীক্ষা',
+      members: [{ name: 'রহিম' }, { name: 'রহিম' }],
+    }).expect(201);
+    /* Same name, nothing to tell them apart, so they are not merged on a
+       guess: silently joining two people's money is far worse than two rows. */
+    expect(group.body.members.filter((m: { isSelf: boolean }) => !m.isSelf)).toHaveLength(2);
+  });
+
+  it('refuses a second person on a number somebody already has', async () => {
+    await post('/v1/people', { name: 'অন্য কেউ', phone: '01712345678' }).expect(400);
+  });
+});
+
+/**
+ * One public link per trip.
+ *
+ * Everybody who was on it already knows what it cost and roughly who paid, so
+ * the page shows the whole group — every bill, each member's total paid and
+ * total share, and the fewest payments that clear it. What it must never carry
+ * is anything from outside the group.
+ */
+describe('a trip anybody can open', () => {
+  let ctx: TestContext;
+  let user: Awaited<ReturnType<typeof signup>>;
+  let token: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    user = await signup(ctx);
+    const accountId = (
+      await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: 'নগদ', type: 'CASH', openingBalance: 5_000_000 })
+        .expect(201)
+    ).body.id;
+
+    const group = await ctx
+      .http()
+      .post('/v1/split/groups')
+      .set(auth(user))
+      .send({ name: 'কক্সবাজার', members: [{ name: 'করিম' }, { name: 'রহিম' }] })
+      .expect(201);
+    const me = group.body.members.find((m: { isSelf: boolean }) => m.isSelf).id;
+    const others = group.body.members.filter((m: { isSelf: boolean }) => !m.isSelf);
+
+    await ctx
+      .http()
+      .post(`/v1/split/groups/${group.body.id}/expenses`)
+      .set(auth(user))
+      .send({
+        description: 'হোটেল',
+        date: '2026-08-05',
+        totalMinor: 900_000,
+        payerMemberId: me,
+        splitMethod: 'EQUAL',
+        shares: [{ memberId: me }, ...others.map((o: { id: string }) => ({ memberId: o.id }))],
+        accountId,
+      })
+      .expect(201);
+
+    const share = await ctx
+      .http()
+      .post('/v1/statement-shares')
+      .set(auth(user))
+      .send({ kind: 'GROUP', subjectId: group.body.id })
+      .expect(201);
+    token = share.body.url.replace('/s/', '');
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('opens with no session at all', async () => {
+    const res = await ctx.http().get(`/v1/public/statement/${token}`).expect(200);
+    expect(res.body.kind).toBe('GROUP');
+    expect(res.body.title).toBe('কক্সবাজার');
+    expect(res.body.data.totalMinor).toBe(900_000);
+  });
+
+  it('says who paid and what each person’s share was', async () => {
+    const res = await ctx.http().get(`/v1/public/statement/${token}`).expect(200);
+    const members = res.body.data.members as {
+      name: string;
+      paidMinor: number;
+      shareMinor: number;
+      netMinor: number;
+    }[];
+    expect(members).toHaveLength(3);
+    const owner = members.find((m) => m.paidMinor === 900_000);
+    expect(owner?.shareMinor).toBe(300_000);
+    expect(owner?.netMinor).toBe(600_000);
+    /* A group's positions always sum to zero. */
+    expect(members.reduce((sum, m) => sum + m.netMinor, 0)).toBe(0);
+  });
+
+  it('works out who should pay whom, so nobody has to', async () => {
+    const res = await ctx.http().get(`/v1/public/statement/${token}`).expect(200);
+    const settle = res.body.data.settleUp as { amountMinor: number }[];
+    expect(settle).toHaveLength(2);
+    expect(settle.every((s) => s.amountMinor === 300_000)).toBe(true);
+  });
+
+  it('carries nothing from outside the trip', async () => {
+    /* No account balances, no other spending, no ids that reach anywhere. The
+       owner's ledger stays theirs. */
+    const res = await ctx.http().get(`/v1/public/statement/${token}`).expect(200);
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain(user.email);
+    expect(body).not.toContain(user.workspaceId);
+    expect(res.body.data).not.toHaveProperty('accounts');
+  });
+
+  it('stops opening once it is taken back', async () => {
+    const list = await ctx
+      .http()
+      .get('/v1/statement-shares?kind=GROUP&subjectId=' + (await currentGroupId()))
+      .set(auth(user))
+      .expect(200);
+    await ctx.http().delete(`/v1/statement-shares/${list.body[0].id}`).set(auth(user)).expect(200);
+    await ctx.http().get(`/v1/public/statement/${token}`).expect(404);
+  });
+
+  async function currentGroupId(): Promise<string> {
+    const groups = await ctx.http().get('/v1/split/groups').set(auth(user)).expect(200);
+    return groups.body[0].id;
+  }
+});

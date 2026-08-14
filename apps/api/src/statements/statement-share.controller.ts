@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
 import { MAX_SHARE_DAYS, StatementShareService } from './statement-share.service';
 
-const KINDS = ['PERSON', 'LOAN', 'SAVINGS', 'INSURANCE'] as const;
+const KINDS = ['PERSON', 'LOAN', 'SAVINGS', 'INSURANCE', 'GROUP'] as const;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 
 const createSchema = z.object({

@@ -33,6 +33,9 @@ import { PeopleService } from './people.service';
 const personBodySchema = z.object({
   name: z.string().min(1).max(120),
   phone: z.string().max(30).nullish(),
+  /* The second thing that identifies somebody. A colleague may have no
+     Bangladeshi mobile and an office group still has to reach them. */
+  email: z.string().max(200).nullish(),
   relation: z.string().max(60).nullish(),
   note: z.string().max(2000).nullish(),
   photoUri: z.string().max(500).nullish(),
