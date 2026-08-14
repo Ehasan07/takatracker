@@ -15,10 +15,10 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Split,
   Tag as TagIcon,
   Tags,
   Users,
-  UsersRound,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -181,10 +181,17 @@ export const GROUPS: Group[] = [
       },
       {
         href: '/split',
-        label: 'ভাগাভাগি',
-        icon: UsersRound,
+        /* The English name rides along in brackets on purpose. Somebody who has
+           used ShareCost or Splitwise is looking for that word, and ভাগাভাগি on
+           its own does not answer them. */
+        label: 'ভাগাভাগি (ShareCost)',
+        /* Was `UsersRound`, one rounded corner away from the `Users` on
+           মানুষজন — two rows in the same menu that read as the same icon. This
+           one is about dividing a cost, not about who the people are. */
+        icon: Split,
         blurb: 'একসাথে খরচ — ট্রিপ, বাসা, অফিস; কে কত দেবে',
-        synonyms: 'split share group trip ভাগ শেয়ার গ্রুপ ট্রিপ মেস চাঁদা bill splitwise',
+        synonyms:
+          'split share group trip ভাগ শেয়ার গ্রুপ ট্রিপ মেস চাঁদা bill splitwise sharecost splitbill শেয়ারকস্ট',
       },
     ],
   },

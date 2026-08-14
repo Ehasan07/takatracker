@@ -156,9 +156,10 @@ export const EN: Record<string, string> = {
   /* "Split" is the word every app in this space uses and the word Bangladeshi
      users of those apps already know. The Bengali says ভাগাভাগি; this does not
      try to translate the concept twice. */
-  'nav.split': 'Split',
+  'nav.split': 'Split (ShareCost)',
   'nav.split.blurb': 'Spending together — trips, flats, the office; who owes what',
   'split.title': 'Split',
+  'split.titleFull': 'Split (ShareCost)',
   'split.blurb': 'Spending together — who paid, who owes',
   'split.groups': 'Groups',
   'split.newGroup': 'New group',
@@ -243,6 +244,13 @@ export const EN: Record<string, string> = {
   'split.joinedWithDrafts': 'Earlier expenses are waiting as drafts — take a look.',
   'split.joinedEmpty': 'New expenses will arrive as drafts for you.',
   'split.goToSplit': 'Go to Split',
+  'split.recordAny': 'Money changed hands',
+  'split.allSquare': 'Everybody is square.',
+  'split.paymentFrom': 'Who paid',
+  'split.paymentTo': 'To whom',
+  'split.pickBothSides': 'Choose who paid and who was paid',
+  'split.notSelf': 'Somebody cannot pay themselves',
+  'split.personPhone': 'Mobile number (optional)',
   'split.potTitle': 'A common pot',
   'split.potBlurb':
     'Everybody pays in and spending comes out — a family fund, an office samity, a trip kitty.',
@@ -933,4 +941,190 @@ export const EN: Record<string, string> = {
   'wording.empty': 'Nothing matches.',
   'wording.default': 'Default',
   'wording.yours': 'Yours',
+
+  // --- a statement of account ------------------------------------------------
+  'account.statement': 'Statement of account',
+  /* The seventh column. On a loan statement it is how the instalment was paid;
+     on an account statement it is the account or category on the other side —
+     which is what tells a withdrawal apart from a payment of the same amount. */
+  'stmt.contra': 'Contra account',
+  'stmt.totalDebit': 'Total debits',
+  'stmt.totalCredit': 'Total credits',
+  'stmt.debitNormalNote': 'On this account a debit is money in and a credit is money out.',
+  'stmt.creditNormalNote':
+    'This is a liability account — a credit increases what you owe, a debit reduces it.',
+
+  // --- the guide -------------------------------------------------------------
+  /* Instructions, not selling. Each entry is a title, where it lives, what it
+     does, and — where there is one — the thing people get wrong. The English
+     keeps the arrows and the screen names exactly as the English UI shows
+     them, so somebody can follow the sentence with their thumb. */
+  'settings.guide': 'What this app can do',
+  'settings.guide.blurb': 'Where everything lives, and how it works',
+  'settings.guide.open': 'Open the guide',
+  'guide.title': 'What this app can do',
+  'guide.blurb':
+    'Everything the app does today, where to find it, and the parts people most often read the wrong way.',
+  'guide.footer':
+    'If something here is not where this page says it is, treat that as our mistake and tell us.',
+
+  'guide.daily.h': 'Day to day',
+  'guide.daily.s': 'What you need every day',
+  'guide.entry.t': 'Recording income and spending',
+  'guide.entry.w': 'The + button at the bottom, from any screen',
+  'guide.entry.b':
+    'Amount, category, date — three fields. Everything else is optional and folded away.',
+  'guide.entry.n':
+    'It works with no internet. Entries go up on their own once you are back online.',
+  'guide.transfer.t': 'Transfers',
+  'guide.transfer.w': 'New transaction → Transfer',
+  'guide.transfer.b':
+    'One account to another. It does not count as spending, because the money is still yours.',
+  'guide.categories.t': 'Categories and sub-categories',
+  'guide.categories.w': 'Settings → Categories',
+  'guide.categories.b':
+    'Smaller headings inside a big one. Reports roll sub-categories up under their parent.',
+  'guide.tags.t': 'Tags',
+  'guide.tags.w': 'More → Tags',
+  'guide.tags.b':
+    'A category says what the money went on; a tag says who it was for — family, business, Ramadan.',
+  'guide.tags.n':
+    'One expense can carry several tags, so tag totals can add up to more than the month did. Reports say so where it matters.',
+  'guide.quantity.t': 'Quantities and units',
+  'guide.quantity.w': 'The "Record a quantity?" field on a transaction',
+  'guide.quantity.b':
+    '৳12,000 on fuel and 340 litres of fuel are two different questions. 56 units, from kg and litres to mon, bhori, katha, bigha, pounds and gallons.',
+  'guide.quantity.n':
+    'Not in the list? Pick "another unit" — and you can add your own in Settings.',
+
+  'guide.money.h': 'Where the money is',
+  'guide.money.s': 'Accounts, assets, liabilities',
+  'guide.accounts.t': 'Accounts',
+  'guide.accounts.w': 'More → Accounts',
+  'guide.accounts.b':
+    'Cash, banks, mobile wallets, credit cards, savings, plus assets (land, gold, a car) and what you owe.',
+  'guide.accounts.n':
+    'The dashboard\'s "cash and bank" is only money you can spend; land and gold are counted separately, under net worth.',
+  'guide.accountStatement.t': 'An account’s own statement',
+  'guide.accountStatement.w': 'The document icon beside an account',
+  'guide.accountStatement.b':
+    'Exactly what a bank issues: opening balance, every entry in debit and credit columns, a running balance down the page, closing balance. Print it, export it, or share a link.',
+  'guide.accountStatement.n':
+    'Each row names the account on the other side, so ৳5,000 withdrawn and ৳5,000 of rent stop looking alike.',
+  'guide.reconcile.t': 'Matching a balance',
+  'guide.reconcile.w': 'The scales icon beside an account',
+  'guide.reconcile.b': 'Type the real balance and the difference is posted as an adjustment.',
+  'guide.revaluation.t': 'Revaluing an asset',
+  'guide.revaluation.w': 'The upward arrow beside an asset',
+  'guide.revaluation.b':
+    'Land worth more this year? Enter what it is worth now. The history stays.',
+  'guide.revaluation.n':
+    'This is not income and it does not reach the cash flow — only net worth moves. Nothing was sold.',
+  'guide.savings.t': 'Savings and DPS',
+  'guide.savings.w': 'More → Savings & DPS',
+  'guide.savings.b': 'Instalment, term and profit rate — it works out what the plan matures to.',
+  'guide.insurance.t': 'Insurance',
+  'guide.insurance.w': 'More → Insurance',
+  'guide.insurance.b': 'Policies, premium dates, and which ones are still due.',
+
+  'guide.people.h': 'Lending, borrowing and people',
+  'guide.people.s': 'Who owes you, and who you owe',
+  'guide.loans.t': 'Lending and borrowing',
+  'guide.loans.w': 'Bottom tab → Loans',
+  'guide.loans.b': 'With interest or without, in instalments. Every instalment reaches the books.',
+  'guide.loans.n':
+    'Lending takes money out of an account without being an expense — it becomes something owed to you.',
+  'guide.partyLedger.t': "A person's ledger",
+  'guide.partyLedger.w': 'Loans → their name',
+  'guide.partyLedger.b': 'Every loan and every shared bill with one person, as a running balance.',
+  'guide.personCode.t': 'People and their codes',
+  'guide.personCode.w': 'More → People',
+  'guide.personCode.b':
+    'Everybody gets a code — P-0001, P-0002. Two people with one name stay two people.',
+  'guide.personCode.n':
+    'Give a mobile number and the same person is never created twice, so their loans and their trips sit in one place.',
+
+  'guide.split.h': 'Splitting',
+  'guide.split.s': 'Spending together',
+  'guide.groups.t': 'Groups and splitting a bill',
+  'guide.groups.w': 'More → Splitting',
+  'guide.groups.b':
+    'A trip, a mess, an office. Split equally, by percentage, by exact amounts, or by shares.',
+  'guide.groups.n':
+    'Only your own share reaches your expenses. A ৳3,000 dinner split four ways puts ৳750 in your month, not ৳3,000.',
+  'guide.settle.t': 'Advances and settling up',
+  'guide.settle.w': 'Group → Money in and out',
+  'guide.settle.b':
+    'You can record money handed over before any expense exists. It comes off their share of the next bill on its own.',
+  'guide.pot.t': 'A pot everybody pays into',
+  'guide.pot.w': 'Group → Open a pot',
+  'guide.pot.b':
+    'A family fund, an office collection, a trip kitty. Everybody contributes, spending comes out of it.',
+  'guide.pot.n':
+    "Somebody else's contribution is money you owe them — the pot may be in your hands, but it is still theirs.",
+  'guide.groupLink.t': 'A public link for the trip',
+  'guide.groupLink.w': 'Group → Share',
+  'guide.groupLink.b':
+    'Whoever you send it to sees it without an account: the total, who paid what, each share, and who owes whom.',
+  'guide.groupLink.n':
+    'Nothing outside the group travels with it — not your accounts, not your other spending, nothing.',
+  'guide.invite.t': 'Inviting somebody who has an account',
+  'guide.invite.w': 'Group → the add-person icon beside a member',
+  'guide.invite.b': 'The expenses arrive in their own books as drafts.',
+  'guide.invite.n':
+    'Nothing is written to their books without them accepting it, and they cannot see yours.',
+
+  'guide.reports.h': 'Reports',
+  'guide.reports.s': 'Where the money went, and where you stand',
+  'guide.spendReports.t': 'Categories, tags and trends',
+  'guide.spendReports.w': 'Bottom tab → Reports',
+  'guide.spendReports.b': 'Choose your own dates. Tap a category to see the entries inside it.',
+  'guide.statements.t': 'Financial statements',
+  'guide.statements.w': 'Reports → Financial statements',
+  'guide.statements.b':
+    'Income statement, balance sheet, cash flow and the change in net worth — one page, ready to print.',
+  'guide.statements.n':
+    'Cash flow comes in three sections: operating, investing, financing. A salary and a borrowed lakh never blur into one number.',
+  'guide.quantityReport.t': 'The quantity report',
+  'guide.quantityReport.w': 'Reports → Quantities',
+  'guide.quantityReport.b':
+    'How many kg of rice, how many litres of oil — this is where a price rise and a change of habit stop looking alike.',
+  'guide.share.t': 'Sharing a statement',
+  'guide.share.w': 'Share, on a person, loan, savings or insurance page',
+  'guide.share.b':
+    'Pick the dates and make a link. A lender, a bank or an insurer opens and prints it without an account.',
+  'guide.share.n':
+    'The link expires, you can revoke it at any moment, and you are told how many times it was opened.',
+
+  'guide.data.h': 'Getting data in and out',
+  'guide.data.s': 'Without typing it',
+  'guide.import.t': 'From a file',
+  'guide.import.w': 'More → Import & export',
+  'guide.import.b':
+    'A bank CSV or Excel file. It guesses which column is which; correct it where it guessed wrong.',
+  'guide.import.n':
+    'Anything already imported does not arrive twice. A whole batch can be undone in one tap.',
+  'guide.mailbox.t': 'Connecting a mailbox',
+  'guide.mailbox.w': 'Settings → Statements from email',
+  'guide.mailbox.b': "It reads the bank's letters and turns them into drafts.",
+  'guide.mailbox.n': 'A draft does not reach the books until you have looked at it.',
+  'guide.telegram.t': 'Telegram',
+  'guide.telegram.w': 'Settings → Telegram',
+  'guide.telegram.b': 'It reminds you when a credit card bill is due.',
+
+  'guide.app.h': 'The app itself, and safety',
+  'guide.install.t': 'Installing it on a phone',
+  'guide.install.w': 'Browser menu → Add to home screen',
+  'guide.install.b': 'It behaves like an app and opens with no internet.',
+  'guide.install.n': 'New versions arrive on their own — there is nothing to reinstall.',
+  'guide.language.t': 'Language',
+  'guide.language.w': 'Settings → Language',
+  'guide.language.b':
+    'Bengali or English. It is the language of the books, so reports and shared statements follow it.',
+  'guide.sessions.t': 'Signed-in devices',
+  'guide.sessions.w': 'Settings → Devices you are signed in on',
+  'guide.sessions.b': 'See one you do not recognise, sign it out in a tap.',
+  'guide.audit.t': 'The activity log',
+  'guide.audit.w': 'More → Activity',
+  'guide.audit.b': 'Who changed what, and when. There is no way to erase it — not for us either.',
 };

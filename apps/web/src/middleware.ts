@@ -19,6 +19,10 @@ const PUBLIC_PATHS = [
   '/home',
   '/pricing',
   '/guide',
+  /* How to keep books, and how not to. Written for somebody deciding whether
+     to open an account, so requiring one to read it would be backwards — and
+     the rules on it are bookkeeping's rather than ours to gate. */
+  '/tutorial',
   /* The privacy statement. Requiring an account to read what an account would
      expose is the wrong way round — and the page is written for the person
      deciding whether to open one. */

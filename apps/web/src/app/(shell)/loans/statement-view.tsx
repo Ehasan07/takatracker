@@ -56,16 +56,27 @@ export function filterLabel(filter: DateFilter): string {
   return PRESETS.find(([key]) => key === filter.preset)?.[1] ?? t('range.allTime', 'সব সময়');
 }
 
-const COLUMNS = [
-  t('stmt.seq', 'ক্রম'),
-  t('stmt.date', 'তারিখ'),
-  t('stmt.detail', 'বিবরণ'),
-  t('stmt.debit', 'ডেবিট'),
-  t('stmt.credit', 'ক্রেডিট'),
-  t('stmt.running', 'চলতি জের'),
-  t('stmt.method', 'মাধ্যম'),
-  t('stmt.reference', 'রেফারেন্স'),
-];
+/**
+ * The eight columns, with the seventh named by the caller.
+ *
+ * A loan statement's seventh column is how the instalment was paid — cash,
+ * cheque, bKash. An account statement's is the other side of the entry, which
+ * is a different thing entirely and the most useful column on the page. Both
+ * arrive in `row.method`, because both are one short string beside the money,
+ * so the header and the way it is rendered are what the caller chooses.
+ */
+function columnsOf(detailHeading: string): string[] {
+  return [
+    t('stmt.seq', 'ক্রম'),
+    t('stmt.date', 'তারিখ'),
+    t('stmt.detail', 'বিবরণ'),
+    t('stmt.debit', 'ডেবিট'),
+    t('stmt.credit', 'ক্রেডিট'),
+    t('stmt.running', 'চলতি জের'),
+    detailHeading,
+    t('stmt.reference', 'রেফারেন্স'),
+  ];
+}
 
 /**
  * One statement, used by both the loan statement and the party ledger: opening
@@ -83,6 +94,8 @@ export function StatementView({
   onRetry,
   fileBaseName,
   onShareLink,
+  detailHeading = t('stmt.method', 'মাধ্যম'),
+  formatDetail = methodLabel,
   children,
 }: {
   heading: string;
@@ -104,6 +117,10 @@ export function StatementView({
    * happened the first time somebody tried it.
    */
   onShareLink?: () => void;
+  /** Header for the seventh column. Defaults to the loan screens' 'মাধ্যম'. */
+  detailHeading?: string;
+  /** How to render `row.method`. Defaults to the payment-method labels. */
+  formatDetail?: (value: string | null) => string;
   /** Anything that belongs above the table on both screen and paper. */
   children?: React.ReactNode;
 }) {
@@ -112,6 +129,7 @@ export function StatementView({
   const [printedOn, setPrintedOn] = React.useState('');
   React.useEffect(() => setPrintedOn(toLocalDateString(new Date())), []);
 
+  const COLUMNS = columnsOf(detailHeading);
   const rows = data?.rows ?? [];
   const opening = data?.openingMinor ?? 0;
   const closing = data?.closingMinor ?? 0;
@@ -134,7 +152,7 @@ export function StatementView({
         minorToPlain(row.debitMinor),
         minorToPlain(row.creditMinor),
         minorToPlain(row.balanceMinor),
-        methodLabel(row.method),
+        formatDetail(row.method),
         row.referenceNumber ?? '',
       ]),
       ['', '', t('stmt.closing', 'সমাপনী জের'), '', '', minorToPlain(closing), '', ''],
@@ -311,7 +329,7 @@ export function StatementView({
                     </p>
                     <p className="text-ink-muted text-xs">
                       {bnNum(i + 1)} · {bnDate(row.date)}
-                      {row.method ? ` · ${methodLabel(row.method)}` : ''}
+                      {row.method ? ` · ${formatDetail(row.method)}` : ''}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
@@ -395,7 +413,7 @@ export function StatementView({
                       <Money minor={row.balanceMinor} className="font-semibold" />
                     </td>
                     <td className="text-ink-muted whitespace-nowrap px-2 py-2">
-                      {methodLabel(row.method) || '—'}
+                      {formatDetail(row.method) || '—'}
                     </td>
                     <td className="text-ink-muted px-2 py-2">{row.referenceNumber || '—'}</td>
                   </tr>

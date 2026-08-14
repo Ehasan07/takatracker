@@ -17,6 +17,8 @@
 /** `GET /v1/people?q=` — one row per contact, with what stands between you. */
 export interface PersonDto {
   id: string;
+  /** P-0001 — the handle you can read down a phone. Unique per workspace. */
+  code: string;
   name: string;
   /** Canonical `01XXXXXXXXX` when the API recognised it as a BD mobile. */
   phone: string | null;

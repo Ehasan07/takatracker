@@ -427,3 +427,93 @@ describe('people', () => {
     expect(actions).toContain('person.updated');
   });
 });
+
+/**
+ * A handle for people a name and a number cannot tell apart.
+ *
+ * Two suppliers called "রফিক এন্টারপ্রাইজ" on the same shop phone are two
+ * accounts. The phone key stops the second one being created *by accident*; the
+ * code is what lets somebody point at one of them on purpose.
+ */
+describe('every person has a code', () => {
+  let ctx: TestContext;
+  let user: Awaited<ReturnType<typeof signup>>;
+
+  const post = (body: Record<string, unknown>) =>
+    ctx.http().post('/v1/people').set(auth(user)).send(body);
+  const list = (q = '') => ctx.http().get(`/v1/people${q}`).set(auth(user)).expect(200);
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    user = await signup(ctx);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('numbers them in order, from P-0001', async () => {
+    const first = await post({ name: 'রফিক এন্টারপ্রাইজ' }).expect(201);
+    const second = await post({ name: 'করিম ট্রেডার্স' }).expect(201);
+    expect(first.body.code).toBe('P-0001');
+    expect(second.body.code).toBe('P-0002');
+  });
+
+  it('tells apart two people a name cannot', async () => {
+    /* Same name, no number on either — the case the code exists for. */
+    const other = await post({ name: 'রফিক এন্টারপ্রাইজ' }).expect(201);
+    expect(other.body.code).toBe('P-0003');
+
+    const rows = (await list()).body.filter((p: { name: string }) => p.name.startsWith('রফিক'));
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((p: { code: string }) => p.code)).size).toBe(2);
+  });
+
+  it('finds one by its code', async () => {
+    const found = (await list('?q=P-0002')).body;
+    expect(found).toHaveLength(1);
+    expect(found[0].name).toBe('করিম ট্রেডার্স');
+  });
+
+  it('never reuses a code, even after a deletion', async () => {
+    /* A code already written into a paper ledger must not come to mean somebody
+       else, so the next one carries on from the highest rather than the count. */
+    const rows = (await list()).body;
+    const doomed = rows.find((p: { code: string }) => p.code === 'P-0003');
+    await ctx.http().delete(`/v1/people/${doomed.id}`).set(auth(user)).expect(200);
+
+    const next = await post({ name: 'নতুন কেউ' }).expect(201);
+    expect(next.body.code).toBe('P-0004');
+  });
+
+  it('keeps counting past ten thousand', async () => {
+    /* `code` sorts as text and text puts P-9999 above P-10000, so reading the
+       highest off a string sort handed out P-10000 twice — and the duplicate
+       bounced off the unique index. A shop with a long supplier list would
+       simply have stopped being able to add one. */
+    const rows = (await list()).body;
+    const anyPerson = rows[0];
+    await ctx.prisma.person.update({
+      where: { id: anyPerson.id },
+      data: { code: 'P-9999', codeSeq: 9999 },
+    });
+
+    const tenThousand = await post({ name: 'দশ হাজারতম' }).expect(201);
+    expect(tenThousand.body.code).toBe('P-10000');
+
+    /* And the one after that, which is where the string sort broke. */
+    const next = await post({ name: 'তার পরের জন' }).expect(201);
+    expect(next.body.code).toBe('P-10001');
+  });
+
+  it('starts again at P-0001 in a different workspace', async () => {
+    const stranger = await signup(ctx);
+    const theirs = await ctx
+      .http()
+      .post('/v1/people')
+      .set(auth(stranger))
+      .send({ name: 'তাদের লোক' })
+      .expect(201);
+    expect(theirs.body.code).toBe('P-0001');
+  });
+});

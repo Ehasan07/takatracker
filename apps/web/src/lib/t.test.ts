@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { GUIDE } from '@/content/guide';
 import { EN } from '@/i18n/en';
 import { setActiveLocale } from '@/lib/format';
 import { setTranslationOverrides, t } from '@/lib/t';
@@ -121,7 +122,12 @@ describe('the catalogue', () => {
   });
 
   it('has nothing Bengali left in it', () => {
-    const untranslated = Object.entries(EN).filter(([, value]) => /[ঀ-৿]/.test(value));
+    /* ৳ (U+09F3) is cut out of the block. It lives in the Bengali range but it
+       is not Bengali text — `formatMinor` prints it on an English screen too,
+       because the currency of these books is the taka whichever language they
+       are read in. An English sentence quoting an amount has to be allowed to
+       spell it the way the screen does. */
+    const untranslated = Object.entries(EN).filter(([, value]) => /[ঀ-৲৴-৿]/.test(value));
     expect(untranslated.map(([key]) => key)).toEqual([]);
   });
 });
@@ -159,5 +165,37 @@ describe('every key a screen asks for', () => {
 
     expect(used.size).toBeGreaterThan(50);
     expect([...used].filter((key) => !(key in EN)).sort()).toEqual([]);
+  });
+
+  /**
+   * The guide, whose keys the scan above cannot see.
+   *
+   * Its hundred-odd strings are a table, and each one is rendered with a key
+   * built from a stem — `t(`${entry.key}.b`, …)`. A regular expression over the
+   * source finds none of them, so the table is imported and its keys are
+   * derived here the same way the component derives them. Miss this and the
+   * one screen whose entire job is to explain the product is also the one
+   * screen that quietly stays Bengali.
+   */
+  it('has an English entry for every line of the guide', () => {
+    const keys = GUIDE.flatMap((group) => [
+      `${group.key}.h`,
+      ...(group.blurb ? [`${group.key}.s`] : []),
+      ...group.entries.flatMap((entry) => [
+        `${entry.key}.t`,
+        `${entry.key}.w`,
+        `${entry.key}.b`,
+        ...(entry.note ? [`${entry.key}.n`] : []),
+      ]),
+    ]);
+
+    expect(keys.length).toBeGreaterThan(80);
+    expect(keys.filter((key) => !(key in EN)).sort()).toEqual([]);
+  });
+
+  /** Two entries sharing a stem would render one and hide the other. */
+  it('gives every line of the guide its own key', () => {
+    const stems = GUIDE.flatMap((group) => [group.key, ...group.entries.map((e) => e.key)]);
+    expect(stems.length).toBe(new Set(stems).size);
   });
 });

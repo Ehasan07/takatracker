@@ -63,7 +63,7 @@ export default function SplitGroupsPage() {
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
-            {t('split.title', 'ভাগাভাগি')}
+            {t('split.titleFull', 'ভাগাভাগি (ShareCost)')}
           </h1>
           <p className="text-ink-muted text-sm">
             {t('split.blurb', 'একসাথে খরচ — কে কত দিয়েছে, কে কত পাবে')}

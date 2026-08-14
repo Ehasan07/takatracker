@@ -65,6 +65,23 @@ export default function SettingsPage() {
         <p className="text-ink-muted text-sm">{me.data?.email}</p>
       </section>
 
+      {/* Above the plan, because somebody who cannot find a feature will not go
+          looking for the manual below their billing. */}
+      <section className="rounded-card border-rule bg-surface border p-4">
+        <h2 className="text-ink-muted text-sm font-medium">
+          {t('settings.guide', 'কী কী করা যায়')}
+        </h2>
+        <p className="text-ink-muted mt-1 text-sm">
+          {t('settings.guide.blurb', 'অ্যাপের প্রতিটি জিনিস কোথায় আর কীভাবে কাজ করে')}
+        </p>
+        <Link
+          href="/help"
+          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+        >
+          {t('settings.guide.open', 'তালিকা দেখুন')}
+        </Link>
+      </section>
+
       <section className="rounded-card border-rule bg-surface border p-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-ink-muted text-sm font-medium">{t('settings.plan', 'প্ল্যান')}</h2>

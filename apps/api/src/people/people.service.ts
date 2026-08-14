@@ -14,6 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import { MAX_SEARCH_QUERY_LENGTH } from '../categories/categories.service';
 import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
+import { nextPersonCode } from './person-code';
 import type { TenantContext } from '../transactions/transactions.service';
 import { PERSON_CREATED, PERSON_DELETED, PERSON_MERGED, PERSON_UPDATED } from './person-audit';
 import { normaliseBdPhone, phoneIdentity, storablePhone } from './phone';
@@ -57,6 +58,8 @@ import { normaliseBdPhone, phoneIdentity, storablePhone } from './phone';
  */
 export interface PersonView {
   id: string;
+  /** P-0001. Short enough to read down a phone; see `Person.code`. */
+  code: string;
   name: string;
   /** Canonical `01XXXXXXXXX` when we recognised it — see `./phone`. */
   phone: string | null;
@@ -211,6 +214,7 @@ export class PeopleService {
     const created = await this.prisma.person.create({
       data: {
         workspaceId: ctx.workspaceId,
+        ...(await nextPersonCode(this.prisma, ctx.workspaceId)),
         name,
         phone,
         /* The unique index is on these, not on `phone` — see
@@ -543,6 +547,7 @@ export class PeopleService {
       const row = statsFor(person.id);
       return {
         id: person.id,
+        code: person.code,
         name: person.name,
         phone: person.phone,
         relation: person.relation,
@@ -904,6 +909,10 @@ function searchPeople(views: readonly PersonView[], rawQuery: string): PersonVie
     order: index,
     fields: [
       searchField('name', 'PRIMARY', person.name),
+      /* The code is a primary key in the human sense: somebody reading it off a
+         delivery note is looking for exactly one row, and it is the only handle
+         that still works when two suppliers share a name and a shop phone. */
+      searchField('code', 'PRIMARY', person.code),
       searchField('phone', 'SECONDARY', person.phone),
       /* The canonical form of a *stored* number, for rows written before
        * normalisation existed: a person saved as `+8801711223344` last year is

@@ -41,6 +41,7 @@ import type {
 } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
+import { nextPersonCode } from '../people/person-code';
 import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
@@ -1561,6 +1562,7 @@ export class LoansService {
       return tx.person.create({
         data: {
           workspaceId,
+          ...(await nextPersonCode(tx, workspaceId)),
           name,
           phone: trimmedPhone,
           ...personIdentityKeys({ phone: trimmedPhone }),

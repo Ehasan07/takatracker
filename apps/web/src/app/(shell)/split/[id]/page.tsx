@@ -45,6 +45,17 @@ import { AddExpenseSheet } from './add-expense-sheet';
  * filled in; a person presses it.
  */
 
+/**
+ * "Somebody paid somebody, and I have not said who yet."
+ *
+ * The settle sheet is reached two ways: from a suggestion, which arrives with
+ * both sides and the amount filled in, and from the button, which arrives
+ * empty. An empty one is not a special case in the sheet — it is the same form
+ * with nothing chosen, which is what lets an advance be recorded before there
+ * is any debt for a suggestion to be made from.
+ */
+const BLANK_PAYMENT = { fromMemberId: '', toMemberId: '', amountMinor: 0 } as const;
+
 export default function SplitGroupPage() {
   const params = useParams<{ id: string }>();
   const groupId = params.id;
@@ -158,36 +169,53 @@ export default function SplitGroupPage() {
 
           <PotCard group={data} />
 
-          {data.suggestions.length > 0 ? (
-            <section className="rounded-card border-rule bg-surface border p-4">
+          <section className="rounded-card border-rule bg-surface border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-ink-muted text-sm font-medium">
                 {t('split.settleUp', 'হিসাব মেটাতে')}
               </h2>
+              {/* Money changes hands before a bill exists all the time — an
+                  advance for the hotel booking, somebody chipping in on the bus.
+                  Until now the only way in was to tap a suggestion, and there
+                  are no suggestions until somebody already owes somebody, so an
+                  advance simply could not be recorded. */}
+              <Button type="button" variant="outline" onClick={() => setSettling(BLANK_PAYMENT)}>
+                <HandCoins className="h-4 w-4" aria-hidden />
+                {t('split.recordAny', 'টাকা দেওয়া-নেওয়া')}
+              </Button>
+            </div>
+            {data.suggestions.length > 0 ? (
+              <>
+                <p className="text-ink-muted mt-1 text-xs">
+                  {t(
+                    'split.settleHint',
+                    'সবচেয়ে কম লেনদেনে হিসাব শেষ করার উপায়। চাপলে টাকার অঙ্ক বসানো থাকবে — নিশ্চিত করলে তবেই খাতায় উঠবে।',
+                  )}
+                </p>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {data.suggestions.map((s, i) => (
+                    <li key={`${s.fromMemberId}-${s.toMemberId}-${i}`}>
+                      <button
+                        type="button"
+                        onClick={() => setSettling(s)}
+                        className="press border-rule hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-md border px-3 text-left text-sm"
+                      >
+                        <HandCoins className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />
+                        <span className="text-ink min-w-0 flex-1 truncate">
+                          {nameOf(s.fromMemberId)} → {nameOf(s.toMemberId)}
+                        </span>
+                        <Money minor={s.amountMinor} className="shrink-0 font-medium" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
               <p className="text-ink-muted mt-1 text-xs">
-                {t(
-                  'split.settleHint',
-                  'সবচেয়ে কম লেনদেনে হিসাব শেষ করার উপায়। চাপলে টাকার অঙ্ক বসানো থাকবে — নিশ্চিত করলে তবেই খাতায় উঠবে।',
-                )}
+                {t('split.allSquare', 'সবার হিসাব মেলানো আছে।')}
               </p>
-              <ul className="mt-2 flex flex-col gap-2">
-                {data.suggestions.map((s, i) => (
-                  <li key={`${s.fromMemberId}-${s.toMemberId}-${i}`}>
-                    <button
-                      type="button"
-                      onClick={() => setSettling(s)}
-                      className="press border-rule hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-md border px-3 text-left text-sm"
-                    >
-                      <HandCoins className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />
-                      <span className="text-ink min-w-0 flex-1 truncate">
-                        {nameOf(s.fromMemberId)} → {nameOf(s.toMemberId)}
-                      </span>
-                      <Money minor={s.amountMinor} className="shrink-0 font-medium" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
+            )}
+          </section>
 
           <section className="flex flex-col gap-2">
             <h2 className="text-ink text-base font-semibold">
@@ -683,9 +711,12 @@ function SettleSheet({
   const [amount, setAmount] = React.useState('');
   const [date, setDate] = React.useState(() => toLocalDateString(new Date()));
   const [accountId, setAccountId] = React.useState('');
+  const [fromId, setFromId] = React.useState('');
+  const [toId, setToId] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
-  const involvesMe = suggestion?.fromMemberId === selfId || suggestion?.toMemberId === selfId;
+  const active = group.members.filter((m) => !m.removedAt);
+  const involvesMe = fromId === selfId || toId === selfId;
 
   const accounts = useQuery({
     queryKey: ['accounts'],
@@ -696,12 +727,21 @@ function SettleSheet({
 
   React.useEffect(() => {
     if (!suggestion) return;
+    /* A suggestion arrives with both sides and an amount; the button arrives
+       with none of them, and then the two selects are the question being asked.
+       Same sheet either way — an advance is not a special kind of payment, it
+       is a payment made before the bill. */
+    setFromId(suggestion.fromMemberId || (active.find((m) => !m.isSelf)?.id ?? ''));
+    setToId(suggestion.toMemberId || selfId);
     /* Rendered by the money formatter rather than divided by 100: the box is
        prefilled with a figure a person is about to confirm, and it has to be
        the same string the rest of the app would show them. */
-    setAmount(formatMinor(suggestion.amountMinor, { symbol: false }));
+    setAmount(suggestion.amountMinor ? formatMinor(suggestion.amountMinor, { symbol: false }) : '');
     setDate(toLocalDateString(new Date()));
     setError(null);
+    /* Keyed on the suggestion alone. `active` and `selfId` are read here but
+       are not triggers: re-running because the member list refetched would
+       throw away whatever the person had already chosen in the form. */
   }, [suggestion]);
 
   React.useEffect(() => {
@@ -715,8 +755,8 @@ function SettleSheet({
       api(`/split/groups/${group.id}/settlements`, {
         method: 'POST',
         body: {
-          fromMemberId: suggestion?.fromMemberId,
-          toMemberId: suggestion?.toMemberId,
+          fromMemberId: fromId,
+          toMemberId: toId,
           amountMinor: amount.trim() ? parseMoneyToMinor(amount) : 0,
           date,
           accountId: involvesMe ? accountId : undefined,
@@ -748,18 +788,42 @@ function SettleSheet({
       open={Boolean(suggestion)}
       onOpenChange={onOpenChange}
       title={t('split.settleTitle', 'হিসাব মেটানো')}
-      description={
-        suggestion ? `${nameOf(suggestion.fromMemberId)} → ${nameOf(suggestion.toMemberId)}` : ''
-      }
+      description={fromId && toId ? `${nameOf(fromId)} → ${nameOf(toId)}` : ''}
     >
       <form
         className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
+          if (!fromId || !toId) return setError(t('split.pickBothSides', 'কে কাকে দিল বেছে নিন'));
+          if (fromId === toId) {
+            return setError(t('split.notSelf', 'একই ব্যক্তি নিজেকে টাকা দিতে পারেন না'));
+          }
+          if (!amount.trim()) return setError(t('split.amountRequired', 'টাকার অঙ্ক দিন'));
           settle.mutate();
         }}
       >
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('split.paymentFrom', 'কে দিল')} htmlFor="settle-from">
+            <Select id="settle-from" value={fromId} onChange={(e) => setFromId(e.target.value)}>
+              {active.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.isSelf ? t('split.me', 'আমি') : m.displayName}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t('split.paymentTo', 'কাকে')} htmlFor="settle-to">
+            <Select id="settle-to" value={toId} onChange={(e) => setToId(e.target.value)}>
+              {active.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.isSelf ? t('split.me', 'আমি') : m.displayName}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('split.amount', 'কত টাকা')} htmlFor="settle-amount">
             <Input

@@ -1,0 +1,12 @@
+-- A statement of account can be shared like any other statement.
+--
+-- Only a new enum value: `StatementShare` already carries the kind, the
+-- subject, the window and the token, and none of that changes for an account.
+-- The subject id is an `Account.id`, checked against the workspace where the
+-- link is minted — the public route has no user to check it against later.
+--
+-- Postgres refuses `ALTER TYPE ... ADD VALUE` inside a transaction block on
+-- versions before 12; this project is on 16, where it is allowed, and Prisma
+-- runs each migration in one transaction. Stated here because the next person
+-- to add a value will look for the reason it is safe.
+ALTER TYPE "StatementKind" ADD VALUE IF NOT EXISTS 'ACCOUNT';

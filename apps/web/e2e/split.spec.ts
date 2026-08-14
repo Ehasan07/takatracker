@@ -351,6 +351,41 @@ test.describe('spending together', () => {
     await expect(page.getByRole('list', { name: 'মানুষজন' }).getByText(/করিম/)).toHaveCount(1);
   });
 
+  test('records an advance before there is any bill to settle', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await makeGroup(page);
+
+    /* Money changes hands before a bill exists all the time — an advance for
+       the hotel booking, somebody chipping in on the bus fare. The only way in
+       used to be tapping a suggestion, and there are no suggestions until
+       somebody already owes somebody, so this could not be recorded at all. */
+    await page.getByRole('button', { name: 'টাকা দেওয়া-নেওয়া' }).click();
+    let sheet = page.getByRole('dialog');
+    /* করিম hands over ৳2,000 towards the trip before anything is spent. */
+    await sheet.getByLabel('কে দিল').selectOption({ label: 'করিম' });
+    await sheet.getByLabel('কাকে').selectOption({ label: 'আমি' });
+    await sheet.getByLabel('কত টাকা').fill('2000');
+    await sheet.getByRole('button', { name: 'পরিশোধ লিখুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* He is ৳2,000 up with no expense on the group at all. */
+    await expect(page.getByRole('main')).toContainText('৳2,000.00');
+
+    /* And it nets off against his share of the next bill rather than sitting
+       beside it: ৳3,000 split two ways leaves ৳1,500 of his, so he has overpaid
+       and gets ৳500 back. */
+    await page.getByRole('button', { name: 'খরচ', exact: true }).click();
+    sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কত টাকা').fill('3000');
+    await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('রহিম').uncheck();
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await expect(page.getByRole('main')).toContainText('৳500.00');
+  });
+
   test('nothing scrolls sideways on a phone', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);

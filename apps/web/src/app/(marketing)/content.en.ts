@@ -72,6 +72,12 @@ const GROUPS: FeatureGroup[] = [
         route: '/accounts',
       },
       {
+        title: 'Revaluing an asset',
+        titleEn: 'Land and gold, marked to today',
+        body: 'Enter what it is worth now, with the history kept. Not income and not cash flow — only net worth moves, because nothing was sold.',
+        route: '/accounts',
+      },
+      {
         title: 'Categories and sub-categories',
         titleEn: 'A tree, not a flat list',
         body: 'Twenty-one categories seeded, as many sub-categories under them as you need. Reports roll children up into the parent.',
@@ -82,6 +88,12 @@ const GROUPS: FeatureGroup[] = [
         titleEn: 'Who for, not what on',
         body: 'The category says what the money went on; a tag says who for or which project. One transaction can carry several.',
         route: '/tags',
+      },
+      {
+        title: 'Statement of account',
+        titleEn: 'The document a bank issues',
+        body: 'Opening balance, debit and credit columns, a running balance down the page, closing balance. Print it, export it, or send a link somebody can open without an account.',
+        route: '/accounts',
       },
       {
         title: 'Reconciliation',
@@ -127,6 +139,51 @@ const GROUPS: FeatureGroup[] = [
         titleEn: 'Fixable, and mergeable',
         body: 'Correct a name, a phone or a relationship. Typed the same person twice? Merge them, and their history stops being in two halves.',
         route: '/people',
+      },
+      {
+        title: 'A code for every person',
+        titleEn: 'P-0001, and it stays theirs',
+        body: 'Two people with one name stay two people. Give a phone number and the same person is never created twice, so their loans and their trips sit together.',
+        route: '/people',
+      },
+    ],
+  },
+  {
+    id: 'split',
+    heading: 'Splitting a bill — ShareCost',
+    headingEn: 'Shared expenses',
+    blurb:
+      'Trips, flatshares, the office. Who paid, whose share is what, and who owes whom at the end — while your own books take only your share.',
+    features: [
+      {
+        title: 'Split an expense',
+        titleEn: 'Equally, by percent, by share or by exact amounts',
+        body: 'A ৳3,000 dinner split four ways puts ৳750 in your month, not ৳3,000. Your books stay yours.',
+        route: '/split',
+      },
+      {
+        title: 'Settle up in the fewest payments',
+        titleEn: 'Not everybody paying everybody',
+        body: 'Seven people on a trip do not need twenty-one transfers. The app works out the shortest way to square up.',
+        route: '/split',
+      },
+      {
+        title: 'Advances, adjusted on their own',
+        titleEn: 'Money handed over before the bill',
+        body: 'Record what you paid ahead of time and it comes off their share of the next expense automatically.',
+        route: '/split',
+      },
+      {
+        title: 'A pot everybody pays into',
+        titleEn: 'Family fund, office collection, trip kitty',
+        body: 'Contributions in, spending out. Somebody else’s contribution stays money you owe them — the pot may be in your hands, but it is theirs.',
+        route: '/split',
+      },
+      {
+        title: 'A public link for the trip',
+        titleEn: 'No account needed to read it',
+        body: 'The total, who paid what, each person’s share. Nothing outside the group travels with the link.',
+        route: '/split',
       },
     ],
   },
@@ -180,6 +237,36 @@ const GROUPS: FeatureGroup[] = [
         titleEn: 'Slice it your way',
         body: 'Only family spending, only the business. Whatever you tagged, you can total.',
         route: '/reports',
+      },
+      {
+        title: 'The four financial statements',
+        titleEn: 'Income, balance sheet, cash flow, net worth',
+        body: 'For any date range, on one printable page — the same four statements an accountant would ask for.',
+        route: '/reports/statements',
+      },
+      {
+        title: 'Cash flow in three sections',
+        titleEn: 'Operating, investing, financing',
+        body: 'Classified the way IAS 7 requires, by the account on the other side of the entry. A salary and a borrowed lakh never blur into one number.',
+        route: '/reports/statements',
+      },
+      {
+        title: 'Current and non-current',
+        titleEn: 'IAS 1 presentation',
+        body: 'Assets and liabilities split the way a balance sheet is meant to be read, so working capital falls out of it.',
+        route: '/reports/statements',
+      },
+      {
+        title: 'Quantities, not just amounts',
+        titleEn: 'Kilos, litres, bhori, katha',
+        body: 'Fifty-six units, local ones included. It is how you tell a price rise apart from a change of habit.',
+        route: '/reports',
+      },
+      {
+        title: 'Share a statement by link',
+        titleEn: 'For a lender, a bank or an insurer',
+        body: 'They open and print it without an account. The link expires, you can revoke it, and you are told how often it was opened.',
+        route: '/loans',
       },
       {
         title: 'Bangla, English and Banglish search',
@@ -329,6 +416,7 @@ const FAQ: { q: string; a: string }[] = [
 const NAV: { href: string; label: string }[] = [
   { href: '/en#features', label: 'Features' },
   { href: '/en/pricing', label: 'Pricing' },
+  { href: '/en/tutorial', label: 'How to' },
   { href: '/guide', label: 'Install' },
   { href: '/en#coming', label: 'Roadmap' },
   { href: '/en#faq', label: 'FAQ' },

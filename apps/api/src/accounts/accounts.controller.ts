@@ -9,8 +9,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { z } from 'zod';
 import {
   createAccountSchema,
+  isoDate,
   reconcileSchema,
   revalueSchema,
   updateAccountSchema,
@@ -19,7 +21,21 @@ import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
 import { TransactionsService } from '../transactions/transactions.service';
+import { AccountStatementService } from './account-statement.service';
 import { AccountsService } from './accounts.service';
+
+/**
+ * The statement window.
+ *
+ * Both absent means the whole life of the account, which is what somebody who
+ * has just opened the screen wants. A cleared date field arrives as `?from=`
+ * rather than as an absent key, so the empty string has to mean "no bound" —
+ * otherwise clearing a filter is a 400 the reader cannot explain.
+ */
+const accountStatementQuerySchema = z.object({
+  from: z.preprocess((v) => (v === '' || v === null ? undefined : v), isoDate.optional()),
+  to: z.preprocess((v) => (v === '' || v === null ? undefined : v), isoDate.optional()),
+});
 
 @Controller('accounts')
 @UseGuards(JwtAuthGuard)
@@ -27,6 +43,7 @@ export class AccountsController {
   constructor(
     private readonly accounts: AccountsService,
     private readonly transactions: TransactionsService,
+    private readonly statements: AccountStatementService,
   ) {}
 
   @Get()
@@ -86,6 +103,22 @@ export class AccountsController {
     @Body(zodPipe(revalueSchema)) body: ReturnType<typeof revalueSchema.parse>,
   ) {
     return this.transactions.revalue(user, id, body);
+  }
+
+  /**
+   * The account's own statement: opening balance, every entry, closing balance.
+   *
+   * A `GET` with the window in the query string, so the page a reader is
+   * looking at is a URL they can bookmark, reload and send to themselves.
+   */
+  @Get(':id/statement')
+  statement(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query(zodPipe(accountStatementQuerySchema))
+    query: ReturnType<typeof accountStatementQuerySchema.parse>,
+  ) {
+    return this.statements.statement(user, id, query, user.locale);
   }
 
   @Get(':id/revaluations')

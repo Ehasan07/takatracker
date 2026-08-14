@@ -73,6 +73,12 @@ test.describe('the public site', () => {
     const html = await bare.content();
     expect(html).toContain('ডাবল-এন্ট্রি');
     expect(html).toContain('দেনাদার-পাওনাদার');
+    /* The three groups that shipped after the first draft of this page. A
+       feature the product has and the landing page does not mention is a
+       feature nobody signs up for, and this is the check that notices. */
+    expect(html).toContain('ভাগাভাগি (ShareCost)');
+    expect(html).toContain('চারটি আর্থিক বিবৃতি');
+    expect(html).toContain('পরিমাণের হিসাব');
     // An FAQ answer, in full, not behind a click.
     expect(html).toContain('ফ্রি প্যাকেজ আজীবন ফ্রি');
     // Structured data, both blocks.
@@ -299,8 +305,58 @@ test.describe('the public site', () => {
     await expect(page.getByRole('link', { name: 'গোপনীয়তা' })).toBeVisible();
   });
 
+  test('the tutorial is public, and teaches the rules before it sells anything', async ({
+    page,
+  }) => {
+    /* The page exists for somebody who has not signed up, so the first thing
+       worth proving is that they can read it at all — no session, no redirect
+       to /login. */
+    await page.goto('/tutorial');
+    await expect(page).toHaveURL(/\/tutorial$/);
+    await expect(
+      page.getByRole('heading', { name: 'কীভাবে হিসাব রাখবেন', level: 1 }),
+    ).toBeVisible();
+
+    /* The four entries that carry the accounting, one from each treatment a
+       first-timer gets wrong. If the copy is ever softened into marketing,
+       these are the sentences that would go first. */
+    await expect(page.getByText('ঋণ প্রদান — সম্পদ (প্রাপ্য)')).toBeVisible();
+    await expect(page.getByText('ঋণ গ্রহণ — দায়')).toBeVisible();
+    await expect(page.getByText('দায় পরিশোধ', { exact: true })).toBeVisible();
+    await expect(page.getByText('পুনর্মূল্যায়ন', { exact: true })).toBeVisible();
+
+    /* What you do not get, stated as plainly as what you do. A visitor who
+       finds out after signing up does not stay. */
+    await expect(page.getByRole('heading', { name: 'কী পাবেন না' })).toBeVisible();
+    await expect(page.getByText(/ব্যাংকের সাথে সরাসরি সংযোগ/)).toBeVisible();
+
+    /* The feature list is the in-app manual's table, rendered here. One entry
+       from it proves the shared import survived. */
+    await expect(page.getByText('সবাই মিলে তহবিল', { exact: true })).toBeVisible();
+
+    /* Reachable without knowing the URL. */
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: 'কীভাবে রাখবেন' }).first()).toBeVisible();
+
+    /* And in English, from its own URL, with no Bengali left behind. */
+    await page.goto('/en/tutorial');
+    await expect(
+      page.getByRole('heading', { name: 'How to keep your books', level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByText('A loan given — an asset (receivable)')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What you do not get' })).toBeVisible();
+  });
+
   test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
-    for (const path of ['/', '/pricing', '/guide', '/en', '/en/pricing']) {
+    for (const path of [
+      '/',
+      '/pricing',
+      '/guide',
+      '/tutorial',
+      '/en',
+      '/en/pricing',
+      '/en/tutorial',
+    ]) {
       await page.goto(path);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

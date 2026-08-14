@@ -256,7 +256,13 @@ function PersonCard({
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="text-ink truncate text-sm font-medium">{person.name}</p>
+          <p className="text-ink truncate text-sm font-medium">
+            {person.name}
+            {/* Two suppliers can share a name and a shop phone; only this tells
+                them apart, so it sits beside the name rather than on a detail
+                screen nobody opens while reading a delivery note. */}
+            <span className="text-ink-muted money ml-1.5 text-xs">{person.code}</span>
+          </p>
           <p className="text-ink-muted truncate text-xs">
             {[person.relation, person.phone ? bn(person.phone) : null]
               .filter(Boolean)

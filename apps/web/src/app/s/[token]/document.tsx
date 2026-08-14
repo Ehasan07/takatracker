@@ -49,6 +49,17 @@ export interface PublicStatement {
 type Row = {
   date: string;
   description?: string | null;
+  /**
+   * The account or category on the other side, on an account statement.
+   *
+   * Absent on a loan or a party ledger, where every row already faces the same
+   * counterparty and repeating their name down a column says nothing. On an
+   * account statement it is the column that tells a withdrawal apart from a
+   * payment for the same amount, so it is printed beneath the description
+   * rather than given a column of its own — five columns already fill the width
+   * a phone has, and this page must not scroll sideways.
+   */
+  contra?: string | null;
   debitMinor?: number;
   creditMinor?: number;
   balanceMinor?: number;
@@ -408,6 +419,9 @@ function LedgerTable({
                 {row.description ? (
                   <p className="text-ink-muted mt-0.5 break-words text-sm">{row.description}</p>
                 ) : null}
+                {row.contra ? (
+                  <p className="text-ink-muted mt-0.5 break-words text-xs">{row.contra}</p>
+                ) : null}
                 <p className="text-ink-muted mt-1 text-xs">
                   {row.debitMinor ? `${t.debit} ${money(row.debitMinor)}` : null}
                   {row.debitMinor && row.creditMinor ? ' · ' : null}
@@ -431,7 +445,12 @@ function LedgerTable({
               {rows.map((row, i) => (
                 <tr key={`${row.date}-${i}`} className="border-rule border-b last:border-0">
                   <Td>{date(row.date)}</Td>
-                  <Td>{row.description ?? ''}</Td>
+                  <Td>
+                    {row.description ?? ''}
+                    {row.contra ? (
+                      <span className="text-ink-muted block text-xs">{row.contra}</span>
+                    ) : null}
+                  </Td>
                   <Td align="right">{row.debitMinor ? money(row.debitMinor) : ''}</Td>
                   <Td align="right">{row.creditMinor ? money(row.creditMinor) : ''}</Td>
                   <Td align="right">{money(row.balanceMinor ?? 0)}</Td>

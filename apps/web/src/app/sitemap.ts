@@ -22,6 +22,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
        remember. */
     { url: SITE.url, lastModified, changeFrequency: 'weekly', priority: 1 },
     { url: `${SITE.url}/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
+    /* The tutorial ranks for questions nobody searches the brand for — "is a
+       loan an expense", "how to keep personal accounts" — so it is worth more
+       to a crawler than the install guide and is listed above it. */
+    { url: `${SITE.url}/tutorial`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
     { url: `${SITE.url}/guide`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     /* Listed rather than left to the footer link. Somebody deciding whether to
        trust a finance app with their ledger searches for this page by name, and
@@ -31,6 +35,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
        listed rather than left for the hreflang tags alone to surface. */
     { url: `${SITE.url}/en`, lastModified, changeFrequency: 'weekly', priority: 0.9 },
     { url: `${SITE.url}/en/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${SITE.url}/en/tutorial`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${SITE.url}/signup`, lastModified, changeFrequency: 'yearly', priority: 0.6 },
     { url: `${SITE.url}/login`, lastModified, changeFrequency: 'yearly', priority: 0.4 },
   ];

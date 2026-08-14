@@ -9,6 +9,7 @@ import {
   Pencil,
   PiggyBank,
   Plus,
+  FileText,
   Scale,
   TrendingUp,
   Tags,
@@ -277,6 +278,17 @@ export default function AccountsPage() {
                   <BellOff className="h-4 w-4" aria-hidden />
                 </button>
               ) : null}
+              {/* The account's own statement: opening balance, every movement,
+                  closing balance. The question "when did money go in and out of
+                  this one?" had no answer anywhere before this link. */}
+              <Link
+                href={`/accounts/${account.id}/statement`}
+                aria-label={`${account.name} — ${t('account.statement', 'হিসাব বিবরণী')}`}
+                title={t('account.statement', 'হিসাব বিবরণী')}
+                className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+              >
+                <FileText className="h-4 w-4" aria-hidden />
+              </Link>
               {/* Two different questions wearing one icon would be worse than
                   two icons. Cash and bank accounts get "মেলান" — the ledger may
                   be wrong about money that already exists. Land, gold and a car

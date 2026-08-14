@@ -161,6 +161,12 @@ export const GROUPS: FeatureGroup[] = [
         route: '/accounts',
       },
       {
+        title: 'সম্পদের পুনর্মূল্যায়ন',
+        titleEn: 'Revaluing an asset',
+        body: 'জমি বা স্বর্ণের এখনকার দাম বসিয়ে দিন, ইতিহাসসহ। এটা আয় নয় এবং নগদ প্রবাহেও যায় না — শুধু নিট সম্পদ বদলায়, কারণ কিছু বিক্রি হয়নি।',
+        route: '/accounts',
+      },
+      {
         title: 'ক্যাটাগরি ও সাব-ক্যাটাগরি',
         titleEn: 'Categories and sub-categories',
         body: '২১টি খাত আগে থেকেই বসানো, নিচে যত ইচ্ছে সাব-ক্যাটাগরি। রিপোর্টে সাব-ক্যাটাগরি মূল খাতে যোগ হয়।',
@@ -171,6 +177,12 @@ export const GROUPS: FeatureGroup[] = [
         titleEn: 'Tags',
         body: 'খাত বলে টাকা কীসে গেল, ট্যাগ বলে কার জন্য — পারিবারিক, ব্যবসা, রমজান। একটি লেনদেনে যতগুলো দরকার।',
         route: '/tags',
+      },
+      {
+        title: 'অ্যাকাউন্টের বিবরণী',
+        titleEn: 'Statement of account',
+        body: 'ব্যাংকের স্টেটমেন্টের মতো — প্রারম্ভিক জের, ডেবিট-ক্রেডিট কলাম, প্রতি সারিতে চলতি জের, সমাপনী জের। প্রিন্ট করুন, এক্সেলে নামান, বা লিংক পাঠান।',
+        route: '/accounts',
       },
       {
         title: 'ব্যাংক মেলানো',
@@ -216,6 +228,51 @@ export const GROUPS: FeatureGroup[] = [
         titleEn: 'Contacts',
         body: 'নাম, ফোন, সম্পর্ক ঠিক করুন। একই মানুষ দুবার লেখা হলে মিলিয়ে দিন — হিসাব দুই ভাগে থাকবে না।',
         route: '/people',
+      },
+      {
+        title: 'প্রত্যেকের নিজস্ব কোড',
+        titleEn: 'A code per person',
+        body: 'P-0001, P-0002 — একই নামের দুজন আলাদা থাকে। মোবাইল নম্বর দিলে একই মানুষ দুবার তৈরি হয় না, তাই তাঁর ধার আর ট্রিপের হিসাব এক জায়গাতেই থাকে।',
+        route: '/people',
+      },
+    ],
+  },
+  {
+    id: 'split',
+    heading: 'ভাগাভাগি (ShareCost)',
+    headingEn: 'Shared expenses — split a bill',
+    blurb:
+      'ট্রিপ, মেস, অফিস — একসাথে খরচ। কে কত দিয়েছে, কার ভাগ কত, শেষে কে কাকে কত দেবে। আর আপনার নিজের খাতায় ওঠে শুধু আপনার ভাগটুকু।',
+    features: [
+      {
+        title: 'খরচ ভাগ করা',
+        titleEn: 'Split an expense',
+        body: 'সমান ভাগে, শতাংশে, নির্দিষ্ট টাকায় বা ভাগ অনুযায়ী। ৳৩,০০০-এর ডিনার চারজনে ভাগ করলে আপনার খরচে ওঠে ৳৭৫০ — ৳৩,০০০ নয়।',
+        route: '/split',
+      },
+      {
+        title: 'কে কাকে কত দেবে',
+        titleEn: 'Settle up in the fewest payments',
+        body: 'সাতজনের ট্রিপ শেষে সবাই সবাইকে টাকা দেয় না। সবচেয়ে কম কয়টা লেনদেনে হিসাব শেষ হয়, সেটা অ্যাপ বলে দেয়।',
+        route: '/split',
+      },
+      {
+        title: 'অগ্রিম দেওয়া টাকা',
+        titleEn: 'Advances, adjusted automatically',
+        body: 'খরচ হওয়ার আগেই কাউকে টাকা দিয়ে রাখলে সেটাও লেখা যায়। পরের বিলের ভাগ থেকে নিজে থেকেই কেটে যায়।',
+        route: '/split',
+      },
+      {
+        title: 'সবাই মিলে তহবিল',
+        titleEn: 'A shared pot',
+        body: 'পারিবারিক ফান্ড, অফিস সমিতি, ট্রিপের চাঁদা। সবাই চাঁদা দেয়, খরচ ওখান থেকেই যায় — আর অন্যের চাঁদা আপনার কাছে তাঁর পাওনা হয়েই থাকে।',
+        route: '/split',
+      },
+      {
+        title: 'ট্রিপের পাবলিক লিংক',
+        titleEn: 'A public link for the trip',
+        body: 'অ্যাকাউন্ট ছাড়াই সবাই দেখবে মোট খরচ, কে কত দিয়েছে, কার ভাগ কত। গ্রুপের বাইরের কিছুই যায় না।',
+        route: '/split',
       },
     ],
   },
@@ -268,6 +325,36 @@ export const GROUPS: FeatureGroup[] = [
         titleEn: 'Reporting by tag',
         body: 'শুধু পারিবারিক খরচ, শুধু ব্যবসার — যে ট্যাগে লিখেছেন সেই ট্যাগেই হিসাব।',
         route: '/reports',
+      },
+      {
+        title: 'চারটি আর্থিক বিবৃতি',
+        titleEn: 'The four financial statements',
+        body: 'আয়-ব্যয় বিবরণী, স্থিতিপত্র, নগদ প্রবাহ বিবরণী আর নিট সম্পদের পরিবর্তন — যেকোনো তারিখ পরিসরের জন্য, এক পাতায়, প্রিন্টযোগ্য।',
+        route: '/reports/statements',
+      },
+      {
+        title: 'নগদ প্রবাহ, তিন ভাগে',
+        titleEn: 'Cash flow in three sections',
+        body: 'পরিচালন, বিনিয়োগ আর অর্থায়ন — IAS 7 যেভাবে বলে। বেতন আর ধার করা টাকা এক সংখ্যায় মেশে না।',
+        route: '/reports/statements',
+      },
+      {
+        title: 'চলতি ও অচলতি ভাগ',
+        titleEn: 'Current and non-current',
+        body: 'স্থিতিপত্রে সম্পদ আর দায় চলতি-অচলতিতে ভাগ করা, IAS 1 অনুসারে। চলতি মূলধনও তাই এক নজরে।',
+        route: '/reports/statements',
+      },
+      {
+        title: 'পরিমাণের হিসাব',
+        titleEn: 'Quantities, not just amounts',
+        body: 'কত কেজি চাল, কত লিটার তেল, কত ভরি স্বর্ণ। ৫৬টি একক — কেজি-লিটার থেকে মণ, ভরি, কাঠা, বিঘা। দাম বাড়ল না অভ্যাস বদলাল, এখানেই ধরা পড়ে।',
+        route: '/reports',
+      },
+      {
+        title: 'বিবরণী শেয়ার',
+        titleEn: 'Share a statement by link',
+        body: 'পাওনাদার, ব্যাংক বা বিমা কোম্পানিকে লিংক পাঠান — তাঁরা অ্যাকাউন্ট ছাড়াই দেখবেন ও ছাপাবেন। লিংকের মেয়াদ থাকে, যেকোনো সময় বাতিল করা যায়, আর কতবার খোলা হয়েছে দেখানো হয়।',
+        route: '/loans',
       },
       {
         title: 'বাংলা-ইংরেজি-বাংলিশ খোঁজ',
@@ -434,6 +521,7 @@ export const FAQ: { q: string; a: string }[] = [
 export const NAV: { href: string; label: string }[] = [
   { href: '/#features', label: 'ফিচার' },
   { href: '/pricing', label: 'দাম' },
+  { href: '/tutorial', label: 'কীভাবে রাখবেন' },
   { href: '/guide', label: 'ইনস্টল' },
   { href: '/#coming', label: 'আসছে' },
   { href: '/#faq', label: 'প্রশ্ন' },

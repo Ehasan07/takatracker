@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { groupPositions, suggestSettlements } from '@hishab/core';
 import { fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
 import { minorToNumber } from '../common/bigint-json';
+import { AccountStatementService } from '../accounts/account-statement.service';
 import { LoansService } from '../loans/loans.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
@@ -60,6 +61,7 @@ export class PublicStatementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loans: LoansService,
+    private readonly accountStatements: AccountStatementService,
   ) {}
 
   async render(share: ResolvedShare): Promise<PublicStatement> {
@@ -119,6 +121,25 @@ export class PublicStatementService {
 
     if (share.kind === 'SAVINGS') {
       return { ...head, kind: share.kind, ...(await this.savings(share, workspace.timezone)) };
+    }
+
+    if (share.kind === 'ACCOUNT') {
+      /* The owner's own screen, rendered for somebody with no account.
+       *
+       * Same service, same opening balance, same running balance — a second
+       * implementation would eventually disagree with the private one about a
+       * closing figure, and the copy a landlord or an auditor is holding is the
+       * worst one to be wrong. Nothing outside this account travels with it:
+       * every query in there is filtered on the workspace and the account id
+       * that the share row carries. */
+      const statement = await this.accountStatements.statement(ctx, share.subjectId, range, locale);
+      return {
+        ...head,
+        kind: share.kind,
+        title: statement.account.name,
+        subtitle: statement.account.institution ?? statement.account.accountNumberMasked,
+        data: statement,
+      };
     }
 
     if (share.kind === 'GROUP') {

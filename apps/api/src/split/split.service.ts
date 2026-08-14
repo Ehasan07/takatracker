@@ -18,6 +18,7 @@ import {
 } from '@hishab/shared';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
+import { nextPersonCode } from '../people/person-code';
 import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
@@ -248,6 +249,7 @@ export class SplitService {
         const person = await tx.person.create({
           data: {
             workspaceId: ctx.workspaceId,
+            ...(await nextPersonCode(tx, ctx.workspaceId)),
             name: displayName,
             phone: storablePhone(input.phone) ?? undefined,
             phoneKey: keys.phoneKey,

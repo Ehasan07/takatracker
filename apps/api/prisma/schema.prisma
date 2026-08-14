@@ -151,6 +151,10 @@ enum StatementKind {
   INSURANCE
   /// A whole trip or event: what it cost and who carried what share of it.
   GROUP
+  /// One account's own ledger, in running-balance form — the document a bank
+  /// issues. Shared with a lender, a landlord or an auditor who needs to see
+  /// the movements on one account and nothing else in the books.
+  ACCOUNT
 }
 
 /// A statement somebody outside the app can open, print, and nothing more.
@@ -571,6 +575,28 @@ model Category {
 model Person {
   id          String    @id @default(cuid())
   workspaceId String
+  /**
+   * The handle you can say out loud: P-0001, P-0002.
+   *
+   * A number identifies most people and a name identifies none of them, but
+   * some people have neither — two suppliers called "রফিক এন্টারপ্রাইজ" on the
+   * same shop phone are two accounts, and somebody has to be able to point at
+   * one of them on a delivery note. `id` is a cuid nobody will ever read aloud;
+   * this is short, ordered, and printable on a statement.
+   *
+   * Unique per workspace, never reused, never renumbered — a code somebody has
+   * already written in a paper ledger must not come to mean somebody else.
+   */
+  code        String
+  /**
+   * The number inside `code`, so "what is the next one" is arithmetic.
+   *
+   * `code` sorts as text, and text puts P-9999 above P-10000 — so reading the
+   * highest code off a string sort handed out P-10000 twice once a workspace
+   * passed ten thousand people, and the second one bounced off the unique
+   * index. The integer is the sort key; the string is what gets printed.
+   */
+  codeSeq     Int
   name        String
   phone       String?
   /**
@@ -600,6 +626,8 @@ model Person {
   @@index([workspaceId])
   /* One person per number, per workspace. Partial, because most people in a
      household ledger have no number at all and many nulls must not collide. */
+  @@unique([workspaceId, code])
+  @@unique([workspaceId, codeSeq])
   @@unique([workspaceId, phoneKey])
   @@unique([workspaceId, email])
 }

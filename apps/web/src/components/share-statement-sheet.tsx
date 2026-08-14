@@ -29,7 +29,7 @@ import { t } from '@/lib/t';
  * shown the number. It is not decoration.
  */
 
-type Kind = 'PERSON' | 'LOAN' | 'SAVINGS' | 'INSURANCE' | 'GROUP';
+type Kind = 'PERSON' | 'LOAN' | 'SAVINGS' | 'INSURANCE' | 'GROUP' | 'ACCOUNT';
 
 interface ShareDto {
   id: string;
