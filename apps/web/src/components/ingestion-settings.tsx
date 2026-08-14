@@ -28,6 +28,22 @@ const MASK = '••••••••••••••••••••••
 /** The JSON an SMS-forwarder app should POST. `%from%` / `%text%` are its tokens, not ours. */
 const BODY_TEMPLATE = '{"channel":"SMS","sender":"%from%","body":"%text%"}';
 
+/**
+ * The same request with the credentials in the body instead of in headers.
+ *
+ * Offered because the header editor is where people come unstuck: in iOS
+ * Shortcuts it is a list of unlabelled `Key`/`name` rows, and filling one in
+ * backwards — the workspace id typed as a header *name* — produces a 401 with
+ * nothing on screen to explain it. A forwarder that already builds a JSON body
+ * can add two more fields to it and never open that sheet.
+ *
+ * Not less safe: the same secret, over the same TLS, in a POST body rather than
+ * a header. It is safer than a URL would be, because nginx writes the path of
+ * every request to disk and does not write the body.
+ */
+const NO_HEADER_TEMPLATE =
+  '{"workspace":"%workspace%","secret":"%secret%","channel":"SMS","sender":"%from%","body":"%text%"}';
+
 async function copyText(text: string): Promise<boolean> {
   try {
     if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
@@ -77,6 +93,19 @@ export function IngestionSettings() {
   };
 
   const data = config.data;
+
+  /* The header-free template with this workspace's own two values already in
+     it, so the whole thing is one copy rather than a template plus two
+     substitutions somebody has to make by hand on a phone. */
+  const noHeaderBody = data
+    ? NO_HEADER_TEMPLATE.replace('%workspace%', data.workspaceId).replace(
+        '%secret%',
+        data.secret ?? '',
+      )
+    : '';
+  const maskedNoHeaderBody = data
+    ? NO_HEADER_TEMPLATE.replace('%workspace%', data.workspaceId).replace('%secret%', MASK)
+    : '';
 
   return (
     <section className="rounded-card border-rule bg-surface min-w-0 border p-4">
@@ -212,6 +241,18 @@ export function IngestionSettings() {
               copied={copied === 'body'}
               onCopy={() => void onCopy('body', BODY_TEMPLATE)}
             />
+
+            {data.secret ? (
+              <CopyRow
+                id="ing-body-nohead"
+                label="হেডার ছাড়া পাঠাতে চাইলে — Body (JSON)"
+                hint="এটি ব্যবহার করলে কোনো হেডার লাগবে না। ভেতরে সিক্রেট আছে, তাই কাউকে পাঠাবেন না।"
+                value={noHeaderBody}
+                display={revealed ? noHeaderBody : maskedNoHeaderBody}
+                copied={copied === 'bodyNoHeader'}
+                onCopy={() => void onCopy('bodyNoHeader', noHeaderBody)}
+              />
+            ) : null}
           </div>
 
           {copyFailed ? (
@@ -334,20 +375,27 @@ function IphoneSteps() {
       </>,
     ],
     [
-      'Method ও হেডার',
+      'Method',
       <>
-        <em>Get Contents of</em>-এর পাশের তীরটিতে চাপ দিন। <em>Method</em> করুন <code>POST</code>।{' '}
-        <em>Headers</em>-এ উপরের দুই জোড়া নাম ও মান ছবহু বসান — একটি ওয়ার্কস্পেস আইডি, আরেকটি
-        সিক্রেট।
+        <em>Get Contents of</em>-এর পাশের তীরটিতে চাপ দিন। <em>Method</em> করুন <code>POST</code>।
       </>,
     ],
     [
-      'বার্তার ঘর',
+      'বার্তার ঘর — হেডার ছাড়াই',
       <>
-        <em>Request Body</em> করুন <em>JSON</em>। তিনটি ঘর যোগ করুন — <code>channel</code> ={' '}
-        <code>SMS</code>, <code>sender</code> = বার্তা পাঠানো নম্বর, আর <code>body</code>-তে{' '}
-        <em>Shortcut Input</em> ভেরিয়েবলটি বসান (কীবোর্ডের উপরে <em>Shortcut Input</em> লেখা নীল
-        চিপটি)। ওই ভেরিয়েবলেই আসল বার্তাটি থাকে।
+        <em>Request Body</em> করুন <em>JSON</em>, আর <em>Headers</em> খালিই রাখুন। পাঁচটি ঘর যোগ
+        করুন: <code>workspace</code> ও <code>secret</code> (উপরের ঘর দুটি থেকে কপি করে),{' '}
+        <code>channel</code> = <code>SMS</code>, <code>sender</code> = বার্তা পাঠানো নম্বর, আর{' '}
+        <code>body</code>-তে <em>Shortcut Input</em> ভেরিয়েবলটি (কীবোর্ডের উপরে{' '}
+        <em>Shortcut Input</em> লেখা নীল চিপটি)। ওই ভেরিয়েবলেই আসল বার্তাটি থাকে।
+      </>,
+    ],
+    [
+      'হেডার দিয়েও করা যায়',
+      <>
+        <em>Headers</em> ব্যবহার করতে চাইলে <code>workspace</code> আর <code>secret</code> ঘর দুটি
+        বাদ দিয়ে উপরের দুই জোড়া নাম ও মান হেডারে বসান। খেয়াল রাখবেন বাঁ পাশে <em>নাম</em>, ডান
+        পাশে <em>মান</em> — উল্টে গেলে সাড়া আসবে <code>401</code>।
       </>,
     ],
     [

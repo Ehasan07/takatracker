@@ -74,14 +74,75 @@ const optionalQuery = <T extends z.ZodTypeAny>(schema: T) =>
  * there is no bank sending us one, and an endpoint that takes a caller's word
  * for an amount needs a per-source trust decision that does not exist here.
  */
-const webhookSchema = z.object({
+const webhookFields = z.object({
   channel: z.enum(INGESTION_CHANNELS).default('WEBHOOK'),
   /** Shortcode, sender address, or whatever the forwarder calls itself. */
   sender: z.string().max(200).optional(),
   /** When it reached the device. Defaults to now; a future stamp is pulled back. */
   receivedAt: z.string().datetime({ offset: true }).optional(),
-  body: z.string().min(1).max(MAX_BODY_LENGTH),
+  /* The message itself.
+   *
+   * The refusal is spelled out because of who reads it: not a developer with
+   * the schema open, but somebody standing in Shortcuts wondering why the run
+   * they just pressed came back red. Zod's own `String must contain at least 1
+   * character(s)` names the constraint and not the fix — and the fix is nearly
+   * always the same one, because a Message automation run by hand has no
+   * incoming message and hands the variable over empty. */
+  body: z
+    .string()
+    .min(1, 'বার্তার লেখা আসেনি — body ঘরে বার্তার ভেরিয়েবলটি বসান (আইফোনে Shortcut Input)')
+    .max(MAX_BODY_LENGTH),
+  /**
+   * The credentials, when the caller cannot set headers.
+   *
+   * iOS Shortcuts can, but the field editor is two taps and the header editor
+   * is a list of unlabelled `Key`/`name` rows that is very easy to fill in
+   * backwards — which is exactly how the first attempt at this failed, with the
+   * workspace id typed in as a header *name*. A forwarder that already builds a
+   * JSON body can put two more fields in it and never open the header sheet.
+   *
+   * Headers win when both are present. Neither is stored: `ingest` reads four
+   * fields off this object and these are not among them.
+   */
+  workspace: z.string().max(100).optional(),
+  secret: z.string().max(200).optional(),
 });
+
+/**
+ * The same message under the names other forwarders already use.
+ *
+ * Every SMS-forwarding app and Shortcut in the world has settled on its own
+ * spelling — `message`, `text`, `body`; `source`, `channel`; `from`, `sender` —
+ * and the person wiring one up should not have to rename fields to match us.
+ * The aliases are read only when the canonical name is absent, so a body that
+ * says both is never ambiguous.
+ *
+ * `source: "sms"` is upper-cased on the way in for the same reason: no
+ * forwarder types an enum in capitals, and refusing it would be pedantry.
+ */
+const webhookSchema = z.preprocess((raw) => {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const it = { ...(raw as Record<string, unknown>) };
+
+  const alias = (canonical: string, ...others: string[]): void => {
+    if (it[canonical] !== undefined && it[canonical] !== '') return;
+    for (const other of others) {
+      if (it[other] !== undefined && it[other] !== '') {
+        it[canonical] = it[other];
+        return;
+      }
+    }
+  };
+
+  alias('body', 'message', 'text');
+  alias('sender', 'from');
+  alias('channel', 'source');
+  alias('workspace', 'workspaceId');
+
+  if (typeof it.channel === 'string') it.channel = it.channel.toUpperCase();
+  return it;
+}, webhookFields);
+
 export type WebhookBody = z.infer<typeof webhookSchema>;
 
 const listDraftsQuerySchema = z.object({
@@ -145,14 +206,18 @@ export class IngestionWebhookController {
     /* One 401 for every failure — bad secret, missing header, unknown
      * workspace. Telling them apart would turn this into a way of discovering
      * which workspace ids exist. */
-    if (!workspaceId || !this.ingestion.verifyWebhookSecret(workspaceId, secret)) {
+    /* Headers first, body second. A forwarder that can set headers should, and
+       one that cannot is not turned away for it. */
+    const tenant = workspaceId || body.workspace;
+    const proof = secret ?? body.secret;
+    if (!tenant || !this.ingestion.verifyWebhookSecret(tenant, proof)) {
       throw new UnauthorizedException(INGEST_UNAUTHORISED);
     }
     /* 200, not 202: the parse is a few regexes and happens inline, so the
      * forwarder gets the draft id back and can show the user that it landed.
      * Moving to 202 with a worker queue is a change to make when a parser gets
      * slow enough to be worth it, not before. */
-    return this.ingestion.ingest(workspaceId, body);
+    return this.ingestion.ingest(tenant, body);
   }
 }
 

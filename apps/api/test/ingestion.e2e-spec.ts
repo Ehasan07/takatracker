@@ -58,6 +58,91 @@ describe('ingestion', () => {
       .set(ws.secretHeader, secret)
       .send({ channel: 'SMS', sender: 'BRAC-BANK', body });
 
+  it('takes the whole thing in the body, for a forwarder that cannot set headers', async () => {
+    /* The shape an iOS Shortcut builds without ever opening the header sheet:
+       one URL, no headers, five JSON fields. The header editor there is a list
+       of unlabelled rows and the first attempt at this had the workspace id
+       typed in as a header *name* — which is a 401 with nothing on screen to
+       explain it. */
+    const ws = await workspace();
+    const res = await ctx
+      .http()
+      .post('/v1/ingestion/webhook')
+      .send({
+        workspace: ws.user.workspaceId,
+        secret: ws.secret,
+        source: 'sms',
+        from: 'BRAC-BANK',
+        message: SMS,
+      })
+      .expect(200);
+
+    expect(res.body.draftId).toBeTruthy();
+
+    /* The credentials are not part of the message. `ingest` reads four fields
+       and these are not among them, but a regression there would write
+       somebody's secret into a row the review screen prints. */
+    const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
+    const stored = JSON.stringify(drafts.body);
+    expect(stored).not.toContain(ws.secret);
+    expect(stored).toContain('BRAC-BANK');
+  });
+
+  it('reads the message under whichever name the forwarder uses', async () => {
+    const ws = await workspace();
+    /* `text` rather than `message` or `body`, and no channel at all. */
+    await ctx
+      .http()
+      .post('/v1/ingestion/webhook')
+      .send({ workspace: ws.user.workspaceId, secret: ws.secret, text: SMS })
+      .expect(200);
+
+    const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
+    expect(drafts.body.items).toHaveLength(1);
+  });
+
+  it('still refuses a body that carries the wrong secret', async () => {
+    const ws = await workspace();
+    await ctx
+      .http()
+      .post('/v1/ingestion/webhook')
+      .send({ workspace: ws.user.workspaceId, secret: 'not-the-secret', message: SMS })
+      .expect(401);
+
+    /* And one with no credentials at all, which is what the open internet
+       sends. */
+    await ctx.http().post('/v1/ingestion/webhook').send({ message: SMS }).expect(401);
+  });
+
+  it('lets a header beat a body field, so a wrong field cannot downgrade a right header', async () => {
+    const ws = await workspace();
+    await ctx
+      .http()
+      .post('/v1/ingestion/webhook')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, ws.secret)
+      .send({ workspace: 'someone-else', secret: 'rubbish', message: SMS })
+      .expect(200);
+  });
+
+  it('says what to fix when the message arrives empty', async () => {
+    /* The commonest failure by a distance: a Message automation run by hand has
+       no incoming message, so the variable is handed over empty and the whole
+       request is otherwise perfect. The refusal has to name the field to fill,
+       because the person reading it is standing in Shortcuts, not in the
+       schema. */
+    const ws = await workspace();
+    const res = await ctx
+      .http()
+      .post('/v1/ingestion/webhook')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, ws.secret)
+      .send({ channel: 'SMS', sender: 'BRAC-BANK', body: '' })
+      .expect(400);
+
+    expect(JSON.stringify(res.body)).toContain('body ঘরে বার্তার ভেরিয়েবলটি বসান');
+  });
+
   it('turns a bank SMS into a draft, and only a draft', async () => {
     const ws = await workspace();
     const res = await post(ws).expect(200);
