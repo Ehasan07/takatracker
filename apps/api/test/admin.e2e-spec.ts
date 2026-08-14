@@ -995,7 +995,9 @@ describe('super admin', () => {
 
     await send('Your A/C 1234 is debited BDT 1,500.00 on 14-AUG-26');
     await send('Dear customer, your BDT statement is ready.');
-    await send('Your one-time code is 998877. Do not share it.');
+    /* No digit and no currency word, so no draft — which since the rule was
+       widened is the only kind of message that gets left out. */
+    await send('আমি বাসায় পৌঁছে গেছি');
 
     const res = await ctx
       .http()
@@ -1006,7 +1008,7 @@ describe('super admin', () => {
     expect(res.body.summary).toMatchObject({ total: 3, parsed: 1, unread: 1, ignored: 1 });
     /* The raw text is there — that is the point of the screen, and the cost of
        it, and why the read is logged below. */
-    expect(JSON.stringify(res.body.messages)).toContain('998877');
+    expect(JSON.stringify(res.body.messages)).toContain('বাসায়');
 
     /* Its own action, awaited rather than emitted: an unlogged look at
        somebody's messages is the thing this design exists to prevent.

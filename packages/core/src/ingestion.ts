@@ -820,50 +820,62 @@ export function createRegistry(parsers: readonly MessageParser[] = []): ParserRe
   };
 }
 
-// --- is this about money at all? ----------------------------------------------
+// --- is this worth a decision? ------------------------------------------------
 
 /**
- * The markers that make a message worth a decision.
+ * What makes a message worth raising a draft for.
  *
- * ## Why this exists
+ * ## What this decides, and what it does not
  *
- * A phone forwarding every SMS sends a great deal that is not a transaction:
- * one-time codes, delivery updates, network offers, a friend saying he is
- * downstairs. Every one of those is kept — the owner asked for all of them and
- * they are what shows whether the pipe is working — but turning each into a
- * *draft* would bury the four that need answering under forty that do not, and
- * the review inbox is a queue of decisions rather than a log.
+ * Nothing is discarded here. Every message a phone forwards is stored and shown
+ * to its owner whatever this returns; the only question is whether a *draft*
+ * joins it — whether somebody is asked to make a decision about it.
  *
- * So the message is always stored, and this decides only whether a draft joins
- * it. Nothing is discarded on the strength of what is below.
+ * ## Why the rule is this wide
  *
- * ## What counts
+ * It began narrower: three currency codes and the shape of an amount, two
+ * decimal places or a grouped thousand. That was chosen to keep one-time codes
+ * out of the review queue, and it failed on the first real test — `500 taka
+ * twst`, typed by the owner in the words a person actually uses, was filed as
+ * not-money and vanished from the queue.
  *
- * Three currency words and the shape of an amount. The shape does most of the
- * work: `500.00`, `1,250.00`, `৳3,000` — two decimal places or a grouped
- * thousand is how money is written and almost nothing else is. A one-time code
- * is `847213`, a phone number is `01711111111`, a date is `14/08/2026`; none of
- * them survive the test, which is the point.
+ * The lesson generalises past that one word. A rule that only knows how *banks*
+ * write about money does not know how *people* do, and the messages this
+ * product exists to catch are written by both. So the test is now: a currency
+ * marker, or any digit at all.
  *
- * `Tk` needs a boundary or it matches inside ordinary words. `BDT` and `USD` do
- * not — three capitals in a row are not an accident of English.
+ * ## What that costs, stated plainly
+ *
+ * Nearly every SMS contains a digit, so nearly every SMS raises a draft — a
+ * delivery notice, an appointment reminder, a one-time code. The queue fills
+ * with things nobody needs to answer, and each one is charged against
+ * `ingest.messages.monthly.max`.
+ *
+ * That is the owner's call and it is a defensible one while the parsers are
+ * being taught: a draft nobody wanted is dismissed in a tap, a transaction that
+ * never arrived is invisible. It is written down here because the day somebody
+ * wonders why the inbox is full of codes, this comment is the answer, and
+ * narrowing the list back down is a one-line change.
  */
 const MONEY_MARKERS: readonly RegExp[] = [
   /\bBDT\b/i,
   /\bUSD\b/i,
-  /\bTk\.?\s*\d/i,
+  /\bTk\b/i,
   /৳/,
-  /\d+\.\d{2}\b/,
-  /\b\d{1,3}(,\d{3})+(\.\d{2})?\b/,
+  /টাকা/,
+  /\btaka\b/i,
+  /* Any digit. Deliberately the widest possible test, and the reason almost
+     everything now raises a draft — see the note above. */
+  /\d/,
 ];
 
 /**
- * Whether a message looks like it is about money.
+ * Whether a message is worth putting a decision in front of somebody.
  *
- * Deliberately generous. A false positive costs one draft somebody dismisses in
- * a tap; a false negative costs a transaction that never reaches the books and
- * that nobody knows to look for. When the two errors are that unequal, the test
- * should lean towards saying yes.
+ * Deliberately generous, and now about as generous as a test can be. A false
+ * positive costs one draft dismissed in a tap; a false negative costs a
+ * transaction that never reaches the books and that nobody knows to look for.
+ * When the two errors are that unequal, the test leans towards yes.
  */
 export function looksFinancial(body: string): boolean {
   return MONEY_MARKERS.some((marker) => marker.test(body));

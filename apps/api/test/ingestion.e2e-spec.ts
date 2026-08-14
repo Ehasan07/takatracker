@@ -324,14 +324,13 @@ describe('ingestion', () => {
     expect(draft.needsReview).toBe(true);
   });
 
-  it('raises no decision for a message that was never about money, but keeps it', async () => {
-    /* A phone forwarding every SMS sends a great deal that is not a
-       transaction. All of it is kept — it is the customer's own data and it is
-       what shows the pipe is working — but a one-time code is not a question
-       anybody needs answering, and forty of them is how a review queue stops
-       being read. */
+  it('raises no decision for a message with no figure and no currency in it', async () => {
+    /* The rule is deliberately wide — a currency marker or any digit — so what
+       is left out is prose and only prose. It was narrower once and the first
+       real test broke it: `500 taka twst` raised nothing, because the rule knew
+       how banks write about money and not how people do. */
     const ws = await workspace();
-    const received = await post(ws, 'Your one-time code is 847213. Do not share it.').expect(200);
+    const received = await post(ws, 'আমি বাসায় পৌঁছে গেছি, চিন্তা করো না').expect(200);
 
     expect(received.body.draftId).toBeNull();
 
@@ -342,13 +341,25 @@ describe('ingestion', () => {
        which is a different screen from the queue of decisions. */
     const messages = await ctx.http().get('/v1/ingestion/messages').set(auth(ws.user)).expect(200);
     expect(messages.body.items).toHaveLength(1);
-    expect(messages.body.items[0].body).toContain('847213');
+    expect(messages.body.items[0].body).toContain('বাসায়');
     expect(messages.body.items[0].draftId).toBeNull();
   });
 
+  it('does raise one for a code, because a digit is enough — by design', async () => {
+    /* Not an oversight. A one-time code dismissed in a tap is a smaller loss
+       than a bank format nobody anticipated that never reaches the books, and
+       the owner chose that trade knowing the queue would fill. Pinned here so
+       the behaviour reads as a decision rather than a bug. */
+    const ws = await workspace();
+    const received = await post(ws, 'Your one-time code is 847213. Do not share it.').expect(200);
+    expect(received.body.draftId).toBeTruthy();
+  });
+
   it('does not charge the monthly ceiling for a message that raised no decision', async () => {
-    /* The customer pays for what this product does with their messages. A code
-       from their bank is not that. */
+    /* The customer pays for what this product does with their messages. A
+       message it did nothing with is not that. With the rule as wide as it now
+       is, "did nothing with" means prose — and a workspace at its ceiling can
+       still receive it. */
     const ws = await workspace();
     await ctx.prisma.workspaceFeatureOverride.upsert({
       where: {
@@ -365,14 +376,17 @@ describe('ingestion', () => {
       update: { limitValue: 1 },
     });
 
-    // Three that are not about money, against a ceiling of one.
-    await post(ws, 'Your OTP is 111111').expect(200);
-    await post(ws, 'Your OTP is 222222').expect(200);
-    await post(ws, 'Your OTP is 333333').expect(200);
-
-    // And the one that is still gets through.
+    // The one that counts, against a ceiling of one.
     const real = await post(ws, 'Your A/C is debited BDT 500.00 today').expect(200);
     expect(real.body.draftId).toBeTruthy();
+
+    // And three that do not, arriving after the ceiling is already spent.
+    await post(ws, 'কাজ শেষ, বাসায় ফিরছি').expect(200);
+    await post(ws, 'Call me when you are free').expect(200);
+    await post(ws, 'Thank you for shopping with us').expect(200);
+
+    const messages = await ctx.http().get('/v1/ingestion/messages').set(auth(ws.user)).expect(200);
+    expect(messages.body.items).toHaveLength(4);
   });
 
   it('never shows one workspace another s drafts', async () => {
