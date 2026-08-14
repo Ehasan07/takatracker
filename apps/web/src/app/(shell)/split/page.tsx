@@ -9,9 +9,10 @@ import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, endpoints } from '@/lib/api';
 import { fmtDate, fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { useDisplayName } from '@/lib/display-name';
 import { t } from '@/lib/t';
 import {
   fetchGroups,
@@ -119,11 +120,42 @@ export default function SplitGroupsPage() {
  */
 function InboxCard() {
   const queryClient = useQueryClient();
+  const { name: display } = useDisplayName();
   const inbox = useQuery({ queryKey: splitKeys.inbox(), queryFn: fetchInbox });
+  const categories = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => endpoints.categories(),
+    staleTime: 5 * 60_000,
+  });
+
+  /* Which category each waiting draft will be filed under, chosen per row.
+   *
+   * Accepting writes an expense into these books, and an expense with no
+   * category lands in the reports' unclassified bucket — which is where every
+   * shared bill used to end up. The button stays disabled until one is picked:
+   * a refusal from the server after the tap would be a worse way to learn it. */
+  const [filedAs, setFiledAs] = React.useState<Record<string, string>>({});
+
+  const expenseCategories = React.useMemo(() => {
+    const all = (categories.data ?? []).filter((c) => c.kind === 'EXPENSE');
+    const byId = new Map(all.map((c) => [c.id, c]));
+    return all
+      .map((c) => {
+        const parent = c.parentId ? byId.get(c.parentId) : undefined;
+        return {
+          id: c.id,
+          label: parent ? `${display(parent)} › ${display(c)}` : display(c),
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, 'bn'));
+  }, [categories.data, display]);
 
   const decide = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>
-      api(`/split/inbox/${id}/${accept ? 'accept' : 'decline'}`, { method: 'POST', body: {} }),
+      api(`/split/inbox/${id}/${accept ? 'accept' : 'decline'}`, {
+        method: 'POST',
+        body: accept ? { categoryId: filedAs[id] } : {},
+      }),
     onSuccess: () => {
       haptic('tap');
       void queryClient.invalidateQueries({ queryKey: splitKeys.inbox() });
@@ -153,11 +185,24 @@ function InboxCard() {
               </p>
             </div>
             <Money minor={row.amountMinor} className="shrink-0 text-sm font-medium" />
+            <Select
+              aria-label={`${row.description} — ${t('split.fileUnder', 'খাত')}`}
+              value={filedAs[row.id] ?? ''}
+              onChange={(e) => setFiledAs((was) => ({ ...was, [row.id]: e.target.value }))}
+              className="w-40 shrink-0"
+            >
+              <option value="">{t('split.pickCategory', 'খাত বেছে নিন')}</option>
+              {expenseCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
             <div className="flex shrink-0 gap-1">
               <Button
                 type="button"
                 size="sm"
-                disabled={decide.isPending}
+                disabled={decide.isPending || !filedAs[row.id]}
                 onClick={() => decide.mutate({ id: row.id, accept: true })}
               >
                 <Check className="h-4 w-4" aria-hidden />

@@ -10,8 +10,9 @@ import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api, endpoints } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { useDisplayName } from '@/lib/display-name';
 import { t } from '@/lib/t';
-import { splitKeys, type GroupDetail, type SplitMethod } from '../queries';
+import { fetchExpenses, splitKeys, type GroupDetail, type SplitMethod } from '../queries';
 
 /**
  * Record one shared bill.
@@ -107,6 +108,7 @@ export function AddExpenseSheet({
   group: GroupDetail;
 }) {
   const queryClient = useQueryClient();
+  const { name: display } = useDisplayName();
   const active = React.useMemo(() => group.members.filter((m) => !m.removedAt), [group.members]);
   const self = active.find((m) => m.isSelf);
 
@@ -164,6 +166,25 @@ export function AddExpenseSheet({
     if (first) setAccountId(first.id);
   }, [open, accountId, accounts.data]);
 
+  /* The category this group was last filed under.
+   *
+   * A trip's bills are nearly all one kind of spending, so the second expense
+   * onwards needs no thought at all — and a required field with a right default
+   * is a field nobody notices, which is the point. Still overridable, and still
+   * refused when there is nothing to default to. */
+  const priorExpenses = useQuery({
+    queryKey: splitKeys.expenses(group.id),
+    queryFn: () => fetchExpenses(group.id),
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  React.useEffect(() => {
+    if (!open || categoryId) return;
+    const last = (priorExpenses.data ?? []).find((e) => e.categoryId);
+    if (last?.categoryId) setCategoryId(last.categoryId);
+  }, [open, categoryId, priorExpenses.data]);
+
   const totalMinor = minorOrZero(amount);
   const chosen = rows.filter((r) => r.on);
   const payerIsSelf = payerId === self?.id;
@@ -180,6 +201,13 @@ export function AddExpenseSheet({
     return new Map(chosen.map((row, i) => [row.memberId, parts[i] ?? 0]));
   }, [method, totalMinor, chosen]);
 
+  /* Whether any of this bill lands in these books.
+   *
+   * A bill between two other members posts nothing here — no expense, no
+   * category to file it under — so the field is not shown and not required.
+   * Everywhere else it is both. */
+  const iAmIn = chosen.some((row) => row.memberId === self?.id);
+
   const nameOf = (memberId: string): string =>
     active.find((m) => m.id === memberId)?.displayName ?? '';
 
@@ -189,12 +217,18 @@ export function AddExpenseSheet({
     const all = (categories.data ?? []).filter((c) => c.kind === 'EXPENSE');
     const byId = new Map(all.map((c) => [c.id, c]));
     return all
-      .map((c) => ({
-        id: c.id,
-        label: c.parentId ? `${byId.get(c.parentId)?.name ?? ''} › ${c.name}` : c.name,
-      }))
+      .map((c) => {
+        const parent = c.parentId ? byId.get(c.parentId) : undefined;
+        /* `displayName`, not `c.name`. The API sends both names and `name` is
+           the English one, so this list read `Food & groceries` on a Bengali
+           workspace where every other picker in the app reads খাবার ও বাজার. */
+        return {
+          id: c.id,
+          label: parent ? `${display(parent)} › ${display(c)}` : display(c),
+        };
+      })
       .sort((a, b) => a.label.localeCompare(b.label, 'bn'));
-  }, [categories.data]);
+  }, [categories.data, display]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -257,6 +291,9 @@ export function AddExpenseSheet({
           if (chosen.length === 0) return setError(t('split.whoRequired', 'অন্তত একজনকে বেছে নিন'));
           if (payerIsSelf && !fromPot && !accountId) {
             return setError(t('split.accountRequired', 'কোন অ্যাকাউন্ট থেকে গেল বেছে নিন'));
+          }
+          if (iAmIn && !categoryId) {
+            return setError(t('split.categoryRequired', 'আপনার ভাগটি কোন খাতে যাবে বেছে নিন'));
           }
           create.mutate();
         }}
@@ -411,29 +448,36 @@ export function AddExpenseSheet({
           </ul>
         </fieldset>
 
+        {/* Out of the folded section and onto the form.
+         *
+         * It lived behind a `খাত ও নোট` summary with `খাত ছাড়া` selected, so
+         * every shared bill any of these books had ever seen went in with no
+         * category and piled up in the reports' unclassified bucket. Only the
+         * owner's own share is filed here — the others' shares are a receivable,
+         * not spending — and a share of your own is spending, which has to say
+         * what it was for. */}
+        {iAmIn ? (
+          <Field label={t('split.category', 'আপনার ভাগ কোন খাতে')} htmlFor="se-category">
+            <Select
+              id="se-category"
+              value={categoryId ?? ''}
+              onChange={(e) => setCategoryId(e.target.value || undefined)}
+            >
+              <option value="">{t('split.pickCategory', 'খাত বেছে নিন')}</option>
+              {expenseCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+
         <details className="rounded-card border-rule border">
           <summary className="press text-ink-muted flex min-h-11 cursor-pointer items-center px-3 text-sm">
-            {t('split.more', 'খাত ও নোট')}
+            {t('split.more', 'নোট')}
           </summary>
           <div className="flex flex-col gap-3 px-3 pb-3">
-            {/* Only the owner's own share is filed here, which is what makes a
-                future budget read shared spending correctly. A flat select
-                rather than the two-wheel picker: this sheet already asks enough,
-                and the category is the one field with a workable default. */}
-            <Field label={t('split.category', 'খাত')} htmlFor="se-category">
-              <Select
-                id="se-category"
-                value={categoryId ?? ''}
-                onChange={(e) => setCategoryId(e.target.value || undefined)}
-              >
-                <option value="">{t('split.noCategory', 'খাত ছাড়া')}</option>
-                {expenseCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
             <Field label={t('split.note', 'নোট')} htmlFor="se-note">
               <Input
                 id="se-note"

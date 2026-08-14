@@ -471,6 +471,33 @@ export class SplitService {
     if (iPaid && !input.fromPot && !input.accountId) {
       throw new BadRequestException('টাকা কোন অ্যাকাউন্ট থেকে গেছে সেটি বেছে নিন');
     }
+
+    /* A share of your own is spending of your own, and spending has to say what
+     * it was for.
+     *
+     * Without this the owner's leg posted to the expense nominal with a null
+     * category, and every shared bill piled up in the reports' unclassified
+     * bucket — which is exactly the analysis by nature that IAS 1.99 asks for,
+     * defeated by an omission on one form. The main entry sheet has always
+     * refused an expense with no category; this is the same rule reaching the
+     * screen that grew up beside it.
+     *
+     * Only when there *is* a share. A bill between two other members posts
+     * nothing to these books at all, so asking which category it belongs to
+     * would be asking about a transaction that does not exist. */
+    if (myShare > 0) {
+      if (!input.categoryId) throw new BadRequestException('আপনার ভাগটি কোন খাতে যাবে বেছে নিন');
+      const category = await this.prisma.category.findFirst({
+        where: {
+          id: input.categoryId,
+          workspaceId: ctx.workspaceId,
+          deletedAt: null,
+          kind: 'EXPENSE',
+        },
+        select: { id: true },
+      });
+      if (!category) throw new NotFoundException('খাতটি পাওয়া যায়নি');
+    }
     if (iPaid && input.accountId) {
       const account = await this.prisma.account.findFirst({
         where: { id: input.accountId, workspaceId: ctx.workspaceId, deletedAt: null },
@@ -1128,11 +1155,22 @@ export class SplitService {
     });
     if (!mirror) throw new NotFoundException('খসড়াটি পাওয়া যায়নি');
 
+    /* Accepting a mirrored bill writes an expense in these books, and an
+     * expense has to say what it was for — the same rule `createExpense`
+     * follows, for the same reason. There is no "the owner is not involved"
+     * case here: a mirror only exists because they are. */
+    if (!categoryId) throw new BadRequestException('খরচটি কোন খাতে যাবে বেছে নিন');
+    const category = await this.prisma.category.findFirst({
+      where: { id: categoryId, workspaceId: ctx.workspaceId, deletedAt: null, kind: 'EXPENSE' },
+      select: { id: true },
+    });
+    if (!category) throw new NotFoundException('খাতটি পাওয়া যায়নি');
+
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
     const payable = await this.accounts.loanControlAccount(ctx.workspaceId, 'BORROWED');
     const amount = minorToNumber(mirror.amountMinor);
     const entries = [
-      draft(system.expenseAccountId, 'DEBIT', amount, categoryId ?? null),
+      draft(system.expenseAccountId, 'DEBIT', amount, categoryId),
       draft(payable, 'CREDIT', amount),
     ];
     assertBalanced(entries);

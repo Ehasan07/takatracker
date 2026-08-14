@@ -17,6 +17,7 @@ describe('shared spending', () => {
   let accountId: string;
   let groupId: string;
   let meId: string;
+  let categoryId: string;
   let karimId: string;
   let rahimId: string;
 
@@ -45,6 +46,12 @@ describe('shared spending', () => {
     meId = group.body.members.find((m: { isSelf: boolean }) => m.isSelf).id;
     karimId = group.body.members.find((m: { displayName: string }) => m.displayName === 'করিম').id;
     rahimId = group.body.members.find((m: { displayName: string }) => m.displayName === 'রহিম').id;
+
+    /* An expense category, because only the owner's own share of a shared bill
+       is spending of theirs — and spending has to say what it was for. */
+    categoryId = (await get('/v1/categories').expect(200)).body.find(
+      (c: { kind: string }) => c.kind === 'EXPENSE',
+    ).id;
   });
 
   afterAll(async () => {
@@ -74,6 +81,7 @@ describe('shared spending', () => {
       totalMinor: 300_000,
       payerMemberId: meId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: meId }, { memberId: karimId }, { memberId: rahimId }],
       accountId,
     }).expect(201);
@@ -144,6 +152,7 @@ describe('shared spending', () => {
       totalMinor: 200_000,
       payerMemberId: karimId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: meId }, { memberId: karimId }],
     }).expect(201);
 
@@ -183,6 +192,7 @@ describe('shared spending', () => {
       totalMinor: 100_000,
       payerMemberId: meId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: meId }, { memberId: karimId }, { memberId: rahimId }],
       accountId,
     }).expect(201);
@@ -199,6 +209,7 @@ describe('shared spending', () => {
       totalMinor: 300_000,
       payerMemberId: meId,
       splitMethod: 'SHARES',
+      categoryId,
       shares: [
         { memberId: meId, shareWeight: 2 },
         { memberId: karimId, shareWeight: 1 },
@@ -215,6 +226,7 @@ describe('shared spending', () => {
       totalMinor: 300_000,
       payerMemberId: meId,
       splitMethod: 'EXACT',
+      categoryId,
       shares: [
         { memberId: meId, amountMinor: 100_000 },
         { memberId: karimId, amountMinor: 100_000 },
@@ -231,6 +243,7 @@ describe('shared spending', () => {
       totalMinor: 100_000,
       payerMemberId: meId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: meId }, { memberId: karimId }],
     }).expect(400);
   });
@@ -280,6 +293,7 @@ describe('shared spending', () => {
       totalMinor: 50_000,
       payerMemberId: selfId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: selfId }, { memberId: salamId }],
       accountId,
     }).expect(201);
@@ -457,6 +471,8 @@ describe('inviting somebody who keeps their own books', () => {
   let hostMemberId: string;
   let guestMemberId: string;
   let inviteUrl: string;
+  let hostCategoryId: string;
+  let guestCategoryId: string;
 
   beforeAll(async () => {
     ctx = await createTestApp();
@@ -474,6 +490,14 @@ describe('inviting somebody who keeps their own books', () => {
       ).body.id;
     hostAccount = await make(host, 'নগদ');
     guestAccount = await make(guest, 'নগদ');
+    /* Accepting a shared bill writes an expense in the guest's books, and an
+       expense says what it was for. */
+    guestCategoryId = (
+      await ctx.http().get('/v1/categories').set(auth(guest)).expect(200)
+    ).body.find((c: { kind: string }) => c.kind === 'EXPENSE').id;
+    hostCategoryId = (await ctx.http().get('/v1/categories').set(auth(host)).expect(200)).body.find(
+      (c: { kind: string }) => c.kind === 'EXPENSE',
+    ).id;
 
     const group = await ctx
       .http()
@@ -532,6 +556,7 @@ describe('inviting somebody who keeps their own books', () => {
         totalMinor: 200_000,
         payerMemberId: hostMemberId,
         splitMethod: 'EQUAL',
+        categoryId: hostCategoryId,
         shares: [{ memberId: hostMemberId }, { memberId: guestMemberId }],
         accountId: hostAccount,
       })
@@ -567,7 +592,7 @@ describe('inviting somebody who keeps their own books', () => {
       .http()
       .post(`/v1/split/inbox/${inbox.body[0].id}/accept`)
       .set(auth(guest))
-      .send({})
+      .send({ categoryId: guestCategoryId })
       .expect(201);
 
     const summary = await ctx
@@ -612,6 +637,7 @@ describe('inviting somebody who keeps their own books', () => {
         totalMinor: 10_000,
         payerMemberId: hostMemberId,
         splitMethod: 'EQUAL',
+        categoryId: hostCategoryId,
         shares: [{ memberId: hostMemberId }, { memberId: guestMemberId }],
         accountId: hostAccount,
       })
@@ -625,7 +651,7 @@ describe('inviting somebody who keeps their own books', () => {
       .http()
       .post(`/v1/split/inbox/${draftId}/accept`)
       .set(auth(guest))
-      .send({})
+      .send({ categoryId: guestCategoryId })
       .expect(404);
 
     const summary = await ctx
@@ -668,6 +694,7 @@ describe('a common pot', () => {
   let accountId: string;
   let groupId: string;
   let meId: string;
+  let categoryId: string;
   let karimId: string;
 
   const post = (path: string, body: Record<string, unknown>) =>
@@ -694,6 +721,12 @@ describe('a common pot', () => {
     karimId = group.body.members.find((m: { isSelf: boolean }) => !m.isSelf).id;
 
     await post(`/v1/split/groups/${groupId}/pot`, {}).expect(201);
+
+    /* An expense category, because only the owner's own share of a shared bill
+       is spending of theirs — and spending has to say what it was for. */
+    categoryId = (await get('/v1/categories').expect(200)).body.find(
+      (c: { kind: string }) => c.kind === 'EXPENSE',
+    ).id;
   });
 
   afterAll(async () => {
@@ -758,6 +791,7 @@ describe('a common pot', () => {
       totalMinor: 400_000,
       payerMemberId: meId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: meId }, { memberId: karimId }],
       fromPot: true,
     }).expect(201);
@@ -800,6 +834,7 @@ describe('a common pot', () => {
       totalMinor: 10_000,
       payerMemberId: selfId,
       splitMethod: 'EQUAL',
+      categoryId,
       shares: [{ memberId: selfId }],
       fromPot: true,
     }).expect(400);
@@ -880,6 +915,9 @@ describe('a person is their number, not their name', () => {
       totalMinor: 400_000,
       payerMemberId: me.id,
       splitMethod: 'EQUAL',
+      categoryId: (await get('/v1/categories').expect(200)).body.find(
+        (c: { kind: string }) => c.kind === 'EXPENSE',
+      ).id,
       shares: [{ memberId: me.id }, { memberId: him.id }],
       accountId,
     }).expect(201);
@@ -948,6 +986,9 @@ describe('a trip anybody can open', () => {
         totalMinor: 900_000,
         payerMemberId: me,
         splitMethod: 'EQUAL',
+        categoryId: (await ctx.http().get('/v1/categories').set(auth(user)).expect(200)).body.find(
+          (c: { kind: string }) => c.kind === 'EXPENSE',
+        ).id,
         shares: [{ memberId: me }, ...others.map((o: { id: string }) => ({ memberId: o.id }))],
         accountId,
       })
@@ -1020,4 +1061,130 @@ describe('a trip anybody can open', () => {
     const groups = await ctx.http().get('/v1/split/groups').set(auth(user)).expect(200);
     return groups.body[0].id;
   }
+});
+
+/**
+ * A share of your own is spending of your own, and spending says what it was for.
+ *
+ * Its own group and its own workspace, because every test here moves money and
+ * the suites above assert on running totals — a bill added to their group is a
+ * bill their arithmetic did not expect.
+ */
+describe('what a shared bill is filed under', () => {
+  let ctx: TestContext;
+  let user: Awaited<ReturnType<typeof signup>>;
+  let accountId: string;
+  let groupId: string;
+  let meId: string;
+  let karimId: string;
+  let rahimId: string;
+  let categoryId: string;
+
+  const post = (path: string, body: Record<string, unknown>) =>
+    ctx.http().post(path).set(auth(user)).send(body);
+  const get = (path: string) => ctx.http().get(path).set(auth(user));
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    user = await signup(ctx);
+
+    accountId = (
+      await post('/v1/accounts', { name: 'নগদ', type: 'CASH', openingBalance: 10_000_000 }).expect(
+        201,
+      )
+    ).body.id;
+
+    const group = await post('/v1/split/groups', {
+      name: 'খাতের পরীক্ষা',
+      purpose: 'TRIP',
+      members: [{ name: 'করিম' }, { name: 'রহিম' }],
+    }).expect(201);
+    groupId = group.body.id;
+    meId = group.body.members.find((m: { isSelf: boolean }) => m.isSelf).id;
+    karimId = group.body.members.find((m: { displayName: string }) => m.displayName === 'করিম').id;
+    rahimId = group.body.members.find((m: { displayName: string }) => m.displayName === 'রহিম').id;
+
+    categoryId = (await get('/v1/categories').expect(200)).body.find(
+      (c: { kind: string }) => c.kind === 'EXPENSE',
+    ).id;
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('refuses a share of your own with no category to file it under', async () => {
+    /* The reason the rule exists: without it the owner's leg posted to the
+       expense nominal with a null category, and every shared bill in the
+       product piled up in the reports' unclassified bucket — the analysis by
+       nature IAS 1.99 asks for, defeated by an omission on one form. */
+    const res = await post(`/v1/split/groups/${groupId}/expenses`, {
+      description: 'খাত ছাড়া',
+      date: '2026-08-10',
+      totalMinor: 300_000,
+      payerMemberId: meId,
+      splitMethod: 'EQUAL',
+      shares: [{ memberId: meId }, { memberId: karimId }],
+      accountId,
+    }).expect(400);
+    expect(res.body.message).toContain('খাত');
+  });
+
+  it('asks for no category on a bill that is not yours', async () => {
+    /* Two other members splitting a tea posts nothing to these books, so there
+       is no expense to classify and demanding a category would be asking about
+       a transaction that does not exist. */
+    const expense = await post(`/v1/split/groups/${groupId}/expenses`, {
+      description: 'ওদের দুজনের চা',
+      date: '2026-08-10',
+      totalMinor: 20_000,
+      payerMemberId: karimId,
+      splitMethod: 'EQUAL',
+      shares: [{ memberId: karimId }, { memberId: rahimId }],
+    }).expect(201);
+    expect(expense.body.transactionId).toBeNull();
+  });
+
+  it('files the owner’s share under the category it was given, and nothing else', async () => {
+    const expense = await post(`/v1/split/groups/${groupId}/expenses`, {
+      description: 'নাশতা',
+      date: '2026-08-10',
+      totalMinor: 200_000,
+      payerMemberId: meId,
+      splitMethod: 'EQUAL',
+      categoryId,
+      shares: [{ memberId: meId }, { memberId: karimId }],
+      accountId,
+    }).expect(201);
+
+    const entries = await ctx.prisma.ledgerEntry.findMany({
+      where: { transactionId: expense.body.transactionId },
+      select: { categoryId: true, amountMinor: true },
+    });
+
+    /* Exactly one leg carries it — the owner's ৳1,000 share. What করিম owes is
+       a receivable, not spending, and a receivable has no category. */
+    const filed = entries.filter((e) => e.categoryId !== null);
+    expect(filed).toHaveLength(1);
+    expect(filed[0]?.categoryId).toBe(categoryId);
+    expect(Number(filed[0]?.amountMinor)).toBe(100_000);
+  });
+
+  it('refuses a category from another workspace', async () => {
+    const stranger = await signup(ctx);
+    const theirs = (
+      await ctx.http().get('/v1/categories').set(auth(stranger)).expect(200)
+    ).body.find((c: { kind: string }) => c.kind === 'EXPENSE');
+
+    await post(`/v1/split/groups/${groupId}/expenses`, {
+      description: 'অন্যের খাত',
+      date: '2026-08-11',
+      totalMinor: 100_000,
+      payerMemberId: meId,
+      splitMethod: 'EQUAL',
+      categoryId: theirs.id,
+      shares: [{ memberId: meId }, { memberId: karimId }],
+      accountId,
+    }).expect(404);
+  });
 });

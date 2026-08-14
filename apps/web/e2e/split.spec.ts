@@ -69,6 +69,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('3000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
 
     /* The preview is the point: somebody is about to tell two friends what they
        owe, and the number has to be on screen before it is saved. */
@@ -86,6 +87,40 @@ test.describe('spending together', () => {
     await expect(page.getByText('৳2,000.00').first()).toBeVisible();
   });
 
+  test('will not file your share nowhere, and remembers where the last one went', async ({
+    page,
+  }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await makeGroup(page);
+
+    await page.getByRole('button', { name: 'খরচ', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কত টাকা').fill('3000');
+    await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+
+    /* The field is on the form, not folded away behind a summary — which is
+       where it used to be, with `খাত ছাড়া` selected, so every shared bill this
+       product had ever recorded went in unclassified. */
+    const category = sheet.getByLabel('আপনার ভাগ কোন খাতে');
+    await expect(category).toBeVisible();
+
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet.getByText('কোন খাতে যাবে বেছে নিন')).toBeVisible();
+    await expect(sheet).toBeVisible();
+
+    await category.selectOption({ label: 'খাবার ও বাজার' });
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* Second bill on the same trip: the category is already chosen, because a
+       trip's bills are nearly all one kind of spending. A required field with
+       the right default is a field nobody notices. */
+    await page.getByRole('button', { name: 'খরচ', exact: true }).click();
+    const again = page.getByRole('dialog');
+    await expect(again.getByLabel('আপনার ভাগ কোন খাতে')).toHaveValue(/.+/);
+  });
+
   test('only the owner’s share becomes an expense', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);
@@ -95,6 +130,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('3000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
@@ -124,6 +160,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('3000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
@@ -152,6 +189,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('3000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
@@ -208,6 +246,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('2000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
@@ -219,6 +258,10 @@ test.describe('spending together', () => {
     await expect(guest.getByRole('main')).not.toContainText('৳666.67');
 
     await guest.goto('/split');
+    /* Accepting writes an expense in the guest's own books, so the guest says
+       what it was for. The button stays disabled until they do — learning it
+       from a 400 after the tap would be a worse way to find out. */
+    await guest.getByLabel('রাতের খাবার — খাত').selectOption({ label: 'খাবার ও বাজার' });
     await guest.getByRole('button', { name: 'যোগ করুন' }).first().click();
     await expect(guest.getByText('আপনার অনুমতির অপেক্ষায়')).toBeHidden({ timeout: 15_000 });
 
@@ -259,6 +302,7 @@ test.describe('spending together', () => {
     await expect(sheet.getByLabel('তহবিল থেকে খরচ')).toBeChecked();
     await sheet.getByLabel('কত টাকা').fill('4000');
     await sheet.getByLabel('কীসের খরচ').fill('অফিসের নাশতা');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByLabel('রহিম').uncheck();
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
@@ -284,6 +328,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('9000');
     await sheet.getByLabel('কীসের খরচ').fill('হোটেল');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
@@ -379,6 +424,7 @@ test.describe('spending together', () => {
     sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('3000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
     await sheet.getByLabel('রহিম').uncheck();
     await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
@@ -395,6 +441,7 @@ test.describe('spending together', () => {
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('কত টাকা').fill('3000');
     await sheet.getByLabel('কীসের খরচ').fill('রাতের খাবার');
+    await sheet.getByLabel('আপনার ভাগ কোন খাতে').selectOption({ label: 'খাবার ও বাজার' });
 
     /* The sheet carries a row per member with an input beside each name, which
        is exactly the layout that overflows a 320px screen if anything is fixed

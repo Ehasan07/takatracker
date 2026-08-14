@@ -212,8 +212,16 @@ export const EN: Record<string, string> = {
   'split.who': 'Who was there',
   'split.whoRequired': 'Choose at least one person',
   'split.shares': 'shares',
-  'split.more': 'Category and note',
-  'split.category': 'Category',
+  'split.more': 'Note',
+  /* Named for what it files rather than what it is: only the owner's share of
+     a shared bill is spending of theirs, and saying so on the label is what
+     stops somebody filing the whole ৳3,000 under groceries. */
+  'split.category': 'Which category is your share',
+  'split.pickCategory': 'Choose a category',
+  /* The inbox row's select. Short, because it sits between an amount and two
+     buttons on one line — the long form belongs on the form that has room. */
+  'split.fileUnder': 'Category',
+  'split.categoryRequired': 'Choose the category your share belongs to',
   'split.noCategory': 'No category',
   'split.note': 'Note',
   'split.deleteExpense': 'Delete this expense',
