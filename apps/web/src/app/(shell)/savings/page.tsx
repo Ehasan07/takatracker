@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Info, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Check, Info, Link2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
@@ -13,6 +13,8 @@ import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { ShareStatementSheet } from '@/components/share-statement-sheet';
+import { t } from '@/lib/t';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
 interface Projection {
@@ -54,31 +56,31 @@ interface SavingsPlan {
 }
 
 const PLAN_TYPES = [
-  ['DPS', 'ডিপিএস'],
-  ['FDR', 'এফডিআর'],
-  ['SANCHAYPATRA', 'সঞ্চয়পত্র'],
-  ['RECURRING_DEPOSIT', 'রেকারিং ডিপোজিট'],
-  ['GOAL_SAVINGS', 'লক্ষ্য সঞ্চয়'],
+  ['DPS', t('savings.type.dps', 'ডিপিএস')],
+  ['FDR', t('savings.type.fdr', 'এফডিআর')],
+  ['SANCHAYPATRA', t('savings.type.sanchayapatra', 'সঞ্চয়পত্র')],
+  ['RECURRING_DEPOSIT', t('savings.type.recurring', 'রেকারিং ডিপোজিট')],
+  ['GOAL_SAVINGS', t('savings.type.goal', 'লক্ষ্য সঞ্চয়')],
 ] as const;
 
 const FREQUENCIES = [
-  ['MONTHLY', 'মাসিক'],
-  ['QUARTERLY', 'ত্রৈমাসিক'],
-  ['HALF_YEARLY', 'ষাণ্মাসিক'],
-  ['YEARLY', 'বার্ষিক'],
+  ['MONTHLY', t('freq.monthly', 'মাসিক')],
+  ['QUARTERLY', t('freq.quarterly', 'ত্রৈমাসিক')],
+  ['HALF_YEARLY', t('freq.halfYearly', 'ষাণ্মাসিক')],
+  ['YEARLY', t('freq.yearly', 'বার্ষিক')],
 ] as const;
 
 const PROFIT_CALCS = [
-  ['COMPOUND_YEARLY', 'বার্ষিক চক্রবৃদ্ধি'],
-  ['COMPOUND_QUARTERLY', 'ত্রৈমাসিক চক্রবৃদ্ধি'],
-  ['COMPOUND_MONTHLY', 'মাসিক চক্রবৃদ্ধি'],
-  ['SIMPLE', 'সরল হার'],
+  ['COMPOUND_YEARLY', t('savings.calc.yearly', 'বার্ষিক চক্রবৃদ্ধি')],
+  ['COMPOUND_QUARTERLY', t('savings.calc.quarterly', 'ত্রৈমাসিক চক্রবৃদ্ধি')],
+  ['COMPOUND_MONTHLY', t('savings.calc.monthly', 'মাসিক চক্রবৃদ্ধি')],
+  ['SIMPLE', t('savings.calc.simple', 'সরল হার')],
 ] as const;
 
 const STATUSES = [
-  ['ACTIVE', 'চলমান'],
-  ['MATURED', 'মেয়াদপূর্ণ'],
-  ['CLOSED', 'বন্ধ'],
+  ['ACTIVE', t('status.active', 'চলমান')],
+  ['MATURED', t('status.matured', 'মেয়াদপূর্ণ')],
+  ['CLOSED', t('status.closed', 'বন্ধ')],
 ] as const;
 
 const labelOf = (pairs: readonly (readonly [string, string])[], value: string): string =>
@@ -159,6 +161,7 @@ export default function SavingsPage() {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<SavingsPlan | null>(null);
   const [removing, setRemoving] = React.useState<SavingsPlan | null>(null);
+  const [sharing, setSharing] = React.useState<SavingsPlan | null>(null);
 
   const plans = useQuery({
     queryKey: ['savings'],
@@ -217,7 +220,9 @@ export default function SavingsPage() {
         </div>
       ) : (plans.data?.length ?? 0) === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
-          <p className="text-ink">এখনও কোনো ডিপিএস বা এফডিআর যোগ করা হয়নি।</p>
+          <p className="text-ink">
+            {t('savings.none', 'এখনও কোনো ডিপিএস বা এফডিআর যোগ করা হয়নি।')}
+          </p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
             প্রথম সঞ্চয় যোগ করুন
           </Button>
@@ -246,19 +251,21 @@ export default function SavingsPage() {
                     className="block text-sm"
                     decimals={false}
                   />
-                  <span className="text-ink-muted text-[11px]">মেয়াদপূর্তিতে</span>
+                  <span className="text-ink-muted text-[11px]">
+                    {t('savings.atMaturity', 'মেয়াদপূর্তিতে')}
+                  </span>
                 </div>
               </button>
 
               <dl className="border-rule mt-3 grid grid-cols-3 gap-2 border-t pt-2 text-xs">
                 <div>
-                  <dt className="text-ink-muted">জমা হয়েছে</dt>
+                  <dt className="text-ink-muted">{t('savings.paidIn', 'জমা হয়েছে')}</dt>
                   <dd>
                     <Money minor={plan.progress.paidMinor} className="block" decimals={false} />
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-ink-muted">মোট জমা হবে</dt>
+                  <dt className="text-ink-muted">{t('savings.willPay', 'মোট জমা হবে')}</dt>
                   <dd>
                     <Money
                       minor={plan.projection.depositedMinor}
@@ -268,7 +275,7 @@ export default function SavingsPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-ink-muted">মুনাফা</dt>
+                  <dt className="text-ink-muted">{t('savings.profit', 'মুনাফা')}</dt>
                   <dd>
                     <Money
                       minor={plan.projection.profitMinor}
@@ -293,14 +300,16 @@ export default function SavingsPage() {
       <Sheet
         open={openId !== null}
         onOpenChange={(open) => !open && setOpenId(null)}
-        title={detail.data?.planName ?? 'সঞ্চয়'}
+        title={detail.data?.planName ?? t('savings.word', 'সঞ্চয়')}
         description={detail.data ? labelOf(PLAN_TYPES, detail.data.planType) : undefined}
       >
         {detail.data ? (
           <div className="flex flex-col gap-4">
             <div className="bg-greenbar rounded-md p-3">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-ink-muted text-xs">মেয়াদপূর্তিতে (কর কাটার আগে)</span>
+                <span className="text-ink-muted text-xs">
+                  {t('savings.atMaturityGross', 'মেয়াদপূর্তিতে (কর কাটার আগে)')}
+                </span>
                 <Money
                   minor={detail.data.projection.maturityMinor}
                   className="text-lg font-semibold"
@@ -342,7 +351,21 @@ export default function SavingsPage() {
             </ul>
 
             {/* One sheet at a time: the detail closes as the editor opens. */}
-            <div className="border-rule flex gap-2 border-t pt-3">
+            <div className="border-rule flex flex-wrap gap-2 border-t pt-3">
+              {/* The institution asks for a statement every year, and the API
+                  has served SAVINGS since statement sharing shipped — only the
+                  button was missing. */}
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setSharing(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <Link2 className="h-4 w-4" aria-hidden />
+                {t('share.short', 'শেয়ার')}
+              </Button>
               <Button
                 variant="outline"
                 className="flex-1"
@@ -370,6 +393,16 @@ export default function SavingsPage() {
           </div>
         ) : null}
       </Sheet>
+
+      {sharing ? (
+        <ShareStatementSheet
+          open
+          onOpenChange={(next) => !next && setSharing(null)}
+          kind="SAVINGS"
+          subjectId={sharing.id}
+          subjectName={sharing.planName}
+        />
+      ) : null}
 
       <PlanSheet
         open={addOpen || editing !== null}
@@ -561,7 +594,7 @@ function PlanSheet({
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
-      title={plan ? 'সঞ্চয় সম্পাদনা' : 'নতুন সঞ্চয়'}
+      title={plan ? t('savings.edit', 'সঞ্চয় সম্পাদনা') : t('savings.new', 'নতুন সঞ্চয়')}
       description={plan?.planName}
     >
       <form
@@ -573,14 +606,14 @@ function PlanSheet({
           const installmentMinor = toMinor(form.installment, currency);
           const principalMinor = toMinor(form.principal, currency);
           if (installmentMinor === null || principalMinor === null) {
-            setError('টাকার অঙ্কটি বোঝা যায়নি।');
+            setError(t('form.badAmount', 'টাকার অঙ্কটি বোঝা যায়নি।'));
             return;
           }
           /* 8.25% is 825 basis points — the same two-decimal scaling the money
              parser does, and it reads Bengali digits, which Number() cannot. */
           const profitRateBps = toMinor(form.rate, currency);
           if (profitRateBps === null) {
-            setError('মুনাফার হারটি বোঝা যায়নি।');
+            setError(t('form.badRate', 'মুনাফার হারটি বোঝা যায়নি।'));
             return;
           }
 
@@ -699,6 +732,13 @@ function PlanSheet({
           />
         </Field>
         <Field label="মুনাফার হার (%)" htmlFor="sp-rate">
+          {/* Not required, and the markup used to say otherwise.
+              `toMinor` reads an empty rate as zero — the handler was written for
+              a plan whose rate nobody has been told yet, which is most of them
+              on the day they are opened. The `required` attribute meant the
+              browser blocked the submit before that code ever ran, with a
+              native bubble that is easy to miss inside a scrolled sheet on a
+              phone: the save button simply did nothing. */}
           <Input
             id="sp-rate"
             value={form.rate}
@@ -706,7 +746,6 @@ function PlanSheet({
             inputMode="decimal"
             className="money"
             placeholder="যেমন: ৮.২৫"
-            required
           />
         </Field>
         <Field label="মুনাফার হিসাব" htmlFor="sp-calc">

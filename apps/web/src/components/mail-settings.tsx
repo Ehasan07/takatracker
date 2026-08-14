@@ -50,6 +50,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import {
   bnDate,
   bnNum,
@@ -137,7 +138,7 @@ function domainOf(email: string): string {
 function messageFor(err: unknown): string {
   // ApiError already carries the server's own Bengali sentence, and
   // FeatureLimitError extends it, so a plan limit lands here too.
-  return err instanceof ApiError ? err.message : 'কাজটি করা গেল না';
+  return err instanceof ApiError ? err.message : t('mail.actionFailed', 'কাজটি করা গেল না');
 }
 
 /**
@@ -177,7 +178,9 @@ export function MailSettings() {
   return (
     <section className="rounded-card border-rule bg-surface min-w-0 border p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">ইমেইল থেকে স্টেটমেন্ট</h2>
+        <h2 className="text-ink-muted text-sm font-medium">
+          {t('mail.title', 'ইমেইল থেকে স্টেটমেন্ট')}
+        </h2>
         <Link href="/mail" className="text-income inline-flex items-center gap-1 text-xs">
           <Mail className="h-3.5 w-3.5" aria-hidden />
           মেইলবক্স দেখুন
@@ -201,7 +204,9 @@ export function MailSettings() {
           className="border-rule mt-3 rounded-md border border-dashed p-4 text-center"
         >
           <TriangleAlert className="text-expense mx-auto h-5 w-5" aria-hidden />
-          <p className="text-ink mt-1 text-sm">যুক্ত করা মেইলবক্সের তালিকা আনা যায়নি।</p>
+          <p className="text-ink mt-1 text-sm">
+            {t('mail.listFailed', 'যুক্ত করা মেইলবক্সের তালিকা আনা যায়নি।')}
+          </p>
           <p className="text-ink-muted text-xs">ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।</p>
           <Button
             variant="outline"
@@ -339,7 +344,10 @@ function AccountCard({
       onDone(
         result.estimatedSeconds > 0
           ? `সিঙ্কের অনুরোধ জমা হয়েছে। আনুমানিক ${bnSeconds(result.estimatedSeconds)} পর মেইল পড়া হবে — এখনই নয়।`
-          : 'সিঙ্কের অনুরোধ জমা হয়েছে। কখন পড়া হবে তা সার্ভার জানাতে পারেনি।',
+          : t(
+              'mail.syncQueued',
+              'সিঙ্কের অনুরোধ জমা হয়েছে। কখন পড়া হবে তা সার্ভার জানাতে পারেনি।',
+            ),
       );
     },
     onError: (err) => {
@@ -380,7 +388,7 @@ function AccountCard({
       <dl className="text-ink-muted mt-1.5 flex flex-col gap-0.5 text-xs">
         {account.imapHost ? (
           <div className="flex min-w-0 flex-wrap gap-x-1.5">
-            <dt className="shrink-0">সার্ভার</dt>
+            <dt className="shrink-0">{t('mail.server', 'সার্ভার')}</dt>
             <dd className="min-w-0 break-all font-mono">
               {account.imapHost}
               {account.imapPort ? `:${account.imapPort}` : ''}
@@ -388,11 +396,11 @@ function AccountCard({
           </div>
         ) : null}
         <div className="flex min-w-0 flex-wrap gap-x-1.5">
-          <dt className="shrink-0">আনা হয়েছে</dt>
+          <dt className="shrink-0">{t('mail.fetched', 'আনা হয়েছে')}</dt>
           <dd>{bnNum(account.messageCount)}টি বার্তা</dd>
         </div>
         <div className="flex min-w-0 flex-wrap gap-x-1.5">
-          <dt className="shrink-0">সিঙ্ক</dt>
+          <dt className="shrink-0">{t('mail.sync', 'সিঙ্ক')}</dt>
           <dd>
             {lastSyncLine(account.lastSyncAt)}
             {next ? ` · ${next}` : ''}
@@ -400,7 +408,7 @@ function AccountCard({
         </div>
         {account.syncSince ? (
           <div className="flex min-w-0 flex-wrap gap-x-1.5">
-            <dt className="shrink-0">কবে থেকে</dt>
+            <dt className="shrink-0">{t('mail.since', 'কবে থেকে')}</dt>
             <dd>{bnDate(account.syncSince)} তারিখের পর থেকে</dd>
           </div>
         ) : null}
@@ -431,7 +439,11 @@ function AccountCard({
           variant="outline"
           size="sm"
           disabled={busy || account.status !== 'ACTIVE'}
-          title={account.status === 'ACTIVE' ? undefined : 'বন্ধ থাকা মেইলবক্স সিঙ্ক করা যায় না'}
+          title={
+            account.status === 'ACTIVE'
+              ? undefined
+              : t('mail.pausedNoSync', 'বন্ধ থাকা মেইলবক্স সিঙ্ক করা যায় না')
+          }
           onClick={() => sync.mutate()}
         >
           <RefreshCw className="h-4 w-4" aria-hidden />
@@ -454,7 +466,9 @@ function AccountCard({
             onClick={() => toggle.mutate(account.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE')}
           >
             <Power className="h-4 w-4" aria-hidden />
-            {account.status === 'ACTIVE' ? 'সাময়িক বন্ধ' : 'আবার চালু'}
+            {account.status === 'ACTIVE'
+              ? t('mail.pause', 'সাময়িক বন্ধ')
+              : t('mail.resume', 'আবার চালু')}
           </Button>
         )}
 
@@ -580,9 +594,9 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
     setError(null);
     setRefusal(null);
 
-    if (!form.email.trim()) return setError('ইমেইল ঠিকানা দিন');
-    if (!form.imapHost.trim()) return setError('IMAP সার্ভারের ঠিকানা দিন');
-    if (!form.password) return setError('পাসওয়ার্ড দিন');
+    if (!form.email.trim()) return setError(t('mail.needEmail', 'ইমেইল ঠিকানা দিন'));
+    if (!form.imapHost.trim()) return setError(t('mail.needServer', 'IMAP সার্ভারের ঠিকানা দিন'));
+    if (!form.password) return setError(t('mail.needPassword', 'পাসওয়ার্ড দিন'));
     connect.mutate();
   };
 
@@ -615,7 +629,7 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
       {refusal ? <MicrosoftNotice message={refusal} /> : null}
 
       <fieldset disabled={blocked || connect.isPending} className="flex min-w-0 flex-col gap-4">
-        <legend className="sr-only">সার্ভারের তথ্য</legend>
+        <legend className="sr-only">{t('mail.serverDetails', 'সার্ভারের তথ্য')}</legend>
 
         <Field label="IMAP সার্ভার" htmlFor="mail-host">
           <Input
@@ -670,8 +684,8 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
           {needsAppPassword ? (
             <p className="text-ink-muted text-xs">
               এই সেবাগুলোতে আপনার সাধারণ পাসওয়ার্ড কাজ করবে না। অ্যাকাউন্টের নিরাপত্তা সেটিংসে
-              গিয়ে দুই ধাপে যাচাই চালু করে একটি <strong>অ্যাপ পাসওয়ার্ড</strong> বানান, সেটি এখানে
-              দিন।
+              গিয়ে দুই ধাপে যাচাই চালু করে একটি{' '}
+              <strong>{t('mail.appPassword', 'অ্যাপ পাসওয়ার্ড')}</strong> বানান, সেটি এখানে দিন।
             </p>
           ) : null}
         </Field>
@@ -688,7 +702,9 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
                 onChange={set('username')}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder={form.email.trim() || 'ইমেইল ঠিকানাটিই ব্যবহার হবে'}
+                placeholder={
+                  form.email.trim() || t('mail.usesEmail', 'ইমেইল ঠিকানাটিই ব্যবহার হবে')
+                }
               />
               <p className="text-ink-muted text-xs">
                 খালি রাখলে ইমেইল ঠিকানাটিই ব্যবহার হবে। কিছু সার্ভার আলাদা নাম চায়।
@@ -726,7 +742,9 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
       ) : null}
 
       <Button type="submit" size="block" disabled={blocked || connect.isPending}>
-        {connect.isPending ? 'যাচাই করা হচ্ছে…' : 'যাচাই করে যুক্ত করুন'}
+        {connect.isPending
+          ? t('mail.checking', 'যাচাই করা হচ্ছে…')
+          : t('mail.checkAndAdd', 'যাচাই করে যুক্ত করুন')}
       </Button>
     </form>
   );
@@ -747,9 +765,9 @@ function MicrosoftNotice({ message }: { message?: string }) {
       <span>
         {message ??
           'Microsoft (Outlook / Hotmail / Live / Microsoft 365) পাসওয়ার্ড দিয়ে IMAP সংযোগ বন্ধ করে দিয়েছে।'}{' '}
-        <strong>এটি আপনার পাসওয়ার্ডের সমস্যা নয়</strong> — নতুন পাসওয়ার্ড বানিয়েও কাজ হবে না,
-        কারণ সুবিধাটিই আর নেই। অন্য কোনো ইমেইল ঠিকানা ব্যবহার করুন, অথবা ব্যাংকের স্টেটমেন্ট সেই
-        ঠিকানায় পাঠাতে বলুন।
+        <strong>{t('mail.notYourPassword', 'এটি আপনার পাসওয়ার্ডের সমস্যা নয়')}</strong> — নতুন
+        পাসওয়ার্ড বানিয়েও কাজ হবে না, কারণ সুবিধাটিই আর নেই। অন্য কোনো ইমেইল ঠিকানা ব্যবহার করুন,
+        অথবা ব্যাংকের স্টেটমেন্ট সেই ঠিকানায় পাঠাতে বলুন।
       </span>
     </div>
   );
@@ -829,7 +847,7 @@ function PasswordFormBody({
     e.preventDefault();
     setError(null);
     setRefusal(null);
-    if (!password) return setError('পাসওয়ার্ড দিন');
+    if (!password) return setError(t('mail.needPassword', 'পাসওয়ার্ড দিন'));
     save.mutate();
   };
 
@@ -838,14 +856,17 @@ function PasswordFormBody({
       <p className="text-ink-muted text-sm">
         নতুন পাসওয়ার্ডটি মেইল সার্ভারে যাচাই করে তবেই রাখা হয়।{' '}
         {account.status === 'AUTH_FAILED'
-          ? 'যাচাই হয়ে গেলে এই মেইলবক্সের সিঙ্ক আবার চালু হবে — এর আগে নয়।'
-          : 'আগের পাসওয়ার্ডটি বদলে যাবে।'}
+          ? t(
+              'mail.resumeAfterCheck',
+              'যাচাই হয়ে গেলে এই মেইলবক্সের সিঙ্ক আবার চালু হবে — এর আগে নয়।',
+            )
+          : t('mail.replacesPassword', 'আগের পাসওয়ার্ডটি বদলে যাবে।')}
       </p>
 
       {refusal ? <MicrosoftNotice message={refusal} /> : null}
 
       <fieldset disabled={save.isPending || refusal !== null} className="flex flex-col gap-4">
-        <legend className="sr-only">নতুন পাসওয়ার্ড</legend>
+        <legend className="sr-only">{t('mail.newPassword', 'নতুন পাসওয়ার্ড')}</legend>
 
         <Field label="পাসওয়ার্ড" htmlFor="mail-new-password">
           <Input
@@ -886,7 +907,9 @@ function PasswordFormBody({
       ) : null}
 
       <Button type="submit" size="block" disabled={save.isPending || refusal !== null}>
-        {save.isPending ? 'যাচাই করা হচ্ছে…' : 'যাচাই করে সংরক্ষণ করুন'}
+        {save.isPending
+          ? t('mail.checking', 'যাচাই করা হচ্ছে…')
+          : t('mail.checkAndSave', 'যাচাই করে সংরক্ষণ করুন')}
       </Button>
     </form>
   );
@@ -948,7 +971,7 @@ function DisconnectSheet({
             <strong>
               {account.messageCount > 0
                 ? `${bnNum(account.messageCount)}টি বার্তাই মুছে ফেলা হবে`
-                : 'সব বার্তা মুছে ফেলা হবে'}
+                : t('mail.removesMessages', 'সব বার্তা মুছে ফেলা হবে')}
             </strong>{' '}
             — এখান থেকে, চিরতরে। ফিরিয়ে আনার কোনো উপায় নেই।
           </p>
@@ -957,8 +980,8 @@ function DisconnectSheet({
             সংরক্ষিত পাসওয়ার্ডটিও মুছে যাবে, তাই আবার যুক্ত করতে চাইলে পাসওয়ার্ড আবার দিতে হবে।
           </p>
           <p className="text-ink-muted text-sm">
-            শুধু কিছুদিনের জন্য থামাতে চাইলে সরিয়ে না ফেলে <strong>সাময়িক বন্ধ</strong> করুন —
-            তাতে বার্তাগুলো থেকে যাবে।
+            শুধু কিছুদিনের জন্য থামাতে চাইলে সরিয়ে না ফেলে{' '}
+            <strong>{t('mail.pause', 'সাময়িক বন্ধ')}</strong> করুন — তাতে বার্তাগুলো থেকে যাবে।
           </p>
 
           {error ? (
@@ -974,10 +997,10 @@ function DisconnectSheet({
             onClick={() => remove.mutate(account.id)}
           >
             {remove.isPending
-              ? 'সরানো হচ্ছে…'
+              ? t('common.removing', 'সরানো হচ্ছে…')
               : account.messageCount > 0
                 ? `${bnNum(account.messageCount)}টি বার্তাসহ সরিয়ে ফেলুন`
-                : 'সরিয়ে ফেলুন'}
+                : t('common.remove', 'সরিয়ে ফেলুন')}
           </Button>
           <Button variant="outline" size="block" onClick={onClose}>
             থাক

@@ -219,7 +219,12 @@ export function MarketingFooter() {
 
       <div className="border-rule border-t">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
-          <p className="text-ink-muted text-xs">© {SITE.name} · takatracker.com</p>
+          <p className="text-ink-muted text-xs">
+            © {SITE.name} · takatracker.com ·{' '}
+            <Link href="/privacy" className="hover:text-ink underline">
+              গোপনীয়তা
+            </Link>
+          </p>
           <nav aria-label="সোশ্যাল" className="ml-auto flex flex-wrap items-center gap-x-3">
             {SOCIAL.map((item) => (
               <a

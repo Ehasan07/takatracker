@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Money } from '@/components/money';
+import { t } from '@/lib/t';
 import { SkeletonCard, SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
@@ -45,16 +46,20 @@ interface HistoryRow {
   payment: LoanPayment | null;
 }
 
-const COLUMNS = [
-  'ক্রম',
-  'তারিখ',
-  'বিবরণ',
-  'ডেবিট',
-  'ক্রেডিট',
-  'পরিশোধ',
-  'চলতি জের',
-  'মাধ্যম',
-  'রেফারেন্স',
+/* A function rather than a constant: a module-level array is built before the
+   workspace's language has been fetched, so it would freeze the Bengali in
+   place on an English workspace. Every other label in this file has the same
+   shape for the same reason. */
+const columns = (): string[] => [
+  t('loan.col.seq', 'ক্রম'),
+  t('loan.col.date', 'তারিখ'),
+  t('loan.col.detail', 'বিবরণ'),
+  t('loan.col.debit', 'ডেবিট'),
+  t('loan.col.credit', 'ক্রেডিট'),
+  t('loan.col.paid', 'পরিশোধ'),
+  t('loan.col.running', 'চলতি জের'),
+  t('loan.col.method', 'মাধ্যম'),
+  t('loan.col.reference', 'রেফারেন্স'),
 ];
 
 /**
@@ -73,7 +78,7 @@ function buildHistory(detail: LoanDetail | undefined): HistoryRow[] {
       key: 'disbursement',
       serial: '—',
       date: loan.loanDate,
-      description: lent ? 'ঋণ প্রদান' : 'ঋণ গ্রহণ',
+      description: lent ? t('loan.lentTitle', 'ঋণ প্রদান') : t('loan.borrowedTitle', 'ঋণ গ্রহণ'),
       debitMinor: lent ? total : 0,
       creditMinor: lent ? 0 : total,
       repaidMinor: 0,
@@ -92,7 +97,7 @@ function buildHistory(detail: LoanDetail | undefined): HistoryRow[] {
       key: payment.id,
       serial: bnNum(i + 1),
       date: payment.date,
-      description: payment.note?.trim() || 'কিস্তি পরিশোধ',
+      description: payment.note?.trim() || t('loan.repayment', 'কিস্তি পরিশোধ'),
       // A repayment credits a receivable and debits a payable.
       debitMinor: lent ? 0 : payment.amountMinor,
       creditMinor: lent ? payment.amountMinor : 0,
@@ -137,11 +142,18 @@ export default function LoanDetailPage() {
       haptic('success');
       invalidateLoanData(queryClient);
       setDeleting(null);
-      setToast('কিস্তিটি মুছে ফেলা হয়েছে — খাতার লেনদেনটিও ফিরিয়ে নেওয়া হয়েছে');
+      setToast(
+        t(
+          'loan.paymentDeleted',
+          'কিস্তিটি মুছে ফেলা হয়েছে — খাতার লেনদেনটিও ফিরিয়ে নেওয়া হয়েছে',
+        ),
+      );
     },
     onError: (err) => {
       setDeleting(null);
-      setToast(err instanceof ApiError ? err.message : 'কিস্তি মোছা যায়নি');
+      setToast(
+        err instanceof ApiError ? err.message : t('loan.paymentDeleteFailed', 'কিস্তি মোছা যায়নি'),
+      );
     },
   });
 
@@ -151,11 +163,13 @@ export default function LoanDetailPage() {
       haptic('success');
       invalidateLoanData(queryClient);
       setCancelOpen(false);
-      setToast('ঋণটি বাতিল করা হয়েছে');
+      setToast(t('loan.cancelled', 'ঋণটি বাতিল করা হয়েছে'));
     },
     onError: (err) => {
       setCancelOpen(false);
-      setToast(err instanceof ApiError ? err.message : 'ঋণ বাতিল করা যায়নি');
+      setToast(
+        err instanceof ApiError ? err.message : t('loan.cancelFailed', 'ঋণ বাতিল করা যায়নি'),
+      );
     },
   });
 
@@ -170,7 +184,9 @@ export default function LoanDetailPage() {
     },
     onError: (err) => {
       setDeleteOpen(false);
-      setToast(err instanceof ApiError ? err.message : 'ঋণ মুছে ফেলা যায়নি');
+      setToast(
+        err instanceof ApiError ? err.message : t('loan.deleteFailed', 'ঋণ মুছে ফেলা যায়নি'),
+      );
     },
   });
 
@@ -221,7 +237,9 @@ export default function LoanDetailPage() {
       <header className="rounded-card border-rule bg-surface border p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-ink truncate text-xl font-semibold">{person?.name ?? 'অজানা'}</h1>
+            <h1 className="text-ink truncate text-xl font-semibold">
+              {person?.name ?? t('common.unknown', 'অজানা')}
+            </h1>
             <p className="text-ink-muted truncate text-sm">
               {loan.loanNumber} · {directionLabel(loan.direction)}
               {person?.phone ? ` · ${person.phone}` : ''}
@@ -232,19 +250,19 @@ export default function LoanDetailPage() {
 
         <dl className="border-rule mt-4 grid grid-cols-2 gap-3 border-t pt-3 sm:grid-cols-4">
           <div className="min-w-0">
-            <dt className="text-ink-muted text-xs">মোট ঋণ</dt>
+            <dt className="text-ink-muted text-xs">{t('loan.totalOwed', 'মোট ঋণ')}</dt>
             <dd>
               <Money minor={progress.totalPayableMinor} className="block text-sm" />
             </dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-ink-muted text-xs">পরিশোধিত</dt>
+            <dt className="text-ink-muted text-xs">{t('loan.paidLabel', 'পরিশোধিত')}</dt>
             <dd>
               <Money minor={progress.paidMinor} className="text-income block text-sm" />
             </dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-ink-muted text-xs">বাকি</dt>
+            <dt className="text-ink-muted text-xs">{t('loan.outstanding', 'বাকি')}</dt>
             <dd>
               <Money
                 minor={progress.outstandingMinor}
@@ -256,7 +274,7 @@ export default function LoanDetailPage() {
             </dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-ink-muted text-xs">পরের কিস্তির তারিখ</dt>
+            <dt className="text-ink-muted text-xs">{t('loan.nextDue', 'পরের কিস্তির তারিখ')}</dt>
             <dd className={cn('text-sm', overdue ? 'text-expense' : 'text-ink')}>
               {progress.isSettled ? 'সব পরিশোধ হয়েছে' : bnDate(loan.dueDate)}
             </dd>
@@ -335,7 +353,9 @@ export default function LoanDetailPage() {
 
       <section id={PAYMENTS_ANCHOR} className="flex scroll-mt-4 flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-ink text-base font-semibold">কিস্তির হিসাব</h2>
+          <h2 className="text-ink text-base font-semibold">
+            {t('loan.payments', 'কিস্তির হিসাব')}
+          </h2>
           <span className="text-ink-muted text-xs">
             {bnNum(progress.paymentCount || payments.length)}টি কিস্তি
           </span>
@@ -403,7 +423,7 @@ export default function LoanDetailPage() {
             <caption className="sr-only">{`${loan.loanNumber} — কিস্তির হিসাব`}</caption>
             <thead>
               <tr className="border-rule bg-greenbar border-b">
-                {COLUMNS.map((column, i) => (
+                {columns().map((column, i) => (
                   <th
                     key={column}
                     scope="col"
@@ -415,7 +435,7 @@ export default function LoanDetailPage() {
                   </th>
                 ))}
                 <th scope="col" className="no-print px-2 py-2">
-                  <span className="sr-only">কাজ</span>
+                  <span className="sr-only">{t('loan.action', 'কাজ')}</span>
                 </th>
               </tr>
             </thead>

@@ -33,15 +33,19 @@ import { UsageMeter } from '@/components/usage-meter';
    a module-level constant is evaluated before a workspace's wording override
    has been fetched. */
 const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
-  { value: 'CASH', label: 'নগদ', group: 'liquid' },
-  { value: 'BANK', label: 'ব্যাংক', group: 'liquid' },
-  { value: 'MOBILE_WALLET', label: 'মোবাইল ওয়ালেট', group: 'liquid' },
-  { value: 'SAVINGS', label: 'সঞ্চয় / ডিপিএস', group: 'liquid' },
-  { value: 'ASSET', label: 'সম্পদ (জমি, স্বর্ণ, গাড়ি)', group: 'asset' },
-  { value: 'RECEIVABLE', label: 'পাওনা (যা আমি পাব)', group: 'asset' },
-  { value: 'CREDIT_CARD', label: 'ক্রেডিট কার্ড', group: 'liability' },
-  { value: 'LIABILITY', label: 'ঋণ / দায়', group: 'liability' },
-  { value: 'PAYABLE', label: 'দেনা (যা আমি দেব)', group: 'liability' },
+  { value: 'CASH', label: t('account.type.cash', 'নগদ'), group: 'liquid' },
+  { value: 'BANK', label: t('account.type.bank', 'ব্যাংক'), group: 'liquid' },
+  { value: 'MOBILE_WALLET', label: t('account.type.wallet', 'মোবাইল ওয়ালেট'), group: 'liquid' },
+  { value: 'SAVINGS', label: t('account.type.savings', 'সঞ্চয় / ডিপিএস'), group: 'liquid' },
+  { value: 'ASSET', label: t('account.type.asset', 'সম্পদ (জমি, স্বর্ণ, গাড়ি)'), group: 'asset' },
+  {
+    value: 'RECEIVABLE',
+    label: t('account.type.receivable', 'পাওনা (যা আমি পাব)'),
+    group: 'asset',
+  },
+  { value: 'CREDIT_CARD', label: t('account.type.card', 'ক্রেডিট কার্ড'), group: 'liability' },
+  { value: 'LIABILITY', label: t('account.type.liability', 'ঋণ / দায়'), group: 'liability' },
+  { value: 'PAYABLE', label: t('account.type.payable', 'দেনা (যা আমি দেব)'), group: 'liability' },
 ];
 
 /**
@@ -56,9 +60,9 @@ const REVALUABLE = new Set(['ASSET', 'LIABILITY']);
 const TYPE_GROUPS = ['liquid', 'asset', 'liability'] as const;
 
 const GROUP_LABELS: Record<(typeof TYPE_GROUPS)[number], string> = {
-  liquid: 'হাতে ও ব্যাংকে',
-  asset: 'সম্পদ',
-  liability: 'দায়',
+  liquid: t('account.group.liquid', 'হাতে ও ব্যাংকে'),
+  asset: t('account.group.asset', 'সম্পদ'),
+  liability: t('account.group.liability', 'দায়'),
 };
 
 const groupLabel = (group: (typeof TYPE_GROUPS)[number]): string =>
@@ -66,12 +70,12 @@ const groupLabel = (group: (typeof TYPE_GROUPS)[number]): string =>
 
 /** Offered only because the row draws it — see AccountAvatar. */
 const ACCOUNT_COLORS: { value: string; key: string; label: string }[] = [
-  { value: '#0F7B4F', key: 'green', label: 'সবুজ' },
-  { value: '#1E5EB8', key: 'blue', label: 'নীল' },
-  { value: '#B26A00', key: 'gold', label: 'সোনালি' },
-  { value: '#B3261E', key: 'red', label: 'লাল' },
-  { value: '#6B3FA0', key: 'purple', label: 'বেগুনি' },
-  { value: '#3F4A55', key: 'grey', label: 'ধূসর' },
+  { value: '#0F7B4F', key: 'green', label: t('colour.green', 'সবুজ') },
+  { value: '#1E5EB8', key: 'blue', label: t('colour.blue', 'নীল') },
+  { value: '#B26A00', key: 'gold', label: t('colour.gold', 'সোনালি') },
+  { value: '#B3261E', key: 'red', label: t('colour.red', 'লাল') },
+  { value: '#6B3FA0', key: 'purple', label: t('colour.purple', 'বেগুনি') },
+  { value: '#3F4A55', key: 'grey', label: t('colour.grey', 'ধূসর') },
 ];
 
 const typeLabel = (value: string): string => {

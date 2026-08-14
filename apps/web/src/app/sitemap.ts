@@ -23,6 +23,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: SITE.url, lastModified, changeFrequency: 'weekly', priority: 1 },
     { url: `${SITE.url}/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
     { url: `${SITE.url}/guide`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    /* Listed rather than left to the footer link. Somebody deciding whether to
+       trust a finance app with their ledger searches for this page by name, and
+       it is the page that names what an operator can see. */
+    { url: `${SITE.url}/privacy`, lastModified, changeFrequency: 'yearly', priority: 0.5 },
     /* The English pages are separate URLs with their own content, so they are
        listed rather than left for the hreflang tags alone to surface. */
     { url: `${SITE.url}/en`, lastModified, changeFrequency: 'weekly', priority: 0.9 },

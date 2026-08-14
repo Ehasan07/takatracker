@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Monitor, RotateCw, Smartphone, Tablet, TriangleAlert } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import { api, ApiError } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
@@ -51,28 +52,32 @@ function text(value: unknown): string {
 
 /** What the user calls the machine, from the only clue we have. */
 function describeDevice(userAgent: string): { device: string; kind: Session['kind'] } {
-  if (/iPad/i.test(userAgent)) return { device: 'আইপ্যাড', kind: 'tablet' };
-  if (/iPhone/i.test(userAgent)) return { device: 'আইফোন', kind: 'phone' };
+  if (/iPad/i.test(userAgent)) return { device: t('device.ipad', 'আইপ্যাড'), kind: 'tablet' };
+  if (/iPhone/i.test(userAgent)) return { device: t('device.iphone', 'আইফোন'), kind: 'phone' };
   if (/Android/i.test(userAgent)) {
     return /Mobile/i.test(userAgent)
-      ? { device: 'অ্যান্ড্রয়েড ফোন', kind: 'phone' }
-      : { device: 'অ্যান্ড্রয়েড ট্যাব', kind: 'tablet' };
+      ? { device: t('device.androidPhone', 'অ্যান্ড্রয়েড ফোন'), kind: 'phone' }
+      : { device: t('device.androidTablet', 'অ্যান্ড্রয়েড ট্যাব'), kind: 'tablet' };
   }
-  if (/Windows/i.test(userAgent)) return { device: 'উইন্ডোজ কম্পিউটার', kind: 'desktop' };
-  if (/Macintosh|Mac OS/i.test(userAgent)) return { device: 'ম্যাক', kind: 'desktop' };
-  if (/CrOS/i.test(userAgent)) return { device: 'ক্রোমবুক', kind: 'desktop' };
-  if (/Linux/i.test(userAgent)) return { device: 'লিনাক্স কম্পিউটার', kind: 'desktop' };
-  return { device: 'অজানা ডিভাইস', kind: 'desktop' };
+  if (/Windows/i.test(userAgent))
+    return { device: t('device.windows', 'উইন্ডোজ কম্পিউটার'), kind: 'desktop' };
+  if (/Macintosh|Mac OS/i.test(userAgent))
+    return { device: t('device.mac', 'ম্যাক'), kind: 'desktop' };
+  if (/CrOS/i.test(userAgent))
+    return { device: t('device.chromebook', 'ক্রোমবুক'), kind: 'desktop' };
+  if (/Linux/i.test(userAgent))
+    return { device: t('device.linux', 'লিনাক্স কম্পিউটার'), kind: 'desktop' };
+  return { device: t('device.unknown', 'অজানা ডিভাইস'), kind: 'desktop' };
 }
 
 function describeBrowser(userAgent: string): string {
-  if (/Edg\//i.test(userAgent)) return 'এজ';
-  if (/SamsungBrowser/i.test(userAgent)) return 'স্যামসাং ইন্টারনেট';
-  if (/OPR\/|Opera/i.test(userAgent)) return 'অপেরা';
-  if (/Firefox\//i.test(userAgent)) return 'ফায়ারফক্স';
-  if (/Chrome\//i.test(userAgent)) return 'ক্রোম';
-  if (/Safari\//i.test(userAgent)) return 'সাফারি';
-  return 'অজানা ব্রাউজার';
+  if (/Edg\//i.test(userAgent)) return t('browser.edge', 'এজ');
+  if (/SamsungBrowser/i.test(userAgent)) return t('browser.samsung', 'স্যামসাং ইন্টারনেট');
+  if (/OPR\/|Opera/i.test(userAgent)) return t('browser.opera', 'অপেরা');
+  if (/Firefox\//i.test(userAgent)) return t('browser.firefox', 'ফায়ারফক্স');
+  if (/Chrome\//i.test(userAgent)) return t('browser.chrome', 'ক্রোম');
+  if (/Safari\//i.test(userAgent)) return t('browser.safari', 'সাফারি');
+  return t('browser.unknown', 'অজানা ব্রাউজার');
 }
 
 function readSessions(payload: unknown): Session[] {
@@ -107,12 +112,12 @@ function readSessions(payload: unknown): Session[] {
 
 /** "৫ মিনিট আগে" — a timestamp nobody has to decode. */
 function whenBn(value: string | null): string {
-  if (!value) return 'কখন জানা নেই';
+  if (!value) return t('session.whenUnknown', 'কখন জানা নেই');
   const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return 'কখন জানা নেই';
+  if (Number.isNaN(at.getTime())) return t('session.whenUnknown', 'কখন জানা নেই');
 
   const minutes = Math.trunc((Date.now() - at.getTime()) / 60000);
-  if (minutes < 1) return 'এইমাত্র';
+  if (minutes < 1) return t('session.justNow', 'এইমাত্র');
   if (minutes < 60) return `${bn(minutes)} মিনিট আগে`;
   const hours = Math.trunc(minutes / 60);
   if (hours < 24) return `${bn(hours)} ঘণ্টা আগে`;
@@ -186,7 +191,7 @@ export function SessionsList() {
       // which is the only thing that actually knows. Our `current` flag came
       // from a list that may be a minute old.
       if (result?.wasCurrent) {
-        signOut('এই ডিভাইসের সেশনটি বন্ধ করা হয়েছে। আবার লগইন করুন।');
+        signOut(t('session.endedThis', 'এই ডিভাইসের সেশনটি বন্ধ করা হয়েছে। আবার লগইন করুন।'));
         return;
       }
       setNotice(`${session.device} থেকে বের করে দেওয়া হয়েছে।`);
@@ -196,7 +201,7 @@ export function SessionsList() {
       haptic('warn');
       setNotice(null);
       setPending(null);
-      setError(err instanceof ApiError ? err.message : 'বের করা যায়নি');
+      setError(err instanceof ApiError ? err.message : t('session.endFailed', 'বের করা যায়নি'));
     },
   });
 
@@ -220,14 +225,19 @@ export function SessionsList() {
         );
         return;
       }
-      setNotice(result?.message ?? 'এই ডিভাইস ছাড়া বাকি সব জায়গা থেকে লগআউট করা হয়েছে।');
+      setNotice(
+        result?.message ??
+          t('session.endedOthers', 'এই ডিভাইস ছাড়া বাকি সব জায়গা থেকে লগআউট করা হয়েছে।'),
+      );
       invalidate();
     },
     onError: (err) => {
       haptic('warn');
       setNotice(null);
       setPending(null);
-      setError(err instanceof ApiError ? err.message : 'লগআউট করা যায়নি');
+      setError(
+        err instanceof ApiError ? err.message : t('session.signOutFailed', 'লগআউট করা যায়নি'),
+      );
     },
   });
 
@@ -238,12 +248,16 @@ export function SessionsList() {
   if (signedOut !== null) {
     return (
       <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">যেসব ডিভাইসে লগইন আছে</h2>
+        <h2 className="text-ink-muted text-sm font-medium">
+          {t('session.title', 'যেসব ডিভাইসে লগইন আছে')}
+        </h2>
         <p role="status" className="text-ink mt-2 flex items-start gap-2 text-sm">
           <LogOut className="text-brass mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>{signedOut}</span>
         </p>
-        <p className="text-ink-muted mt-1 text-xs">লগইন পাতায় নিয়ে যাচ্ছি…</p>
+        <p className="text-ink-muted mt-1 text-xs">
+          {t('session.redirecting', 'লগইন পাতায় নিয়ে যাচ্ছি…')}
+        </p>
         <Button
           className="mt-3"
           onClick={() => {
@@ -260,7 +274,9 @@ export function SessionsList() {
   return (
     <section className="rounded-card border-rule bg-surface border p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">যেসব ডিভাইসে লগইন আছে</h2>
+        <h2 className="text-ink-muted text-sm font-medium">
+          {t('session.title', 'যেসব ডিভাইসে লগইন আছে')}
+        </h2>
         {rows.length > 0 ? (
           <span className="text-ink-muted text-xs">{bn(rows.length)}টি</span>
         ) : null}
@@ -283,7 +299,9 @@ export function SessionsList() {
           className="border-rule mt-3 flex flex-col items-center gap-2 rounded-md border border-dashed p-6 text-center"
         >
           <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
-          <p className="text-ink text-sm">ডিভাইসের তালিকা আনা যায়নি।</p>
+          <p className="text-ink text-sm">
+            {t('session.listFailed', 'ডিভাইসের তালিকা আনা যায়নি।')}
+          </p>
           <Button variant="outline" size="sm" onClick={() => void sessions.refetch()}>
             <RotateCw className="h-4 w-4" aria-hidden />
             আবার চেষ্টা করুন
@@ -294,7 +312,9 @@ export function SessionsList() {
           <SkeletonRows rows={3} />
         </div>
       ) : rows.length === 0 ? (
-        <p className="text-ink-muted mt-3 text-sm">কোনো সক্রিয় সেশন পাওয়া যায়নি।</p>
+        <p className="text-ink-muted mt-3 text-sm">
+          {t('session.none', 'কোনো সক্রিয় সেশন পাওয়া যায়নি।')}
+        </p>
       ) : (
         <ul className="divide-rule mt-2 divide-y">
           {rows.map((session) => (
@@ -348,7 +368,9 @@ export function SessionsList() {
         open={pending !== null}
         onOpenChange={(open) => !open && setPending(null)}
         title={
-          pending?.kind === 'others' ? 'অন্য সব ডিভাইস থেকে বের করবেন?' : 'এই সেশনটি বন্ধ করবেন?'
+          pending?.kind === 'others'
+            ? t('session.confirmAll', 'অন্য সব ডিভাইস থেকে বের করবেন?')
+            : t('session.confirmOne', 'এই সেশনটি বন্ধ করবেন?')
         }
         description={pending?.kind === 'one' ? pending.session.device : undefined}
       >
@@ -364,8 +386,10 @@ export function SessionsList() {
             </p>
           ) : (
             <p className="text-ink text-sm">
-              {pending?.kind === 'one' ? pending.session.device : 'ডিভাইসটি'} থেকে লগআউট হয়ে যাবে।
-              ওখানে আবার পাসওয়ার্ড দিয়ে ঢুকতে হবে।
+              {pending?.kind === 'one'
+                ? pending.session.device
+                : t('session.theDevice', 'ডিভাইসটি')}{' '}
+              থেকে লগআউট হয়ে যাবে। ওখানে আবার পাসওয়ার্ড দিয়ে ঢুকতে হবে।
             </p>
           )}
 
@@ -379,7 +403,9 @@ export function SessionsList() {
               else if (pending?.kind === 'one') revokeOne.mutate(pending.session);
             }}
           >
-            {pending?.kind === 'others' ? 'হ্যাঁ, সব বন্ধ করুন' : 'হ্যাঁ, বন্ধ করুন'}
+            {pending?.kind === 'others'
+              ? t('session.yesAll', 'হ্যাঁ, সব বন্ধ করুন')
+              : t('session.yesOne', 'হ্যাঁ, বন্ধ করুন')}
           </Button>
           <Button variant="outline" size="block" onClick={() => setPending(null)}>
             থাক

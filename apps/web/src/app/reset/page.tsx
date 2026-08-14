@@ -4,6 +4,7 @@ import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -17,7 +18,13 @@ const MIN_LENGTH = 8;
 /** Seconds on the success screen before we take them to login ourselves. */
 const REDIRECT_SECONDS = 6;
 
-const STRENGTH_LABEL = ['খুব দুর্বল', 'দুর্বল', 'মোটামুটি', 'ভালো', 'শক্ত'] as const;
+const STRENGTH_LABEL = [
+  t('pw.veryWeak', 'খুব দুর্বল'),
+  t('pw.weak', 'দুর্বল'),
+  t('pw.fair', 'মোটামুটি'),
+  t('pw.good', 'ভালো'),
+  t('pw.strong', 'শক্ত'),
+] as const;
 
 const STRENGTH_TONE = ['bg-expense', 'bg-expense', 'bg-brass', 'bg-brand', 'bg-brand'] as const;
 
@@ -46,8 +53,10 @@ function strengthOf(password: string): number {
 function hintFor(password: string): string | null {
   if (password === '') return null;
   if (password.length < MIN_LENGTH) return `আরও ${MIN_LENGTH - password.length}টি অক্ষর দরকার।`;
-  if (/^\d+$/.test(password)) return 'শুধু সংখ্যা সহজে অনুমান করা যায় — কিছু অক্ষরও রাখুন।';
-  if (password.length < 12) return 'আরেকটু লম্বা হলে অনেক বেশি নিরাপদ হয় — একটা ছোট বাক্যও চলে।';
+  if (/^\d+$/.test(password))
+    return t('pw.digitsOnly', 'শুধু সংখ্যা সহজে অনুমান করা যায় — কিছু অক্ষরও রাখুন।');
+  if (password.length < 12)
+    return t('pw.longer', 'আরেকটু লম্বা হলে অনেক বেশি নিরাপদ হয় — একটা ছোট বাক্যও চলে।');
   return null;
 }
 
@@ -58,8 +67,9 @@ function classify(err: unknown): Failure {
   if (err.status === 410) return 'expired';
   if (err.status === 409) return 'used';
   const text = err.message.toLowerCase();
-  if (text.includes('expire') || err.message.includes('মেয়াদ')) return 'expired';
-  if (text.includes('used') || err.message.includes('ব্যবহৃত')) return 'used';
+  if (text.includes('expire') || err.message.includes(t('token.expired', 'মেয়াদ')))
+    return 'expired';
+  if (text.includes('used') || err.message.includes(t('token.used', 'ব্যবহৃত'))) return 'used';
   if (text.includes('weak') || text.includes('password') || err.issues?.length) return 'weak';
   if (err.status === 400 || err.status === 404) return 'invalid';
   return 'other';
@@ -68,17 +78,26 @@ function classify(err: unknown): Failure {
 function messageFor(failure: Failure, err: unknown): string {
   switch (failure) {
     case 'expired':
-      return 'লিংকের মেয়াদ শেষ হয়ে গেছে। পাসওয়ার্ড বদলানোর লিংক এক ঘণ্টা কাজ করে — নতুন একটি নিন।';
+      return t(
+        'reset.expired',
+        'লিংকের মেয়াদ শেষ হয়ে গেছে। পাসওয়ার্ড বদলানোর লিংক এক ঘণ্টা কাজ করে — নতুন একটি নিন।',
+      );
     case 'used':
-      return 'এই লিংকটি আগেই ব্যবহার হয়ে গেছে। প্রতিটি লিংক একবারই চলে — নতুন একটি নিন।';
+      return t(
+        'reset.used',
+        'এই লিংকটি আগেই ব্যবহার হয়ে গেছে। প্রতিটি লিংক একবারই চলে — নতুন একটি নিন।',
+      );
     case 'invalid':
-      return 'লিংকটি চেনা গেল না। ইমেইল থেকে পুরো লিংকটি আবার খুলুন, নয়তো নতুন একটি নিন।';
+      return t(
+        'reset.unknown',
+        'লিংকটি চেনা গেল না। ইমেইল থেকে পুরো লিংকটি আবার খুলুন, নয়তো নতুন একটি নিন।',
+      );
     case 'weak':
       return err instanceof ApiError && err.issues?.length
         ? err.issues.map((i) => i.message).join(' · ')
-        : 'পাসওয়ার্ডটি গ্রহণ করা যায়নি — আরেকটু শক্ত পাসওয়ার্ড দিন।';
+        : t('reset.refused', 'পাসওয়ার্ডটি গ্রহণ করা যায়নি — আরেকটু শক্ত পাসওয়ার্ড দিন।');
     default:
-      return err instanceof ApiError ? err.message : 'পাসওয়ার্ড বদলানো যায়নি';
+      return err instanceof ApiError ? err.message : t('reset.failed', 'পাসওয়ার্ড বদলানো যায়নি');
   }
 }
 
@@ -119,7 +138,7 @@ function ResetForm() {
     setError(null);
     setFailure(null);
     if (password !== confirm) {
-      setError('দুই ঘরের পাসওয়ার্ড এক হয়নি।');
+      setError(t('reset.mismatchDot', 'দুই ঘরের পাসওয়ার্ড এক হয়নি।'));
       return;
     }
     setPending(true);
@@ -145,11 +164,14 @@ function ResetForm() {
     return (
       <div className="flex flex-col items-center gap-3 text-center">
         <CheckCircle2 className="text-brand h-10 w-10" aria-hidden />
-        <h2 className="text-ink text-lg font-semibold">পাসওয়ার্ড বদলে গেছে</h2>
+        <h2 className="text-ink text-lg font-semibold">
+          {t('reset.done', 'পাসওয়ার্ড বদলে গেছে')}
+        </h2>
         <p role="status" className="text-ink flex items-start gap-2 text-sm">
           <ShieldCheck className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            নিরাপত্তার জন্য <strong>অন্য সব ডিভাইস থেকে লগআউট করে দেওয়া হয়েছে</strong>
+            নিরাপত্তার জন্য{' '}
+            <strong>{t('reset.signedOut', 'অন্য সব ডিভাইস থেকে লগআউট করে দেওয়া হয়েছে')}</strong>
             {revoked !== null && revoked > 0
               ? ` — ${fmtNumber(String(revoked))}টি সেশন বন্ধ হয়েছে।`
               : ' — ফোন, কম্পিউটার, ব্রাউজার, সব।'}{' '}
@@ -157,10 +179,12 @@ function ResetForm() {
           </span>
         </p>
         <p className="text-ink-muted text-sm">
-          {seconds > 0 ? `${seconds} সেকেন্ড পরে লগইন পাতায় নিয়ে যাচ্ছি…` : 'নিয়ে যাচ্ছি…'}
+          {seconds > 0
+            ? `${seconds} সেকেন্ড পরে লগইন পাতায় নিয়ে যাচ্ছি…`
+            : t('reset.takingYou', 'নিয়ে যাচ্ছি…')}
         </p>
         <Button asChild size="block" className="mt-2">
-          <Link href="/login">এখনই লগইন করুন</Link>
+          <Link href="/login">{t('reset.loginNow', 'এখনই লগইন করুন')}</Link>
         </Button>
       </div>
     );
@@ -169,13 +193,15 @@ function ResetForm() {
   if (token === '') {
     return (
       <div className="flex flex-col items-center gap-3 text-center">
-        <h2 className="text-ink text-lg font-semibold">লিংকে কোনো টোকেন নেই</h2>
+        <h2 className="text-ink text-lg font-semibold">
+          {t('reset.noToken', 'লিংকে কোনো টোকেন নেই')}
+        </h2>
         <p className="text-ink-muted text-sm">
           ইমেইলের লিংকটি সম্ভবত পুরোটা কপি হয়নি। ইমেইলে ফিরে গিয়ে পুরো লিংকে চাপ দিন, অথবা নতুন
           একটি নিন।
         </p>
         <Button asChild size="block" className="mt-2">
-          <Link href="/forgot">নতুন লিংক নিন</Link>
+          <Link href="/forgot">{t('reset.getNew', 'নতুন লিংক নিন')}</Link>
         </Button>
       </div>
     );
@@ -212,7 +238,9 @@ function ResetForm() {
           />
         </div>
         <p className="text-ink-muted text-xs">
-          {password === '' ? 'অন্তত ৮ অক্ষর দিন।' : `শক্তি: ${STRENGTH_LABEL[score] ?? ''}`}
+          {password === ''
+            ? t('reset.minLength', 'অন্তত ৮ অক্ষর দিন।')
+            : `শক্তি: ${STRENGTH_LABEL[score] ?? ''}`}
           {hint ? ` — ${hint}` : ''}
         </p>
       </div>
@@ -220,7 +248,7 @@ function ResetForm() {
       <Field
         label="আবার লিখুন"
         htmlFor="reset-confirm"
-        error={mismatch ? 'দুই ঘরের পাসওয়ার্ড এক হয়নি' : undefined}
+        error={mismatch ? t('reset.mismatch', 'দুই ঘরের পাসওয়ার্ড এক হয়নি') : undefined}
       >
         <PasswordInput
           id="reset-confirm"
@@ -240,7 +268,7 @@ function ResetForm() {
 
       {failure === 'expired' || failure === 'used' || failure === 'invalid' ? (
         <Button asChild size="block" variant="outline">
-          <Link href="/forgot">নতুন লিংক নিন</Link>
+          <Link href="/forgot">{t('reset.getNew', 'নতুন লিংক নিন')}</Link>
         </Button>
       ) : null}
 
@@ -249,7 +277,7 @@ function ResetForm() {
         size="block"
         disabled={pending || password.length < MIN_LENGTH || password !== confirm}
       >
-        {pending ? 'বদলানো হচ্ছে…' : 'পাসওয়ার্ড বদলান'}
+        {pending ? t('reset.changing', 'বদলানো হচ্ছে…') : t('reset.submit', 'পাসওয়ার্ড বদলান')}
       </Button>
 
       <p className="text-ink-muted text-center text-xs">
@@ -263,10 +291,20 @@ export default function ResetPage() {
   return (
     <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
       <header className="text-center">
-        <h1 className="text-ink text-3xl font-semibold">নতুন পাসওয়ার্ড</h1>
-        <p className="text-ink-muted text-sm">দুইবার লিখুন, যাতে টাইপো না থাকে</p>
+        <h1 className="text-ink text-3xl font-semibold">
+          {t('reset.newPassword', 'নতুন পাসওয়ার্ড')}
+        </h1>
+        <p className="text-ink-muted text-sm">
+          {t('reset.twice', 'দুইবার লিখুন, যাতে টাইপো না থাকে')}
+        </p>
       </header>
-      <React.Suspense fallback={<p className="text-ink-muted text-center text-sm">এক মুহূর্ত…</p>}>
+      <React.Suspense
+        fallback={
+          <p className="text-ink-muted text-center text-sm">
+            {t('common.oneMoment', 'এক মুহূর্ত…')}
+          </p>
+        }
+      >
         <ResetForm />
       </React.Suspense>
     </main>

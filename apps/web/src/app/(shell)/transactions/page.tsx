@@ -81,26 +81,26 @@ const SIMPLE_TYPES = new Set(['INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT', 'OP
 const TYPE_LABEL: Record<string, string> = {
   INCOME: 'আয়',
   EXPENSE: 'খরচ',
-  TRANSFER: 'ট্রান্সফার',
-  ADJUSTMENT: 'সমন্বয়',
-  OPENING_BALANCE: 'প্রারম্ভিক জের',
-  LOAN_GIVEN: 'ধার দিয়েছি',
-  LOAN_REPAID: 'ধার ফেরত পেয়েছি',
-  BORROWED: 'ধার নিয়েছি',
-  BORROW_REPAID: 'ধার শোধ করেছি',
-  SAVINGS_DEPOSIT: 'সঞ্চয়ে জমা',
-  SAVINGS_WITHDRAWAL: 'সঞ্চয় থেকে তোলা',
-  PREMIUM_PAID: 'বিমার প্রিমিয়াম',
+  TRANSFER: t('txn.transfer', 'ট্রান্সফার'),
+  ADJUSTMENT: t('txn.adjustment', 'সমন্বয়'),
+  OPENING_BALANCE: t('txn.opening', 'প্রারম্ভিক জের'),
+  LOAN_GIVEN: t('txn.lent', 'ধার দিয়েছি'),
+  LOAN_REPAID: t('txn.lentRepaid', 'ধার ফেরত পেয়েছি'),
+  BORROWED: t('txn.borrowed', 'ধার নিয়েছি'),
+  BORROW_REPAID: t('txn.borrowRepaid', 'ধার শোধ করেছি'),
+  SAVINGS_DEPOSIT: t('txn.savingsIn', 'সঞ্চয়ে জমা'),
+  SAVINGS_WITHDRAWAL: t('txn.savingsOut', 'সঞ্চয় থেকে তোলা'),
+  PREMIUM_PAID: t('txn.premium', 'বিমার প্রিমিয়াম'),
 };
 
 const SOURCE_LABEL: Record<string, string> = {
-  MANUAL: 'হাতে লেখা',
-  SMS: 'এসএমএস',
+  MANUAL: t('source.manual', 'হাতে লেখা'),
+  SMS: t('source.sms', 'এসএমএস'),
   EMAIL: 'ইমেইল',
-  WEBHOOK: 'ওয়েবহুক',
-  OCR: 'ছবি থেকে',
-  IMPORT: 'ফাইল থেকে',
-  RECURRING: 'নিয়মিত',
+  WEBHOOK: t('source.webhook', 'ওয়েবহুক'),
+  OCR: t('source.ocr', 'ছবি থেকে'),
+  IMPORT: t('source.import', 'ফাইল থেকে'),
+  RECURRING: t('source.recurring', 'নিয়মিত'),
 };
 
 /**
@@ -1323,7 +1323,10 @@ function ReceiptSheet({
         setError(
           t(
             'txn.receiptFailed',
-            'রসিদটি সংরক্ষণ করা যায়নি — সার্ভার এখনো লেনদেনের সাথে রসিদ যুক্ত রাখতে পারছে না।',
+            t(
+              'txn.receiptFailed',
+              'রসিদটি সংরক্ষণ করা যায়নি — সার্ভার এখনো লেনদেনের সাথে রসিদ যুক্ত রাখতে পারছে না।',
+            ),
           ),
         );
         return;

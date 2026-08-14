@@ -5,6 +5,7 @@ import { CheckCircle2, Clock, Info, Mail, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
@@ -50,7 +51,7 @@ function readFailure(err: unknown): Outcome {
     text.includes('already') ||
     text.includes('used') ||
     err.message.includes('ব্যবহৃত') ||
-    err.message.includes('আগেই')
+    err.message.includes(t('token.already', 'আগেই'))
   ) {
     return 'already';
   }
@@ -69,16 +70,22 @@ function VerifyView() {
     mutationFn: () => api('/auth/verify/send', { method: 'POST', body: {} }),
     onSuccess: () => {
       haptic('success');
-      setResent('নতুন একটি লিংক পাঠানো হয়েছে। ইমেইলের ইনবক্স আর স্প্যাম — দুটোই দেখুন।');
+      setResent(
+        t('verify.sent', 'নতুন একটি লিংক পাঠানো হয়েছে। ইমেইলের ইনবক্স আর স্প্যাম — দুটোই দেখুন।'),
+      );
     },
     onError: (err) => {
       haptic('warn');
       if (err instanceof ApiError && err.status === 401) {
-        setResent('নতুন লিংক পাঠাতে আগে লগইন করতে হবে।');
+        setResent(t('verify.loginFirst', 'নতুন লিংক পাঠাতে আগে লগইন করতে হবে।'));
       } else if (err instanceof ApiError && err.status === 429) {
-        setResent('একটু আগেই একটি লিংক পাঠানো হয়েছে। এক মিনিট পরে আবার চেষ্টা করুন।');
+        setResent(
+          t('verify.tooSoon', 'একটু আগেই একটি লিংক পাঠানো হয়েছে। এক মিনিট পরে আবার চেষ্টা করুন।'),
+        );
       } else {
-        setResent(err instanceof ApiError ? err.message : 'লিংক পাঠানো যায়নি');
+        setResent(
+          err instanceof ApiError ? err.message : t('verify.sendFailed', 'লিংক পাঠানো যায়নি'),
+        );
       }
     },
   });
@@ -110,7 +117,7 @@ function VerifyView() {
         <Skeleton className="h-10 w-10 rounded-full" />
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-4 w-64" />
-        <p className="text-ink-muted text-sm">লিংকটি যাচাই করা হচ্ছে…</p>
+        <p className="text-ink-muted text-sm">{t('verify.checking', 'লিংকটি যাচাই করা হচ্ছে…')}</p>
       </div>
     );
   }
@@ -123,7 +130,7 @@ function VerifyView() {
         body="ধন্যবাদ। পাসওয়ার্ড ভুলে গেলে বা নিরাপত্তার দরকারে এখন এই ঠিকানাতেই আমরা যোগাযোগ করতে পারব।"
       >
         <Button asChild size="block">
-          <Link href="/">হিসাবে যান</Link>
+          <Link href="/">{t('verify.goToApp', 'হিসাবে যান')}</Link>
         </Button>
       </OutcomeCard>
     );
@@ -137,7 +144,7 @@ function VerifyView() {
         body="কিছু ভুল হয়নি — আপনার ইমেইল আগেই যাচাই হয়ে গেছে। নতুন করে কিছু করতে হবে না।"
       >
         <Button asChild size="block" variant="outline">
-          <Link href="/">হিসাবে যান</Link>
+          <Link href="/">{t('verify.goToApp', 'হিসাবে যান')}</Link>
         </Button>
       </OutcomeCard>
     );
@@ -156,15 +163,18 @@ function VerifyView() {
       }
       title={
         expired
-          ? 'লিংকের মেয়াদ শেষ'
+          ? t('verify.expiredTitle', 'লিংকের মেয়াদ শেষ')
           : outcome === 'missing'
-            ? 'লিংকে কোনো টোকেন নেই'
-            : 'লিংকটি চেনা গেল না'
+            ? t('verify.noToken', 'লিংকে কোনো টোকেন নেই')
+            : t('verify.unknown', 'লিংকটি চেনা গেল না')
       }
       body={
         serverSaid ??
         (expired
-          ? 'যাচাইয়ের লিংক ২৪ ঘণ্টা পর্যন্ত কাজ করে। নিচের বোতামে চাপ দিলে নতুন একটি লিংক পাঠিয়ে দেব।'
+          ? t(
+              'verify.expiredBody',
+              'যাচাইয়ের লিংক ২৪ ঘণ্টা পর্যন্ত কাজ করে। নিচের বোতামে চাপ দিলে নতুন একটি লিংক পাঠিয়ে দেব।',
+            )
           : outcome === 'missing'
             ? 'ইমেইলের লিংকটি সম্ভবত পুরোটা কপি হয়নি। ইমেইলে ফিরে গিয়ে পুরো লিংকে চাপ দিন, অথবা নতুন একটি লিংক নিন।'
             : 'লিংকটি হয়তো ভেঙে গেছে, নয়তো এটি অন্য কোনো অ্যাকাউন্টের। নতুন একটি লিংক নিয়ে দেখুন।')
@@ -172,7 +182,9 @@ function VerifyView() {
     >
       <Button size="block" disabled={resend.isPending} onClick={() => resend.mutate()}>
         <Mail className="h-4 w-4" aria-hidden />
-        {resend.isPending ? 'পাঠানো হচ্ছে…' : 'নতুন লিংক পাঠান'}
+        {resend.isPending
+          ? t('verify.sending', 'পাঠানো হচ্ছে…')
+          : t('verify.resend', 'নতুন লিংক পাঠান')}
       </Button>
       {resent ? (
         <p role="status" className="text-ink-muted text-center text-sm">
@@ -213,10 +225,16 @@ export default function VerifyPage() {
   return (
     <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
       <header className="text-center">
-        <h1 className="text-ink text-3xl font-semibold">হিসাব</h1>
-        <p className="text-ink-muted text-sm">ইমেইল যাচাই</p>
+        <h1 className="text-ink text-3xl font-semibold">{t('verify.appName', 'হিসাব')}</h1>
+        <p className="text-ink-muted text-sm">{t('verify.title', 'ইমেইল যাচাই')}</p>
       </header>
-      <React.Suspense fallback={<p className="text-ink-muted text-center text-sm">এক মুহূর্ত…</p>}>
+      <React.Suspense
+        fallback={
+          <p className="text-ink-muted text-center text-sm">
+            {t('common.oneMoment', 'এক মুহূর্ত…')}
+          </p>
+        }
+      >
         <VerifyView />
       </React.Suspense>
     </main>

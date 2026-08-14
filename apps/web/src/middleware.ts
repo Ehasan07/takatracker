@@ -19,6 +19,10 @@ const PUBLIC_PATHS = [
   '/home',
   '/pricing',
   '/guide',
+  /* The privacy statement. Requiring an account to read what an account would
+     expose is the wrong way round — and the page is written for the person
+     deciding whether to open one. */
+  '/privacy',
   '/en',
   /* A shared statement. Opened by somebody with no account and no reason to
      want one — a relative you lent money to, an insurer you pay a premium to.

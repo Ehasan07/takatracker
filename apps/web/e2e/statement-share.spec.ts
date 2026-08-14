@@ -220,6 +220,46 @@ test.describe('sharing a statement', () => {
     await stranger.close();
   });
 
+  test('a savings plan and an insurance policy can be sent too', async ({ page, browser }) => {
+    await signup(page);
+    await lend(page);
+
+    /* Both kinds have been served by the API since sharing shipped; only the
+       buttons were missing, which meant the two subjects most likely to be
+       *asked* for a statement — a bank running a DPS, an insurer chasing a
+       premium history — were the two that could not send one. */
+    await page.goto('/savings');
+    /* Scoped to `main` and exact. The shell's own "নতুন লেনদেন" button matches a
+       loose /নতুন/, and it is visible in the sidebar from 768px up — so this
+       passed on a phone and opened the wrong sheet on a tablet. */
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    let sheet = page.getByRole('dialog');
+    /* Wait for the sheet before typing: it resets its own fields on open, so a
+       fill that lands first is wiped and the form then refuses to save with an
+       empty name — which looks like a broken save button. */
+    await expect(sheet.getByLabel('নাম', { exact: true })).toBeVisible();
+    await sheet.getByLabel('নাম', { exact: true }).fill('ডিপিএস');
+    await sheet.getByLabel('প্রতি কিস্তি (৳)').fill('2000');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* Scoped to `main` and exact: the sidebar's own link reads "সঞ্চয় ও ডিপিএস",
+       so a loose match finds the navigation rather than the plan — the same
+       trap the people list set for the first share test. */
+    await page.getByRole('main').getByText('ডিপিএস', { exact: true }).first().click();
+    await page.getByRole('dialog').getByRole('button', { name: 'শেয়ার', exact: true }).click();
+    sheet = page.getByRole('dialog');
+    await sheet.getByRole('button', { name: 'লিংক তৈরি করুন' }).click();
+    const url = await sheet.getByLabel('শেয়ার লিংক').inputValue();
+    expect(url).toContain('/s/');
+
+    const stranger = await browser.newContext();
+    const guest = await stranger.newPage();
+    await guest.goto(url);
+    await expect(guest.getByRole('heading', { name: 'ডিপিএস' })).toBeVisible({ timeout: 15_000 });
+    await stranger.close();
+  });
+
   test('a dead link still says whose page it is', async ({ page }) => {
     await page.goto('/s/definitely-not-a-real-token');
     await expect(page.getByText('লিংকটি আর কাজ করছে না')).toBeVisible({ timeout: 15_000 });

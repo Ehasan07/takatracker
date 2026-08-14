@@ -276,6 +276,29 @@ test.describe('the public site', () => {
     await expect(pay).toHaveAttribute('rel', /noreferrer/);
   });
 
+  test('the privacy page names what an operator can see', async ({ page }) => {
+    /* A privacy policy that lists cookie categories and never mentions that a
+       member of staff can open your ledger is a disclaimer, not a policy. The
+       operator panel can read balances — deliberately, so somebody can answer
+       "my numbers look wrong" — and this page has to say so above the
+       boilerplate. */
+    await page.goto('/privacy');
+    await expect(page.getByRole('heading', { name: 'গোপনীয়তা', level: 1 })).toBeVisible();
+
+    await expect(
+      page.getByRole('heading', { name: 'আমাদের কেউ কি আপনার হিসাব দেখতে পারে?' }),
+    ).toBeVisible();
+    await expect(page.getByText('পারে — এবং কখন পারে সেটা এখানে লেখা আছে।')).toBeVisible();
+    /* And the other half: every such view is recorded where the customer can
+       read it. A disclosure without that is only half true. */
+    await expect(page.getByText('প্রতিবার দেখলে তার রেকর্ড থাকে।')).toBeVisible();
+    await expect(page.getByText('বিক্রি করা হয় না', { exact: false })).toBeVisible();
+
+    /* Reachable without knowing the URL. */
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: 'গোপনীয়তা' })).toBeVisible();
+  });
+
   test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
     for (const path of ['/', '/pricing', '/guide', '/en', '/en/pricing']) {
       await page.goto(path);

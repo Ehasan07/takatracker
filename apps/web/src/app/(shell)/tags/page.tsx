@@ -28,6 +28,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Info, Merge, Pencil, Plus, Search, Tag as TagIcon, Trash2 } from 'lucide-react';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import { Money } from '@/components/money';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
@@ -117,7 +118,7 @@ export default function TagsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="hidden items-center justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">ট্যাগ</h1>
+        <h1 className="text-ink text-2xl font-semibold">{t('tags.title', 'ট্যাগ')}</h1>
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="h-4 w-4" aria-hidden />
           নতুন
@@ -130,8 +131,10 @@ export default function TagsPage() {
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            <span className="font-medium">ক্যাটাগরি বলে কীসে খরচ, ট্যাগ বলে কার জন্য</span> —
-            বাজারের খরচ ক্যাটাগরিতে &ldquo;খাবার ও বাজার&rdquo;, আর ট্যাগে &ldquo;পারিবারিক&rdquo;
+            <span className="font-medium">
+              {t('tags.blurb', 'ক্যাটাগরি বলে কীসে খরচ, ট্যাগ বলে কার জন্য')}
+            </span>{' '}
+            — বাজারের খরচ ক্যাটাগরিতে &ldquo;খাবার ও বাজার&rdquo;, আর ট্যাগে &ldquo;পারিবারিক&rdquo;
             বা &ldquo;শ্বশুরবাড়ি&rdquo;। একটি লেনদেনে ক্যাটাগরি একটাই থাকে, কিন্তু ট্যাগ যত খুশি —
             একই বাজার এই সপ্তাহে পারিবারিক, পরের সপ্তাহে ব্যবসার।
           </span>
@@ -171,7 +174,7 @@ export default function TagsPage() {
           {query === '' ? (
             <>
               <TagIcon className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
-              <p className="text-ink mt-2">এখনও কোনো ট্যাগ নেই।</p>
+              <p className="text-ink mt-2">{t('tags.none', 'এখনও কোনো ট্যাগ নেই।')}</p>
               <p className="text-ink-muted mt-1 text-sm">
                 প্রথম ট্যাগটি বানান — যেমন পারিবারিক, শ্বশুরবাড়ি বা রমজান।
               </p>
@@ -245,7 +248,11 @@ export default function TagsPage() {
               <button
                 type="button"
                 disabled={everything.length < 2}
-                title={everything.length < 2 ? 'মেলানোর মতো আর কোনো ট্যাগ নেই' : undefined}
+                title={
+                  everything.length < 2
+                    ? t('tags.noMergeTarget', 'মেলানোর মতো আর কোনো ট্যাগ নেই')
+                    : undefined
+                }
                 onClick={() => openMerge(tag)}
                 className="press border-rule text-income hover:bg-greenbar flex min-h-11 w-full items-center gap-2 border-t border-dashed px-3 text-left text-sm font-medium disabled:opacity-40"
               >
@@ -292,7 +299,7 @@ export default function TagsPage() {
                     আছে। ট্যাগটি সেগুলো থেকে সরে যাবে।
                   </>
                 ) : (
-                  'এই ট্যাগটি কোনো লেনদেনে নেই।'
+                  t('tags.unused', 'এই ট্যাগটি কোনো লেনদেনে নেই।')
                 )}
               </p>
               {/* The reassurance somebody actually wants at this moment, said in
@@ -316,13 +323,13 @@ export default function TagsPage() {
           remove.error
             ? remove.error instanceof ApiError
               ? remove.error.message
-              : 'সরানো যায়নি'
+              : t('tags.removeFailed', 'সরানো যায়নি')
             : null
         }
         secondary={
           deleting && deleting.transactionCount > 0 && everything.length > 1
             ? {
-                label: 'বরং অন্য ট্যাগে মিলিয়ে নিন',
+                label: t('tags.mergeInstead', 'বরং অন্য ট্যাগে মিলিয়ে নিন'),
                 icon: <Merge className="h-4 w-4" aria-hidden />,
                 onClick: () => {
                   const target = deleting;

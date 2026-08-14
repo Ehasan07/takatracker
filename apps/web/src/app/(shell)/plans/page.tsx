@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Ban, Check, Info, Lock } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import { SkeletonCard, SkeletonRows } from '@/components/skeleton';
 import { UsageMeter } from '@/components/usage-meter';
 import { api, type EntitlementsDto } from '@/lib/api';
@@ -100,19 +101,25 @@ const isLimitLike = (kind: string): boolean => kind !== 'FLAG';
 
 /** What one plan grants for one feature, in the catalogue's own words. */
 function limitTextFor(view: FeatureView | undefined, limitValue: number | null): string {
-  if (view?.kind === 'FLAG') return limitValue === 0 ? 'নেই' : 'আছে';
-  if (limitValue === null) return 'সীমাহীন';
-  if (limitValue === 0) return 'নেই';
+  if (view?.kind === 'FLAG') return limitValue === 0 ? t('plan.no', 'নেই') : t('plan.yes', 'আছে');
+  if (limitValue === null) return t('plan.unlimited', 'সীমাহীন');
+  if (limitValue === 0) return t('plan.no', 'নেই');
   return `${bnNum(limitValue)}${unitSuffix(view?.unit)}`;
 }
 
 /** What a person can actually do today about a limit they have hit. */
 const RELIEF: Record<string, string> = {
-  'accounts.max': 'কোনো অব্যবহৃত অ্যাকাউন্ট আর্কাইভ করলে একটি জায়গা খালি হয়।',
-  'transactions.monthly.max': 'প্রতি মাসের ১ তারিখে এই গণনা আবার শূন্য থেকে শুরু হয়।',
-  'members.max': 'কোনো সদস্যকে সরালে একটি জায়গা খালি হয়।',
-  'attachments.storage.mb': 'পুরনো সংযুক্তি মুছলে জায়গা ফিরে আসে।',
-  'email.connections.max': 'কোনো মেইলবক্স সংযোগ মুছলে একটি জায়গা খালি হয়।',
+  'accounts.max': t(
+    'plan.freeAccount',
+    'কোনো অব্যবহৃত অ্যাকাউন্ট আর্কাইভ করলে একটি জায়গা খালি হয়।',
+  ),
+  'transactions.monthly.max': t(
+    'plan.resetsMonthly',
+    'প্রতি মাসের ১ তারিখে এই গণনা আবার শূন্য থেকে শুরু হয়।',
+  ),
+  'members.max': t('plan.freeMember', 'কোনো সদস্যকে সরালে একটি জায়গা খালি হয়।'),
+  'attachments.storage.mb': t('plan.freeAttachment', 'পুরনো সংযুক্তি মুছলে জায়গা ফিরে আসে।'),
+  'email.connections.max': t('plan.freeMailbox', 'কোনো মেইলবক্স সংযোগ মুছলে একটি জায়গা খালি হয়।'),
 };
 
 export default function PlansPage() {
@@ -158,10 +165,10 @@ export default function PlansPage() {
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            <span className="font-medium">প্রিমিয়াম নিতে চাইলে</span> নিচের বোতাম থেকে পেমেন্ট করুন
-            — বিকাশ, নগদ বা কার্ডে। পেমেন্টের পর আমরা আপনার অ্যাকাউন্টে প্রিমিয়াম চালু করে দেব;
-            ইনভয়েস থেকে কে দিয়েছেন তা স্বয়ংক্রিয়ভাবে মেলানোর ব্যবস্থা এখনো হয়নি, তাই কাজটি হাতে
-            হয়। দরকার হলে হটলাইন{' '}
+            <span className="font-medium">{t('plan.wantPremium', 'প্রিমিয়াম নিতে চাইলে')}</span>{' '}
+            নিচের বোতাম থেকে পেমেন্ট করুন — বিকাশ, নগদ বা কার্ডে। পেমেন্টের পর আমরা আপনার
+            অ্যাকাউন্টে প্রিমিয়াম চালু করে দেব; ইনভয়েস থেকে কে দিয়েছেন তা স্বয়ংক্রিয়ভাবে
+            মেলানোর ব্যবস্থা এখনো হয়নি, তাই কাজটি হাতে হয়। দরকার হলে হটলাইন{' '}
             <a href={CONTACT.hotlineHref} className="text-brand underline">
               {CONTACT.hotline}
             </a>
@@ -200,7 +207,7 @@ export default function PlansPage() {
 
       <section className="flex flex-col gap-3">
         <div>
-          <h2 className="text-ink text-base font-semibold">স্তরগুলো</h2>
+          <h2 className="text-ink text-base font-semibold">{t('plan.tiers', 'স্তরগুলো')}</h2>
           <p className="text-ink-muted text-xs">
             আপনার প্ল্যান কী দেয় আর প্রিমিয়ামে কী বাড়ে, পাশাপাশি।
           </p>
@@ -217,7 +224,7 @@ export default function PlansPage() {
           </div>
         ) : (catalogue.data ?? []).length === 0 ? (
           <div className="rounded-card border-rule border border-dashed p-8 text-center">
-            <p className="text-ink">দেখানোর মতো কোনো প্ল্যান নেই।</p>
+            <p className="text-ink">{t('plan.none', 'দেখানোর মতো কোনো প্ল্যান নেই।')}</p>
           </div>
         ) : (
           <Catalogue
@@ -267,8 +274,12 @@ function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: Featu
   return (
     <section className="rounded-card border-rule bg-surface border p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="text-ink-muted text-sm font-medium">আপনার এখনকার প্ল্যান</h2>
-        <span className="text-ink text-base font-semibold">{data?.plan?.name ?? 'ফ্রি'}</span>
+        <h2 className="text-ink-muted text-sm font-medium">
+          {t('plan.current', 'আপনার এখনকার প্ল্যান')}
+        </h2>
+        <span className="text-ink text-base font-semibold">
+          {data?.plan?.name ?? t('plan.free', 'ফ্রি')}
+        </span>
       </div>
 
       {data?.plan ? (
@@ -289,7 +300,8 @@ function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: Featu
           <ul className="text-ink mt-1 list-disc pl-5 text-xs">
             {exhausted.map((view) => (
               <li key={view.key}>
-                {RELIEF[view.key] ?? 'এই সীমা বাড়ানোর ব্যবস্থা এখনও তৈরি হয়নি।'}
+                {RELIEF[view.key] ??
+                  t('plan.noUpgradeYet', 'এই সীমা বাড়ানোর ব্যবস্থা এখনও তৈরি হয়নি।')}
               </li>
             ))}
           </ul>
@@ -334,7 +346,7 @@ function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: Featu
                 ) : (
                   <Ban className="h-3.5 w-3.5" aria-hidden />
                 )}
-                {on ? 'আছে' : 'নেই'}
+                {on ? t('plan.yes', 'আছে') : t('plan.no', 'নেই')}
               </dd>
             </div>
           );
@@ -378,7 +390,7 @@ function LimitRow({
       <UsageMeter label={view.label} used={used} limit={limit} />
       <p className="mt-0.5 text-[11px]">
         {used >= limit ? (
-          <span className="text-expense font-medium">সীমা শেষ</span>
+          <span className="text-expense font-medium">{t('plan.limitReached', 'সীমা শেষ')}</span>
         ) : (
           <span className="text-ink-muted">
             আর {bnNum(left ?? Math.max(0, limit - used))}
@@ -516,10 +528,14 @@ function Catalogue({
                 <th key={plan.code} scope="col" className="px-4 py-2 text-right">
                   <span className="text-ink block font-semibold">{plan.name}</span>
                   <span className="text-ink-muted block text-xs font-normal">
-                    {plan.priceMinor <= 0 ? 'ফ্রি' : 'খসড়া দাম'}
+                    {plan.priceMinor <= 0
+                      ? t('plan.free', 'ফ্রি')
+                      : t('plan.draftPrice', 'খসড়া দাম')}
                   </span>
                   {plan.code === currentCode ? (
-                    <span className="text-income block text-[11px] font-medium">এখন এটিই চালু</span>
+                    <span className="text-income block text-[11px] font-medium">
+                      {t('plan.currentOne', 'এখন এটিই চালু')}
+                    </span>
                   ) : null}
                 </th>
               ))}

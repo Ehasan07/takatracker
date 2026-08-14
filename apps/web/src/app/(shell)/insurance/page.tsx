@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
+import { Check, Link2, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
@@ -9,10 +9,12 @@ import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
+import { ShareStatementSheet } from '@/components/share-statement-sheet';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { t } from '@/lib/t';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
 interface Premium {
@@ -38,17 +40,17 @@ interface Policy {
 }
 
 const FREQUENCIES = [
-  ['MONTHLY', 'মাসিক'],
-  ['QUARTERLY', 'ত্রৈমাসিক'],
-  ['HALF_YEARLY', 'ষাণ্মাসিক'],
-  ['YEARLY', 'বার্ষিক'],
+  ['MONTHLY', t('freq.monthly', 'মাসিক')],
+  ['QUARTERLY', t('freq.quarterly', 'ত্রৈমাসিক')],
+  ['HALF_YEARLY', t('freq.halfYearly', 'ষাণ্মাসিক')],
+  ['YEARLY', t('freq.yearly', 'বার্ষিক')],
 ] as const;
 
 const STATUSES = [
   ['ACTIVE', 'চলমান'],
-  ['LAPSED', 'তামাদি (প্রিমিয়াম বন্ধ)'],
+  ['LAPSED', t('insurance.status.lapsed', 'তামাদি (প্রিমিয়াম বন্ধ)')],
   ['MATURED', 'মেয়াদপূর্ণ'],
-  ['CANCELLED', 'বাতিল'],
+  ['CANCELLED', t('insurance.status.cancelled', 'বাতিল')],
 ] as const;
 
 const freqLabel = (v: string): string => FREQUENCIES.find(([k]) => k === v)?.[1] ?? v;
@@ -79,6 +81,7 @@ export default function InsurancePage() {
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Policy | null>(null);
   const [removing, setRemoving] = React.useState<Policy | null>(null);
+  const [sharing, setSharing] = React.useState<Policy | null>(null);
 
   const policies = useQuery({
     queryKey: ['insurance'],
@@ -113,7 +116,9 @@ export default function InsurancePage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">বীমা</h1>
+        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+          {t('insurance.word', 'বীমা')}
+        </h1>
         <div className="flex items-center gap-2">
           <Link
             href="/savings"
@@ -135,7 +140,7 @@ export default function InsurancePage() {
         </div>
       ) : (policies.data?.length ?? 0) === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
-          <p className="text-ink">এখনও কোনো বীমা পলিসি যোগ করা হয়নি।</p>
+          <p className="text-ink">{t('insurance.none', 'এখনও কোনো বীমা পলিসি যোগ করা হয়নি।')}</p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
             প্রথম পলিসি যোগ করুন
           </Button>
@@ -155,7 +160,8 @@ export default function InsurancePage() {
                     {policy.policyNumberMasked ? ` ${policy.policyNumberMasked}` : ''}
                   </p>
                   <p className="text-ink-muted truncate text-xs">
-                    {policy.policyType ?? 'পলিসি'} · {freqLabel(policy.frequency)} প্রিমিয়াম
+                    {policy.policyType ?? t('insurance.policy', 'পলিসি')} ·{' '}
+                    {freqLabel(policy.frequency)} প্রিমিয়াম
                     {policy.nomineeName ? ` · নমিনি ${policy.nomineeName}` : ''}
                   </p>
                 </div>
@@ -165,19 +171,23 @@ export default function InsurancePage() {
                     className="block text-sm"
                     decimals={false}
                   />
-                  <span className="text-ink-muted text-[11px]">বীমার অঙ্ক</span>
+                  <span className="text-ink-muted text-[11px]">
+                    {t('insurance.sumAssured', 'বীমার অঙ্ক')}
+                  </span>
                 </div>
               </button>
 
               <div className="border-rule mt-3 flex items-center justify-between gap-2 border-t pt-2 text-xs">
-                <span className="text-ink-muted">পরের প্রিমিয়াম</span>
+                <span className="text-ink-muted">
+                  {t('insurance.nextPremium', 'পরের প্রিমিয়াম')}
+                </span>
                 {policy.nextDue ? (
                   <span className="flex items-center gap-2">
                     <span className="text-ink">{policy.nextDue.dueDate}</span>
                     <Money minor={policy.nextDue.amountMinor} decimals={false} />
                   </span>
                 ) : (
-                  <span className="text-income">সব পরিশোধ হয়েছে</span>
+                  <span className="text-income">{t('insurance.allPaid', 'সব পরিশোধ হয়েছে')}</span>
                 )}
               </div>
             </li>
@@ -188,20 +198,20 @@ export default function InsurancePage() {
       <Sheet
         open={openId !== null}
         onOpenChange={(open) => !open && setOpenId(null)}
-        title={detail.data?.insurer ?? 'পলিসি'}
+        title={detail.data?.insurer ?? t('insurance.policy', 'পলিসি')}
         description={detail.data?.policyType ?? undefined}
       >
         {detail.data ? (
           <div className="flex flex-col gap-4">
             <dl className="bg-greenbar grid grid-cols-2 gap-2 rounded-md p-3 text-xs">
               <div>
-                <dt className="text-ink-muted">বীমার অঙ্ক</dt>
+                <dt className="text-ink-muted">{t('insurance.sumAssured', 'বীমার অঙ্ক')}</dt>
                 <dd>
                   <Money minor={detail.data.sumAssuredMinor} className="block" decimals={false} />
                 </dd>
               </div>
               <div>
-                <dt className="text-ink-muted">প্রিমিয়াম</dt>
+                <dt className="text-ink-muted">{t('insurance.premium', 'প্রিমিয়াম')}</dt>
                 <dd>
                   <Money minor={detail.data.premiumMinor} className="block" decimals={false} />
                 </dd>
@@ -236,7 +246,21 @@ export default function InsurancePage() {
             </ul>
 
             {/* One sheet at a time: the detail closes as the editor opens. */}
-            <div className="border-rule flex gap-2 border-t pt-3">
+            <div className="border-rule flex flex-wrap gap-2 border-t pt-3">
+              {/* Insurers ask for a premium history, which is precisely what the
+                  public statement renders. The API has served INSURANCE since
+                  statement sharing shipped; only the button was missing. */}
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setSharing(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <Link2 className="h-4 w-4" aria-hidden />
+                {t('share.short', 'শেয়ার')}
+              </Button>
               <Button
                 variant="outline"
                 className="flex-1"
@@ -264,6 +288,16 @@ export default function InsurancePage() {
           </div>
         ) : null}
       </Sheet>
+
+      {sharing ? (
+        <ShareStatementSheet
+          open
+          onOpenChange={(next) => !next && setSharing(null)}
+          kind="INSURANCE"
+          subjectId={sharing.id}
+          subjectName={sharing.insurer}
+        />
+      ) : null}
 
       <PolicySheet
         open={addOpen || editing !== null}
@@ -441,7 +475,7 @@ function PolicySheet({
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
-      title={policy ? 'পলিসি সম্পাদনা' : 'নতুন বীমা পলিসি'}
+      title={policy ? t('insurance.edit', 'পলিসি সম্পাদনা') : t('insurance.new', 'নতুন বীমা পলিসি')}
       description={policy?.insurer}
     >
       <form

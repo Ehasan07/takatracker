@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CornerDownRight, Info, Pencil, Plus, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
+import { t } from '@/lib/t';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
@@ -32,7 +33,7 @@ interface Group {
 
 const bn = (n: number): string => fmtNumber(String(n));
 const usageLabel = (c: CategoryRow): string =>
-  c.usageCount > 0 ? `${bn(c.usageCount)}টি লেনদেন` : 'কোনো লেনদেন নেই';
+  c.usageCount > 0 ? `${bn(c.usageCount)}টি লেনদেন` : t('cat.noTransactions', 'কোনো লেনদেন নেই');
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
@@ -92,7 +93,7 @@ export default function CategoriesPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="hidden items-center justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">ক্যাটাগরি</h1>
+        <h1 className="text-ink text-2xl font-semibold">{t('cat.title', 'ক্যাটাগরি')}</h1>
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="h-4 w-4" aria-hidden />
           নতুন
@@ -106,8 +107,8 @@ export default function CategoriesPage() {
       >
         {(
           [
-            ['EXPENSE', 'খরচের খাত'],
-            ['INCOME', 'আয়ের খাত'],
+            ['EXPENSE', t('cat.expense', 'খরচের খাত')],
+            ['INCOME', t('cat.income', 'আয়ের খাত')],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -137,8 +138,10 @@ export default function CategoriesPage() {
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            <span className="font-medium">উপ-খাত হলো বড় খাতের ভেতরের ছোট ভাগ</span> — যেমন
-            ইউটিলিটির নিচে বিদ্যুৎ, গ্যাস আর পানির বিল। লেনদেন লেখার সময় উপ-খাত বেছে নিলে
+            <span className="font-medium">
+              {t('cat.subHint', 'উপ-খাত হলো বড় খাতের ভেতরের ছোট ভাগ')}
+            </span>{' '}
+            — যেমন ইউটিলিটির নিচে বিদ্যুৎ, গ্যাস আর পানির বিল। লেনদেন লেখার সময় উপ-খাত বেছে নিলে
             প্রতিবেদনে খরচটি বড় খাতের মোটের সঙ্গেই যোগ হয়, আবার চাইলে ভেঙে দেখা যায়। ভাগ দুই ধাপ
             পর্যন্তই — উপ-খাতের নিচে আর উপ-খাত রাখা যায় না।
           </span>
@@ -160,7 +163,9 @@ export default function CategoriesPage() {
       ) : groups.length === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
           <p className="text-ink">
-            {kind === 'EXPENSE' ? 'এখনও কোনো খরচের খাত নেই।' : 'এখনও কোনো আয়ের খাত নেই।'}
+            {kind === 'EXPENSE'
+              ? t('cat.noneExpense', 'এখনও কোনো খরচের খাত নেই।')
+              : t('cat.noneIncome', 'এখনও কোনো আয়ের খাত নেই।')}
           </p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
             প্রথম খাত যোগ করুন
@@ -185,9 +190,9 @@ export default function CategoriesPage() {
                 }
                 deleteBlockedBy={
                   parent.usageCount > 0
-                    ? 'এই খাতে লেনদেন আছে'
+                    ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
                     : children.length > 0
-                      ? 'আগে উপ-খাতগুলো মুছুন'
+                      ? t('cat.deleteChildrenFirst', 'আগে উপ-খাতগুলো মুছুন')
                       : null
                 }
                 onEdit={() => openEdit(parent)}
@@ -203,7 +208,11 @@ export default function CategoriesPage() {
                       <CategoryLine
                         category={child}
                         meta={`উপ-খাত · ${usageLabel(child)}`}
-                        deleteBlockedBy={child.usageCount > 0 ? 'এই খাতে লেনদেন আছে' : null}
+                        deleteBlockedBy={
+                          child.usageCount > 0
+                            ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
+                            : null
+                        }
                         onEdit={() => openEdit(child)}
                         onDelete={() => openDelete(child)}
                         nested
@@ -345,8 +354,10 @@ function QueryError({ onRetry }: { onRetry: () => void }) {
       className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
-      <p className="text-ink text-sm">খাতের তালিকা আনা যায়নি।</p>
-      <p className="text-ink-muted text-xs">ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।</p>
+      <p className="text-ink text-sm">{t('cat.listFailed', 'খাতের তালিকা আনা যায়নি।')}</p>
+      <p className="text-ink-muted text-xs">
+        {t('common.checkConnectionRetry', 'ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।')}
+      </p>
       <Button variant="outline" size="sm" className="mt-1" onClick={onRetry}>
         <RotateCw className="h-4 w-4" aria-hidden />
         আবার চেষ্টা করুন
@@ -473,14 +484,23 @@ function CategorySheet({
       void queryClient.invalidateQueries();
       onOpenChange(false);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
+    onError: (err) =>
+      setError(
+        err instanceof ApiError ? err.message : t('common.saveFailed2', 'সংরক্ষণ করা যায়নি'),
+      ),
   });
 
   return (
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? 'খাত সম্পাদনা' : parent ? 'নতুন উপ-খাত' : 'নতুন খাত'}
+      title={
+        editing
+          ? t('cat.edit', 'খাত সম্পাদনা')
+          : parent
+            ? t('cat.newSub', 'নতুন উপ-খাত')
+            : t('cat.new', 'নতুন খাত')
+      }
       description={parent ? `${nameOf(parent)}-এর ভেতরে` : undefined}
     >
       <form
@@ -498,7 +518,11 @@ function CategorySheet({
             onChange={(e) => setName(e.target.value)}
             required
             autoFocus
-            placeholder={parent ? 'যেমন: বিদ্যুৎ বিল' : 'যেমন: গাড়ির তেল'}
+            placeholder={
+              parent
+                ? t('cat.exampleExpense', 'যেমন: বিদ্যুৎ বিল')
+                : t('cat.exampleSub', 'যেমন: গাড়ির তেল')
+            }
           />
         </Field>
 
@@ -517,8 +541,10 @@ function CategorySheet({
 
         {parent ? (
           <p className="text-ink-muted -mt-2 text-xs">
-            এটি {parent.kind === 'INCOME' ? 'আয়ের' : 'খরচের'} খাত {nameOf(parent)}-এর ভেতরে বসবে।
-            প্রতিবেদনে এর খরচ {nameOf(parent)}-এর মোটের সঙ্গেই যোগ হবে।
+            এটি{' '}
+            {parent.kind === 'INCOME' ? t('cat.incomeAdj', 'আয়ের') : t('cat.expenseAdj', 'খরচের')}{' '}
+            খাত {nameOf(parent)}-এর ভেতরে বসবে। প্রতিবেদনে এর খরচ {nameOf(parent)}-এর মোটের সঙ্গেই
+            যোগ হবে।
           </p>
         ) : editing ? (
           /* Flipping a category from expense to income would silently invert

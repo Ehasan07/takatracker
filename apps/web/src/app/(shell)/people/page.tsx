@@ -101,7 +101,7 @@ export default function PeoplePage() {
         </div>
       ) : people.isError ? (
         <div className="rounded-card border-rule border border-dashed p-6 text-center">
-          <p className="text-ink text-sm">তালিকা আনা যায়নি।</p>
+          <p className="text-ink text-sm">{t('people.listFailed', 'তালিকা আনা যায়নি।')}</p>
           <Button className="mt-3" variant="outline" onClick={() => void people.refetch()}>
             আবার চেষ্টা করুন
           </Button>
@@ -109,7 +109,9 @@ export default function PeoplePage() {
       ) : rows.length === 0 ? (
         <div className="rounded-card border-rule border border-dashed p-8 text-center">
           <p className="text-ink text-sm">
-            {debounced ? 'কাউকে পাওয়া যায়নি।' : 'এখনও কেউ যোগ করা হয়নি।'}
+            {debounced
+              ? t('people.noneFound', 'কাউকে পাওয়া যায়নি।')
+              : t('people.noneYet', 'এখনও কেউ যোগ করা হয়নি।')}
           </p>
           <p className="text-ink-muted mt-1 text-xs">
             ধার দিলে বা নিলে যাঁর নাম লিখবেন, তিনি নিজে থেকেই এখানে চলে আসবেন।
@@ -134,7 +136,9 @@ export default function PeoplePage() {
         <section className="flex flex-col gap-2">
           {/* The matcher is guessing here, so the rows are separated rather than
               mixed in — a guess presented as a result is worse than no result. */}
-          <h2 className="text-ink-muted px-1 text-xs font-medium">হয়তো এঁদের খুঁজছেন</h2>
+          <h2 className="text-ink-muted px-1 text-xs font-medium">
+            {t('people.maybe', 'হয়তো এঁদের খুঁজছেন')}
+          </h2>
           <ul aria-label="হয়তো এঁদের খুঁজছেন" className="flex flex-col gap-2">
             {suggestions.map((person) => (
               <PersonCard
@@ -256,7 +260,7 @@ function PersonCard({
           <p className="text-ink-muted truncate text-xs">
             {[person.relation, person.phone ? bn(person.phone) : null]
               .filter(Boolean)
-              .join(' · ') || 'কোনো তথ্য নেই'}
+              .join(' · ') || t('people.noDetails', 'কোনো তথ্য নেই')}
           </p>
           {person.loanCount > 0 ? (
             <p className="text-ink-muted mt-0.5 text-xs">
@@ -368,7 +372,10 @@ function PersonSheet({
         ? api<PersonDto>(`/people/${person.id}`, { method: 'PATCH', body })
         : api<PersonDto>('/people', { method: 'POST', body });
     },
-    onSuccess: () => onSaved(person ? 'তথ্য বদলানো হয়েছে।' : 'যোগ করা হয়েছে।'),
+    onSuccess: () =>
+      onSaved(
+        person ? t('people.updated', 'তথ্য বদলানো হয়েছে।') : t('people.added', 'যোগ করা হয়েছে।'),
+      ),
     onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
   });
 
@@ -376,8 +383,12 @@ function PersonSheet({
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
-      title={person ? 'তথ্য বদলান' : 'নতুন মানুষ'}
-      description={person ? undefined : 'ধার দেওয়া-নেওয়ার সময় নাম লিখলেও এখানে চলে আসবে।'}
+      title={person ? t('people.edit', 'তথ্য বদলান') : t('people.new', 'নতুন মানুষ')}
+      description={
+        person
+          ? undefined
+          : t('people.autoAdded', 'ধার দেওয়া-নেওয়ার সময় নাম লিখলেও এখানে চলে আসবে।')
+      }
     >
       <form
         className="flex flex-col gap-4"
@@ -472,7 +483,8 @@ function MergeSheet({
           : '';
       onMerged(`${result.message}${carried ? ` (${carried} নেওয়া হয়েছে)` : ''}${lostName}`);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'মেলানো যায়নি'),
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : t('people.mergeFailed', 'মেলানো যায়নি')),
   });
 
   return (
@@ -496,7 +508,7 @@ function MergeSheet({
               onChange={(e) => setIntoId(e.target.value)}
               required
             >
-              <option value="">বেছে নিন…</option>
+              <option value="">{t('common.choose2', 'বেছে নিন…')}</option>
               {others.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -509,8 +521,10 @@ function MergeSheet({
           <ul className="text-ink-muted list-disc space-y-1 pl-5 text-xs">
             <li>{bn(person.loanCount)}টি ঋণ এবং তার কিস্তিগুলো সরে যাবে।</li>
             <li>{bn(person.transactionCount)}টি লেনদেনের নাম বদলে যাবে।</li>
-            <li>ফোন, সম্পর্ক বা নোটের ঘর যেখানে খালি, সেখানে পুরোনোটা বসবে।</li>
-            <li>কোনো ঋণ বা লেনদেন মুছে ফেলা হবে না।</li>
+            <li>
+              {t('people.mergeFill', 'ফোন, সম্পর্ক বা নোটের ঘর যেখানে খালি, সেখানে পুরোনোটা বসবে।')}
+            </li>
+            <li>{t('people.mergeSafe', 'কোনো ঋণ বা লেনদেন মুছে ফেলা হবে না।')}</li>
           </ul>
 
           {error ? (
@@ -526,7 +540,7 @@ function MergeSheet({
               merge.mutate();
             }}
           >
-            {into ? `${into.name}-এর সাথে মিলিয়ে দিন` : 'আগে একজনকে বাছুন'}
+            {into ? `${into.name}-এর সাথে মিলিয়ে দিন` : t('people.pickFirst', 'আগে একজনকে বাছুন')}
           </Button>
         </div>
       ) : null}
@@ -550,7 +564,8 @@ function DeleteSheet({
   const remove = useMutation({
     mutationFn: () => api<DeletePersonResult>(`/people/${person!.id}`, { method: 'DELETE' }),
     onSuccess: (result) => onDeleted(result.message),
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'সরানো যায়নি'),
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : t('people.removeFailed', 'সরানো যায়নি')),
   });
 
   return (
