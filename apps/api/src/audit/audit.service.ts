@@ -18,6 +18,9 @@ export const AUDIT_ACTIONS = [
    * sign it happened. */
   'auth.signin_code_requested',
   'auth.signin_code',
+  'migration.pulled',
+  'migration.applied',
+  'migration.rolledBack',
   'account.created',
   'account.updated',
   'account.archived',

@@ -367,6 +367,7 @@ model Workspace {
   /// Which language this workspace's screens, categories and reports render in.
   locale       String          @default("bn")
   translations WorkspaceTranslation[]
+  migrations   MigrationBatch[]
   /// Defines the ledger day. All date arithmetic resolves against this.
   timezone     String          @default("Asia/Dhaka")
   trialEndsAt  DateTime?
@@ -460,6 +461,81 @@ enum MembershipStatus {
 /// answer "was this dealt with, and when", and not enough to tell anybody whose
 /// account it was. The hash is one-way; an address can be checked against it
 /// only by somebody who already knows the address.
+/// Bringing another product's books across, one reviewable batch at a time.
+///
+/// ## Why a staging table and not a straight import
+///
+/// The owner's Wallet account holds twenty accounts and two hundred categories,
+/// and most of those categories are not categories at all — a DPS became one
+/// because Wallet had nowhere else to put it. Creating all two hundred and
+/// sorting it out afterwards would take a usable chart of accounts and make it
+/// unusable, so nothing is created until every row has been decided.
+///
+/// Staging also makes the decisions survive a closed browser, and makes the
+/// whole thing exportable to a spreadsheet: two hundred choices are faster in
+/// Excel than in a web form, and the person already knows which of these are
+/// savings plans.
+///
+/// ## Why the batch exists separately
+///
+/// So it can be undone. `rolledBackAt` and the `createdEntityId` on each item
+/// are the whole of it: apply writes ids down, rollback deletes exactly those
+/// and nothing else. An import somebody cannot take back is an import they will
+/// not risk running.
+model MigrationBatch {
+  id          String   @id @default(cuid())
+  workspaceId String
+  /// `WALLET` today. The staging shape is deliberately source-agnostic.
+  source      String
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now())
+  appliedAt   DateTime?
+  rolledBackAt DateTime?
+  createdByUserId String?
+  /// What the pull found, so the screen can show progress without counting rows.
+  note        String?
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items     MigrationItem[]
+
+  @@index([workspaceId, createdAt])
+}
+
+/// One account or one category from the other product, and what to do with it.
+model MigrationItem {
+  id          String @id @default(cuid())
+  batchId     String
+  workspaceId String
+  /// `ACCOUNT` or `CATEGORY`.
+  kind        String
+  /// The id it had over there. What makes a second run skip rather than double.
+  sourceId    String
+  sourceName  String
+  /// Everything else the source said, kept verbatim so a decision made later
+  /// has the same information the pull had.
+  sourcePayload Json?
+  /// How many records used it, so the list can put the ones that matter first.
+  usageCount  Int    @default(0)
+
+  /// `CREATE` | `MERGE` | `SAVINGS` | `INSURANCE` | `SKIP`.
+  decision    String @default("CREATE")
+  /// For an account: which `AccountType`. Guessed from the source, overridable.
+  targetType  String?
+  /// For `MERGE`: the existing row to fold this into.
+  targetId    String?
+
+  /// Set by apply, read by rollback. The two halves of being able to undo.
+  createdEntityId   String?
+  createdEntityKind String?
+  /// Why this row did nothing, when it did nothing.
+  skippedReason     String?
+
+  batch MigrationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, kind, sourceId])
+  @@index([workspaceId, kind])
+}
+
 model AccountDeletion {
   id          String   @id @default(cuid())
   /// SHA-256 of the lower-cased email. Never the address itself.

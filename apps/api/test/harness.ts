@@ -127,6 +127,9 @@ export const TEST_TABLES = [
   'EmailToken',
   'LoanPayment',
   'Loan',
+  /* Staged imports before the accounts and categories they point at. */
+  'MigrationItem',
+  'MigrationBatch',
   'SavingsInstallment',
   'SavingsPlan',
   'PremiumPayment',

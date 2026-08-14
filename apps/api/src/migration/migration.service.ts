@@ -1,0 +1,811 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  accountTypeFromWallet,
+  migrationFromCsv,
+  migrationToCsv,
+  suggestNonCategory,
+  type MigrationDecision,
+  type MigrationRow,
+} from '@hishab/core';
+import type { AccountType, Prisma } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
+import { EntitlementsService } from '../entitlements/entitlements.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { WalletClient } from './wallet.client';
+
+/**
+ * Moving a chart of accounts in from another product, reversibly.
+ *
+ * ## Everything is staged, and nothing here is clever
+ *
+ * A pull writes rows to `MigrationItem` and creates nothing. Apply reads those
+ * rows and creates what they say. Rollback reads what apply wrote down and
+ * removes it. Three passes over one table, and the reason it is three rather
+ * than one is that the middle step is a person deciding two hundred times —
+ * possibly over two sittings, possibly in Excel — and a browser closed halfway
+ * through must lose nothing.
+ *
+ * ## Why apply never throws part-way
+ *
+ * Two hundred rows, and row 140 hits the plan's account ceiling. Aborting there
+ * leaves 139 created, no record of which, and a person with no way to try
+ * again. So every row is attempted inside its own try, a failure is written to
+ * `skippedReason` in the row's own language, and the batch finishes. What went
+ * in and what did not is then a list on screen rather than a stack trace.
+ *
+ * ## What rollback will not do
+ *
+ * It removes what this batch created and nothing else. An account that has
+ * since been posted to is kept, with the reason, because deleting it would take
+ * the ledger with it — and a migration tool that can destroy real entries is one
+ * nobody should press twice.
+ */
+
+export type BatchStatus = 'DRAFT' | 'APPLIED' | 'ROLLED_BACK';
+
+export interface MigrationItemView {
+  id: string;
+  kind: 'ACCOUNT' | 'CATEGORY';
+  sourceId: string;
+  sourceName: string;
+  usageCount: number;
+  decision: MigrationDecision;
+  targetType: string | null;
+  targetId: string | null;
+  createdEntityId: string | null;
+  createdEntityKind: string | null;
+  skippedReason: string | null;
+  /** Currency, group, archived — whatever the source said, for the screen. */
+  detail: string;
+}
+
+export interface BatchView {
+  id: string;
+  source: string;
+  status: BatchStatus;
+  createdAt: string;
+  appliedAt: string | null;
+  rolledBackAt: string | null;
+  note: string | null;
+  counts: { accounts: number; categories: number; created: number; skipped: number };
+}
+
+export interface BatchDetail extends BatchView {
+  items: MigrationItemView[];
+}
+
+/** Wallet's "Income" group is the only one that is not spending. */
+function categoryKindOf(groupName: string | undefined): 'INCOME' | 'EXPENSE' {
+  return (groupName ?? '').toLowerCase() === 'income' ? 'INCOME' : 'EXPENSE';
+}
+
+/** Names compare with case and surrounding space ignored, nothing else. */
+function normalise(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+@Injectable()
+export class MigrationService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly wallet: WalletClient,
+    private readonly audit: AuditService,
+    private readonly entitlements: EntitlementsService,
+  ) {}
+
+  // ---------------------------------------------------------------- reading
+
+  async list(workspaceId: string): Promise<BatchView[]> {
+    const batches = await this.prisma.migrationBatch.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      include: { items: { select: { kind: true, createdEntityId: true, skippedReason: true } } },
+    });
+    return batches.map((batch) => this.presentBatch(batch, batch.items));
+  }
+
+  async detail(workspaceId: string, batchId: string): Promise<BatchDetail> {
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      include: {
+        items: {
+          /* Accounts first because categories cannot be decided sensibly until
+             the accounts are settled, then the rows a person should actually
+             look at: the ones something was guessed about, then the busiest. */
+          orderBy: [{ kind: 'asc' }, { usageCount: 'desc' }, { sourceName: 'asc' }],
+        },
+      },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+
+    return {
+      ...this.presentBatch(batch, batch.items),
+      items: batch.items.map((item) => this.presentItem(item)),
+    };
+  }
+
+  private presentBatch(
+    batch: {
+      id: string;
+      source: string;
+      status: string;
+      createdAt: Date;
+      appliedAt: Date | null;
+      rolledBackAt: Date | null;
+      note: string | null;
+    },
+    items: readonly {
+      kind: string;
+      createdEntityId: string | null;
+      skippedReason: string | null;
+    }[],
+  ): BatchView {
+    return {
+      id: batch.id,
+      source: batch.source,
+      status: batch.status as BatchStatus,
+      createdAt: batch.createdAt.toISOString(),
+      appliedAt: batch.appliedAt?.toISOString() ?? null,
+      rolledBackAt: batch.rolledBackAt?.toISOString() ?? null,
+      note: batch.note,
+      counts: {
+        accounts: items.filter((i) => i.kind === 'ACCOUNT').length,
+        categories: items.filter((i) => i.kind === 'CATEGORY').length,
+        created: items.filter((i) => i.createdEntityId).length,
+        skipped: items.filter((i) => i.skippedReason).length,
+      },
+    };
+  }
+
+  private presentItem(item: {
+    id: string;
+    kind: string;
+    sourceId: string;
+    sourceName: string;
+    usageCount: number;
+    decision: string;
+    targetType: string | null;
+    targetId: string | null;
+    createdEntityId: string | null;
+    createdEntityKind: string | null;
+    skippedReason: string | null;
+    sourcePayload: Prisma.JsonValue;
+  }): MigrationItemView {
+    const payload = (item.sourcePayload ?? {}) as Record<string, unknown>;
+    const bits = [payload.group, payload.currency, payload.sourceType]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .filter((v, i, all) => all.indexOf(v) === i);
+    if (payload.archived === true) bits.push('আর্কাইভ করা');
+
+    return {
+      id: item.id,
+      kind: item.kind as 'ACCOUNT' | 'CATEGORY',
+      sourceId: item.sourceId,
+      sourceName: item.sourceName,
+      usageCount: item.usageCount,
+      decision: item.decision as MigrationDecision,
+      targetType: item.targetType,
+      targetId: item.targetId,
+      createdEntityId: item.createdEntityId,
+      createdEntityKind: item.createdEntityKind,
+      skippedReason: item.skippedReason,
+      detail: bits.join(' · '),
+    };
+  }
+
+  // ------------------------------------------------------------------- pull
+
+  /**
+   * Read the other product and stage what is there.
+   *
+   * The token is a parameter and never a column: it is used for the two calls
+   * this needs and is gone when the method returns.
+   */
+  async pull(workspaceId: string, userId: string, token: string): Promise<BatchDetail> {
+    /* One draft at a time. Two half-decided lists of two hundred rows is a way
+       to apply the wrong one, and the screen has a discard button for the case
+       where somebody wants to start over. */
+    const open = await this.prisma.migrationBatch.findFirst({
+      where: { workspaceId, status: 'DRAFT' },
+    });
+    if (open) {
+      throw new BadRequestException(
+        'আগের একটি খসড়া এখনো বাকি আছে — সেটি প্রয়োগ করুন বা বাতিল করে আবার চেষ্টা করুন',
+      );
+    }
+
+    const [accounts, categories] = await Promise.all([
+      this.wallet.accounts(token),
+      this.wallet.categories(token),
+    ]);
+
+    /* What is here already, so a name that matches can default to merge rather
+       than quietly making a second খাবার ও বাজার. */
+    const [existingAccounts, existingCategories] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+      this.prisma.category.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true, nameBn: true },
+      }),
+    ]);
+
+    const accountByName = new Map(existingAccounts.map((a) => [normalise(a.name), a.id]));
+    const categoryByName = new Map<string, string>();
+    for (const category of existingCategories) {
+      categoryByName.set(normalise(category.name), category.id);
+      if (category.nameBn) categoryByName.set(normalise(category.nameBn), category.id);
+    }
+
+    const items: Prisma.MigrationItemCreateManyBatchInput[] = [];
+
+    for (const account of accounts) {
+      const name = (account.name ?? '').trim() || 'নামহীন অ্যাকাউন্ট';
+      const match = accountByName.get(normalise(name));
+      items.push({
+        workspaceId,
+        kind: 'ACCOUNT',
+        sourceId: account.id,
+        sourceName: name,
+        usageCount: account.recordStats?.recordCount ?? 0,
+        decision: match ? 'MERGE' : 'CREATE',
+        targetType: accountTypeFromWallet(account.accountType),
+        targetId: match ?? null,
+        sourcePayload: {
+          sourceType: account.accountType ?? null,
+          currency: account.currencyCode ?? 'BDT',
+          archived: account.archived === true,
+          accountNumber: account.bankAccountNumber ?? null,
+        },
+      });
+    }
+
+    for (const category of categories) {
+      const name = (category.name ?? '').trim() || 'নামহীন খাত';
+      const match = categoryByName.get(normalise(name));
+      /* The guess wins over the name match: a category called "DPS" that
+         happens to exist here as a category is exactly the mistake being
+         corrected, and merging it would carry the mistake across. */
+      const guess = suggestNonCategory(name);
+      const decision: MigrationDecision = guess ?? (match ? 'MERGE' : 'CREATE');
+
+      items.push({
+        workspaceId,
+        kind: 'CATEGORY',
+        sourceId: category.id,
+        sourceName: name,
+        usageCount: 0,
+        decision,
+        targetType: categoryKindOf(category.group?.name),
+        targetId: decision === 'MERGE' ? (match ?? null) : null,
+        sourcePayload: {
+          group: category.group?.name ?? null,
+          custom: category.customCategory === true,
+          archived: category.archived === true,
+        },
+      });
+    }
+
+    if (items.length === 0) {
+      throw new BadRequestException('ওই অ্যাকাউন্টে আনার মতো কিছু পাওয়া যায়নি');
+    }
+
+    const batch = await this.prisma.migrationBatch.create({
+      data: {
+        workspaceId,
+        source: 'WALLET',
+        status: 'DRAFT',
+        createdByUserId: userId || null,
+        note: `${accounts.length}টি অ্যাকাউন্ট, ${categories.length}টি খাত`,
+        items: { createMany: { data: items } },
+      },
+    });
+
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'migration.pulled',
+      entity: 'MigrationBatch',
+      entityId: batch.id,
+      after: { source: 'WALLET', accounts: accounts.length, categories: categories.length },
+    });
+
+    return this.detail(workspaceId, batch.id);
+  }
+
+  // --------------------------------------------------------------- deciding
+
+  async setDecision(
+    workspaceId: string,
+    batchId: string,
+    itemId: string,
+    patch: { decision?: MigrationDecision; targetType?: string; targetId?: string | null },
+  ): Promise<MigrationItemView> {
+    const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
+    const item = await this.prisma.migrationItem.findFirst({
+      where: { id: itemId, batchId: batch.id, workspaceId },
+    });
+    if (!item) throw new NotFoundException('সারিটি পাওয়া যায়নি');
+
+    const decision = patch.decision ?? (item.decision as MigrationDecision);
+    if (decision === 'MERGE') {
+      const targetId = patch.targetId ?? item.targetId;
+      if (!targetId) throw new BadRequestException('কোন খাতে যুক্ত হবে সেটি বেছে নিন');
+      await this.assertMergeTarget(workspaceId, item.kind, targetId);
+    }
+
+    const updated = await this.prisma.migrationItem.update({
+      where: { id: item.id },
+      data: {
+        decision,
+        targetType: patch.targetType ?? item.targetType,
+        /* Clearing the target when the decision stops being a merge, so an
+           abandoned choice cannot resurface if somebody switches back. */
+        targetId: decision === 'MERGE' ? (patch.targetId ?? item.targetId) : null,
+      },
+    });
+    return this.presentItem(updated);
+  }
+
+  private async assertMergeTarget(
+    workspaceId: string,
+    kind: string,
+    targetId: string,
+  ): Promise<void> {
+    const found =
+      kind === 'ACCOUNT'
+        ? await this.prisma.account.findFirst({
+            where: { id: targetId, workspaceId, deletedAt: null },
+            select: { id: true },
+          })
+        : await this.prisma.category.findFirst({
+            where: { id: targetId, workspaceId, deletedAt: null },
+            select: { id: true },
+          });
+    if (!found) throw new NotFoundException('যেটিতে যুক্ত করতে চান সেটি পাওয়া যায়নি');
+  }
+
+  // ------------------------------------------------------------ spreadsheet
+
+  async toCsv(workspaceId: string, batchId: string): Promise<string> {
+    const batch = await this.detail(workspaceId, batchId);
+
+    /* Merge targets go out as names, not ids: the file is for a person, and a
+       column of cuids is a column nobody can check. Import reads them back the
+       same way. */
+    const [accounts, categories] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+      this.prisma.category.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true, nameBn: true },
+      }),
+    ]);
+    const nameById = new Map<string, string>();
+    for (const account of accounts) nameById.set(account.id, account.name);
+    for (const category of categories) nameById.set(category.id, category.nameBn ?? category.name);
+
+    const rows: MigrationRow[] = batch.items.map((item) => ({
+      kind: item.kind,
+      sourceId: item.sourceId,
+      name: item.sourceName,
+      usageCount: item.usageCount,
+      decision: item.decision,
+      targetType: item.targetType ?? '',
+      mergeInto: item.targetId ? (nameById.get(item.targetId) ?? '') : '',
+      note: item.detail,
+    }));
+
+    return migrationToCsv(rows);
+  }
+
+  /**
+   * The spreadsheet, back.
+   *
+   * Matches on `sourceId` and updates only the decision columns. A row whose id
+   * is not in this batch is reported rather than inserted: a file from the wrong
+   * batch should tell somebody so, not half-import.
+   */
+  async fromCsv(
+    workspaceId: string,
+    batchId: string,
+    csv: string,
+  ): Promise<{ updated: number; errors: string[] }> {
+    const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
+    const parsed = migrationFromCsv(csv);
+    const errors = [...parsed.errors];
+
+    const items = await this.prisma.migrationItem.findMany({
+      where: { batchId: batch.id, workspaceId },
+      select: { id: true, kind: true, sourceId: true },
+    });
+    const itemBySource = new Map(items.map((i) => [`${i.kind}:${i.sourceId}`, i]));
+
+    const [accounts, categories] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+      this.prisma.category.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true, nameBn: true },
+      }),
+    ]);
+    const accountIdByName = new Map(accounts.map((a) => [normalise(a.name), a.id]));
+    const categoryIdByName = new Map<string, string>();
+    for (const category of categories) {
+      categoryIdByName.set(normalise(category.name), category.id);
+      if (category.nameBn) categoryIdByName.set(normalise(category.nameBn), category.id);
+    }
+
+    let updated = 0;
+
+    for (const row of parsed.rows) {
+      const item = itemBySource.get(`${row.kind}:${row.sourceId}`);
+      if (!item) {
+        errors.push(`"${row.name}" (${row.sourceId}) এই খসড়ায় নেই`);
+        continue;
+      }
+
+      let targetId: string | null = null;
+      if (row.decision === 'MERGE') {
+        const lookup = row.kind === 'ACCOUNT' ? accountIdByName : categoryIdByName;
+        targetId = lookup.get(normalise(row.mergeInto)) ?? null;
+        if (!targetId) {
+          /* Named something that is not here. Refusing the row is the only safe
+             answer — the alternative is creating it, which is a different
+             decision from the one written in the file. */
+          errors.push(`"${row.name}" — "${row.mergeInto}" নামে কিছু পাওয়া যায়নি`);
+          continue;
+        }
+      }
+
+      await this.prisma.migrationItem.update({
+        where: { id: item.id },
+        data: {
+          decision: row.decision,
+          targetType: row.targetType || undefined,
+          targetId,
+        },
+      });
+      updated += 1;
+    }
+
+    return { updated, errors };
+  }
+
+  // ------------------------------------------------------------------ apply
+
+  async apply(
+    workspaceId: string,
+    userId: string,
+    batchId: string,
+    timezone: string,
+  ): Promise<BatchDetail> {
+    const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
+
+    const items = await this.prisma.migrationItem.findMany({
+      where: { batchId: batch.id, workspaceId },
+      /* Accounts before categories. Nothing here depends on that today, but a
+         later phase that imports records does, and the order costs nothing. */
+      orderBy: [{ kind: 'asc' }, { usageCount: 'desc' }],
+    });
+
+    for (const item of items) {
+      if (item.createdEntityId) continue;
+      try {
+        await this.applyOne(workspaceId, item, timezone);
+      } catch (error) {
+        /* One row failing is a row, not a batch. The reason is written where
+           the person will see it, next to the name it belongs to. */
+        const message = error instanceof Error ? error.message : 'কারণ জানা যায়নি';
+        await this.prisma.migrationItem.update({
+          where: { id: item.id },
+          data: { skippedReason: message.slice(0, 300) },
+        });
+      }
+    }
+
+    await this.prisma.migrationBatch.update({
+      where: { id: batch.id },
+      data: { status: 'APPLIED', appliedAt: new Date() },
+    });
+
+    const applied = await this.detail(workspaceId, batch.id);
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'migration.applied',
+      entity: 'MigrationBatch',
+      entityId: batch.id,
+      after: applied.counts,
+    });
+    return applied;
+  }
+
+  private async applyOne(
+    workspaceId: string,
+    item: {
+      id: string;
+      kind: string;
+      sourceName: string;
+      decision: string;
+      targetType: string | null;
+      targetId: string | null;
+      sourcePayload: Prisma.JsonValue;
+    },
+    timezone: string,
+  ): Promise<void> {
+    const payload = (item.sourcePayload ?? {}) as Record<string, unknown>;
+    const done = (data: Prisma.MigrationItemUpdateInput): Promise<unknown> =>
+      this.prisma.migrationItem.update({ where: { id: item.id }, data });
+
+    if (item.decision === 'SKIP') {
+      await done({ skippedReason: 'বাদ দেওয়া হয়েছে' });
+      return;
+    }
+    if (item.decision === 'MERGE') {
+      await done({ skippedReason: 'আগের একটিতে যুক্ত করা হয়েছে' });
+      return;
+    }
+
+    if (item.kind === 'ACCOUNT') {
+      const clash = await this.prisma.account.findFirst({
+        where: { workspaceId, deletedAt: null, name: item.sourceName },
+        select: { id: true },
+      });
+      if (clash) {
+        await done({ skippedReason: 'একই নামে অ্যাকাউন্ট আগে থেকেই আছে' });
+        return;
+      }
+      await this.entitlements.assertWithinLimit(workspaceId, 'accounts.max', timezone);
+
+      const created = await this.prisma.account.create({
+        data: {
+          workspaceId,
+          name: item.sourceName,
+          type: (item.targetType ?? 'BANK') as AccountType,
+          currency: typeof payload.currency === 'string' ? payload.currency : 'BDT',
+          openingBalance: BigInt(0),
+          accountNumberMasked:
+            typeof payload.accountNumber === 'string' ? payload.accountNumber : null,
+          isArchived: payload.archived === true,
+        },
+      });
+      await done({
+        createdEntityId: created.id,
+        createdEntityKind: 'Account',
+        skippedReason: null,
+      });
+      return;
+    }
+
+    // ---- categories, and the two things a category can turn out to be
+
+    if (item.decision === 'SAVINGS') {
+      /* Amounts and term stay at zero: Wallet held none of them, and a guessed
+         instalment is a number somebody would have to find and correct later
+         without knowing it was invented. The note says what is missing. */
+      const created = await this.prisma.savingsPlan.create({
+        data: {
+          workspaceId,
+          planName: item.sourceName,
+          planType: 'DPS',
+          installmentMinor: BigInt(0),
+          principalMinor: BigInt(0),
+          termMonths: 12,
+          startDate: new Date(),
+          note: 'আগের সফটওয়্যার থেকে আনা — কিস্তি, মেয়াদ ও মুনাফার হার বসিয়ে নিন',
+        },
+      });
+      await done({
+        createdEntityId: created.id,
+        createdEntityKind: 'SavingsPlan',
+        skippedReason: null,
+      });
+      return;
+    }
+
+    if (item.decision === 'INSURANCE') {
+      /* A zero premium is legal and deliberately creates no schedule, so the
+         policy arrives with nothing owed until the real figures go in. */
+      const created = await this.prisma.insurancePolicy.create({
+        data: {
+          workspaceId,
+          insurer: item.sourceName,
+          sumAssuredMinor: BigInt(0),
+          premiumMinor: BigInt(0),
+          startDate: new Date(),
+          note: 'আগের সফটওয়্যার থেকে আনা — প্রিমিয়াম ও মেয়াদ বসিয়ে নিন',
+        },
+      });
+      await done({
+        createdEntityId: created.id,
+        createdEntityKind: 'InsurancePolicy',
+        skippedReason: null,
+      });
+      return;
+    }
+
+    const clash = await this.prisma.category.findFirst({
+      where: {
+        workspaceId,
+        deletedAt: null,
+        OR: [{ name: item.sourceName }, { nameBn: item.sourceName }],
+      },
+      select: { id: true },
+    });
+    if (clash) {
+      await done({ skippedReason: 'একই নামে খাত আগে থেকেই আছে' });
+      return;
+    }
+
+    const created = await this.prisma.category.create({
+      data: {
+        workspaceId,
+        name: item.sourceName,
+        nameBn: item.sourceName,
+        kind: item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE',
+      },
+    });
+    await done({ createdEntityId: created.id, createdEntityKind: 'Category', skippedReason: null });
+  }
+
+  // --------------------------------------------------------------- rollback
+
+  /**
+   * Undo exactly what one apply created.
+   *
+   * Anything that has been used since is kept, with the reason. That is the
+   * whole safety property: pressing this cannot cost somebody a transaction.
+   */
+  async rollback(
+    workspaceId: string,
+    userId: string,
+    batchId: string,
+  ): Promise<{ removed: number; kept: { name: string; reason: string }[] }> {
+    const batch = await this.requireBatch(workspaceId, batchId, 'APPLIED');
+    const items = await this.prisma.migrationItem.findMany({
+      where: { batchId: batch.id, workspaceId, NOT: { createdEntityId: null } },
+    });
+
+    const kept: { name: string; reason: string }[] = [];
+    let removed = 0;
+    const now = new Date();
+
+    for (const item of items) {
+      const id = item.createdEntityId as string;
+      const reason = await this.removeCreated(workspaceId, item.createdEntityKind, id, now);
+      if (reason) {
+        kept.push({ name: item.sourceName, reason });
+        await this.prisma.migrationItem.update({
+          where: { id: item.id },
+          data: { skippedReason: reason },
+        });
+        continue;
+      }
+      removed += 1;
+      /* The link is cleared so a second rollback does not try again, and so the
+         row reads as "not created" — which, after this, it is not. */
+      await this.prisma.migrationItem.update({
+        where: { id: item.id },
+        data: {
+          createdEntityId: null,
+          createdEntityKind: null,
+          skippedReason: 'ফিরিয়ে নেওয়া হয়েছে',
+        },
+      });
+    }
+
+    await this.prisma.migrationBatch.update({
+      where: { id: batch.id },
+      data: { status: 'ROLLED_BACK', rolledBackAt: now },
+    });
+
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'migration.rolledBack',
+      entity: 'MigrationBatch',
+      entityId: batch.id,
+      after: { removed, kept: kept.length },
+    });
+
+    return { removed, kept };
+  }
+
+  /** Returns why it was kept, or null when it went. */
+  private async removeCreated(
+    workspaceId: string,
+    kind: string | null,
+    id: string,
+    now: Date,
+  ): Promise<string | null> {
+    if (kind === 'Account') {
+      const used = await this.prisma.ledgerEntry.count({ where: { accountId: id } });
+      if (used > 0) return `${used}টি লেনদেন হয়ে গেছে — রাখা হলো`;
+      await this.prisma.account.updateMany({
+        where: { id, workspaceId },
+        data: { deletedAt: now },
+      });
+      return null;
+    }
+
+    if (kind === 'Category') {
+      const used = await this.prisma.ledgerEntry.count({ where: { categoryId: id } });
+      if (used > 0) return `${used}টি লেনদেনে ব্যবহার হয়েছে — রাখা হলো`;
+      await this.prisma.category.updateMany({
+        where: { id, workspaceId },
+        data: { deletedAt: now },
+      });
+      return null;
+    }
+
+    if (kind === 'SavingsPlan') {
+      const paid = await this.prisma.savingsInstallment.count({
+        where: { planId: id, status: 'PAID' },
+      });
+      if (paid > 0) return `${paid}টি কিস্তি দেওয়া হয়েছে — রাখা হলো`;
+      await this.prisma.savingsPlan.updateMany({
+        where: { id, workspaceId },
+        data: { deletedAt: now },
+      });
+      return null;
+    }
+
+    if (kind === 'InsurancePolicy') {
+      const paid = await this.prisma.premiumPayment.count({
+        where: { policyId: id, status: 'PAID' },
+      });
+      if (paid > 0) return `${paid}টি প্রিমিয়াম দেওয়া হয়েছে — রাখা হলো`;
+      await this.prisma.insurancePolicy.updateMany({
+        where: { id, workspaceId },
+        data: { deletedAt: now },
+      });
+      return null;
+    }
+
+    return 'কী তৈরি হয়েছিল বোঝা যায়নি — রাখা হলো';
+  }
+
+  // --------------------------------------------------------------- discard
+
+  async remove(workspaceId: string, batchId: string): Promise<{ id: string }> {
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      select: { id: true, status: true },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+    if (batch.status === 'APPLIED') {
+      throw new BadRequestException('প্রয়োগ করা হয়ে গেছে — আগে ফিরিয়ে নিন');
+    }
+    await this.prisma.migrationBatch.delete({ where: { id: batch.id } });
+    return { id: batch.id };
+  }
+
+  private async requireBatch(
+    workspaceId: string,
+    batchId: string,
+    status: BatchStatus,
+  ): Promise<{ id: string; status: string }> {
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      select: { id: true, status: true },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+    if (batch.status !== status) {
+      const said =
+        batch.status === 'APPLIED'
+          ? 'এটি প্রয়োগ করা হয়ে গেছে'
+          : batch.status === 'ROLLED_BACK'
+            ? 'এটি ফিরিয়ে নেওয়া হয়েছে'
+            : 'এটি এখনো খসড়া';
+      throw new BadRequestException(said);
+    }
+    return batch;
+  }
+}

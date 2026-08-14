@@ -213,17 +213,29 @@ export type RejectDraftInput = z.infer<typeof rejectDraftSchema>;
  * second credential to keep in step, and one secret in two places the owner
  * controls is easier to reason about than two secrets in two places.
  */
-const entrySchema = z.object({
-  workspace: z.string().max(100).optional(),
-  secret: z.string().max(200).optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
-  amountMinor: z.number().int().positive(),
-  direction: z.enum(['IN', 'OUT']),
-  accountId: z.string().min(1),
-  categoryId: z.string().min(1),
-  description: z.string().max(500).optional(),
-  notes: z.string().max(2000).optional(),
-});
+const entrySchema = z
+  .object({
+    workspace: z.string().max(100).optional(),
+    secret: z.string().max(200).optional(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
+    amountMinor: z.number().int().positive(),
+    direction: z.enum(['IN', 'OUT', 'TRANSFER']),
+    accountId: z.string().min(1),
+    /** Where a transfer lands. Required for `TRANSFER`, meaningless otherwise. */
+    toAccountId: z.string().min(1).optional(),
+    /** Required for income and expense; a transfer has no category by design. */
+    categoryId: z.string().min(1).optional(),
+    description: z.string().max(500).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .refine((v) => v.direction === 'TRANSFER' || Boolean(v.categoryId), {
+    path: ['categoryId'],
+    message: 'Choose a category',
+  })
+  .refine((v) => v.direction !== 'TRANSFER' || Boolean(v.toAccountId), {
+    path: ['toAccountId'],
+    message: 'Choose where the money went',
+  });
 
 @Controller('ingestion')
 export class IngestionWebhookController {

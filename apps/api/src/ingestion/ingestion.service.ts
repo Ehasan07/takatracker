@@ -421,9 +421,10 @@ export class IngestionService {
     input: {
       date: string;
       amountMinor: number;
-      direction: 'IN' | 'OUT';
+      direction: 'IN' | 'OUT' | 'TRANSFER';
       accountId: string;
-      categoryId: string;
+      toAccountId?: string;
+      categoryId?: string;
       description?: string;
       notes?: string;
     },
@@ -442,9 +443,19 @@ export class IngestionService {
 
     const created = await this.transactions.create(ctx, {
       date: input.date,
-      type: input.direction === 'IN' ? 'INCOME' : 'EXPENSE',
+      /* A transfer is neither income nor expense — money the person still has,
+         in a different pocket. Filing it as either is the mistake the tutorial
+         page spends a paragraph on, and it would be a poor look for this
+         endpoint to make it. */
+      type:
+        input.direction === 'TRANSFER'
+          ? 'TRANSFER'
+          : input.direction === 'IN'
+            ? 'INCOME'
+            : 'EXPENSE',
       amountMinor: input.amountMinor,
       accountId: input.accountId,
+      counterAccountId: input.toAccountId,
       categoryId: input.categoryId,
       description: input.description,
       notes: input.notes,

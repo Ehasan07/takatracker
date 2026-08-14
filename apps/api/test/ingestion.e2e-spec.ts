@@ -222,6 +222,69 @@ describe('ingestion', () => {
     expect(Number(debits[0]?.amountMinor)).toBe(Number(credits[0]?.amountMinor));
   });
 
+  it('writes a transfer as a transfer, with no category and no effect on the totals', async () => {
+    /* The forwarder's own console has a "নিজের অ্যাকাউন্টে" case: money moved
+       from the bank to bKash is neither income nor expense, and filing it as
+       either inflates both totals — the exact mistake the tutorial page spends
+       a paragraph on. */
+    const ws = await workspace();
+    const bank = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(ws.user))
+      .send({ name: 'ব্যাংক', type: 'BANK', openingBalance: 10_000_000 })
+      .expect(201);
+
+    const created = await ctx
+      .http()
+      .post('/v1/ingestion/entries')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, ws.secret)
+      .send({
+        date: '2026-08-15',
+        amountMinor: 200_000,
+        direction: 'TRANSFER',
+        accountId: bank.body.id,
+        toAccountId: ws.cashId,
+        description: 'ব্যাংক থেকে নগদে',
+      })
+      .expect(201);
+
+    const transaction = await ctx.prisma.transaction.findFirstOrThrow({
+      where: { id: created.body.transactionId },
+      include: { entries: { select: { accountId: true, direction: true, categoryId: true } } },
+    });
+    expect(transaction.type).toBe('TRANSFER');
+    /* Both legs are real accounts — neither is the nominal income or expense
+       account, which is what would make it show up in a report. */
+    expect(transaction.entries.map((e) => e.accountId).sort()).toEqual(
+      [bank.body.id, ws.cashId].sort(),
+    );
+    expect(transaction.entries.every((e) => e.categoryId === null)).toBe(true);
+
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(ws.user)).expect(200);
+    const balances = accounts.body as { id: string; balanceMinor: number }[];
+    expect(balances.find((a) => a.id === bank.body.id)?.balanceMinor).toBe(10_000_000 - 200_000);
+    expect(balances.find((a) => a.id === ws.cashId)?.balanceMinor).toBe(5_000_000 + 200_000);
+  });
+
+  it('refuses a transfer with nowhere to go, and a spend with no category', async () => {
+    /* Both are the same class of error — a half-filled console form — and both
+       have to be refused rather than guessed at, because a transfer written
+       against one account is not a transfer at all. */
+    const ws = await workspace();
+    const send = (body: Record<string, unknown>) =>
+      ctx
+        .http()
+        .post('/v1/ingestion/entries')
+        .set(ws.workspaceHeader, ws.user.workspaceId)
+        .set(ws.secretHeader, ws.secret)
+        .send({ date: '2026-08-15', amountMinor: 50_000, accountId: ws.cashId, ...body });
+
+    await send({ direction: 'TRANSFER' }).expect(400);
+    await send({ direction: 'OUT' }).expect(400);
+  });
+
   it('will not write an entry into a workspace whose secret it does not hold', async () => {
     const mine = await workspace();
     const stranger = await workspace();

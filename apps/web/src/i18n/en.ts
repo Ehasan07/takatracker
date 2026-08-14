@@ -38,6 +38,7 @@ export const EN: Record<string, string> = {
   'nav.categories': 'Categories',
   'nav.people': 'People',
   'nav.import': 'Import & export',
+  'nav.migration': 'From your old app',
   'nav.settings': 'Settings',
   'nav.plans': 'Plan & limits',
   'nav.audit': 'Activity log',
@@ -92,6 +93,8 @@ export const EN: Record<string, string> = {
   'nav.categories.blurb': 'Add, rename or remove income and expense categories',
   'nav.people.blurb': 'Who you owe and who owes you — fix names, phones, relationships',
   'nav.import.blurb': 'Bring transactions in from a statement, take a backup out',
+  'nav.migration.blurb':
+    'Stage the accounts and categories from Wallet as a draft, then approve them',
   'nav.settings.blurb': 'Profile, theme, Telegram and signed-in devices',
   'nav.plans.blurb': 'What your plan gives you and how much of it you have used',
   'nav.audit.blurb': 'Who changed what, and when',
