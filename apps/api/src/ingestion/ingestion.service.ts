@@ -18,6 +18,7 @@ import { Prisma } from '@prisma/client';
 import type { DraftStatus, IngestionChannel, TransactionSource } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
+import { looksFinancial } from '@hishab/core';
 import { minorToNumber } from '../common/bigint-json';
 import {
   INGEST_SECRET_HEADER,
@@ -33,6 +34,7 @@ import type { TenantContext } from '../transactions/transactions.service';
 import type {
   AcceptDraftInput,
   ListDraftsQuery,
+  ListMessagesQuery,
   RejectDraftInput,
   WebhookBody,
 } from './ingestion.controller';
@@ -203,6 +205,19 @@ export interface DraftView {
   message: DraftMessageView | null;
 }
 
+/** One row of "everything this phone sent", for the customer's own screen. */
+export interface MessageListView {
+  id: string;
+  channel: string;
+  sender: string | null;
+  receivedAt: string;
+  body: string;
+  parserName: string | null;
+  /** Null when the message was never about money, so no decision was raised. */
+  draftId: string | null;
+  draftStatus: string | null;
+}
+
 export interface MessageDetailView extends DraftMessageView {
   bodyHash: string;
   parserName: string | null;
@@ -370,15 +385,30 @@ export class IngestionService {
     const existing = await this.findByHash(workspaceId, bodyHash);
     if (existing) return existing;
 
+    /* Whether this message gets a decision put in front of somebody.
+     *
+     * A phone forwarding every SMS sends a great deal that is not a
+     * transaction, and all of it is kept — the owner asked for all of it, and
+     * it is what shows whether the pipe is working at all. But a draft is a
+     * question, and forty questions nobody needs to answer is how a review
+     * queue stops being read. So the message is always stored and only a
+     * money-shaped one raises a draft. */
+    const financial = looksFinancial(body);
+
     /* The monthly ingest ceiling, checked only once the message is known to be
-     * new. Charging a retry against the quota would let a forwarder that lost
-     * one reply burn a month's allowance on a single message — and the whole
-     * point of the hash above is that a retry is free. */
-    await this.entitlements.assertWithinLimit(
-      workspaceId,
-      'ingest.messages.monthly.max',
-      workspace.timezone,
-    );
+     * new *and* to be worth a draft. Charging a retry against the quota would
+     * let a forwarder that lost one reply burn a month's allowance on a single
+     * message — and the whole point of the hash above is that a retry is free.
+     * Charging a one-time code against it would be worse: the customer would
+     * pay a month's allowance for messages this product never wanted and never
+     * shows them a decision about. */
+    if (financial) {
+      await this.entitlements.assertWithinLimit(
+        workspaceId,
+        'ingest.messages.monthly.max',
+        workspace.timezone,
+      );
+    }
 
     const parsed = REGISTRY.parse({
       channel: input.channel,
@@ -389,7 +419,7 @@ export class IngestionService {
       receivedOn: toLocalDateString(receivedAt, workspace.timezone),
     });
 
-    let created: { messageId: string; draftId: string };
+    let created: { messageId: string; draftId: string | null };
     try {
       created = await this.prisma.$transaction(async (tx) => {
         const message = await tx.ingestionMessage.create({
@@ -406,27 +436,33 @@ export class IngestionService {
           select: { id: true },
         });
 
-        /* A draft is created even when nothing could be read. A message that
-         * produced no draft would vanish from the inbox and only a debug
-         * endpoint would ever see it; a zero-confidence draft, with the raw
-         * text attached, is exactly the thing the review screen exists for. */
-        const draft = await tx.transactionDraft.create({
-          data: {
-            workspaceId,
-            messageId: message.id,
-            status: 'PENDING',
-            date: parsed.fields.date
-              ? fromLocalDateString(parsed.fields.date, workspace.timezone)
-              : null,
-            amountMinor:
-              parsed.fields.amountMinor === undefined ? null : BigInt(parsed.fields.amountMinor),
-            direction: parsed.fields.direction ?? null,
-            payee: parsed.fields.payee ?? null,
-            confidence: parsed.confidence,
-            evidence: toJson(parsed.evidence),
-          },
-          select: { id: true },
-        });
+        /* A draft is created even when nothing could be *read* — a
+         * zero-confidence draft with the raw text attached is exactly the thing
+         * the review screen exists for. What does not raise one is a message
+         * that was never about money in the first place; that message is still
+         * stored and the owner still sees it under every message this phone
+         * forwarded, it simply does not join a queue of decisions. */
+        const draft = financial
+          ? await tx.transactionDraft.create({
+              data: {
+                workspaceId,
+                messageId: message.id,
+                status: 'PENDING',
+                date: parsed.fields.date
+                  ? fromLocalDateString(parsed.fields.date, workspace.timezone)
+                  : null,
+                amountMinor:
+                  parsed.fields.amountMinor === undefined
+                    ? null
+                    : BigInt(parsed.fields.amountMinor),
+                direction: parsed.fields.direction ?? null,
+                payee: parsed.fields.payee ?? null,
+                confidence: parsed.confidence,
+                evidence: toJson(parsed.evidence),
+              },
+              select: { id: true },
+            })
+          : null;
 
         /* Counted here, inside the same transaction as the message, and not
          * afterwards. `ingest.messages.monthly.max` is the one intake limit
@@ -438,15 +474,17 @@ export class IngestionService {
          *
          * Nothing enforces this limit at the door yet — see the report. The
          * number is now true, which is the prerequisite. */
-        await this.meters.increment(
-          workspaceId,
-          'ingest.messages.monthly.max',
-          1,
-          workspace.timezone,
-          { tx },
-        );
+        if (financial) {
+          await this.meters.increment(
+            workspaceId,
+            'ingest.messages.monthly.max',
+            1,
+            workspace.timezone,
+            { tx },
+          );
+        }
 
-        return { messageId: message.id, draftId: draft.id };
+        return { messageId: message.id, draftId: draft?.id ?? null };
       });
     } catch (err) {
       /* Two copies of the same alert arriving at once both miss the read above
@@ -604,6 +642,58 @@ export class IngestionService {
     };
   }
 
+  /**
+   * Every message this workspace's phone has forwarded, newest first.
+   *
+   * The drafts list answers "what needs deciding"; this answers "did it
+   * arrive". They are different questions and the second one had no screen at
+   * all: a message that raised no draft — a one-time code, a delivery
+   * notification, anything not about money — was stored and then invisible to
+   * the person whose phone sent it, which is the wrong way round for their own
+   * data.
+   *
+   * `hasDraft` is what lets the screen tell the two apart without a second
+   * request per row.
+   */
+  async listMessages(
+    ctx: TenantContext,
+    query: ListMessagesQuery,
+  ): Promise<{ items: MessageListView[]; nextCursor: string | null }> {
+    const rows = await this.prisma.ingestionMessage.findMany({
+      where: { workspaceId: ctx.workspaceId },
+      select: {
+        id: true,
+        channel: true,
+        sender: true,
+        receivedAt: true,
+        body: true,
+        parserName: true,
+        createdAt: true,
+        drafts: { select: { id: true, status: true }, take: 1 },
+      },
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    });
+
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+
+    return {
+      items: page.map((row) => ({
+        id: row.id,
+        channel: row.channel,
+        sender: row.sender,
+        receivedAt: row.receivedAt.toISOString(),
+        body: row.body,
+        parserName: row.parserName,
+        draftId: row.drafts[0]?.id ?? null,
+        draftStatus: row.drafts[0]?.status ?? null,
+      })),
+      nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+    };
+  }
+
   /** The raw message, for working out why a parse came out wrong. */
   async findMessage(ctx: TenantContext, id: string): Promise<MessageDetailView> {
     const row = await this.prisma.ingestionMessage.findFirst({
@@ -708,7 +798,15 @@ export class IngestionService {
             date,
             type,
             description: input.description ?? payee ?? 'বার্তা থেকে যোগ করা',
-            notes: input.notes,
+            /* The message that proposed this entry, kept on the entry itself.
+             *
+             * `sourceDraftId` already threads back to it, but that is a join
+             * nobody makes while looking at a ledger row six months later. The
+             * question then is "what was this ৳500 for", and the bank's own
+             * words answer it — the reference number, the counterparty, the
+             * balance after. Only when the person wrote nothing themselves:
+             * their note is about the transaction, this is only evidence. */
+            notes: input.notes ?? draft.message?.body ?? undefined,
             payee,
             source,
             // The thread back to the text that proposed this entry.

@@ -71,3 +71,21 @@ export interface AcceptDraftBody {
   description?: string;
   notes?: string;
 }
+
+/** One row of "everything this phone sent me", from `GET /ingestion/messages`. */
+export interface MessageRow {
+  id: string;
+  channel: string;
+  sender: string | null;
+  receivedAt: string;
+  body: string;
+  parserName: string | null;
+  /** Null when the message was never about money, so no decision was raised. */
+  draftId: string | null;
+  draftStatus: string | null;
+}
+
+export interface MessagePage {
+  items: MessageRow[];
+  nextCursor: string | null;
+}

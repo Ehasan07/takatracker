@@ -334,6 +334,16 @@ test.describe('the public site', () => {
        from it proves the shared import survived. */
     await expect(page.getByText('সবাই মিলে তহবিল', { exact: true })).toBeVisible();
 
+    /* The citations. A treatment named, never compliance claimed — the second
+       is a statement about an entity and its auditors, and this product has
+       neither. If that line is ever crossed it will be crossed in this copy,
+       so the check lives here. */
+    await expect(page.getByText(/IAS 7/).first()).toBeVisible();
+    await expect(page.getByText(/IFRS 15/).first()).toBeVisible();
+    await expect(page.getByText(/যে নিয়মে/).first()).toBeVisible();
+    await expect(page.getByText(/IFRS.{0,3}(compliant|সম্মত)/i)).toHaveCount(0);
+    await expect(page.getByText(/certified|নিরীক্ষিত/i)).toHaveCount(0);
+
     /* Reachable without knowing the URL. */
     await page.goto('/');
     await expect(page.getByRole('link', { name: 'কীভাবে রাখবেন' }).first()).toBeVisible();

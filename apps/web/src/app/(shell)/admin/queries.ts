@@ -70,6 +70,7 @@ export const adminKeys = {
    * must not read their balances as a side effect — the two are separate
    * requests because they are separate audit rows. */
   finance: (id: string) => ['admin', 'tenant', id, 'finance'] as const,
+  messages: (id: string) => ['admin', 'tenant', id, 'messages'] as const,
   analytics: (filters: Record<string, string | undefined>) =>
     ['admin', 'analytics', filters] as const,
 };

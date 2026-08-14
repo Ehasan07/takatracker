@@ -7,12 +7,13 @@ import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { haptic } from '@/lib/haptics';
+import { t } from '@/lib/t';
 import { cn } from '@/lib/utils';
 import { bnDate, bnDateTime, bnNum, channelLabel, DIRECTION_LABEL, STATUS_FILTERS } from './labels';
 import { Chip, ConfidenceMeter, DraftAmount, QueryError, StatusPill, Toast } from './parts';
-import { fetchDrafts, inboxKeys } from './queries';
+import { fetchDrafts, fetchMessages, inboxKeys } from './queries';
 import { ReviewSheet, type Outcome, type StickyPick } from './review-sheet';
-import type { DraftPage, DraftView } from './types';
+import type { DraftPage, DraftView, MessagePage, MessageRow } from './types';
 
 /**
  * The review inbox.
@@ -26,7 +27,19 @@ import type { DraftPage, DraftView } from './types';
  * next draft rather than dropping the user back on the list, because a screen
  * that makes you re-find your place fifty times is a screen people stop using.
  */
+/**
+ * Two questions, two lists.
+ *
+ * `drafts` is a queue of decisions; `messages` is a log of arrivals. They used
+ * to be one thing because every message raised a draft — and once a phone
+ * forwards *every* SMS rather than only the bank's, that stops being true and
+ * stops being wanted. A one-time code is the customer's own data and belongs on
+ * their screen; it is not a question anybody needs to answer.
+ */
+type View = 'drafts' | 'messages';
+
 export default function InboxPage() {
+  const [view, setView] = React.useState<View>('drafts');
   const [status, setStatus] = React.useState('PENDING');
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [sticky, setSticky] = React.useState<StickyPick>({ accountId: '', categoryId: '' });
@@ -39,9 +52,22 @@ export default function InboxPage() {
     getNextPageParam: (last: DraftPage) => last.nextCursor,
   });
 
+  const messages = useInfiniteQuery({
+    queryKey: inboxKeys.messages(),
+    queryFn: ({ pageParam }) => fetchMessages({ cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last: MessagePage) => last.nextCursor,
+    enabled: view === 'messages',
+  });
+
   const rows = React.useMemo(
     () => (drafts.data?.pages ?? []).flatMap((page) => page.items),
     [drafts.data],
+  );
+
+  const messageRows = React.useMemo(
+    () => (messages.data?.pages ?? []).flatMap((page) => page.items),
+    [messages.data],
   );
 
   const activeIndex = activeId === null ? -1 : rows.findIndex((row) => row.id === activeId);
@@ -94,10 +120,13 @@ export default function InboxPage() {
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
-            বার্তার ইনবক্স
+            {t('inbox.title', 'এসএমএস ইনবক্স')}
           </h1>
           <p className="text-ink-muted text-xs">
-            বার্তা থেকে তৈরি খসড়া — আপনি না বললে খাতায় কিছুই যাবে না।
+            {t(
+              'inbox.blurb',
+              'ফোন থেকে আসা বার্তা — টাকার বার্তাগুলো খসড়া হয়, আর আপনি না বললে খাতায় কিছুই যায় না।',
+            )}
           </p>
         </div>
         <Button variant="outline" size="sm" asChild>
@@ -108,52 +137,77 @@ export default function InboxPage() {
         </Button>
       </header>
 
-      <div className="chip-strip" role="group" aria-label="অবস্থা অনুযায়ী ছাঁকুন">
-        {STATUS_FILTERS.map(([value, label]) => (
-          <Chip
-            key={value || 'all'}
-            active={status === value}
-            onClick={() => {
-              setActiveId(null);
-              setStatus(value);
-            }}
-          >
-            {label}
-          </Chip>
-        ))}
+      {/* Which question is being asked. Above the status filter, because it
+          decides whether that filter applies at all. */}
+      <div className="chip-strip" role="group" aria-label={t('inbox.view', 'কী দেখবেন')}>
+        <Chip active={view === 'drafts'} onClick={() => setView('drafts')}>
+          {t('inbox.viewDrafts', 'খসড়া')}
+        </Chip>
+        <Chip active={view === 'messages'} onClick={() => setView('messages')}>
+          {t('inbox.viewMessages', 'সব বার্তা')}
+        </Chip>
       </div>
 
-      {drafts.isError ? (
-        <QueryError message="খসড়ার তালিকা আনা যায়নি।" onRetry={() => void drafts.refetch()} />
-      ) : drafts.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
-          <SkeletonRows rows={5} />
-        </div>
-      ) : rows.length === 0 ? (
-        <EmptyInbox unfiltered={unfiltered} />
+      {view === 'messages' ? (
+        <MessageLog
+          rows={messageRows}
+          isLoading={messages.isLoading}
+          isError={messages.isError}
+          onRetry={() => void messages.refetch()}
+          hasMore={Boolean(messages.hasNextPage)}
+          onMore={() => void messages.fetchNextPage()}
+          loadingMore={messages.isFetchingNextPage}
+        />
       ) : (
         <>
-          <p className="text-ink-muted text-xs">
-            {bnNum(rows.length)}টি খসড়া{drafts.hasNextPage ? '+' : ''} · নতুনটি উপরে
-          </p>
-          <ul className="flex flex-col gap-2">
-            {rows.map((draft) => (
-              <li key={draft.id}>
-                <DraftRow draft={draft} showStatus={showStatus} onOpen={() => open(draft)} />
-              </li>
+          <div className="chip-strip" role="group" aria-label="অবস্থা অনুযায়ী ছাঁকুন">
+            {STATUS_FILTERS.map(([value, label]) => (
+              <Chip
+                key={value || 'all'}
+                active={status === value}
+                onClick={() => {
+                  setActiveId(null);
+                  setStatus(value);
+                }}
+              >
+                {label}
+              </Chip>
             ))}
-          </ul>
+          </div>
 
-          {drafts.hasNextPage ? (
-            <Button
-              variant="outline"
-              size="block"
-              disabled={drafts.isFetchingNextPage}
-              onClick={() => void drafts.fetchNextPage()}
-            >
-              {drafts.isFetchingNextPage ? 'আনা হচ্ছে…' : 'আরও দেখুন'}
-            </Button>
-          ) : null}
+          {drafts.isError ? (
+            <QueryError message="খসড়ার তালিকা আনা যায়নি।" onRetry={() => void drafts.refetch()} />
+          ) : drafts.isLoading ? (
+            <div className="rounded-card border-rule bg-surface overflow-hidden border">
+              <SkeletonRows rows={5} />
+            </div>
+          ) : rows.length === 0 ? (
+            <EmptyInbox unfiltered={unfiltered} />
+          ) : (
+            <>
+              <p className="text-ink-muted text-xs">
+                {bnNum(rows.length)}টি খসড়া{drafts.hasNextPage ? '+' : ''} · নতুনটি উপরে
+              </p>
+              <ul className="flex flex-col gap-2">
+                {rows.map((draft) => (
+                  <li key={draft.id}>
+                    <DraftRow draft={draft} showStatus={showStatus} onOpen={() => open(draft)} />
+                  </li>
+                ))}
+              </ul>
+
+              {drafts.hasNextPage ? (
+                <Button
+                  variant="outline"
+                  size="block"
+                  disabled={drafts.isFetchingNextPage}
+                  onClick={() => void drafts.fetchNextPage()}
+                >
+                  {drafts.isFetchingNextPage ? 'আনা হচ্ছে…' : 'আরও দেখুন'}
+                </Button>
+              ) : null}
+            </>
+          )}
         </>
       )}
 
@@ -268,5 +322,99 @@ function EmptyInbox({ unfiltered }: { unfiltered: boolean }) {
         <p className="text-ink-muted mt-1 text-sm">উপরের ছাঁকনি বদলে দেখুন।</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Everything the phone sent, newest first.
+ *
+ * Deliberately plain: a time, who it came from, the text, and one line saying
+ * what this product made of it. No actions — the decisions live on the other
+ * tab, and a row here that offered one would blur the two questions this screen
+ * now keeps apart.
+ */
+function MessageLog({
+  rows,
+  isLoading,
+  isError,
+  onRetry,
+  hasMore,
+  onMore,
+  loadingMore,
+}: {
+  rows: MessageRow[];
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  hasMore: boolean;
+  onMore: () => void;
+  loadingMore: boolean;
+}) {
+  if (isError) {
+    return (
+      <QueryError
+        message={t('inbox.messagesFailed', 'বার্তার তালিকা আনা যায়নি।')}
+        onRetry={onRetry}
+      />
+    );
+  }
+  if (isLoading) {
+    return (
+      <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <SkeletonRows rows={5} />
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-card border-rule bg-surface border p-6 text-center">
+        <p className="text-ink text-sm font-medium">
+          {t('inbox.noMessages', 'এখনো কোনো বার্তা আসেনি')}
+        </p>
+        <p className="text-ink-muted mt-1 text-sm">
+          {t(
+            'inbox.noMessagesHint',
+            'ফোনের ফরওয়ার্ডার ঠিকমতো বসেছে কিনা দেখুন — সেটআপ বোতামে সব লেখা আছে।',
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <p className="text-ink-muted text-xs">
+        {t('inbox.messageCount', '{n}টি বার্তা · নতুনটি উপরে').replace('{n}', bnNum(rows.length))}
+      </p>
+      <ul className="flex flex-col gap-2">
+        {rows.map((row) => (
+          <li key={row.id} className="rounded-card border-rule bg-surface border p-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-ink text-sm font-medium">
+                {row.sender || channelLabel(row.channel)}
+              </span>
+              <span className="text-ink-muted text-xs">{bnDateTime(row.receivedAt)}</span>
+            </div>
+            {/* The message as it arrived. `break-words` because a transaction
+                id is one unbroken forty-character token and a phone is 320px
+                wide. */}
+            <p className="text-ink-muted mt-1 whitespace-pre-wrap break-words text-sm">
+              {row.body}
+            </p>
+            <p className="text-ink-muted mt-1.5 text-xs">
+              {row.draftId
+                ? t('inbox.becameDraft', 'খসড়া হয়েছে — খসড়া ট্যাবে দেখুন')
+                : t('inbox.notMoney', 'টাকার বার্তা নয়, তাই খসড়া হয়নি')}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      {hasMore ? (
+        <Button variant="outline" size="block" disabled={loadingMore} onClick={onMore}>
+          {loadingMore ? t('common.loading', 'আনা হচ্ছে…') : t('common.more', 'আরও দেখুন')}
+        </Button>
+      ) : null}
+    </>
   );
 }

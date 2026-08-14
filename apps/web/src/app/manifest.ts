@@ -68,7 +68,7 @@ export default function manifest(): MetadataRoute.Manifest {
     shortcuts: [
       { name: 'নতুন লেনদেন', short_name: 'নতুন', url: '/?quickadd=1' },
       { name: 'খাতা', url: '/transactions' },
-      { name: 'বার্তার ইনবক্স', short_name: 'ইনবক্স', url: '/inbox' },
+      { name: 'এসএমএস ইনবক্স', short_name: 'ইনবক্স', url: '/inbox' },
       { name: 'রিপোর্ট', url: '/reports' },
     ],
   };

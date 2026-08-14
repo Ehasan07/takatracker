@@ -2,7 +2,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { AcceptDraftBody, DraftPage, DraftView, RejectReason } from './types';
+import type { AcceptDraftBody, DraftPage, DraftView, MessagePage, RejectReason } from './types';
 
 /**
  * Fifty is the API's own default and its ceiling is a hundred. A page deep
@@ -20,6 +20,7 @@ export const inboxKeys = {
   all: ['ingestion'] as const,
   drafts: (status: string) => ['ingestion', 'drafts', status] as const,
   message: (id: string) => ['ingestion', 'message', id] as const,
+  messages: () => ['ingestion', 'messages'] as const,
 };
 
 function search(params: Record<string, string | number | undefined>): string {
@@ -44,6 +45,21 @@ export async function fetchDrafts(params: {
   );
   // A shape guard, not paranoia: an empty page and a broken page must not
   // look the same to a `.map()` further up.
+  return { items: page?.items ?? [], nextCursor: page?.nextCursor ?? null };
+}
+
+/**
+ * Everything this phone has forwarded, whether or not it raised a draft.
+ *
+ * A separate list from the drafts because it answers a separate question. The
+ * drafts list says what needs deciding; this says what arrived — and until it
+ * existed, a message that was never about money was stored and then invisible
+ * to the person whose phone sent it.
+ */
+export async function fetchMessages(params: { cursor?: string | null }): Promise<MessagePage> {
+  const page = await api<MessagePage>(
+    `/ingestion/messages${search({ limit: PAGE_SIZE, cursor: params.cursor ?? undefined })}`,
+  );
   return { items: page?.items ?? [], nextCursor: page?.nextCursor ?? null };
 }
 

@@ -377,7 +377,7 @@ export const GROUPS: FeatureGroup[] = [
         route: '/settings',
       },
       {
-        title: 'বার্তার ইনবক্স',
+        title: 'এসএমএস ইনবক্স',
         titleEn: 'Draft inbox',
         body: 'যা-ই আসুক, আগে খসড়া হয়ে বসে থাকে। আপনি না বললে কোনো কিছু খাতায় ওঠে না।',
         route: '/inbox',

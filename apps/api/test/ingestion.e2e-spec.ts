@@ -305,21 +305,74 @@ describe('ingestion', () => {
     ).toBe(0);
   });
 
-  it('keeps a message with no amount out of the way rather than inventing one', async () => {
+  it('keeps a money message it cannot read, rather than inventing an amount', async () => {
     const ws = await workspace();
-    const received = await post(ws, 'Dear customer, your statement is ready. Thank you.').expect(
-      200,
-    );
+    /* About money — it says BDT — and unreadable: no figure anywhere. The draft
+       has to exist, because a message that vanished could never be looked at,
+       and it has to claim nothing. */
+    const received = await post(
+      ws,
+      'Dear customer, your BDT statement is ready. Thank you.',
+    ).expect(200);
 
     const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
     const draft = drafts.body.items.find(
       (d: { id: string }) => d.id === (received.body.draftId as string),
     );
-    // The draft exists — a message that vanished could never be looked at — but
-    // it claims nothing.
     expect(draft.amountMinor).toBeNull();
     expect(draft.confidence).toBe(0);
     expect(draft.needsReview).toBe(true);
+  });
+
+  it('raises no decision for a message that was never about money, but keeps it', async () => {
+    /* A phone forwarding every SMS sends a great deal that is not a
+       transaction. All of it is kept — it is the customer's own data and it is
+       what shows the pipe is working — but a one-time code is not a question
+       anybody needs answering, and forty of them is how a review queue stops
+       being read. */
+    const ws = await workspace();
+    const received = await post(ws, 'Your one-time code is 847213. Do not share it.').expect(200);
+
+    expect(received.body.draftId).toBeNull();
+
+    const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
+    expect(drafts.body.items).toHaveLength(0);
+
+    /* Stored, and the customer can see it — under everything their phone sent,
+       which is a different screen from the queue of decisions. */
+    const messages = await ctx.http().get('/v1/ingestion/messages').set(auth(ws.user)).expect(200);
+    expect(messages.body.items).toHaveLength(1);
+    expect(messages.body.items[0].body).toContain('847213');
+    expect(messages.body.items[0].draftId).toBeNull();
+  });
+
+  it('does not charge the monthly ceiling for a message that raised no decision', async () => {
+    /* The customer pays for what this product does with their messages. A code
+       from their bank is not that. */
+    const ws = await workspace();
+    await ctx.prisma.workspaceFeatureOverride.upsert({
+      where: {
+        workspaceId_featureKey: {
+          workspaceId: ws.user.workspaceId,
+          featureKey: 'ingest.messages.monthly.max',
+        },
+      },
+      create: {
+        workspaceId: ws.user.workspaceId,
+        featureKey: 'ingest.messages.monthly.max',
+        limitValue: 1,
+      },
+      update: { limitValue: 1 },
+    });
+
+    // Three that are not about money, against a ceiling of one.
+    await post(ws, 'Your OTP is 111111').expect(200);
+    await post(ws, 'Your OTP is 222222').expect(200);
+    await post(ws, 'Your OTP is 333333').expect(200);
+
+    // And the one that is still gets through.
+    const real = await post(ws, 'Your A/C is debited BDT 500.00 today').expect(200);
+    expect(real.body.draftId).toBeTruthy();
   });
 
   it('never shows one workspace another s drafts', async () => {

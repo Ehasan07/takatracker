@@ -61,6 +61,9 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
               </span>
               <h3 className="text-ink mt-3 font-medium">{rule.title}</h3>
               <p className="text-ink-muted mt-1 text-sm">{rule.body}</p>
+              {rule.standard ? (
+                <Standard label={content.standardLabel} name={rule.standard} />
+              ) : null}
             </li>
           ))}
         </ol>
@@ -101,6 +104,9 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
                 <p className="text-ink-muted border-rule mt-3 border-t pt-3 text-sm">
                   {mistake.why}
                 </p>
+                {mistake.standard ? (
+                  <Standard label={content.standardLabel} name={mistake.standard} />
+                ) : null}
               </li>
             ))}
           </ul>
@@ -219,5 +225,25 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * Which standard a treatment comes from, in small print under the box.
+ *
+ * A citation, not a claim. "Treatment per IAS 7" says where the rule is written
+ * down and invites the reader to go and read it; "IFRS compliant" would say
+ * something about this product that no auditor has ever examined. The first is
+ * true and checkable, the second would put every other sentence on the page
+ * under suspicion — so the label is fixed in the content file and this
+ * component has no way to render the other kind.
+ */
+function Standard({ label, name }: { label: string; name: string }) {
+  return (
+    <p className="text-ink-muted mt-2 text-xs">
+      <span className="border-rule bg-brand-tint text-ink-muted inline-flex rounded border px-1.5 py-0.5">
+        {label}: {name}
+      </span>
+    </p>
   );
 }

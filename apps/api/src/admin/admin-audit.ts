@@ -58,6 +58,15 @@ export const IMPERSONATION_ENDED: AuditAction = 'support.impersonation_ended';
 export const TENANT_FINANCE_VIEWED: AuditAction = 'admin.tenant_finance_viewed';
 export const ANALYTICS_VIEWED: AuditAction = 'admin.analytics_viewed';
 
+/* Its own action for the same reason `TENANT_FINANCE_VIEWED` is.
+ *
+ * This one is wider still: the forwarded messages are the customer's SMS as
+ * their phone received them, and a phone forwarding everything sends
+ * one-time codes and private conversation along with the bank alerts. Filing
+ * that under `tenant_viewed` would hide the strongest read this product allows
+ * behind the weakest name it has. */
+export const TENANT_MESSAGES_VIEWED: AuditAction = 'admin.tenant_messages_viewed';
+
 /**
  * Who is doing the looking.
  *

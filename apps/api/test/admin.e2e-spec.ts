@@ -964,6 +964,73 @@ describe('super admin', () => {
     expect(res.body.currencies.some((c: { currency: string }) => c.currency === 'BDT')).toBe(true);
   });
 
+  it('shows what a tenant’s phone forwarded, and how much of it the parser read', async () => {
+    /* The webhook is closed by default: with no root secret the endpoint has
+       nothing to compare against and answers 401 to everybody, which is how it
+       stays shut on a server that never configured it. This suite needs it
+       open, and sets the same value `ingestion.e2e-spec.ts` does. */
+    process.env.INGESTION_WEBHOOK_SECRET ??= 'test-ingestion-secret-for-the-suite';
+
+    /* The endpoint exists to answer one question: are the parsers keeping up
+       with the banks. So the assertion is about the three outcomes, not about
+       the text — a message read, a money message the parser could not read, and
+       a message that was never about money. */
+    const op = await operator();
+    const tenant = await signup(ctx);
+
+    const config = await ctx
+      .http()
+      .get('/v1/ingestion/webhook-config')
+      .set(auth(tenant))
+      .expect(200);
+
+    const send = (body: string) =>
+      ctx
+        .http()
+        .post('/v1/ingestion/webhook')
+        .set(config.body.workspaceHeader, tenant.workspaceId)
+        .set(config.body.secretHeader, config.body.secret)
+        .send({ channel: 'SMS', sender: 'BRAC-BANK', body })
+        .expect(200);
+
+    await send('Your A/C 1234 is debited BDT 1,500.00 on 14-AUG-26');
+    await send('Dear customer, your BDT statement is ready.');
+    await send('Your one-time code is 998877. Do not share it.');
+
+    const res = await ctx
+      .http()
+      .get(`/v1/admin/tenants/${tenant.workspaceId}/messages`)
+      .set(auth(op))
+      .expect(200);
+
+    expect(res.body.summary).toMatchObject({ total: 3, parsed: 1, unread: 1, ignored: 1 });
+    /* The raw text is there — that is the point of the screen, and the cost of
+       it, and why the read is logged below. */
+    expect(JSON.stringify(res.body.messages)).toContain('998877');
+
+    /* Its own action, awaited rather than emitted: an unlogged look at
+       somebody's messages is the thing this design exists to prevent.
+
+       Filed against the *operator's* workspace, which is where every support
+       read is filed — the log answers "what has this operator looked at",
+       and the tenant is named in `entityId`. */
+    const rows = await auditFor(op.workspaceId, 'admin.tenant_messages_viewed');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.entityId).toBe(tenant.workspaceId);
+    expect(rows[0]?.actorType).toBe('SUPPORT');
+  });
+
+  it('keeps the messages of a tenant away from somebody who is not an operator', async () => {
+    const tenant = await signup(ctx);
+    const other = await signup(ctx);
+    // 404, never 403 — the panel does not advertise itself.
+    await ctx
+      .http()
+      .get(`/v1/admin/tenants/${other.workspaceId}/messages`)
+      .set(auth(tenant))
+      .expect(404);
+  });
+
   it('keeps the finance view behind the operator flag', async () => {
     const tenant = await signup(ctx);
     const other = await signup(ctx);

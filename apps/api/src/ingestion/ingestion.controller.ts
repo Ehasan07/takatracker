@@ -152,6 +152,13 @@ const listDraftsQuerySchema = z.object({
 });
 export type ListDraftsQuery = z.infer<typeof listDraftsQuerySchema>;
 
+/** Every message, not only the ones that raised a decision. */
+const listMessagesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: optionalQuery(z.string().min(1)),
+});
+export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
+
 /**
  * Everything is optional and everything overrides the parser. A field left out
  * keeps whatever the draft proposed; a field supplied wins. The service refuses
@@ -234,6 +241,21 @@ export class IngestionController {
    * the secret is derived server-side and there would otherwise be no way for
    * anyone to learn their own.
    */
+  /**
+   * `GET /v1/ingestion/messages` — everything this workspace's phone forwarded.
+   *
+   * Separate from `/drafts` because they answer different questions. The drafts
+   * list is a queue of decisions; this is a log of arrivals, and it is the only
+   * screen that can answer "is my phone actually sending anything".
+   */
+  @Get('messages')
+  messages(
+    @CurrentUser() user: AuthUser,
+    @Query(zodPipe(listMessagesQuerySchema)) query: ListMessagesQuery,
+  ) {
+    return this.ingestion.listMessages(user, query);
+  }
+
   @Get('webhook-config')
   webhookConfig(@CurrentUser() user: AuthUser) {
     return this.ingestion.webhookConfig(user);

@@ -33,7 +33,7 @@ export const EN: Record<string, string> = {
   'nav.savings': 'Savings & DPS',
   'nav.insurance': 'Insurance',
   'nav.mail': 'Mail',
-  'nav.inbox': 'Message inbox',
+  'nav.inbox': 'SMS inbox',
   'nav.tags': 'Tags',
   'nav.categories': 'Categories',
   'nav.people': 'People',
@@ -947,6 +947,26 @@ export const EN: Record<string, string> = {
   'wording.reset': 'Back to default',
   'wording.saved': 'Saved.',
   'wording.empty': 'Nothing matches.',
+  // --- the SMS inbox ---------------------------------------------------------
+  /* Two lists, two questions: what needs deciding, and what arrived. They were
+     one thing while every message raised a draft; once a phone forwards all of
+     its SMS rather than only the bank's, they stop being the same list. */
+  'inbox.title': 'SMS inbox',
+  'inbox.blurb':
+    'Messages from your phone — the ones about money become drafts, and nothing reaches your books until you say so.',
+  'inbox.view': 'What to show',
+  'inbox.viewDrafts': 'Drafts',
+  'inbox.viewMessages': 'All messages',
+  'inbox.messagesFailed': 'Could not load the messages.',
+  'inbox.noMessages': 'Nothing has arrived yet',
+  'inbox.noMessagesHint':
+    'Check the forwarder on your phone — the setup button has everything it needs.',
+  'inbox.messageCount': '{n} messages · newest first',
+  'inbox.becameDraft': 'Became a draft — see the Drafts tab',
+  'inbox.notMoney': 'Not about money, so no draft was raised',
+  'common.loading': 'Loading…',
+  'common.more': 'Show more',
+
   'wording.default': 'Default',
   'wording.yours': 'Yours',
 

@@ -30,6 +30,26 @@
 export interface Rule {
   title: string;
   body: string;
+  /**
+   * The standard this treatment comes from, when there is one to name.
+   *
+   * ## Why cite at all
+   *
+   * A personal-finance app asking somebody to trust its arithmetic has nothing
+   * to point at. "We do it this way" is an opinion; "this is the treatment IAS 7
+   * describes" is checkable by anybody who wants to check it, and the checking
+   * is the point — the citation is worth having precisely because a reader can
+   * look it up and find that it says what we said it says.
+   *
+   * ## What the wording may not become
+   *
+   * Never "IFRS compliant", never "certified", never "audited". Those are
+   * claims about an entity and its auditors; this is a statement about a
+   * treatment. Compliance is asserted by a firm that has been examined, and
+   * this product has not been. Overstating it would put every true sentence on
+   * the page under suspicion — which is the opposite of what a citation is for.
+   */
+  standard?: string;
 }
 
 /** A wrong entry and the right one, side by side. */
@@ -40,6 +60,8 @@ export interface Mistake {
   right: string;
   /** Why — in the language of accounting, briefly. */
   why: string;
+  /** The standard the right-hand treatment follows. See `Rule.standard`. */
+  standard?: string;
 }
 
 export interface TutorialContent {
@@ -55,6 +77,8 @@ export interface TutorialContent {
   mistakes: Mistake[];
   featuresHeading: string;
   featuresBlurb: string;
+  /** Prefix on every citation chip, e.g. "যে নিয়মে" / "Treatment per". */
+  standardLabel: string;
   getsHeading: string;
   freeLabel: string;
   free: string[];
@@ -83,10 +107,12 @@ export const TUTORIAL_BN: TutorialContent = {
   rules: [
     {
       title: 'প্রারম্ভিক জের দিয়ে শুরু করুন',
+      standard: 'IAS 1 — আর্থিক বিবৃতির উপস্থাপন',
       body: 'আজ ব্যাংকে, বিকাশে আর হাতে যা আছে সেটা প্রথমে বসান। এই সংখ্যাটা ভুল হলে পরের প্রতিটি ব্যালেন্স ভুল হবে — আর হিসাব শুরু করার সঠিক দিন হলো আজ, গত জানুয়ারি নয়।',
     },
     {
       title: 'প্রতিটি টাকার দুই দিক লিখুন',
+      standard: 'ডাবল-এন্ট্রি হিসাবরক্ষণ',
       body: 'টাকা কোথা থেকে এল আর কোথায় গেল। অ্যাপ এটা নিজেই করে — আপনি খাত আর অ্যাকাউন্ট বাছলেই ডেবিট-ক্রেডিট বসে যায়। দুই দিক সমান না হলে ডাটাবেজ এন্ট্রিটাই নেয় না।',
     },
     {
@@ -95,14 +121,17 @@ export const TUTORIAL_BN: TutorialContent = {
     },
     {
       title: 'খাত আর ট্যাগ দুটোই ব্যবহার করুন',
+      standard: 'IAS 1.99 — প্রকৃতি অনুযায়ী ব্যয় বিশ্লেষণ',
       body: 'খাত বলে টাকা কীসে গেল — খাবার, যাতায়াত, চিকিৎসা। ট্যাগ বলে কার জন্য — পরিবার, ব্যবসা, রমজান। একই খরচ দুই প্রশ্নের উত্তর দেয়।',
     },
     {
       title: 'মাস শেষে ব্যাংকের সাথে মেলান',
+      standard: 'ব্যাংক রিকনসিলিয়েশন',
       body: 'খাতার ব্যালেন্স আর ব্যাংকের ব্যালেন্স মিলিয়ে নিন। পার্থক্য থাকলে সেটাই বলে দেয় কোনো এন্ট্রি বাদ পড়েছে। এটাকেই হিসাববিজ্ঞানে reconciliation বলে, আর এটা বাদ দিলে বাকি সব পরিশ্রম অনুমান হয়ে যায়।',
     },
     {
       title: 'নগদ প্রবাহ আর মুনাফা এক জিনিস নয়',
+      standard: 'IAS 7 — নগদ প্রবাহ বিবরণী',
       body: 'মাসে ৳৫০,০০০ ব্যাংকে ঢুকল মানে ৳৫০,০০০ আয় নয় — এর ভেতরে ধার করা টাকা থাকতে পারে। আয়-ব্যয় বিবরণী বলে আপনি কত কামালেন, নগদ প্রবাহ বিবরণী বলে টাকা কত এল-গেল। দুটোই দরকার।',
     },
   ],
@@ -115,36 +144,43 @@ export const TUTORIAL_BN: TutorialContent = {
     {
       wrong: 'ধার দিলাম ৳২০,০০০ — খরচ',
       right: 'ঋণ প্রদান — সম্পদ (প্রাপ্য)',
+      standard: 'IAS 32 — আর্থিক সম্পদ',
       why: 'টাকাটা এখনো আপনারই, শুধু অন্যের হাতে। নগদ কমেছে, সম্পদ কমেনি। ফেরত পেলে সেটাও আয় নয়।',
     },
     {
       wrong: 'ধার নিলাম ৳৫০,০০০ — আয়',
       right: 'ঋণ গ্রহণ — দায়',
+      standard: 'IAS 32 — আর্থিক দায়',
       why: 'নগদ বেড়েছে আর সমপরিমাণ দায়ও বেড়েছে, তাই নিট সম্পদ একচুলও বদলায়নি। শুধু সুদটুকু খরচ।',
     },
     {
       wrong: 'ব্যাংক থেকে বিকাশে ৳৫,০০০ — একদিকে খরচ, আরেকদিকে আয়',
       right: 'ট্রান্সফার',
+      standard: 'IAS 7.7 — নগদ ও নগদ সমতুল্যের অভ্যন্তরীণ চলাচল',
       why: 'টাকা আপনারই দুই পকেটের মধ্যে ঘুরেছে। খরচ ও আয় দুটোই লিখলে মাসের দুটো সংখ্যাই ৳৫,০০০ করে ফুলে যায়।',
     },
     {
       wrong: 'ক্রেডিট কার্ডের বিল ৳১২,০০০ দিলাম — খরচ',
       right: 'দায় পরিশোধ',
+      standard: 'IAS 37 — দায় নিষ্পত্তি',
       why: 'খরচটা হয়েছিল যেদিন কার্ড দিয়ে কিনেছিলেন, সেদিনই। বিল দেওয়ার দিন শুধু দায় কমছে। দুবার লিখলে একই খরচ দুবার গোনা হয়।',
     },
     {
       wrong: 'ডিপিএসের কিস্তি ৳৩,০০০ — খরচ',
       right: 'সঞ্চয় — সম্পদে স্থানান্তর',
+      standard: 'IAS 7.16 — বিনিয়োগ কার্যক্রম',
       why: 'টাকা খরচ হয়নি, এক অ্যাকাউন্ট থেকে আরেকটায় গেছে। নিট সম্পদ অপরিবর্তিত। মুনাফা যেদিন জমা হবে, সেদিনটাই আয়।',
     },
     {
       wrong: 'জমির দাম ৳৫ লাখ বেড়েছে — আয়',
       right: 'পুনর্মূল্যায়ন',
+      standard: 'IAS 16.39 — পুনর্মূল্যায়ন উদ্বৃত্ত',
       why: 'কিছু বিক্রি হয়নি, তাই নগদ প্রবাহও হয়নি। নিট সম্পদ বাড়ে, আয়-ব্যয় বিবরণী ছোঁয়াও হয় না। বিক্রির দিনই কেবল লাভ-ক্ষতি ধরা হয়।',
     },
     {
       wrong: 'চারজনে ডিনার ৳৩,০০০ — পুরোটা নিজের খরচ',
       right: 'নিজের ভাগ ৳৭৫০, বাকি ৳২,২৫০ প্রাপ্য',
+      standard: 'IFRS 15 — মুখ্য বনাম প্রতিনিধি',
       why: 'আপনি বিল দিয়েছেন, কিন্তু খরচ করেছেন এক-চতুর্থাংশ। বাকিটা তিনজনের কাছে আপনার পাওনা। পুরোটা খরচ লিখলে আপনার মাসিক খরচ চারগুণ দেখায়।',
     },
   ],
@@ -153,6 +189,7 @@ export const TUTORIAL_BN: TutorialContent = {
   featuresBlurb:
     'নিচের প্রতিটি জিনিস আজই কাজ করে। পাশে লেখা আছে কোন পর্দায় পাবেন, আর যেটা মানুষ সবচেয়ে বেশি ভুল বোঝে সেটা আলাদা করে বলা।',
   whereLabel: 'কোথায়',
+  standardLabel: 'যে নিয়মে',
 
   getsHeading: 'কী পাবেন',
   freeLabel: 'ফ্রি প্যাকেজে (আজীবন ফ্রি)',
@@ -207,10 +244,12 @@ export const TUTORIAL_EN: TutorialContent = {
   rules: [
     {
       title: 'Start with an opening balance',
+      standard: 'IAS 1 — presentation of financial statements',
       body: 'Enter what is in the bank, in the wallet and in your pocket today. Get this number wrong and every balance after it is wrong — and the right day to start keeping books is today, not last January.',
     },
     {
       title: 'Write both sides of every amount',
+      standard: 'Double-entry bookkeeping',
       body: 'Where it came from and where it went. The app does this for you: pick a category and an account and the debit and credit follow. An entry whose sides do not agree cannot be saved at all.',
     },
     {
@@ -219,14 +258,17 @@ export const TUTORIAL_EN: TutorialContent = {
     },
     {
       title: 'Use categories and tags together',
+      standard: 'IAS 1.99 — expenses analysed by nature',
       body: 'A category says what the money went on — food, transport, medical. A tag says who it was for — family, business, Ramadan. One expense, two questions answered.',
     },
     {
       title: 'Reconcile with the bank each month',
+      standard: 'Bank reconciliation',
       body: 'Compare your ledger balance with the bank’s. A difference is the ledger telling you an entry is missing. Skip reconciliation and everything else you did becomes an estimate.',
     },
     {
       title: 'Cash flow is not profit',
+      standard: 'IAS 7 — statement of cash flows',
       body: '৳50,000 arriving in your account is not ৳50,000 of income — some of it may be borrowed. The income statement says what you earned; the cash flow statement says what moved. You need both.',
     },
   ],
@@ -239,36 +281,43 @@ export const TUTORIAL_EN: TutorialContent = {
     {
       wrong: 'Lent ৳20,000 — expense',
       right: 'A loan given — an asset (receivable)',
+      standard: 'IAS 32 — financial assets',
       why: 'The money is still yours, just in somebody else’s hands. Cash fell; your wealth did not. Getting it back is not income either.',
     },
     {
       wrong: 'Borrowed ৳50,000 — income',
       right: 'A loan taken — a liability',
+      standard: 'IAS 32 — financial liabilities',
       why: 'Cash rose and a liability rose by the same amount, so net worth did not move at all. Only the interest is an expense.',
     },
     {
       wrong: 'Bank to mobile wallet, ৳5,000 — an expense and an income',
       right: 'A transfer',
+      standard: 'IAS 7.7 — movements within cash and cash equivalents',
       why: 'The money went from one of your pockets to another. Recording both sides as income and expense inflates two figures for the month by ৳5,000 each.',
     },
     {
       wrong: 'Paid the ৳12,000 card bill — expense',
       right: 'Settling a liability',
+      standard: 'IAS 37 — settlement of a liability',
       why: 'The expense happened on the day you used the card. Paying the bill only reduces what you owe. Record both and you have counted one purchase twice.',
     },
     {
       wrong: 'DPS instalment ৳3,000 — expense',
       right: 'Saving — a move between assets',
+      standard: 'IAS 7.16 — investing activities',
       why: 'Nothing was spent; money moved from one account to another and net worth is unchanged. The profit, on the day it is credited, is the income.',
     },
     {
       wrong: 'The land is worth ৳500,000 more — income',
       right: 'A revaluation',
+      standard: 'IAS 16.39 — revaluation surplus',
       why: 'Nothing was sold, so no cash moved. Net worth rises and the income statement is not touched. The gain is realised on the day of sale, not before.',
     },
     {
       wrong: 'Dinner for four, ৳3,000 — all of it your expense',
       right: 'Your share ৳750; ৳2,250 is receivable',
+      standard: 'IFRS 15 — principal versus agent',
       why: 'You paid the bill but consumed a quarter of it. The rest is owed to you by three people. Book the lot and your monthly spending reads four times what it was.',
     },
   ],
@@ -277,6 +326,7 @@ export const TUTORIAL_EN: TutorialContent = {
   featuresBlurb:
     'All of it works today. Each line says which screen it lives on, and calls out the part people most often read the wrong way.',
   whereLabel: 'Where',
+  standardLabel: 'Treatment per',
 
   getsHeading: 'What you get',
   freeLabel: 'On the free plan (free forever)',

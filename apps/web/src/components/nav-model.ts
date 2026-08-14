@@ -215,7 +215,7 @@ export const GROUPS: Group[] = [
       },
       {
         href: '/inbox',
-        label: 'বার্তার ইনবক্স',
+        label: 'এসএমএস ইনবক্স',
         icon: Inbox,
         blurb: 'এসএমএস থেকে তৈরি খসড়া — আপনি না বললে খাতায় যাবে না',
         synonyms: 'inbox sms খসড়া বার্তা টেলিগ্রাম draft',

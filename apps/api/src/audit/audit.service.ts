@@ -119,6 +119,10 @@ export const AUDIT_ACTIONS = [
    * account list is wider than opening their plan page, and one name for both
    * would make "who looked at this customer's money?" unanswerable. */
   'admin.tenant_finance_viewed',
+  /* Wider still: the customer's SMS as their phone received them, one-time
+     codes and private conversation included. The strongest read this product
+     allows, so it carries the plainest name. */
+  'admin.tenant_messages_viewed',
   'admin.analytics_viewed',
   'admin.broadcast_sent',
   'admin.overview_viewed',

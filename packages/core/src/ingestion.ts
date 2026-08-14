@@ -819,3 +819,52 @@ export function createRegistry(parsers: readonly MessageParser[] = []): ParserRe
     },
   };
 }
+
+// --- is this about money at all? ----------------------------------------------
+
+/**
+ * The markers that make a message worth a decision.
+ *
+ * ## Why this exists
+ *
+ * A phone forwarding every SMS sends a great deal that is not a transaction:
+ * one-time codes, delivery updates, network offers, a friend saying he is
+ * downstairs. Every one of those is kept — the owner asked for all of them and
+ * they are what shows whether the pipe is working — but turning each into a
+ * *draft* would bury the four that need answering under forty that do not, and
+ * the review inbox is a queue of decisions rather than a log.
+ *
+ * So the message is always stored, and this decides only whether a draft joins
+ * it. Nothing is discarded on the strength of what is below.
+ *
+ * ## What counts
+ *
+ * Three currency words and the shape of an amount. The shape does most of the
+ * work: `500.00`, `1,250.00`, `৳3,000` — two decimal places or a grouped
+ * thousand is how money is written and almost nothing else is. A one-time code
+ * is `847213`, a phone number is `01711111111`, a date is `14/08/2026`; none of
+ * them survive the test, which is the point.
+ *
+ * `Tk` needs a boundary or it matches inside ordinary words. `BDT` and `USD` do
+ * not — three capitals in a row are not an accident of English.
+ */
+const MONEY_MARKERS: readonly RegExp[] = [
+  /\bBDT\b/i,
+  /\bUSD\b/i,
+  /\bTk\.?\s*\d/i,
+  /৳/,
+  /\d+\.\d{2}\b/,
+  /\b\d{1,3}(,\d{3})+(\.\d{2})?\b/,
+];
+
+/**
+ * Whether a message looks like it is about money.
+ *
+ * Deliberately generous. A false positive costs one draft somebody dismisses in
+ * a tap; a false negative costs a transaction that never reaches the books and
+ * that nobody knows to look for. When the two errors are that unequal, the test
+ * should lean towards saying yes.
+ */
+export function looksFinancial(body: string): boolean {
+  return MONEY_MARKERS.some((marker) => marker.test(body));
+}

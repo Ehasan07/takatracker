@@ -17,6 +17,7 @@ import {
   TENANT_REACTIVATED,
   TENANT_SUSPENDED,
   TENANT_FINANCE_VIEWED,
+  TENANT_MESSAGES_VIEWED,
   TENANT_VIEWED,
   ANALYTICS_VIEWED,
   fileAgainst,
@@ -153,6 +154,97 @@ export class AdminService {
     });
 
     return this.finance.forWorkspace(workspace.id);
+  }
+
+  /**
+   * Every message a tenant's phone forwarded, and a row saying who read it.
+   *
+   * ## What this is for
+   *
+   * The parsers are the part of this product most likely to be quietly wrong:
+   * a bank changes the wording of its alert and every customer on that bank
+   * stops getting drafts, with nothing on any screen to say so. The only way to
+   * see that is to look at what actually arrived beside what the parser made of
+   * it, which is what this returns — the text, the parser that claimed it, the
+   * confidence, and whether it produced a draft at all.
+   *
+   * ## What it costs, said plainly
+   *
+   * A phone forwarding every SMS forwards one-time codes and private
+   * conversation with the bank alerts, and this endpoint hands all of it to an
+   * operator. That is a deliberate decision by the owner for the beta, not an
+   * accident of the design — and it is why the audit row is `await`ed rather
+   * than emitted, under an action of its own. If the row cannot be written the
+   * read does not happen. An unlogged look at somebody's messages is exactly
+   * the thing that must be impossible.
+   */
+  async tenantMessages(actor: AdminActor, workspaceId: string, limit = 100) {
+    const workspace = await this.prisma.workspace.findFirst({
+      where: { id: workspaceId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!workspace) throw new NotFoundException('ওয়ার্কস্পেস পাওয়া যায়নি');
+
+    await this.audit.record({
+      ...fileRead(actor, workspace.id),
+      action: TENANT_MESSAGES_VIEWED,
+      entityId: workspace.id,
+      after: { tenant: workspace.name, operator: actor.email },
+    });
+
+    const rows = await this.prisma.ingestionMessage.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        channel: true,
+        sender: true,
+        receivedAt: true,
+        body: true,
+        parserName: true,
+        parsed: true,
+        drafts: {
+          select: { id: true, status: true, confidence: true, amountMinor: true },
+          take: 1,
+        },
+      },
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+      take: Math.min(limit, 500),
+    });
+
+    const messages = rows.map((row) => {
+      const draft = row.drafts[0] ?? null;
+      return {
+        id: row.id,
+        channel: row.channel,
+        sender: row.sender,
+        receivedAt: row.receivedAt.toISOString(),
+        body: row.body,
+        parserName: row.parserName,
+        /* Three states, and the middle one is the interesting one: a message
+           this product thought was about money and could not read. That is a
+           parser to fix, as against a message it was right to ignore. */
+        outcome: !draft
+          ? ('IGNORED' as const)
+          : draft.amountMinor === null
+            ? ('UNREAD' as const)
+            : ('PARSED' as const),
+        confidence: draft?.confidence ?? null,
+        amountMinor: draft?.amountMinor === null ? null : Number(draft?.amountMinor ?? 0) || null,
+        draftStatus: draft?.status ?? null,
+      };
+    });
+
+    return {
+      tenant: { id: workspace.id, name: workspace.name },
+      /* The counts the operator actually came for, over the window returned. */
+      summary: {
+        total: messages.length,
+        parsed: messages.filter((m) => m.outcome === 'PARSED').length,
+        unread: messages.filter((m) => m.outcome === 'UNREAD').length,
+        ignored: messages.filter((m) => m.outcome === 'IGNORED').length,
+      },
+      messages,
+    };
   }
 
   /** Aggregate spending across every tenant. No workspace is named. */

@@ -590,3 +590,29 @@ export interface CategoryAnalytics {
   currencyNote: string;
   currencies: { currency: string; workspaces: number }[];
 }
+
+/**
+ * What a tenant's phone forwarded, as the operator panel reads it.
+ *
+ * `outcome` is the whole point: a message read, a money message the parser
+ * could not read, and a message that was never about money. The middle one is
+ * the only number worth acting on.
+ */
+export interface TenantMessageRow {
+  id: string;
+  channel: string;
+  sender: string | null;
+  receivedAt: string;
+  body: string;
+  parserName: string | null;
+  outcome: 'PARSED' | 'UNREAD' | 'IGNORED';
+  confidence: number | null;
+  amountMinor: number | null;
+  draftStatus: string | null;
+}
+
+export interface TenantMessages {
+  tenant: { id: string; name: string };
+  summary: { total: number; parsed: number; unread: number; ignored: number };
+  messages: TenantMessageRow[];
+}

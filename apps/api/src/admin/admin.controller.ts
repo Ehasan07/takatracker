@@ -358,6 +358,28 @@ export class AdminController {
   }
 
   /**
+   * `GET /v1/admin/tenants/:id/messages` — what this tenant's phone forwarded.
+   *
+   * The widest read this product allows, and the reason it exists is narrow:
+   * whether the parsers are keeping up with the banks. Audited under its own
+   * action, and the audit write is awaited — see the service.
+   */
+  @Get('tenants/:workspaceId/messages')
+  tenantMessages(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Param('workspaceId') workspaceId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const take = Number(limit);
+    return this.admin.tenantMessages(
+      actorFrom(user, req),
+      workspaceId,
+      Number.isFinite(take) && take > 0 ? take : undefined,
+    );
+  }
+
+  /**
    * `GET /v1/admin/analytics/categories` — spending across every tenant.
    *
    * Aggregate only: names of categories and their totals, never a row, never a
