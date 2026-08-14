@@ -967,6 +967,27 @@ export const EN: Record<string, string> = {
   'common.loading': 'Loading…',
   'common.more': 'Show more',
 
+  // --- closing an account ----------------------------------------------------
+  /* Named for what it does. "Deactivate" and "close" both leave room for the
+     reader to think the data is still there somewhere; it is not. */
+  'close.title': 'Closing your account',
+  'close.blurb':
+    'Your books, transactions, loans and messages are erased for good. There is no way to get them back.',
+  'close.exportFirst':
+    'If you want your figures first, download them from Import & export before you start.',
+  'close.start': 'I want to close my account',
+  'close.confirmBody':
+    'Everything is erased seven days from now. Signing in during those seven days cancels the request by itself.',
+  'close.password': 'Confirm with your password',
+  'close.passwordRequired': 'Enter your password',
+  'close.reason': 'Why are you closing it? (optional)',
+  'close.confirm': 'Yes, close it',
+  'close.nevermind': 'Never mind',
+  'close.pendingTitle': 'Your account is due to be erased',
+  'close.pendingBody':
+    'Everything will be erased on {date}. You can stop it at any time before then — simply signing in stops it.',
+  'close.keepAccount': 'Keep my account',
+
   'wording.default': 'Default',
   'wording.yours': 'Yours',
 

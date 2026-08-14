@@ -84,6 +84,11 @@ export const AUDIT_ACTIONS = [
    * unanswerable. */
   'auth.password_changed',
   'auth.session_revoked',
+  /* Asked for, called off, and carried out. The third is written to a table
+     that survives the erasure; the first two live in the workspace and go with
+     it, which is why the request is awaited rather than emitted. */
+  'account.deletion_requested',
+  'account.deletion_cancelled',
   'auth.onboarding_completed',
   'loan.created',
   'loan.updated',

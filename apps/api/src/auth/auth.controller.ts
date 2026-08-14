@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { loginSchema, signupSchema } from '@hishab/shared';
 import { zodPipe } from '../common/zod.pipe';
+import { AccountDeletionService } from './account-deletion.service';
 import { AccountService } from './account.service';
 import { AuthService, type AuthResult } from './auth.service';
 import { CurrentUser, type AuthUser } from './current-user.decorator';
@@ -82,12 +83,27 @@ const revokeOthersSchema = z.object({ refreshToken: z.string().min(1).optional()
 
 type CookieRequest = Request & { cookies?: Record<string, string> };
 
+/**
+ * Closing an account.
+ *
+ * The password is required even though the caller is already signed in. A phone
+ * left unlocked on a table is the threat, and a valid session is exactly what
+ * that phone has — so the destructive direction asks for something the phone
+ * does not carry.
+ */
+const requestDeletionSchema = z.object({
+  password: z.string().min(1),
+  /** Their own words, kept with the audit row. Never required. */
+  reason: z.string().trim().max(500).optional(),
+});
+
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly account: AccountService,
     private readonly sessions: SessionsService,
+    private readonly deletion: AccountDeletionService,
   ) {}
 
   /** How a request identifies which session it is speaking from. */
@@ -392,6 +408,39 @@ export class AuthController {
     );
     this.setAccessCookie(res, accessToken);
     return { ...result, accessToken, expiresIn };
+  }
+
+  // --- closing the account ---------------------------------------------------
+
+  /**
+   * Ask for everything to be erased.
+   *
+   * `NoImpersonationGuard` because a support session must never be able to
+   * delete the customer it is helping — the whole point of impersonation is
+   * that it can look and not decide.
+   */
+  @Post('account/deletion')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
+  requestDeletion(
+    @CurrentUser() user: AuthUser,
+    @Body(zodPipe(requestDeletionSchema)) body: z.infer<typeof requestDeletionSchema>,
+  ) {
+    return this.deletion.request(user.id, user.workspaceId, body.password, body.reason);
+  }
+
+  /** Call it off. No password: the recovering direction is not the guarded one. */
+  @Delete('account/deletion')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  cancelDeletion(@CurrentUser() user: AuthUser) {
+    return this.deletion.cancel(user.id, user.workspaceId);
+  }
+
+  @Get('account/deletion')
+  @UseGuards(JwtAuthGuard)
+  deletionStatus(@CurrentUser() user: AuthUser) {
+    return this.deletion.status(user.id);
   }
 
   // --- sessions --------------------------------------------------------------

@@ -223,6 +223,10 @@ export function MarketingFooter() {
             © {SITE.name} · takatracker.com ·{' '}
             <Link href="/privacy" className="hover:text-ink underline">
               গোপনীয়তা
+            </Link>{' '}
+            ·{' '}
+            <Link href="/delete-account" className="hover:text-ink underline">
+              অ্যাকাউন্ট মুছে ফেলা
             </Link>
           </p>
           <nav aria-label="সোশ্যাল" className="ml-auto flex flex-wrap items-center gap-x-3">

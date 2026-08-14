@@ -3,6 +3,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { jwtAccessSecret } from '../common/env';
 import { MailModule } from '../mail/mail.module';
+import { AccountDeletionScheduler } from './account-deletion.scheduler';
+import { AccountDeletionService } from './account-deletion.service';
 import { AccountService } from './account.service';
 import { BreachedPasswordService } from './breached-password.service';
 import { SmsSender } from '../notifications/sms.sender';
@@ -40,10 +42,12 @@ import { SessionsService } from './sessions.service';
     JwtStrategy,
     EmailTokenService,
     AccountService,
+    AccountDeletionService,
+    AccountDeletionScheduler,
     SessionsService,
     BreachedPasswordService,
     SmsSender,
   ],
-  exports: [AuthService, AccountService, SessionsService],
+  exports: [AuthService, AccountService, AccountDeletionService, SessionsService],
 })
 export class AuthModule {}

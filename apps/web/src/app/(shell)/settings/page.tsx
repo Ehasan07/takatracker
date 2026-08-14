@@ -8,6 +8,7 @@ import { api, endpoints } from '@/lib/api';
 import { t } from '@/lib/t';
 import { resetSessionForSignOut } from '@/lib/session-reset';
 import { UsageMeter } from '@/components/usage-meter';
+import { CloseAccount } from '@/components/close-account';
 import { SessionsList } from '@/components/sessions-list';
 import { IngestionSettings } from '@/components/ingestion-settings';
 import { MailSettings } from '@/components/mail-settings';
@@ -180,6 +181,8 @@ export default function SettingsPage() {
           <li>{t('settings.next.mobile', 'মোবাইল অ্যাপ')}</li>
         </ul>
       </section>
+
+      <CloseAccount />
 
       <Button variant="outline" onClick={() => void logout()}>
         লগআউট

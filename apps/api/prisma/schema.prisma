@@ -40,6 +40,12 @@ model User {
   /// somebody out of their own books over an undelivered email is worse than
   /// the risk — but the nag stays until this is set.
   emailVerifiedAt DateTime?
+  /// When this person asked for their account to be erased, and when the
+  /// sweep may act on it. The gap between the two is the grace period: a
+  /// deletion nobody can undo, taken in one tap on a phone, is a support
+  /// request nobody can answer. Signing in cancels it.
+  deletionRequestedAt DateTime?
+  deletionScheduledFor DateTime?
   /**
    * Platform operator, not a workspace role.
    *
@@ -432,6 +438,32 @@ enum MembershipRole {
 enum MembershipStatus {
   ACTIVE
   SUSPENDED
+}
+
+/// Proof that an erasure was carried out, holding nothing about who it was.
+///
+/// Everything the person owned is gone by the time a row lands here — the
+/// cascade takes the workspace, the ledger and their own `User` row with it,
+/// audit trail included. That is what erasure means and it is what the store
+/// policies and the data-protection rules require.
+///
+/// But a company that cannot say *whether* it processed a request has no answer
+/// when somebody asks a second time, or when a regulator does. So one row
+/// survives, carrying a SHA-256 of the address and two timestamps: enough to
+/// answer "was this dealt with, and when", and not enough to tell anybody whose
+/// account it was. The hash is one-way; an address can be checked against it
+/// only by somebody who already knows the address.
+model AccountDeletion {
+  id          String   @id @default(cuid())
+  /// SHA-256 of the lower-cased email. Never the address itself.
+  emailHash   String   @unique
+  requestedAt DateTime
+  completedAt DateTime @default(now())
+  /// Free text the person left, if any. Trimmed to 500 characters, and their
+  /// own words — so it may name nobody but themselves.
+  reason      String?
+
+  @@index([completedAt])
 }
 
 model Membership {

@@ -254,7 +254,41 @@ export class AuthService {
       ip: meta.ip,
       userAgent,
     });
+    await this.cancelPendingDeletion(user.id, workspace.id);
     return this.issue(user, workspace, { deviceId, userAgent });
+  }
+
+  /**
+   * Somebody who signs in has changed their mind.
+   *
+   * Asked to be erased on Monday, reading their ledger on Wednesday: whatever
+   * the row says, they are still using the account, and requiring them to find
+   * a settings screen to say so is how an account gets deleted out from under
+   * somebody. So the request is dropped here, silently, on every successful
+   * sign-in.
+   *
+   * Never allowed to fail a login. Somebody getting into their own books
+   * matters more than the tidiness of a column, and the sweep will find nothing
+   * to do on the next pass anyway if this succeeded.
+   */
+  private async cancelPendingDeletion(userId: string, workspaceId: string): Promise<void> {
+    try {
+      const { count } = await this.prisma.user.updateMany({
+        where: { id: userId, deletionRequestedAt: { not: null } },
+        data: { deletionRequestedAt: null, deletionScheduledFor: null },
+      });
+      if (count > 0) {
+        this.audit.emit({
+          workspaceId,
+          actorUserId: userId,
+          action: 'account.deletion_cancelled',
+          entity: 'User',
+          entityId: userId,
+        });
+      }
+    } catch {
+      /* Deliberately swallowed — see the note above. */
+    }
   }
 
   // --- signing in with a code ------------------------------------------------

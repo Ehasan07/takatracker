@@ -27,6 +27,14 @@ const PUBLIC_PATHS = [
      expose is the wrong way round — and the page is written for the person
      deciding whether to open one. */
   '/privacy',
+  /* How to have an account erased. The person most likely to need it is the one
+     who has already uninstalled or cannot get back in — exactly the person a
+     route inside the app cannot serve. Both app stores require the URL too. */
+  '/delete-account',
+  /* Chrome fetches this with no cookies before it will drop the address bar in
+     the Android wrapper. A redirect to /login here is an app that looks like a
+     browser forever. */
+  '/.well-known',
   '/en',
   /* A shared statement. Opened by somebody with no account and no reason to
      want one — a relative you lent money to, an insurer you pay a premium to.

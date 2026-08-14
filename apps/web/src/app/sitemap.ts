@@ -31,6 +31,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
        trust a finance app with their ledger searches for this page by name, and
        it is the page that names what an operator can see. */
     { url: `${SITE.url}/privacy`, lastModified, changeFrequency: 'yearly', priority: 0.5 },
+    /* Listed rather than left to a footer link: an app store reviewer looks for
+       this page, and so does somebody who has already uninstalled. */
+    { url: `${SITE.url}/delete-account`, lastModified, changeFrequency: 'yearly', priority: 0.5 },
     /* The English pages are separate URLs with their own content, so they are
        listed rather than left for the hreflang tags alone to surface. */
     { url: `${SITE.url}/en`, lastModified, changeFrequency: 'weekly', priority: 0.9 },
