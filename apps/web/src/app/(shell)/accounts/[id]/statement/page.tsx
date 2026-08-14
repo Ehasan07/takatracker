@@ -149,6 +149,11 @@ export default function AccountStatementPage() {
         onShareLink={() => setSharing(true)}
         detailHeading={t('stmt.contra', 'বিপরীত খাত')}
         formatDetail={(value) => value ?? ''}
+        /* The strip below carries opening, both column totals and closing.
+           Letting the view print its own opening/closing pair as well put the
+           same two figures on the page twice, which on paper reads as an error
+           in the document rather than a repetition in the layout. */
+        showBalances={false}
       >
         {data ? (
           <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4 sm:grid-cols-4">

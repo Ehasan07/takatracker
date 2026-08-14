@@ -98,6 +98,47 @@ test.describe('a statement of account', () => {
     await expect(page.getByText(/ডেবিট মানে টাকা যোগ/)).toBeVisible();
   });
 
+  test('prints as a document, with a letterhead and no column of dashes', async ({ page }) => {
+    await signup(page);
+    await addCash(page);
+    await spend(page, '2500', 'সবজি');
+
+    await page.goto('/accounts');
+    await page.getByRole('link', { name: /নগদ — হিসাব বিবরণী/ }).click();
+    await expect(shown(page, 'সমাপনী জের')).toBeVisible();
+
+    /* The print stylesheet is the thing under test, so the page has to be asked
+       for the print rendering. Everything below is invisible on screen and is
+       exactly what comes out of the printer. */
+    await page.emulateMedia({ media: 'print' });
+
+    const letterhead = page.locator('.statement-letterhead');
+    await expect(letterhead).toBeVisible();
+    /* The mark and the name — the page used to open with nine-point grey text
+       and nothing a reader could place. */
+    await expect(letterhead.getByText('Taka Tracker')).toBeVisible();
+    /* Whose document it is, and over what period: the two facts somebody checks
+       before reading a figure. */
+    await expect(letterhead.getByText('দিয়েছেন')).toBeVisible();
+    await expect(letterhead.getByText('বিবরণী পরীক্ষা')).toBeVisible();
+    await expect(letterhead.getByText('সময়কাল')).toBeVisible();
+
+    /* One summary block above the table, not two. The strip carries opening,
+       both column totals and closing; the view's own opening/closing pair used
+       to print in a second box directly underneath it, which on paper reads as
+       an error in the document. (The words appear again inside the table, on
+       its opening line, which is where a bank statement puts them too.) */
+    await expect(page.locator('.loan-print-block')).toHaveCount(1);
+
+    /* No account entry has a reference number, so the column is not printed at
+       all rather than printed empty down the right edge. */
+    const table = page.locator('.loan-print-table table');
+    await expect(table.getByRole('columnheader', { name: 'বিপরীত খাত' })).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'রেফারেন্স' })).toHaveCount(0);
+
+    await page.emulateMedia({ media: 'screen' });
+  });
+
   test('never scrolls sideways, at any width', async ({ page }) => {
     await signup(page);
     await addCash(page);

@@ -74,6 +74,47 @@
     margin-bottom: 8mm;
   }
 
+  /* The letterhead, laid out the way the shared statement lays it out: mark on
+     the left, what the document is on the right, a rule under both. Flex has to
+     be re-declared here because the blanket `body *` reset above unpins the
+     shell, and the letterhead is created inside it. */
+  .statement-letterhead {
+    border-bottom: 1pt solid #000000 !important;
+    padding-bottom: 3mm;
+  }
+
+  .statement-letterhead-top {
+    display: flex !important;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6mm;
+  }
+
+  /* Issuer, period and print date across the foot of the letterhead — the three
+     facts a reader checks before reading a figure. Wide gaps rather than a
+     grid: three cells of very different widths in a fixed grid leave the last
+     one adrift in the middle of the page. */
+  .statement-letterhead-facts {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 3mm 12mm;
+    margin-top: 4mm;
+  }
+
+  .statement-letterhead-facts p {
+    margin: 0;
+  }
+
+  /* The mark keeps its square on paper. Backgrounds are flattened to white by
+     the reset above, so without this the ৳ floats with nothing around it —
+     `print-color-adjust` is what asks the printer for the fill back. */
+  .statement-letterhead .bg-brand {
+    background: #000000 !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   /* The wide table is collapsed to cards on a phone. On paper the table is
      always the right answer, whatever the print viewport measures. */
   .loan-print-table {
@@ -99,8 +140,23 @@
     padding: 3pt 4pt !important;
   }
 
+  /* Repeated on every page, which is the whole reason a statement is a table
+     and not a list: page three has to say which column is the credit. */
   .loan-print-table thead {
     display: table-header-group;
+  }
+
+  .loan-print-table thead th {
+    background: #eeeeee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-weight: 600;
+  }
+
+  /* The closing line carries the weight a bank statement gives it. */
+  .loan-print-table tfoot td {
+    border-top: 1.5pt solid #000000 !important;
+    font-weight: 600;
   }
 
   .loan-print-table tr,

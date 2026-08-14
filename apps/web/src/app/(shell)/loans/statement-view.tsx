@@ -2,8 +2,11 @@
 
 import { Download, FileText, Link2, Printer, Share2 } from 'lucide-react';
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { endpoints } from '@/lib/api';
 import { t } from '@/lib/t';
 import { formatMinor, toLocalDateString } from '@hishab/shared';
+import { BrandMark } from '@/components/brand-mark';
 import { Money } from '@/components/money';
 import { Skeleton, SkeletonRows } from '@/components/skeleton';
 import { Field, Input } from '@/components/ui/field';
@@ -65,7 +68,7 @@ export function filterLabel(filter: DateFilter): string {
  * arrive in `row.method`, because both are one short string beside the money,
  * so the header and the way it is rendered are what the caller chooses.
  */
-function columnsOf(detailHeading: string): string[] {
+function columnsOf(detailHeading: string, withDetail: boolean, withReference: boolean): string[] {
   return [
     t('stmt.seq', 'ক্রম'),
     t('stmt.date', 'তারিখ'),
@@ -73,8 +76,8 @@ function columnsOf(detailHeading: string): string[] {
     t('stmt.debit', 'ডেবিট'),
     t('stmt.credit', 'ক্রেডিট'),
     t('stmt.running', 'চলতি জের'),
-    detailHeading,
-    t('stmt.reference', 'রেফারেন্স'),
+    ...(withDetail ? [detailHeading] : []),
+    ...(withReference ? [t('stmt.reference', 'রেফারেন্স')] : []),
   ];
 }
 
@@ -96,6 +99,7 @@ export function StatementView({
   onShareLink,
   detailHeading = t('stmt.method', 'মাধ্যম'),
   formatDetail = methodLabel,
+  showBalances = true,
   children,
 }: {
   heading: string;
@@ -121,6 +125,16 @@ export function StatementView({
   detailHeading?: string;
   /** How to render `row.method`. Defaults to the payment-method labels. */
   formatDetail?: (value: string | null) => string;
+  /**
+   * Whether to print the opening/closing pair of this component's own.
+   *
+   * The account statement's `children` already carry opening, both column
+   * totals and closing — four figures that include these two. Printing the pair
+   * as well put the same two numbers on the page twice, one block under the
+   * other, which on paper reads as a mistake in the document rather than a
+   * repetition in the layout.
+   */
+  showBalances?: boolean;
   /** Anything that belongs above the table on both screen and paper. */
   children?: React.ReactNode;
 }) {
@@ -129,12 +143,25 @@ export function StatementView({
   const [printedOn, setPrintedOn] = React.useState('');
   React.useEffect(() => setPrintedOn(toLocalDateString(new Date())), []);
 
-  const COLUMNS = columnsOf(detailHeading);
   const rows = data?.rows ?? [];
+  /* A column every row leaves blank is a column of dashes. The loan statement
+     fills both of these; the account statement fills one and never the other,
+     and the printed page was carrying an empty `রেফারেন্স` down its right edge.
+   */
+  const withDetail = rows.some((row) => Boolean(formatDetail(row.method)));
+  const withReference = rows.some((row) => Boolean(row.referenceNumber));
+  const COLUMNS = columnsOf(detailHeading, withDetail, withReference);
+  const issuer = useQuery({ queryKey: ['me'], queryFn: endpoints.me });
   const opening = data?.openingMinor ?? 0;
   const closing = data?.closingMinor ?? 0;
   const range = filterLabel(filter);
   const dismissToast = React.useCallback(() => setToast(null), []);
+
+  /** Every CSV row the same width as the header, whichever columns survived. */
+  const pad = (cells: string[]): string[] => [
+    ...cells,
+    ...Array(Math.max(0, COLUMNS.length - cells.length)).fill(''),
+  ];
 
   const onExcel = (): void => {
     haptic('tap');
@@ -144,18 +171,20 @@ export function StatementView({
       [`সময়: ${range}`],
       [],
       COLUMNS,
-      ['', '', t('stmt.opening', 'প্রারম্ভিক জের'), '', '', minorToPlain(opening), '', ''],
-      ...rows.map((row, i) => [
-        String(i + 1),
-        (row.date ?? '').slice(0, 10),
-        row.description ?? '',
-        minorToPlain(row.debitMinor),
-        minorToPlain(row.creditMinor),
-        minorToPlain(row.balanceMinor),
-        formatDetail(row.method),
-        row.referenceNumber ?? '',
-      ]),
-      ['', '', t('stmt.closing', 'সমাপনী জের'), '', '', minorToPlain(closing), '', ''],
+      pad(['', '', t('stmt.opening', 'প্রারম্ভিক জের'), '', '', minorToPlain(opening)]),
+      ...rows.map((row, i) =>
+        pad([
+          String(i + 1),
+          (row.date ?? '').slice(0, 10),
+          row.description ?? '',
+          minorToPlain(row.debitMinor),
+          minorToPlain(row.creditMinor),
+          minorToPlain(row.balanceMinor),
+          ...(withDetail ? [formatDetail(row.method)] : []),
+          ...(withReference ? [row.referenceNumber ?? ''] : []),
+        ]),
+      ),
+      pad(['', '', t('stmt.closing', 'সমাপনী জের'), '', '', minorToPlain(closing)]),
     ]);
     setToast(t('stmt.csvDownloaded', 'এক্সেলের জন্য .csv ফাইল নামানো হয়েছে'));
   };
@@ -183,13 +212,46 @@ export function StatementView({
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Only on paper: the app has no letterhead on screen. */}
-      <div className="loan-print-only">
-        <p style={{ fontSize: '9pt' }}>{t('stmt.footer', 'হিসাব — takatracker.com')}</p>
-        <h2 style={{ fontSize: '14pt', fontWeight: 600 }}>{heading}</h2>
+      {/* Only on paper, and built the way the shared statement is built.
+       *
+       * The printed page used to open with `হিসাব — takatracker.com` in nine
+       * point and nothing else — no mark, no issuer, no arrangement. A creditor
+       * holding it could not tell at a glance whose document it was, and a
+       * document nobody can place is one nobody acts on. The letterhead below is
+       * the same shape as `/s/[token]`: mark on the left, what the document is
+       * on the right, subject beneath, then the two facts a reader checks before
+       * reading a figure — who issued it and over what period.
+       */}
+      <div className="loan-print-only statement-letterhead">
+        <div className="statement-letterhead-top">
+          <BrandMark size="md" />
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: '8pt', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              {t('stmt.document', 'হিসাব বিবরণী')}
+            </p>
+            <p style={{ fontSize: '8.5pt' }}>takatracker.com</p>
+          </div>
+        </div>
+
+        <h2 style={{ fontSize: '15pt', fontWeight: 600, marginTop: '4mm' }}>{heading}</h2>
         {subheading ? <p style={{ fontSize: '10pt' }}>{subheading}</p> : null}
-        <p style={{ fontSize: '10pt' }}>সময়: {range}</p>
-        {printedOn ? <p style={{ fontSize: '9pt' }}>প্রিন্টের তারিখ: {bnDate(printedOn)}</p> : null}
+
+        <div className="statement-letterhead-facts">
+          <div>
+            <p style={{ fontSize: '8pt' }}>{t('stmt.issuedBy', 'দিয়েছেন')}</p>
+            <p style={{ fontSize: '10pt', fontWeight: 500 }}>{issuer.data?.workspace.name ?? ''}</p>
+          </div>
+          <div>
+            <p style={{ fontSize: '8pt' }}>{t('stmt.period', 'সময়কাল')}</p>
+            <p style={{ fontSize: '10pt', fontWeight: 500 }}>{range}</p>
+          </div>
+          {printedOn ? (
+            <div>
+              <p style={{ fontSize: '8pt' }}>{t('stmt.printedOn', 'প্রিন্টের তারিখ')}</p>
+              <p style={{ fontSize: '10pt', fontWeight: 500 }}>{bnDate(printedOn)}</p>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Date filters */}
@@ -277,28 +339,30 @@ export function StatementView({
 
       {/* Opening / closing, at a glance and on paper. A zero here before the
           data lands would be a lie, so it waits behind a skeleton. */}
-      <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4">
-        <div className="min-w-0">
-          <dt className="text-ink-muted text-xs">{t('stmt.opening', 'প্রারম্ভিক জের')}</dt>
-          <dd>
-            {isLoading || isError ? (
-              <Skeleton className="mt-1 h-6 w-28" />
-            ) : (
-              <Money minor={opening} className="block text-lg font-semibold" />
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0 text-right">
-          <dt className="text-ink-muted text-xs">{t('stmt.closing', 'সমাপনী জের')}</dt>
-          <dd>
-            {isLoading || isError ? (
-              <Skeleton className="ml-auto mt-1 h-6 w-28" />
-            ) : (
-              <Money minor={closing} className="block text-lg font-semibold" />
-            )}
-          </dd>
-        </div>
-      </dl>
+      {showBalances ? (
+        <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4">
+          <div className="min-w-0">
+            <dt className="text-ink-muted text-xs">{t('stmt.opening', 'প্রারম্ভিক জের')}</dt>
+            <dd>
+              {isLoading || isError ? (
+                <Skeleton className="mt-1 h-6 w-28" />
+              ) : (
+                <Money minor={opening} className="block text-lg font-semibold" />
+              )}
+            </dd>
+          </div>
+          <div className="min-w-0 text-right">
+            <dt className="text-ink-muted text-xs">{t('stmt.closing', 'সমাপনী জের')}</dt>
+            <dd>
+              {isLoading || isError ? (
+                <Skeleton className="ml-auto mt-1 h-6 w-28" />
+              ) : (
+                <Money minor={closing} className="block text-lg font-semibold" />
+              )}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
 
       {isError ? (
         <QueryError message="বিবরণী আনা যায়নি।" onRetry={onRetry} />
@@ -393,8 +457,8 @@ export function StatementView({
                   <td className="px-2 py-2 text-right">
                     <Money minor={opening} />
                   </td>
-                  <td className="px-2 py-2">—</td>
-                  <td className="px-2 py-2">—</td>
+                  {withDetail ? <td className="px-2 py-2">—</td> : null}
+                  {withReference ? <td className="px-2 py-2">—</td> : null}
                 </tr>
                 {rows.map((row, i) => (
                   <tr key={`${row.date}-${i}`} className="ledger-row border-rule border-b">
@@ -412,10 +476,14 @@ export function StatementView({
                     <td className="px-2 py-2 text-right">
                       <Money minor={row.balanceMinor} className="font-semibold" />
                     </td>
-                    <td className="text-ink-muted whitespace-nowrap px-2 py-2">
-                      {formatDetail(row.method) || '—'}
-                    </td>
-                    <td className="text-ink-muted px-2 py-2">{row.referenceNumber || '—'}</td>
+                    {withDetail ? (
+                      <td className="text-ink-muted whitespace-nowrap px-2 py-2">
+                        {formatDetail(row.method) || '—'}
+                      </td>
+                    ) : null}
+                    {withReference ? (
+                      <td className="text-ink-muted px-2 py-2">{row.referenceNumber || '—'}</td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -429,7 +497,12 @@ export function StatementView({
                   <td className="px-2 py-2 text-right">
                     <Money minor={closing} className="font-semibold" />
                   </td>
-                  <td className="px-2 py-2" colSpan={2} />
+                  {withDetail || withReference ? (
+                    <td
+                      className="px-2 py-2"
+                      colSpan={Number(withDetail) + Number(withReference)}
+                    />
+                  ) : null}
                 </tr>
               </tfoot>
             </table>

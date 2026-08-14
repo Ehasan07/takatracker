@@ -948,6 +948,11 @@ export const EN: Record<string, string> = {
      on an account statement it is the account or category on the other side —
      which is what tells a withdrawal apart from a payment of the same amount. */
   'stmt.contra': 'Contra account',
+  /* The letterhead on a printed statement. */
+  'stmt.document': 'Statement',
+  'stmt.issuedBy': 'Issued by',
+  'stmt.period': 'Period',
+  'stmt.printedOn': 'Printed on',
   'stmt.totalDebit': 'Total debits',
   'stmt.totalCredit': 'Total credits',
   'stmt.debitNormalNote': 'On this account a debit is money in and a credit is money out.',
