@@ -651,3 +651,161 @@ describe('inviting somebody who keeps their own books', () => {
     );
   });
 });
+
+/**
+ * A common pot: a family fund, an office samity, a trip kitty.
+ *
+ * Different from splitting and asked for separately. The subtle part is
+ * spending: the pot was made of everybody's money, so spending it consumes the
+ * owner's own share *and* discharges what they owed the other contributors.
+ * Miss the second half and somebody who ran a samity for a year ends it looking
+ * bankrupt — still owing every taka anybody put in, with the pot that would
+ * have repaid them empty.
+ */
+describe('a common pot', () => {
+  let ctx: TestContext;
+  let user: Awaited<ReturnType<typeof signup>>;
+  let accountId: string;
+  let groupId: string;
+  let meId: string;
+  let karimId: string;
+
+  const post = (path: string, body: Record<string, unknown>) =>
+    ctx.http().post(path).set(auth(user)).send(body);
+  const get = (path: string) => ctx.http().get(path).set(auth(user));
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    user = await signup(ctx);
+
+    accountId = (
+      await post('/v1/accounts', { name: 'নগদ', type: 'CASH', openingBalance: 10_000_000 }).expect(
+        201,
+      )
+    ).body.id;
+
+    const group = await post('/v1/split/groups', {
+      name: 'অফিস সমিতি',
+      purpose: 'OFFICE',
+      members: [{ name: 'করিম' }],
+    }).expect(201);
+    groupId = group.body.id;
+    meId = group.body.members.find((m: { isSelf: boolean }) => m.isSelf).id;
+    karimId = group.body.members.find((m: { isSelf: boolean }) => !m.isSelf).id;
+
+    await post(`/v1/split/groups/${groupId}/pot`, {}).expect(201);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('opens a real account for the pot, so it is on the balance sheet', async () => {
+    const group = await get(`/v1/split/groups/${groupId}`).expect(200);
+    expect(group.body.potAccountId).toBeTruthy();
+    expect(group.body.potBalanceMinor).toBe(0);
+
+    const accounts = await get('/v1/accounts').expect(200);
+    const pot = accounts.body.find((a: { id: string }) => a.id === group.body.potAccountId);
+    expect(pot.type).toBe('ASSET');
+  });
+
+  it('takes the owner’s own contribution out of their pocket, not their worth', async () => {
+    const before = await get('/v1/transactions/summary').expect(200);
+
+    await post(`/v1/split/groups/${groupId}/contributions`, {
+      memberId: meId,
+      amountMinor: 500_000,
+      date: '2026-08-01',
+      accountId,
+    }).expect(201);
+
+    const after = await get('/v1/transactions/summary').expect(200);
+    /* Cash down ৳5,000, pot up ৳5,000. Still the owner's money until it is
+       spent, so net worth must not move — and it is certainly not spending. */
+    expect(after.body.liquidMinor).toBe(before.body.liquidMinor - 500_000);
+    expect(after.body.netWorthMinor).toBe(before.body.netWorthMinor);
+    expect(after.body.expenseMinor).toBe(before.body.expenseMinor);
+  });
+
+  it('somebody else’s contribution grows the pot and what is owed them', async () => {
+    const before = await get('/v1/transactions/summary').expect(200);
+
+    await post(`/v1/split/groups/${groupId}/contributions`, {
+      memberId: karimId,
+      amountMinor: 500_000,
+      date: '2026-08-02',
+    }).expect(201);
+
+    const after = await get('/v1/transactions/summary').expect(200);
+    /* The pot is an asset and the debt to Karim is a liability of the same
+       size. The holder is no richer, which is the honest answer: it is his
+       money in your hands. */
+    expect(after.body.assetsMinor).toBe(before.body.assetsMinor + 500_000);
+    expect(after.body.liabilitiesMinor).toBe(before.body.liabilitiesMinor + 500_000);
+    expect(after.body.netWorthMinor).toBe(before.body.netWorthMinor);
+
+    const group = await get(`/v1/split/groups/${groupId}`).expect(200);
+    expect(group.body.potBalanceMinor).toBe(1_000_000);
+  });
+
+  it('spending the pot is the owner’s share only, and clears the rest of the debt', async () => {
+    const before = await get('/v1/transactions/summary').expect(200);
+
+    await post(`/v1/split/groups/${groupId}/expenses`, {
+      description: 'অফিসের চা-নাশতা',
+      date: '2026-08-05',
+      totalMinor: 400_000,
+      payerMemberId: meId,
+      splitMethod: 'EQUAL',
+      shares: [{ memberId: meId }, { memberId: karimId }],
+      fromPot: true,
+    }).expect(201);
+
+    const after = await get('/v1/transactions/summary').expect(200);
+
+    /* ৳2,000 of it was the owner's own money and is spending. */
+    expect(after.body.expenseMinor).toBe(before.body.expenseMinor + 200_000);
+    /* The other ৳2,000 was Karim's, so what is owed him falls by that much. */
+    expect(after.body.liabilitiesMinor).toBe(before.body.liabilitiesMinor - 200_000);
+    /* No cash left any wallet — the pot paid. */
+    expect(after.body.liquidMinor).toBe(before.body.liquidMinor);
+
+    const group = await get(`/v1/split/groups/${groupId}`).expect(200);
+    expect(group.body.potBalanceMinor).toBe(600_000);
+  });
+
+  it('the holder ends up neither richer nor poorer than they spent', async () => {
+    /* The whole test of a pot done right: put in ৳5,000, consumed ৳2,000 of it,
+       so net worth is down exactly ৳2,000 from where it started and not a taka
+       more. Karim's money never touched it. */
+    const summary = await get('/v1/transactions/summary').expect(200);
+    expect(summary.body.netWorthMinor).toBe(10_000_000 - 200_000);
+  });
+
+  it('lists who put in what', async () => {
+    const rows = await get(`/v1/split/groups/${groupId}/contributions`).expect(200);
+    expect(rows.body).toHaveLength(2);
+    expect(rows.body.map((r: { amountMinor: number }) => r.amountMinor)).toEqual([
+      500_000, 500_000,
+    ]);
+  });
+
+  it('refuses to spend a pot that does not exist', async () => {
+    const plain = await post('/v1/split/groups', { name: 'সাধারণ গ্রুপ' }).expect(201);
+    const selfId = plain.body.members[0].id;
+    await post(`/v1/split/groups/${plain.body.id}/expenses`, {
+      description: 'তহবিল ছাড়া',
+      date: '2026-08-06',
+      totalMinor: 10_000,
+      payerMemberId: selfId,
+      splitMethod: 'EQUAL',
+      shares: [{ memberId: selfId }],
+      fromPot: true,
+    }).expect(400);
+  });
+
+  it('refuses a second pot on the same group', async () => {
+    await post(`/v1/split/groups/${groupId}/pot`, {}).expect(400);
+  });
+});

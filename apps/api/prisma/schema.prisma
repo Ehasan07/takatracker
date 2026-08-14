@@ -400,6 +400,7 @@ model Workspace {
   splitSettlements    SplitSettlement[]
   splitInvites        SplitInvite[]
   splitMirrors        SplitMirror[]
+  splitContributions  SplitContribution[]
   savingsPlans SavingsPlan[]
   savingsInstallments SavingsInstallment[]
   policies     InsurancePolicy[]
@@ -512,6 +513,8 @@ model Account {
   workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   entries        LedgerEntry[]
   splitSettlements SplitSettlement[]
+  splitPots        SplitGroup[]        @relation("SplitGroupPot")
+  splitContributions SplitContribution[]
   reminderCycles CardReminderCycle[]
   loansFunded    Loan[]              @relation("LoanCashAccount")
   /// Many, not one: every LENT loan in the workspace posts to the same
@@ -1358,6 +1361,7 @@ model Transaction {
   tags        TransactionTag[]
   sharedExpenses   SharedExpense[]
   splitSettlements SplitSettlement[]
+  splitContributions SplitContribution[]
 
   @@unique([workspaceId, clientId])
   @@index([workspaceId, date(sort: Desc)])
@@ -1459,6 +1463,20 @@ model SplitGroup {
   currency    String            @default("BDT")
   note        String?
 
+  /**
+   * The account holding a common pot, when this group has one.
+   *
+   * A family fund, an office samity, a trip kitty. Set means members pay *in*
+   * and spending comes *out*; null means the ordinary case where one person
+   * picks up a bill and the others owe them.
+   *
+   * A real `ASSET` account rather than a number on the group: the money exists,
+   * somebody is holding it, and it belongs on their balance sheet. What each
+   * member put in is a payable to that member, which is what makes the pot
+   * theirs rather than the holder's.
+   */
+  potAccountId String?
+
   createdByUserId String?
   archivedAt      DateTime?
   createdAt       DateTime  @default(now())
@@ -1467,10 +1485,12 @@ model SplitGroup {
 
   workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy   User?              @relation("SplitGroupAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  potAccount  Account?           @relation("SplitGroupPot", fields: [potAccountId], references: [id], onDelete: SetNull)
   members     SplitGroupMember[]
   expenses    SharedExpense[]
   settlements SplitSettlement[]
   invites     SplitInvite[]
+  contributions SplitContribution[]
 
   @@index([workspaceId, deletedAt])
 }
@@ -1504,6 +1524,7 @@ model SplitGroupMember {
   settledTo   SplitSettlement[]   @relation("SettlementTo")
   invite      SplitInvite?
   mirrors     SplitMirror[]
+  contributions SplitContribution[]
   /// Set when this member accepted an invitation: their own workspace, so a
   /// bill added here can reach their books as a draft.
   linkedWorkspaceId String?
@@ -1523,6 +1544,15 @@ model SharedExpense {
   id          String @id @default(cuid())
   workspaceId String
   groupId     String
+
+  /**
+   * Paid out of the group's pot rather than by one member.
+   *
+   * Changes what the owner's entries mean: their own share is spending, and the
+   * rest of it discharges what they owe the other contributors, because the pot
+   * was made of everybody's money.
+   */
+  fromPot Boolean @default(false)
 
   description String
   date        DateTime
@@ -1687,4 +1717,36 @@ model SplitMirror {
 
   @@unique([expenseId, workspaceId])
   @@index([workspaceId, status, createdAt(sort: Desc)])
+}
+
+
+/// Money paid into a group's pot.
+///
+/// The owner's own contribution moves value between two of their accounts and
+/// is not spending. Somebody else's grows the pot and grows what the holder
+/// owes them — which is the whole reason a pot is not simply the holder's money.
+model SplitContribution {
+  id          String @id @default(cuid())
+  workspaceId String
+  groupId     String
+  memberId    String
+
+  amountMinor BigInt
+  date        DateTime
+  /// The account the owner's own contribution came out of.
+  accountId   String?
+  note        String?
+
+  transactionId String?
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  group       SplitGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member      SplitGroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  account     Account?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  transaction Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, groupId, date])
 }

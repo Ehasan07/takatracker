@@ -119,6 +119,7 @@ export function AddExpenseSheet({
   const [categoryId, setCategoryId] = React.useState<string | undefined>();
   const [accountId, setAccountId] = React.useState('');
   const [note, setNote] = React.useState('');
+  const [fromPot, setFromPot] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const accounts = useQuery({
@@ -144,6 +145,7 @@ export function AddExpenseSheet({
     setMethod('EQUAL');
     setCategoryId(undefined);
     setNote('');
+    setFromPot(group.potAccountId !== null);
     setError(null);
     setRows(
       active.map((m) => ({
@@ -154,7 +156,7 @@ export function AddExpenseSheet({
         weight: String(m.shareWeight),
       })),
     );
-  }, [open, active, self?.id]);
+  }, [open, active, self?.id, group.potAccountId]);
 
   React.useEffect(() => {
     if (!open || accountId) return;
@@ -165,6 +167,9 @@ export function AddExpenseSheet({
   const totalMinor = minorOrZero(amount);
   const chosen = rows.filter((r) => r.on);
   const payerIsSelf = payerId === self?.id;
+  /* A group with a pot spends the pot by default: that is what the pot is for,
+     and somebody who wants to record a pocket payment can still turn it off. */
+  const hasPot = group.potAccountId !== null;
 
   /* What each person will owe, shown before it is saved. Only EQUAL is
      previewed exactly here — the others are typed by the person, so the numbers
@@ -202,7 +207,8 @@ export function AddExpenseSheet({
           payerMemberId: payerId,
           splitMethod: method,
           categoryId,
-          accountId: payerIsSelf ? accountId : undefined,
+          fromPot: fromPot || undefined,
+          accountId: payerIsSelf && !fromPot ? accountId : undefined,
           note: note.trim() || undefined,
           shares: chosen.map((row) => ({
             memberId: row.memberId,
@@ -249,7 +255,7 @@ export function AddExpenseSheet({
           if (!description.trim()) return setError(t('split.whatFor', 'কীসের খরচ লিখুন'));
           if (totalMinor <= 0) return setError(t('split.amountRequired', 'টাকার অঙ্ক দিন'));
           if (chosen.length === 0) return setError(t('split.whoRequired', 'অন্তত একজনকে বেছে নিন'));
-          if (payerIsSelf && !accountId) {
+          if (payerIsSelf && !fromPot && !accountId) {
             return setError(t('split.accountRequired', 'কোন অ্যাকাউন্ট থেকে গেল বেছে নিন'));
           }
           create.mutate();
@@ -296,7 +302,26 @@ export function AddExpenseSheet({
           </Select>
         </Field>
 
-        {payerIsSelf ? (
+        {hasPot ? (
+          <label className="flex min-h-11 items-center gap-2">
+            <input
+              type="checkbox"
+              checked={fromPot}
+              onChange={(e) => setFromPot(e.target.checked)}
+              className="accent-brand h-5 w-5 shrink-0"
+            />
+            <span className="text-ink text-sm">{t('split.spendPot', 'তহবিল থেকে খরচ')}</span>
+          </label>
+        ) : null}
+
+        {fromPot ? (
+          <p className="text-ink-muted text-xs">
+            {t(
+              'split.spendPotHint',
+              'তহবিল সবার টাকায় তৈরি — তাই আপনার ভাগটুকু খরচ হবে, বাকিটা অন্যদের পাওনা থেকে কমবে।',
+            )}
+          </p>
+        ) : payerIsSelf ? (
           <Field label={t('split.fromAccount', 'কোন অ্যাকাউন্ট থেকে')} htmlFor="se-account">
             <Select
               id="se-account"

@@ -47,6 +47,10 @@ export interface GroupDetail {
   purpose: GroupPurpose;
   currency: string;
   note: string | null;
+  /** Set when this group is a fund rather than a set of shared bills. */
+  potAccountId: string | null;
+  /** What is left in it, read from the ledger. Null when there is no pot. */
+  potBalanceMinor: number | null;
   archivedAt: string | null;
   createdAt: string;
   members: GroupMember[];
@@ -83,6 +87,7 @@ export const splitKeys = {
   expenses: (id: string) => ['split', 'group', id, 'expenses'] as const,
   settlements: (id: string) => ['split', 'group', id, 'settlements'] as const,
   inbox: () => ['split', 'inbox'] as const,
+  contributions: (id: string) => ['split', 'group', id, 'contributions'] as const,
 };
 
 export interface InboxDraft {
@@ -110,3 +115,15 @@ export interface SettlementView {
 }
 export const fetchSettlements = (id: string) =>
   api<SettlementView[]>(`/split/groups/${id}/settlements`);
+
+export interface ContributionView {
+  id: string;
+  memberId: string;
+  name: string;
+  isSelf: boolean;
+  amountMinor: number;
+  date: string;
+  note: string | null;
+}
+export const fetchContributions = (id: string) =>
+  api<ContributionView[]>(`/split/groups/${id}/contributions`);

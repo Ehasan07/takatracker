@@ -68,6 +68,8 @@ export const AUDIT_ACTIONS = [
      person's action produce a draft in somebody else's ledger. */
   'split.invited',
   'split.mirror_accepted',
+  'split.pot_opened',
+  'split.contributed',
   'ingestion.message_received',
   'ingestion.draft_accepted',
   'ingestion.draft_rejected',

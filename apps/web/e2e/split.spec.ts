@@ -225,6 +225,53 @@ test.describe('spending together', () => {
     await other.close();
   });
 
+  test('a common pot: everybody pays in, spending comes out', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await makeGroup(page);
+
+    /* A fund is a different arrangement from "somebody picks up the bill", so
+       it is offered rather than assumed. */
+    await page.getByRole('button', { name: 'তহবিল খুলুন' }).click();
+    await expect(page.getByRole('button', { name: 'চাঁদা' })).toBeVisible({ timeout: 15_000 });
+
+    // The owner pays ৳5,000 in: cash out, pot in, not spending.
+    await page.getByRole('button', { name: 'চাঁদা' }).click();
+    let sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কত টাকা').fill('5000');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // করিম pays ৳5,000 in: the pot grows and so does what is owed to him.
+    await page.getByRole('button', { name: 'চাঁদা' }).click();
+    sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কে দিলেন').selectOption({ label: 'করিম' });
+    await sheet.getByLabel('কত টাকা').fill('5000');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await expect(page.getByText('৳10,000.00').first()).toBeVisible({ timeout: 15_000 });
+
+    /* Spend ৳4,000 of it between two people. Half was the owner's own money and
+       is spending; the other half was করিম's, so what is owed him falls. */
+    await page.getByRole('button', { name: 'খরচ', exact: true }).click();
+    sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('তহবিল থেকে খরচ')).toBeChecked();
+    await sheet.getByLabel('কত টাকা').fill('4000');
+    await sheet.getByLabel('কীসের খরচ').fill('অফিসের নাশতা');
+    await sheet.getByLabel('রহিম').uncheck();
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // ৳6,000 left in the pot.
+    await expect(page.getByText('৳6,000.00').first()).toBeVisible({ timeout: 15_000 });
+
+    /* The dashboard is the real test of a pot done right: ৳50,000 to start,
+       ৳2,000 of the owner's own money consumed, and not a taka more. */
+    await page.goto('/');
+    await expect(page.getByRole('main')).toContainText('৳48,000.00', { timeout: 15_000 });
+  });
+
   test('nothing scrolls sideways on a phone', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);

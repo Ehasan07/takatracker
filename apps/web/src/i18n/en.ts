@@ -243,6 +243,17 @@ export const EN: Record<string, string> = {
   'split.joinedWithDrafts': 'Earlier expenses are waiting as drafts — take a look.',
   'split.joinedEmpty': 'New expenses will arrive as drafts for you.',
   'split.goToSplit': 'Go to Split',
+  'split.potTitle': 'A common pot',
+  'split.potBlurb':
+    'Everybody pays in and spending comes out — a family fund, an office samity, a trip kitty.',
+  'split.openPot': 'Open a pot',
+  'split.contribute': 'Pay in',
+  'split.whoPaid': 'Who paid in',
+  'split.theirContribution':
+    'Their money goes into the pot and the same amount is owed back to them — spending the pot reduces it.',
+  'split.spendPot': 'Spend from the pot',
+  'split.spendPotHint':
+    'The pot is everybody’s money, so your share is spending and the rest comes off what you owe the others.',
 
   // --- the four financial statements -----------------------------------------
   'statements.title': 'Financial statements',

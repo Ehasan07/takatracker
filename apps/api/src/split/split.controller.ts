@@ -62,8 +62,19 @@ const expenseSchema = z.object({
     .max(50),
   categoryId: z.string().min(1).optional(),
   accountId: z.string().min(1).optional(),
+  fromPot: z.boolean().optional(),
   note: z.string().trim().max(500).optional(),
   attachmentIds: z.array(z.string()).max(10).optional(),
+});
+
+const potSchema = z.object({ name: z.string().trim().min(1).max(120).optional() });
+
+const contributionSchema = z.object({
+  memberId: z.string().min(1),
+  amountMinor: z.number().int().positive(),
+  date: DATE,
+  accountId: z.string().min(1).optional(),
+  note: z.string().trim().max(500).optional(),
 });
 
 const settleSchema = z.object({
@@ -167,6 +178,30 @@ export class SplitController {
     @Param('memberId') memberId: string,
   ) {
     return this.split.invite(user, id, memberId);
+  }
+
+  /** Turn a group into a fund: a family kitty, an office samity, a trip pot. */
+  @Post(':id/pot')
+  openPot(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(potSchema)) body: z.infer<typeof potSchema>,
+  ) {
+    return this.split.openPot(user, id, body.name);
+  }
+
+  @Get(':id/contributions')
+  contributions(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.split.listContributions(user, id);
+  }
+
+  @Post(':id/contributions')
+  contribute(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(contributionSchema)) body: z.infer<typeof contributionSchema>,
+  ) {
+    return this.split.contribute(user, id, body);
   }
 
   @Get(':id/settlements')

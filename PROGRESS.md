@@ -165,6 +165,125 @@ same interface and switches on when `SMTP_HOST` is set and the package resolves.
 Production with no `SMTP_HOST` logs a warning that links are not reaching users
 rather than failing silently.
 
+## The night of 14 August 2026
+
+Worked through `docs/PLAN-v3.md` end to end while the owner slept. Everything
+below is deployed and verified on production, in the order it shipped.
+
+| Release        | Commit    | What went out                                                              |
+| -------------- | --------- | -------------------------------------------------------------------------- |
+| 20260813223126 | `d7a3f14` | Shared spending (M46), and a dashboard that stopped calling land a balance |
+| 20260813230056 | `5dae817` | The four financial statements (M40–M43, M45)                               |
+| 20260813232447 | `3d15a36` | Asset revaluation (M44)                                                    |
+| 20260813234559 | `770475d` | Invitations, and the draft inbox on the other side (M47)                   |
+| —              | —         | Pooled funds (M48)                                                         |
+
+Tests at the end of it: **API 372**, **core 644**, **shared 45**, **web unit
+67**, **browser 329** across four widths. Everything green before each deploy.
+
+### The accounting, and why each piece is the way it is
+
+**Shared spending is the loan ledger.** Four people eat, you pay ৳3,000, your
+share is ৳750 — the other ৳2,250 is not your expense, it is money three people
+owe you. So a shared bill debits the expense nominal for your share, debits the
+receivable control for everybody else's, and credits the account the cash left.
+No new accounting: a control account with a subsidiary ledger behind it. The
+consequence worth stating is that only your own share reaches the expense
+report, the income statement and any budget built on them — a ৳3,000 dinner
+four people shared puts ৳750 in the month.
+
+**Group members are `Person` rows.** A friend who is on a trip and borrowed
+money last year is one person with one balance; the party ledger unions loans
+and split shares because both post to the same control accounts.
+
+**Rounding is correctness.** ৳1,000 three ways is 33,333 + 33,333 + 33,334
+poisha. Largest-remainder, stable order, and an exhaustive test over every
+amount from 1 to 1000 poisha at every group size from 1 to 9. A lost poisha is
+refused by the balance trigger at COMMIT — the right failure, and a terrible one
+to meet at a restaurant counter.
+
+**Cash flow is classified by the account on the other side, never by the
+transaction type.** A `TRANSFER` between two bank accounts is not a cash flow; a
+`TRANSFER` into a land account is an investing outflow. Multi-entry
+transactions apportion the liquid movement in proportion, so a shared bill
+splits ৳1,000 operating and ৳2,000 financing rather than landing wholly in one.
+
+**`RECEIVABLE` is current and `SAVINGS` is not.** A loan to a relative is
+collected on demand; a DPS cannot be drawn early without breaking it. Counting a
+term deposit as current is how a statement tells somebody they are liquid when
+they are not.
+
+**Revaluation posts against equity**, which is what keeps it out of income and
+out of the cash flow while still moving net worth. The statement of changes in
+net worth itemises it, and the basis of preparation stops claiming assets are
+at cost the moment one is revalued — a false basis makes every figure above it
+uncheckable.
+
+**Spending a pot has three legs.** The pot is everybody's money, so spending it
+debits the owner's share as expense _and_ debits the payable, discharging what
+they owed the other contributors. Without the second leg somebody who ran an
+office samity for a year would end it still owing every taka anybody put in,
+with the pot that would have repaid them empty.
+
+**An invitation grants no write access.** It says "send me the bills I am on, as
+drafts". Each posts only when the invitee accepts, and they see their own share
+only — not the total, not the other members. Asserted, not assumed: the response
+carries neither the bill's total nor the group id.
+
+### Defects found, and how
+
+Six, all of them by tests that were written to check something else:
+
+- **The group screen crashed on open.** `parseMoneyToMinor` _throws_ on an empty
+  string rather than returning null, and the expense sheet computes the total on
+  every keystroke to preview the split. The first render took the page down with
+  a client-side exception; nobody would have been able to use the feature.
+- **The statements page computed "today" in UTC** while the app books dates in
+  the workspace's timezone. Dhaka is UTC+6, so between midnight and 6am the
+  default window ended _before today_ and anything recorded that morning was
+  missing from a statement that looked complete. Found by a test that revalued
+  land at 5am and then could not find it.
+- **The dashboard added land to cash** and called it "মোট ব্যালেন্স", while
+  omitting money lent out because it lives in a hidden control account. One line
+  of arithmetic, wrong in both directions.
+- **Money was rendered in two scripts.** The app shows ৳3,600.00 everywhere;
+  the shared statement had been changed to ৳৩,৬০০.০০ earlier the same day, and
+  the split preview called `formatMinor` directly. Both now match the app. Dates
+  stay Bengali — those are prose.
+- **Two float roundings**, caught by the lint rule that exists for exactly this:
+  33.33 × 100 is 3332.9999999999995, so a percentage split would have come to
+  less than 100% and the bill a poisha short.
+- **A refresh replay was being read as theft.** Rotation marks the old token
+  spent and sets the new one in a `Set-Cookie` the browser may never receive; a
+  dropped response then looked like a stolen token and revoked the family. Ten
+  warnings in twenty-five seconds for a user who had done nothing but reopen the
+  app. Now: within sixty seconds, if the replacement has never been presented,
+  the session is kept — RFC 9700 §4.14.2's alternative to blind revocation.
+
+### Three mistakes in how the work was run
+
+Worth recording because each cost real time:
+
+- **Ran `playwright` directly instead of `pnpm test:e2e` three times.** The
+  first builds nothing, so a brand-new route simply was not in the served bundle
+  and every test against it failed. Build first, always.
+- **Ran the API suite while the browser suite was running.** They share one
+  database; the API suite truncates every table in `globalSetup`. Twenty-four
+  browser tests failed for a reason that had nothing to do with the code.
+- **Read a suite's failures while the machine was at load average 39.** A test
+  that normally takes 2.9 seconds took 36 and still passed; others timed out at 45. None of it was real. Check the load before believing a timeout.
+
+### Still outstanding
+
+- Savings and insurance share buttons — the API serves both kinds already.
+- Bengali/English: roughly 650 web strings and 191 API messages remain.
+- CSV/Excel import with a mapping UI (M6).
+- A privacy page naming what an operator can see. Overdue.
+- **Owed by the owner:** rotate the mram SMS key and the ZeptoMail token, both
+  of which were pasted into a chat.
+
+---
+
 ## Status, as of this pass
 
 Shipped and deployed: **M0–M7, M12, M13, M23–M25, M30, M36**, plus attachment

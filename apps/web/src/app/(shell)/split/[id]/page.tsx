@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, HandCoins, Plus, Trash2, UserPlus } from 'lucide-react';
+import { ArrowLeft, HandCoins, PiggyBank, Plus, Trash2, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';
@@ -16,6 +16,7 @@ import { fmtDate, fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { t } from '@/lib/t';
 import {
+  fetchContributions,
   fetchExpenses,
   fetchGroup,
   splitKeys,
@@ -145,6 +146,8 @@ export default function SplitGroupPage() {
             </ul>
           </header>
 
+          <PotCard group={data} />
+
           {data.suggestions.length > 0 ? (
             <section className="rounded-card border-rule bg-surface border p-4">
               <h2 className="text-ink-muted text-sm font-medium">
@@ -235,6 +238,240 @@ export default function SplitGroupPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The group's common pot: a family fund, an office samity, a trip kitty.
+ *
+ * Shown only once a group has one, and offered on every group that does not —
+ * a fund is a different arrangement from "somebody picks up the bill", and
+ * mixing the two on one screen would make both harder to understand.
+ *
+ * The balance comes from the ledger, not from adding the contributions up.
+ * There is one number and it is the account's.
+ */
+function PotCard({ group }: { group: GroupDetail }) {
+  const queryClient = useQueryClient();
+  const [contributing, setContributing] = React.useState(false);
+
+  const open = useMutation({
+    mutationFn: () => api(`/split/groups/${group.id}/pot`, { method: 'POST', body: {} }),
+    onSuccess: () => {
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey: splitKeys.group(group.id) });
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    },
+  });
+
+  const contributions = useQuery({
+    queryKey: splitKeys.contributions(group.id),
+    queryFn: () => fetchContributions(group.id),
+    enabled: group.potAccountId !== null,
+  });
+
+  if (!group.potAccountId) {
+    return (
+      <section className="rounded-card border-rule border border-dashed p-4">
+        <p className="text-ink text-sm font-medium">{t('split.potTitle', 'সবাই মিলে তহবিল')}</p>
+        <p className="text-ink-muted mt-1 text-xs">
+          {t(
+            'split.potBlurb',
+            'সবাই চাঁদা দিয়ে একটা তহবিল রাখবেন, খরচ ওখান থেকে যাবে — পারিবারিক ফান্ড, অফিস সমিতি, ট্রিপের চাঁদা।',
+          )}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2"
+          disabled={open.isPending}
+          onClick={() => open.mutate()}
+        >
+          <PiggyBank className="h-4 w-4" aria-hidden />
+          {t('split.openPot', 'তহবিল খুলুন')}
+        </Button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-card border-rule bg-surface border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-ink-muted text-sm font-medium">
+            {t('split.potTitle', 'সবাই মিলে তহবিল')}
+          </h2>
+          <Money minor={group.potBalanceMinor ?? 0} className="text-ink text-xl font-semibold" />
+        </div>
+        <Button type="button" variant="outline" onClick={() => setContributing(true)}>
+          <PiggyBank className="h-4 w-4" aria-hidden />
+          {t('split.contribute', 'চাঁদা')}
+        </Button>
+      </div>
+
+      {(contributions.data ?? []).length > 0 ? (
+        <ul className="divide-rule mt-3 divide-y">
+          {(contributions.data ?? []).map((row) => (
+            <li key={row.id} className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-ink min-w-0 truncate text-sm">
+                {row.isSelf ? t('split.me', 'আমি') : row.name}
+                <span className="text-ink-muted ml-1.5 text-xs">{fmtDate(row.date)}</span>
+              </span>
+              <Money minor={row.amountMinor} className="shrink-0 text-sm" />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <ContributeSheet group={group} open={contributing} onOpenChange={setContributing} />
+    </section>
+  );
+}
+
+function ContributeSheet({
+  group,
+  open,
+  onOpenChange,
+}: {
+  group: GroupDetail;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const active = group.members.filter((m) => !m.removedAt);
+  const [memberId, setMemberId] = React.useState(active[0]?.id ?? '');
+  const [amount, setAmount] = React.useState('');
+  const [date, setDate] = React.useState(() => toLocalDateString(new Date()));
+  const [accountId, setAccountId] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  const isSelf = active.find((m) => m.id === memberId)?.isSelf ?? false;
+
+  const accounts = useQuery({
+    queryKey: ['accounts'],
+    queryFn: endpoints.accounts,
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    setAmount('');
+    setDate(toLocalDateString(new Date()));
+    setError(null);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (accountId) return;
+    const first = accounts.data?.[0];
+    if (first) setAccountId(first.id);
+  }, [accountId, accounts.data]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/split/groups/${group.id}/contributions`, {
+        method: 'POST',
+        body: {
+          memberId,
+          amountMinor: amount.trim() ? parseMoneyToMinor(amount) : 0,
+          date,
+          accountId: isSelf ? accountId : undefined,
+        },
+      }),
+    onSuccess: () => {
+      haptic('success');
+      void queryClient.invalidateQueries({ queryKey: splitKeys.group(group.id) });
+      void queryClient.invalidateQueries({ queryKey: splitKeys.contributions(group.id) });
+      void queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      haptic('warn');
+      setError(
+        err instanceof ApiError ? err.message : t('common.saveFailed', 'সংরক্ষণ করা যায়নি'),
+      );
+    },
+  });
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={t('split.contribute', 'চাঁদা')}>
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          if (!amount.trim()) return setError(t('split.amountRequired', 'টাকার অঙ্ক দিন'));
+          save.mutate();
+        }}
+      >
+        <Field label={t('split.whoPaid', 'কে দিলেন')} htmlFor="contrib-member">
+          <Select
+            id="contrib-member"
+            value={memberId}
+            onChange={(e) => setMemberId(e.target.value)}
+          >
+            {active.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.isSelf ? t('split.me', 'আমি') : m.displayName}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('split.amount', 'কত টাকা')} htmlFor="contrib-amount">
+            <Input
+              id="contrib-amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              autoFocus
+            />
+          </Field>
+          <Field label={t('split.date', 'তারিখ')} htmlFor="contrib-date">
+            <Input
+              id="contrib-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </Field>
+        </div>
+
+        {isSelf ? (
+          <Field label={t('split.fromAccount', 'কোন অ্যাকাউন্ট থেকে')} htmlFor="contrib-account">
+            <Select
+              id="contrib-account"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+            >
+              {(accounts.data ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <p className="text-ink-muted text-xs">
+            {t(
+              'split.theirContribution',
+              'তাঁর টাকা তহবিলে যোগ হবে, আর ততটাই আপনার কাছে তাঁর পাওনা হয়ে থাকবে — খরচ হলে সেটা কমবে।',
+            )}
+          </p>
+        )}
+
+        {error ? (
+          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {save.isPending ? t('common.saving', 'সংরক্ষণ হচ্ছে…') : t('common.save', 'সংরক্ষণ করুন')}
+        </Button>
+      </form>
+    </Sheet>
   );
 }
 

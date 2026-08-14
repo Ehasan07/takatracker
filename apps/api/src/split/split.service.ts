@@ -84,6 +84,8 @@ export interface CreateExpenseInput {
   categoryId?: string;
   /** Required when the owner paid: which account the money left. */
   accountId?: string;
+  /** Spend the group's pot rather than one member's pocket. */
+  fromPot?: boolean;
   note?: string;
   attachmentIds?: string[];
 }
@@ -305,6 +307,13 @@ export class SplitService {
       purpose: group.purpose,
       currency: group.currency,
       note: group.note,
+      potAccountId: group.potAccountId,
+      /* What is actually left in the pot, read from the ledger rather than
+         tallied on the group — the two could not disagree, because there is
+         only one of them. */
+      potBalanceMinor: group.potAccountId
+        ? ((await this.accounts.balances(ctx.workspaceId)).get(group.potAccountId) ?? 0)
+        : null,
       archivedAt: group.archivedAt?.toISOString() ?? null,
       createdAt: group.createdAt.toISOString(),
       members,
@@ -407,7 +416,7 @@ export class SplitService {
     const othersMinor = input.totalMinor - myShare;
     const iPaid = payer.isSelf;
 
-    if (iPaid && !input.accountId) {
+    if (iPaid && !input.fromPot && !input.accountId) {
       throw new BadRequestException('টাকা কোন অ্যাকাউন্ট থেকে গেছে সেটি বেছে নিন');
     }
     if (iPaid && input.accountId) {
@@ -418,15 +427,27 @@ export class SplitService {
       if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
     }
 
+    if (input.fromPot && !group.potAccountId) {
+      throw new BadRequestException('এই গ্রুপে কোনো তহবিল নেই');
+    }
+
     const date = fromLocalDateString(input.date, ctx.timezone);
-    const entries = await this.entriesForExpense(ctx, {
-      iPaid,
-      totalMinor: input.totalMinor,
-      myShareMinor: myShare,
-      othersMinor,
-      accountId: input.accountId,
-      categoryId: input.categoryId ?? null,
-    });
+    const entries = input.fromPot
+      ? await this.entriesFromPot(ctx, {
+          potAccountId: group.potAccountId as string,
+          totalMinor: input.totalMinor,
+          myShareMinor: myShare,
+          othersMinor,
+          categoryId: input.categoryId ?? null,
+        })
+      : await this.entriesForExpense(ctx, {
+          iPaid,
+          totalMinor: input.totalMinor,
+          myShareMinor: myShare,
+          othersMinor,
+          accountId: input.accountId,
+          categoryId: input.categoryId ?? null,
+        });
 
     const expense = await this.prisma.$transaction(async (tx) => {
       let transactionId: string | null = null;
@@ -457,6 +478,7 @@ export class SplitService {
           currency: group.currency,
           payerMemberId: input.payerMemberId,
           splitMethod: input.splitMethod,
+          fromPot: input.fromPot ?? false,
           categoryId: input.categoryId ?? null,
           note: input.note?.trim() || null,
           attachmentIds: input.attachmentIds ?? [],
@@ -505,6 +527,48 @@ export class SplitService {
     });
 
     return this.presentExpense(expense, byId);
+  }
+
+  /**
+   * Spending the group's pot.
+   *
+   * The pot was made of everybody's money, so spending it does two things at
+   * once: it consumes the owner's own share — that part is spending — and it
+   * consumes the other members' contributions, which discharges what the owner
+   * owed them. Both come out of the pot.
+   *
+   *     DEBIT   expense nominal        the owner's share
+   *     DEBIT   ঋণ দেনা  (payable)      everybody else's share
+   *     CREDIT  the pot account        the whole bill
+   *
+   * The payable leg is the part that is easy to get wrong. Without it, spending
+   * a fund would leave the holder still apparently owing every taka anybody had
+   * put in, while the pot that would have repaid them was empty — a household
+   * that ran an office samity for a year would end it looking bankrupt.
+   */
+  private async entriesFromPot(
+    ctx: TenantContext,
+    args: {
+      potAccountId: string;
+      totalMinor: number;
+      myShareMinor: number;
+      othersMinor: number;
+      categoryId: string | null;
+    },
+  ): Promise<EntryDraft[]> {
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const entries: EntryDraft[] = [];
+
+    if (args.myShareMinor > 0) {
+      entries.push(draft(system.expenseAccountId, 'DEBIT', args.myShareMinor, args.categoryId));
+    }
+    if (args.othersMinor > 0) {
+      const payable = await this.accounts.loanControlAccount(ctx.workspaceId, 'BORROWED');
+      entries.push(draft(payable, 'DEBIT', args.othersMinor));
+    }
+    entries.push(draft(args.potAccountId, 'CREDIT', args.totalMinor));
+
+    return entries;
   }
 
   /**
@@ -1063,6 +1127,154 @@ export class SplitService {
       data: { status: 'DECLINED', reviewedAt: new Date() },
     });
     return { id: mirror.id, status: 'DECLINED' as const };
+  }
+
+  // --- a common pot ---------------------------------------------------------
+
+  /**
+   * Turn a group into a fund: a family kitty, an office samity, a trip pot.
+   *
+   * ## Why the pot is a real account
+   *
+   * A number on the group would be a second ledger nobody could reconcile. It
+   * is an `ASSET` account held by whoever is holding the money, so it appears on
+   * their balance sheet — because it is genuinely in their hands — while each
+   * member's contribution is a payable to that member, which is what makes the
+   * money theirs rather than the holder's. Net effect on the holder's worth:
+   * zero, which is the truth.
+   *
+   * This is the shape a committee ledger has always had, and in Bangladesh it is
+   * an extremely common one.
+   */
+  async openPot(ctx: TenantContext, groupId: string, name?: string) {
+    const group = await this.requireGroup(ctx.workspaceId, groupId);
+    if (group.potAccountId) throw new BadRequestException('এই গ্রুপে আগে থেকেই তহবিল আছে');
+
+    const account = await this.prisma.account.create({
+      data: {
+        workspaceId: ctx.workspaceId,
+        name: name?.trim() || `${group.name} — তহবিল`,
+        type: 'ASSET',
+        currency: group.currency,
+      },
+    });
+    await this.prisma.splitGroup.update({
+      where: { id: group.id },
+      data: { potAccountId: account.id },
+    });
+
+    await this.audit.record({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'split.pot_opened',
+      entity: 'SplitGroup',
+      entityId: group.id,
+      after: { accountId: account.id },
+    });
+
+    return this.findGroup(ctx, groupId);
+  }
+
+  /**
+   * Somebody pays into the pot.
+   *
+   * The owner's own contribution moves value between two of their own accounts
+   * — cash out, pot in — and is not spending; their net worth does not change,
+   * which is correct, because the money is still theirs until it is spent.
+   *
+   * Somebody else's contribution grows the pot and grows what the holder owes
+   * them. That payable is the whole reason a pot is not simply the holder's
+   * money, and it is what a member is entitled to back if the fund is wound up.
+   */
+  async contribute(
+    ctx: TenantContext,
+    groupId: string,
+    input: {
+      memberId: string;
+      amountMinor: number;
+      date: string;
+      accountId?: string;
+      note?: string;
+    },
+  ) {
+    const group = await this.requireGroup(ctx.workspaceId, groupId);
+    if (!group.potAccountId) throw new BadRequestException('এই গ্রুপে কোনো তহবিল নেই');
+    if (input.amountMinor <= 0)
+      throw new BadRequestException('টাকার অঙ্ক শূন্যের চেয়ে বেশি হতে হবে');
+
+    const member = await this.prisma.splitGroupMember.findFirst({
+      where: { id: input.memberId, groupId, workspaceId: ctx.workspaceId },
+    });
+    if (!member) throw new NotFoundException('সদস্য পাওয়া যায়নি');
+
+    if (member.isSelf && !input.accountId) {
+      throw new BadRequestException('টাকা কোন অ্যাকাউন্ট থেকে গেল সেটি বেছে নিন');
+    }
+
+    const entries: EntryDraft[] = [draft(group.potAccountId, 'DEBIT', input.amountMinor)];
+    if (member.isSelf) {
+      entries.push(draft(input.accountId as string, 'CREDIT', input.amountMinor));
+    } else {
+      const payable = await this.accounts.loanControlAccount(ctx.workspaceId, 'BORROWED');
+      entries.push(draft(payable, 'CREDIT', input.amountMinor));
+    }
+    assertBalanced(entries);
+
+    const date = fromLocalDateString(input.date, ctx.timezone);
+    await this.prisma.$transaction(async (tx) => {
+      const transaction = await tx.transaction.create({
+        data: {
+          workspaceId: ctx.workspaceId,
+          date,
+          type: 'TRANSFER',
+          description: `${group.name} — ${member.isSelf ? 'নিজের চাঁদা' : `${member.displayName}-এর চাঁদা`}`,
+          notes: input.note?.trim() || null,
+          createdByUserId: ctx.id || null,
+          entries: { create: entries.map((e) => entryData(e, ctx.workspaceId)) },
+        },
+      });
+      await tx.splitContribution.create({
+        data: {
+          workspaceId: ctx.workspaceId,
+          groupId,
+          memberId: input.memberId,
+          amountMinor: BigInt(input.amountMinor),
+          date,
+          accountId: member.isSelf ? (input.accountId as string) : null,
+          note: input.note?.trim() || null,
+          transactionId: transaction.id,
+        },
+      });
+    });
+
+    await this.audit.record({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'split.contributed',
+      entity: 'SplitGroup',
+      entityId: groupId,
+      after: { memberId: input.memberId, amountMinor: input.amountMinor },
+    });
+
+    return this.findGroup(ctx, groupId);
+  }
+
+  async listContributions(ctx: TenantContext, groupId: string) {
+    await this.requireGroup(ctx.workspaceId, groupId);
+    const rows = await this.prisma.splitContribution.findMany({
+      where: { workspaceId: ctx.workspaceId, groupId, deletedAt: null },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      include: { member: { select: { displayName: true, isSelf: true } } },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      memberId: row.memberId,
+      name: row.member.displayName,
+      isSelf: row.member.isSelf,
+      amountMinor: minorToNumber(row.amountMinor),
+      date: toLocalDateString(row.date, ctx.timezone),
+      note: row.note,
+    }));
   }
 
   // --- helpers --------------------------------------------------------------

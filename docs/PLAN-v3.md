@@ -244,6 +244,11 @@ Carried forward, so nothing quietly disappears:
 
 ## 5. Order, and why
 
+**All of M40–M48 shipped on 14 August 2026.** See the night's entry in
+`PROGRESS.md` for what went out in which release, the six defects the work
+turned up, and what is still outstanding. The order below is kept as written,
+because the reasoning is still the reasoning.
+
 ```
 M40  cash flow in three sections      ← largest standards gap, data already exists
 M41  income statement for any period  ← the statement people ask for first
