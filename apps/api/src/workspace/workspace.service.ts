@@ -29,6 +29,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export interface WorkspaceSettingsPatch {
   /** Replaces the list. An empty array is a legitimate "remove them all". */
   quantityUnits?: string[];
+  aiSuggestEnabled?: boolean;
   /**
    * The books' language. Chosen at signup and, until now, frozen there — the
    * `Workspace` row had no write path at all.
@@ -39,6 +40,7 @@ export interface WorkspaceSettingsPatch {
 export interface WorkspaceSettingsView {
   quantityUnits: string[];
   locale: Locale;
+  aiSuggestEnabled: boolean;
 }
 
 @Injectable()
@@ -51,9 +53,13 @@ export class WorkspaceService {
   async settings(workspaceId: string): Promise<WorkspaceSettingsView> {
     const workspace = await this.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { quantityUnits: true, locale: true },
+      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true },
     });
-    return { quantityUnits: workspace.quantityUnits, locale: asLocale(workspace.locale) };
+    return {
+      quantityUnits: workspace.quantityUnits,
+      locale: asLocale(workspace.locale),
+      aiSuggestEnabled: workspace.aiSuggestEnabled,
+    };
   }
 
   async update(
@@ -63,7 +69,7 @@ export class WorkspaceService {
   ): Promise<WorkspaceSettingsView> {
     const before = await this.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { quantityUnits: true, locale: true },
+      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true },
     });
 
     /* Cleaned here and not only in the client: the cap, the de-duplication and
@@ -73,12 +79,17 @@ export class WorkspaceService {
     const quantityUnits =
       patch.quantityUnits === undefined ? undefined : normaliseUnitList(patch.quantityUnits);
     const locale = patch.locale;
+    const aiSuggestEnabled = patch.aiSuggestEnabled;
 
     /* A PATCH carrying neither field is a read. Writing anyway would put a
        no-op row in the audit log every time a screen saved a form it had not
        changed. */
-    if (quantityUnits === undefined && locale === undefined) {
-      return { quantityUnits: before.quantityUnits, locale: asLocale(before.locale) };
+    if (quantityUnits === undefined && locale === undefined && aiSuggestEnabled === undefined) {
+      return {
+        quantityUnits: before.quantityUnits,
+        locale: asLocale(before.locale),
+        aiSuggestEnabled: before.aiSuggestEnabled,
+      };
     }
 
     const updated = await this.prisma.workspace.update({
@@ -86,8 +97,9 @@ export class WorkspaceService {
       data: {
         ...(quantityUnits === undefined ? {} : { quantityUnits }),
         ...(locale === undefined ? {} : { locale }),
+        ...(aiSuggestEnabled === undefined ? {} : { aiSuggestEnabled }),
       },
-      select: { quantityUnits: true, locale: true },
+      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true },
     });
 
     /* Emitted, not awaited. A settings change is worth a line in the log —
@@ -103,7 +115,11 @@ export class WorkspaceService {
       after: { quantityUnits: updated.quantityUnits, locale: updated.locale },
     });
 
-    return { quantityUnits: updated.quantityUnits, locale: asLocale(updated.locale) };
+    return {
+      quantityUnits: updated.quantityUnits,
+      locale: asLocale(updated.locale),
+      aiSuggestEnabled: updated.aiSuggestEnabled,
+    };
   }
 }
 

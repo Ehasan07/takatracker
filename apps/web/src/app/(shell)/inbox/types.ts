@@ -43,6 +43,8 @@ export interface DraftView {
    */
   evidence: Record<string, string>;
   parserName: string | null;
+  /** Which model proposed the category and account, when one did. */
+  suggestedBy?: string | null;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;

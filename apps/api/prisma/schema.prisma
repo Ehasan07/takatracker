@@ -375,6 +375,13 @@ model Workspace {
   /// Recording money into a card mutes that cycle. On by default; the manual
   /// control stays either way.
   autoMuteOnCardPayment      Boolean @default(true)
+  /// Whether this workspace's messages may be sent to a language model to have
+  /// a category and an account suggested.
+  ///
+  /// Off by default and per workspace, because turning it on means somebody
+  /// else's SMS leaves this server. That is a decision for the person whose
+  /// messages they are, not a default somebody discovers later.
+  aiSuggestEnabled Boolean @default(false)
   /// Units this workspace added to the quantity field's suggestions. The eight
   /// common ones ship in the client and are not stored here; this is only what
   /// somebody added themselves. Suggestions, never a constraint — the field
@@ -1295,6 +1302,14 @@ model TransactionDraft {
   confidence  Int         @default(0)
   /// Field name to the substring it was read from, for the "why" popover.
   evidence    Json?
+  /// Which model proposed the category and account, when one did.
+  ///
+  /// A regular expression can find an amount; it can never know that "স্বপ্ন"
+  /// is groceries. A model can, and the review screen says so — the person
+  /// deciding should be told which of the fields in front of them were read
+  /// from their bank and which were guessed by a machine that has never seen
+  /// their books.
+  suggestedBy String?
 
   /// Set once accepted, so a draft can never be applied twice.
   transactionId String?  @unique

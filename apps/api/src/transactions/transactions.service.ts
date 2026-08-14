@@ -262,7 +262,13 @@ export class TransactionsService {
     const created = await this.prisma.transaction.create({
       data: {
         workspaceId: ctx.workspaceId,
-        createdByUserId: ctx.id,
+        /* `|| null`, because not every writer is a person. A trusted forwarder
+           posts entries with no user behind them and an empty string is not a
+           user id — it is a foreign key violation. The column is nullable for
+           exactly this, and null is the honest value: attributing a machine's
+           write to the workspace owner would put their name on a row they never
+           touched. */
+        createdByUserId: ctx.id || null,
         date: fromLocalDateString(input.date, tz),
         type: input.type,
         description: input.description,

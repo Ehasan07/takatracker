@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   UnauthorizedException,
+  forwardRef,
 } from '@nestjs/common';
 import {
   assertBalanced,
@@ -13,12 +15,13 @@ import {
   REVIEW_THRESHOLD,
   type EntryDraft,
 } from '@hishab/core';
-import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
+import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
 import { Prisma } from '@prisma/client';
 import type { DraftStatus, IngestionChannel, TransactionSource } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
+import { AiSuggestService } from './ai-suggest.service';
 import { AuditService } from '../audit/audit.service';
-import { looksFinancial } from '@hishab/core';
+import { looksFinancial, looksPromotional, ucblParser } from '@hishab/core';
 import { minorToNumber } from '../common/bigint-json';
 import {
   INGEST_SECRET_HEADER,
@@ -28,6 +31,7 @@ import {
 } from '../common/ingest-webhook';
 import { EntitlementsService, FeatureLimitException } from '../entitlements/entitlements.service';
 import { UsageMeterService } from '../entitlements/usage-meter.service';
+import { TransactionsService } from '../transactions/transactions.service';
 import { CardRemindersService } from '../notifications/card-reminders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
@@ -92,7 +96,13 @@ import type {
  * `packages/core` and one entry in this array — nothing else in this service
  * changes.
  */
-const REGISTRY = createRegistry([]);
+/* The bank-specific parsers, tried in order before the generic one.
+ *
+ * One entry so far, written from the owner's own UCB alerts. Each addition is
+ * a file in `packages/core/src/parsers` and a line here; a bank nobody has
+ * written one for still gets the generic reader, so the list growing is a
+ * gradual improvement rather than a prerequisite. */
+const REGISTRY = createRegistry([ucblParser]);
 
 // --- webhook authentication --------------------------------------------------
 
@@ -199,6 +209,15 @@ export interface DraftView {
   /** Field name → the exact substring of the body it was read from. */
   evidence: Record<string, string>;
   parserName: string | null;
+  /**
+   * Which model proposed the category and account, when one did.
+   *
+   * The review screen says so out loud. Somebody deciding should be told which
+   * of the values in front of them were read from their bank and which were
+   * guessed by a machine that has never seen their books — a suggestion
+   * presented as a reading is how people stop checking.
+   */
+  suggestedBy: string | null;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -286,6 +305,12 @@ export class IngestionService {
     private readonly meters: UsageMeterService,
     private readonly cardReminders: CardRemindersService,
     private readonly audit: AuditService,
+    /* Lazily: `TransactionsModule` imports this one back, because an accepted
+       draft and a forwarder entry both go through the transaction writer while
+       the writer's own module needs the inbox. */
+    @Inject(forwardRef(() => TransactionsService))
+    private readonly transactions: TransactionsService,
+    private readonly ai: AiSuggestService,
   ) {}
 
   // --- webhook authentication ------------------------------------------------
@@ -341,6 +366,109 @@ export class IngestionService {
     return verifyIngestWebhookSecret(workspaceId, provided);
   }
 
+  /**
+   * The accounts and categories an outside console needs for its two dropdowns.
+   *
+   * Names and ids, and nothing else. A console asking "which account, which
+   * category" has no use for a balance, and an endpoint that returns what it
+   * does not need is one that leaks the day its credential does. System
+   * accounts are excluded for the reason the wallet excludes them: nobody files
+   * a grocery bill against `SYSTEM_EXPENSE`.
+   */
+  async forwarderOptions(workspaceId: string): Promise<{
+    accounts: { id: string; name: string; type: string }[];
+    categories: { id: string; name: string; kind: string }[];
+  }> {
+    const workspace = await this.requireLiveWorkspace(workspaceId);
+    const locale: Locale = workspace.locale === 'en' ? 'en' : 'bn';
+
+    const [accounts, categories] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { workspaceId, deletedAt: null, isArchived: false, systemKey: null },
+        select: { id: true, name: true, type: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+      this.prisma.category.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true, nameBn: true, kind: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    return {
+      accounts,
+      categories: categories.map((category) => ({
+        id: category.id,
+        /* The workspace's own language, so the console's dropdown reads the
+           same as every picker inside the app. */
+        name: displayName(category, locale),
+        kind: category.kind,
+      })),
+    };
+  }
+
+  /**
+   * A transaction an outside console has already had a person review.
+   *
+   * Straight through `TransactionsService.create` — the same door the app's own
+   * entry sheet uses, with the same ownership checks, the same plan meter, the
+   * same double-entry expansion and the same audit row. Building the entries
+   * here instead would be a second way for the ledger to be wrong, and the
+   * second way is always the one nobody tests.
+   */
+  async entryFromForwarder(
+    workspaceId: string,
+    input: {
+      date: string;
+      amountMinor: number;
+      direction: 'IN' | 'OUT';
+      accountId: string;
+      categoryId: string;
+      description?: string;
+      notes?: string;
+    },
+  ): Promise<{ transactionId: string }> {
+    const workspace = await this.requireLiveWorkspace(workspaceId);
+
+    const ctx: TenantContext = {
+      /* No user did this — a trusted client did. `id` records authorship and an
+         empty string is honest rather than a borrowed identity; the audit row
+         still says where it came from. */
+      id: '',
+      workspaceId: workspace.id,
+      timezone: workspace.timezone,
+      locale: workspace.locale === 'en' ? 'en' : 'bn',
+    };
+
+    const created = await this.transactions.create(ctx, {
+      date: input.date,
+      type: input.direction === 'IN' ? 'INCOME' : 'EXPENSE',
+      amountMinor: input.amountMinor,
+      accountId: input.accountId,
+      categoryId: input.categoryId,
+      description: input.description,
+      notes: input.notes,
+      source: 'WEBHOOK',
+      attachmentIds: [],
+    } as Parameters<TransactionsService['create']>[1]);
+
+    return { transactionId: created.id };
+  }
+
+  /** Live, or the same 401 a bad secret gets. Never says which it was. */
+  private async requireLiveWorkspace(workspaceId: string) {
+    const workspace = await this.prisma.workspace.findFirst({
+      where: {
+        id: workspaceId,
+        deletedAt: null,
+        status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
+      },
+      select: { id: true, timezone: true, locale: true },
+    });
+    if (!workspace) throw new UnauthorizedException(INGEST_UNAUTHORISED);
+    return workspace;
+  }
+
   /** What the settings screen shows so a forwarder app can be pointed at us. */
   webhookConfig(ctx: TenantContext): WebhookConfigView {
     const secret = this.webhookSecretFor(ctx.workspaceId);
@@ -392,8 +520,10 @@ export class IngestionService {
      * it is what shows whether the pipe is working at all. But a draft is a
      * question, and forty questions nobody needs to answer is how a review
      * queue stops being read. So the message is always stored and only a
-     * money-shaped one raises a draft. */
-    const financial = looksFinancial(body);
+     * money-shaped one raises a draft — and not one that is merely selling
+     * money-shaped things. A bank's advertisement carries more figures than its
+     * alerts do and every one of them is wrong to file. */
+    const financial = looksFinancial(body) && !looksPromotional(body);
 
     /* The monthly ingest ceiling, checked only once the message is known to be
      * new *and* to be worth a draft. Charging a retry against the quota would
@@ -517,6 +647,15 @@ export class IngestionService {
         draftId: created.draftId,
       },
     });
+
+    /* Ask a model which category and account this belongs to, and do not wait.
+     *
+     * The draft is already saved and already useful; the suggestion only fills
+     * in two fields that would otherwise be blank. Awaiting it would hold a
+     * webhook open on somebody else's API latency, and failing it would throw
+     * away a draft that was fine. So it runs behind the response and every
+     * failure inside it is silent. */
+    void this.ai.suggestForDraft(workspaceId, created.draftId ?? '').catch(() => undefined);
 
     return { id: created.messageId, duplicate: false, draftId: created.draftId };
   }
@@ -1030,6 +1169,7 @@ export class IngestionService {
       categoryId: row.categoryId,
       confidence: row.confidence,
       needsReview: row.confidence < REVIEW_THRESHOLD,
+      suggestedBy: row.suggestedBy,
       evidence: IngestionService.evidenceOf(row.evidence),
       parserName: row.message?.parserName ?? null,
       transactionId: row.transactionId,

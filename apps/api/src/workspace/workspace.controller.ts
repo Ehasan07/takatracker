@@ -31,6 +31,15 @@ const patchSchema = z.object({
    * them mails the other will not agree with itself.
    */
   locale: z.enum(LOCALES).optional(),
+  /**
+   * Whether this workspace's messages may be shown to a language model.
+   *
+   * A parser can read an amount; only a model knows that "স্বপ্ন" is groceries.
+   * Turning that on sends the text of somebody's bank SMS to a third party, so
+   * it is off until the person whose messages they are says otherwise — a
+   * default nobody discovers afterwards.
+   */
+  aiSuggestEnabled: z.boolean().optional(),
 });
 
 @Controller('workspace')

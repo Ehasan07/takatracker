@@ -60,7 +60,11 @@ test.describe('responsive shell', () => {
     if ((page.viewportSize()?.width ?? 0) >= 768) return;
 
     const bar = page.locator('header').first();
+    /* Both: whose app this is, and where in it you are. Showing only the brand
+       answered the first question by dropping the second, which is what the bar
+       existed for. */
     await expect(bar.getByText('Taka Tracker')).toBeVisible();
+    await expect(bar.getByRole('heading')).toContainText('ড্যাশবোর্ড');
 
     await page.goto('/settings');
     await expect(page.locator('header').first().getByText('Taka Tracker')).toHaveCount(0);

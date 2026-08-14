@@ -367,10 +367,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <BrandMark size="sm" />
-                {/* The page title still has to exist for a screen reader, and
-                    for the heading order — it is simply not the thing worth the
-                    width here. */}
-                <h1 className="sr-only">{titleFor(pathname)}</h1>
+                {/* Both, because both answer a question and they are different
+                    questions. The brand says whose app this is, which an
+                    installed app opening on the word ড্যাশবোর্ড could not; the
+                    page title says where you are, which is what the bar was for
+                    in the first place. Losing the second to gain the first was
+                    a bad trade and this is the correction.
+
+                    Right-aligned and muted: the eye starts at the brand, and
+                    the title is a label rather than a headline once something
+                    else is already claiming the left. */}
+                <h1 className="text-ink-muted ml-auto min-w-0 truncate pl-3 text-sm">
+                  {titleFor(pathname)}
+                </h1>
               </>
             )}
           </div>

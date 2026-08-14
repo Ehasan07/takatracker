@@ -880,3 +880,75 @@ const MONEY_MARKERS: readonly RegExp[] = [
 export function looksFinancial(body: string): boolean {
   return MONEY_MARKERS.some((marker) => marker.test(body));
 }
+
+// --- is somebody selling something? -------------------------------------------
+
+/**
+ * Words that offer rather than report.
+ *
+ * A bank sends two kinds of message from the same shortcode. One says what
+ * happened to your money; the other tries to sell you something. They look
+ * alike to a rule that only asks "is there an amount in here", and the
+ * advertisement usually has *more* amounts than the alert:
+ *
+ *     সিটিটাচ থেকে যেকোন বিকাশ নম্বরে ২টাকা বার ১৫০০ টাকা অ্যাড মানি করলেই
+ *     পাবেন ৫০ টাকা বোনাস ও স্বপ্ন-এর ১০০ টাকার কুপন। শুধুমাত্র আজকের জন্য।
+ *
+ * Four figures, none of them a transaction. Whichever one a parser picks is
+ * wrong, and the person is left dismissing drafts for money that never moved.
+ */
+const PROMOTION_MARKERS: readonly RegExp[] = [
+  /বোনাস/,
+  /কুপন/,
+  /অফার/,
+  /ক্যাশব্যাক/,
+  /ছাড়/,
+  /শুধুমাত্র আজকের/,
+  /করলেই\s*পাবেন/,
+  /শর্ত প্রযোজ্য/,
+  /\boffer\b/i,
+  /\bcoupon\b/i,
+  /\bbonus\b/i,
+  /\bcashback\b/i,
+  /\bdiscount\b/i,
+  /\bwin\b/i,
+  /\bT&C\b/i,
+  /\bterms apply\b/i,
+];
+
+/**
+ * What a settled transaction says and an advertisement never does.
+ *
+ * This is the half that keeps the rule from eating real money. "৳50 ক্যাশব্যাক
+ * পেয়েছেন" *is* a transaction and carries a balance or a reference; the same
+ * word in an advertisement carries neither, because there is nothing to
+ * reference yet. So a promotional word alone is not enough to reject a message
+ * — it has to be a promotional word with no evidence that anything happened.
+ */
+const SETTLED_MARKERS: readonly RegExp[] = [
+  /Avl\s*Bal/i,
+  /\bbalance\b/i,
+  /ব্যালেন্স/,
+  /\bTrx\s*ID\b/i,
+  /\bTxn\b/i,
+  /\bRef(?:erence)?\s*(?:No\.?|:|#)/i,
+  /\bA\/C\b/i,
+  /\bCard\s*#/i,
+];
+
+/**
+ * Whether this is an advertisement rather than a record of money moving.
+ *
+ * Both halves are required. A message that sells *and* reports — a cashback
+ * that actually landed, with the balance after it — is a transaction, and this
+ * says so by returning false.
+ *
+ * Nothing is discarded either way: a message this rejects is still stored and
+ * still shown to the person whose phone sent it. All it loses is the draft,
+ * which is a question, and nobody needs to be asked about an advert.
+ */
+export function looksPromotional(body: string): boolean {
+  const selling = PROMOTION_MARKERS.some((marker) => marker.test(body));
+  if (!selling) return false;
+  return !SETTLED_MARKERS.some((marker) => marker.test(body));
+}

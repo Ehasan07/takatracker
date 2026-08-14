@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
+import { TransactionsService } from '../transactions/transactions.service';
 import {
   INGEST_SECRET_HEADER,
   INGEST_UNAUTHORISED,
@@ -198,9 +199,58 @@ export type RejectDraftInput = z.infer<typeof rejectDraftSchema>;
  * internet, and it is compared in constant time; see
  * `IngestionService.webhookSecretFor` for exactly how it is derived.
  */
+/**
+ * A completed entry, from a client that has already asked a person.
+ *
+ * The webhook posts *messages* and gets drafts back, because nothing should
+ * reach a ledger unreviewed. This posts a transaction, and the difference is
+ * that the review already happened — in the owner's own SMS console, where a
+ * person picked the category and the account before pressing save.
+ *
+ * It is the same credential and therefore the same trust boundary: whoever
+ * holds a workspace's ingest secret can now write to its books rather than only
+ * propose. That is a real widening and it is deliberate; the alternative was a
+ * second credential to keep in step, and one secret in two places the owner
+ * controls is easier to reason about than two secrets in two places.
+ */
+const entrySchema = z.object({
+  workspace: z.string().max(100).optional(),
+  secret: z.string().max(200).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
+  amountMinor: z.number().int().positive(),
+  direction: z.enum(['IN', 'OUT']),
+  accountId: z.string().min(1),
+  categoryId: z.string().min(1),
+  description: z.string().max(500).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
 @Controller('ingestion')
 export class IngestionWebhookController {
-  constructor(private readonly ingestion: IngestionService) {}
+  constructor(
+    private readonly ingestion: IngestionService,
+    private readonly transactions: TransactionsService,
+  ) {}
+
+  /**
+   * Prove the caller holds this workspace's secret, and say which workspace.
+   *
+   * One 401 for every failure — bad secret, missing header, unknown workspace.
+   * Telling them apart would turn this into a way of discovering which
+   * workspace ids exist.
+   */
+  private tenantFrom(
+    headerWorkspace: string | undefined,
+    headerSecret: string | undefined,
+    body: { workspace?: string; secret?: string },
+  ): string {
+    const tenant = headerWorkspace || body.workspace;
+    const proof = headerSecret ?? body.secret;
+    if (!tenant || !this.ingestion.verifyWebhookSecret(tenant, proof)) {
+      throw new UnauthorizedException(INGEST_UNAUTHORISED);
+    }
+    return tenant;
+  }
 
   @Post('webhook')
   @HttpCode(200)
@@ -225,6 +275,54 @@ export class IngestionWebhookController {
      * Moving to 202 with a worker queue is a change to make when a parser gets
      * slow enough to be worth it, not before. */
     return this.ingestion.ingest(tenant, body);
+  }
+
+  /**
+   * `GET /v1/ingestion/options` — what to put in a forwarder's two dropdowns.
+   *
+   * Names and ids only. A console filling in "which account, which category"
+   * needs no balances, and an endpoint that hands over what it does not need is
+   * an endpoint that leaks the moment its credential does.
+   *
+   * The credential is in the query string here rather than a header, because
+   * the caller is a browser page fetching on load. That is a weaker place for a
+   * secret — query strings reach access logs — so it is offered *as well as*
+   * the headers rather than instead of them, and a client that can set headers
+   * should.
+   */
+  @Get('options')
+  @Throttle({ default: { limit: WEBHOOK_RATE_LIMIT, ttl: 60_000 } })
+  async options(
+    @Headers(INGEST_WORKSPACE_HEADER) headerWorkspace: string | undefined,
+    @Headers(INGEST_SECRET_HEADER) headerSecret: string | undefined,
+    @Query('workspace') queryWorkspace?: string,
+    @Query('secret') querySecret?: string,
+  ) {
+    const tenant = this.tenantFrom(headerWorkspace, headerSecret, {
+      workspace: queryWorkspace,
+      secret: querySecret,
+    });
+    return this.ingestion.forwarderOptions(tenant);
+  }
+
+  /**
+   * `POST /v1/ingestion/entries` — a transaction somebody already reviewed.
+   *
+   * Goes through `TransactionsService.create`, which is the same door the app's
+   * own entry sheet uses: the same ownership checks, the same plan meter, the
+   * same double-entry expansion, the same audit row. A second write path that
+   * built its own entries would be a second place for the ledger to be wrong.
+   */
+  @Post('entries')
+  @HttpCode(201)
+  @Throttle({ default: { limit: WEBHOOK_RATE_LIMIT, ttl: 60_000 } })
+  async entry(
+    @Headers(INGEST_WORKSPACE_HEADER) headerWorkspace: string | undefined,
+    @Headers(INGEST_SECRET_HEADER) headerSecret: string | undefined,
+    @Body(zodPipe(entrySchema)) body: z.infer<typeof entrySchema>,
+  ) {
+    const tenant = this.tenantFrom(headerWorkspace, headerSecret, body);
+    return this.ingestion.entryFromForwarder(tenant, body);
   }
 }
 

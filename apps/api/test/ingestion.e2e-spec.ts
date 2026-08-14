@@ -143,6 +143,104 @@ describe('ingestion', () => {
     expect(JSON.stringify(res.body)).toContain('body ঘরে বার্তার ভেরিয়েবলটি বসান');
   });
 
+  it('hands a trusted forwarder its dropdown options, and no balances', async () => {
+    /* The owner runs an SMS console outside this app. It needs two lists to
+       fill in "which account, which category" — and nothing else. An endpoint
+       that returned balances would be handing over the ledger to fill in a
+       dropdown, and it would do so the day its credential leaked. */
+    const ws = await workspace();
+    const res = await ctx
+      .http()
+      .get('/v1/ingestion/options')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, ws.secret)
+      .expect(200);
+
+    expect(res.body.accounts.length).toBeGreaterThan(0);
+    expect(res.body.categories.length).toBeGreaterThan(0);
+    expect(res.body.accounts[0]).toHaveProperty('name');
+    expect(JSON.stringify(res.body)).not.toContain('balance');
+    expect(JSON.stringify(res.body)).not.toContain('openingBalance');
+
+    /* The five nominal accounts stay out, the way they stay off the wallet:
+       nobody files a grocery bill against SYSTEM_EXPENSE. */
+    expect(JSON.stringify(res.body.accounts)).not.toContain('SYSTEM');
+  });
+
+  it('refuses the options to a caller with the wrong secret', async () => {
+    const ws = await workspace();
+    await ctx
+      .http()
+      .get('/v1/ingestion/options')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, 'not-the-secret')
+      .expect(401);
+    await ctx.http().get('/v1/ingestion/options').expect(401);
+  });
+
+  it('takes a completed entry and writes it the way the app writes one', async () => {
+    /* The console asks the person for the category and the account, so the
+       review has already happened by the time this arrives — which is the
+       difference between this and the webhook. It still goes through
+       `TransactionsService.create`, so the ownership checks, the meter, the
+       double entry and the audit row are the same ones the entry sheet uses. */
+    const ws = await workspace();
+    const options = await ctx
+      .http()
+      .get('/v1/ingestion/options')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, ws.secret)
+      .expect(200);
+
+    const expense = options.body.categories.find((c: { kind: string }) => c.kind === 'EXPENSE');
+
+    const created = await ctx
+      .http()
+      .post('/v1/ingestion/entries')
+      .set(ws.workspaceHeader, ws.user.workspaceId)
+      .set(ws.secretHeader, ws.secret)
+      .send({
+        date: '2026-08-15',
+        amountMinor: 50_000,
+        direction: 'OUT',
+        accountId: ws.cashId,
+        categoryId: expense.id,
+        description: 'কনসোল থেকে',
+      })
+      .expect(201);
+
+    expect(created.body.transactionId).toBeTruthy();
+
+    /* In the ledger, balanced, and visible to the owner's own screens. */
+    const entries = await ctx.prisma.ledgerEntry.findMany({
+      where: { transactionId: created.body.transactionId },
+      select: { direction: true, amountMinor: true },
+    });
+    expect(entries).toHaveLength(2);
+    const debits = entries.filter((e) => e.direction === 'DEBIT');
+    const credits = entries.filter((e) => e.direction === 'CREDIT');
+    expect(Number(debits[0]?.amountMinor)).toBe(Number(credits[0]?.amountMinor));
+  });
+
+  it('will not write an entry into a workspace whose secret it does not hold', async () => {
+    const mine = await workspace();
+    const stranger = await workspace();
+
+    await ctx
+      .http()
+      .post('/v1/ingestion/entries')
+      .set(mine.workspaceHeader, stranger.user.workspaceId)
+      .set(mine.secretHeader, mine.secret)
+      .send({
+        date: '2026-08-15',
+        amountMinor: 50_000,
+        direction: 'OUT',
+        accountId: stranger.cashId,
+        categoryId: stranger.categoryId,
+      })
+      .expect(401);
+  });
+
   it('turns a bank SMS into a draft, and only a draft', async () => {
     const ws = await workspace();
     const res = await post(ws).expect(200);
@@ -343,6 +441,35 @@ describe('ingestion', () => {
     expect(messages.body.items).toHaveLength(1);
     expect(messages.body.items[0].body).toContain('বাসায়');
     expect(messages.body.items[0].draftId).toBeNull();
+  });
+
+  it('raises no decision for a bank advertising at you', async () => {
+    /* A real CityTouch promotion. Four amounts in it — ২, ১৫০০, ৫০, ১০০ — and
+       not one of them a transaction, so whichever a parser picked was wrong and
+       the person was left dismissing a draft for money that never moved. Kept,
+       like everything else, and simply not asked about. */
+    const ws = await workspace();
+    const advert =
+      'সিটিটাচ থেকে যেকোন বিকাশ নম্বরে ২টাকা বার ১৫০০ টাকা অ্যাড মানি করলেই পাবেন ৫০ টাকা বোনাস ও স্বপ্ন-এর ১০০ টাকার কুপন।শুধুমাত্র আজকের জন্য।';
+
+    const received = await post(ws, advert).expect(200);
+    expect(received.body.draftId).toBeNull();
+
+    const messages = await ctx.http().get('/v1/ingestion/messages').set(auth(ws.user)).expect(200);
+    expect(messages.body.items).toHaveLength(1);
+    expect(messages.body.items[0].draftId).toBeNull();
+  });
+
+  it('still raises one for a cashback that actually landed', async () => {
+    /* The same vocabulary, reporting rather than offering — and it carries the
+       thing an advert never has: a balance. Rejecting this would be the rule
+       eating real money. */
+    const ws = await workspace();
+    const real = await post(
+      ws,
+      'BDT 100.00 cashback credited. Avl Bal: BDT 5,300.00. For query: 16419',
+    ).expect(200);
+    expect(real.body.draftId).toBeTruthy();
   });
 
   it('does raise one for a code, because a digit is enough — by design', async () => {

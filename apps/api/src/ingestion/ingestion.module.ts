@@ -1,7 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TransactionsModule } from '../transactions/transactions.module';
 import { IngestionController, IngestionWebhookController } from './ingestion.controller';
+import { AiSuggestService } from './ai-suggest.service';
 import { IngestionService } from './ingestion.service';
 
 /**
@@ -21,9 +23,13 @@ import { IngestionService } from './ingestion.service';
  * matched before anything else under `/ingestion`.
  */
 @Module({
-  imports: [AccountsModule, NotificationsModule],
+  /* TransactionsModule for the forwarder entry endpoint: an entry somebody has
+   * already reviewed in an outside console goes through the same
+   * `TransactionsService.create` the app's own entry sheet uses, rather than
+   * building its own ledger rows. Two write paths is how a ledger drifts. */
+  imports: [AccountsModule, NotificationsModule, forwardRef(() => TransactionsModule)],
   controllers: [IngestionWebhookController, IngestionController],
-  providers: [IngestionService],
-  exports: [IngestionService],
+  providers: [IngestionService, AiSuggestService],
+  exports: [IngestionService, AiSuggestService],
 })
 export class IngestionModule {}

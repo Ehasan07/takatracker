@@ -23,6 +23,8 @@ import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import { originOf, type FieldOrigin } from './evidence';
 import { bnDateTime, bnNum, channelLabel, DIRECTIONS, REJECT_REASONS, statusLabel } from './labels';
+import { Sparkles } from 'lucide-react';
+import { t } from '@/lib/t';
 import { ConfidenceMeter, OriginBadge, StatusPill } from './parts';
 import { RawMessage } from './raw-message';
 import { acceptDraft, invalidateAfterAccept, invalidateAfterReject, rejectDraft } from './queries';
@@ -348,6 +350,22 @@ function ReviewForm({
           <span>
             এই বার্তায় টাকার কোনো অঙ্ক পাওয়া যায়নি, তাই খসড়াটি নিজে থেকে কিছুই দাবি করছে না।
             দেখে নিন — দরকার হলে নিজে লিখে যোগ করুন, নইলে বাতিল করে দিন।
+          </span>
+        </p>
+      ) : null}
+
+      {draft.suggestedBy ? (
+        /* Said out loud, because the fields below arrive filled in and there is
+           otherwise nothing to tell a reader that two of them were guessed by a
+           machine rather than read from their bank. A suggestion presented as a
+           reading is how people stop checking. */
+        <p className="bg-brand-tint text-ink-muted flex items-start gap-2 rounded-md px-3 py-2 text-sm">
+          <Sparkles className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            {t(
+              'inbox.aiSuggested',
+              'খাত আর অ্যাকাউন্ট AI বেছে দিয়েছে — মিলিয়ে নিন, ভুল হলে বদলে দিন।',
+            )}
           </span>
         </p>
       ) : null}

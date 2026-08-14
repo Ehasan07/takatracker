@@ -988,6 +988,18 @@ export const EN: Record<string, string> = {
     'Everything will be erased on {date}. You can stop it at any time before then — simply signing in stops it.',
   'close.keepAccount': 'Keep my account',
 
+  // --- letting a model help ---------------------------------------------------
+  'ai.title': 'Let AI pick the category',
+  'ai.blurb':
+    'It reads the message and fills in the category and account on the draft. It never changes an amount, a date or a direction, and nothing reaches your books until you say so.',
+  'ai.privacy':
+    'Turning this on sends the text of your messages to an AI service outside our server — the message and the names of your categories and accounts, and nothing else. No balances, no other transactions.',
+  'ai.turnOn': 'Turn it on',
+  'ai.turnOff': 'Turn it off',
+  'ai.onNow': 'On. Drafts will say which fields the AI chose.',
+  'inbox.aiSuggested':
+    'The AI chose the category and account — check them, and change them if it got it wrong.',
+
   'wording.default': 'Default',
   'wording.yours': 'Yours',
 
