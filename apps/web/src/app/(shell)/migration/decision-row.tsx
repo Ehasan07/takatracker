@@ -1,9 +1,9 @@
 'use client';
 
 import type { MigrationDecision } from '@hishab/core';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, Pencil } from 'lucide-react';
 import * as React from 'react';
-import { Select } from '@/components/ui/field';
+import { Input, Select } from '@/components/ui/field';
 import { ACCOUNT_TYPES, DECISION_LABELS, type MigrationItem } from './types';
 
 /**
@@ -39,9 +39,16 @@ export function DecisionRow({
     decision?: MigrationDecision;
     targetType?: string;
     targetId?: string;
+    name?: string;
   }) => void;
   onAskDetail: () => void;
 }) {
+  /* The name is editable in place, because "Financial expenses" is the other
+     product's English heading over 68 rows and these books are kept in Bengali.
+     Renaming after approval means creating the wrong name first and finding it
+     again on another screen — thirteen times. */
+  const [editing, setEditing] = React.useState(false);
+  const shownName = item.targetName?.trim() || item.sourceName;
   const isAccount = item.kind === 'ACCOUNT';
   /* An account is never a savings plan or a policy: those two exist to rescue a
      *category* that was standing in for one. Offering them here would invite a
@@ -53,14 +60,54 @@ export function DecisionRow({
   return (
     <li className="border-rule flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-ink truncate text-sm font-medium" title={item.sourceName}>
-          {item.sourceName}
-          {/* Said on the row, because deciding a heading decides where a
-              hundred others end up. */}
-          {item.isGroup ? (
-            <span className="text-ink-muted ml-1.5 text-xs font-normal">— মূল খাত</span>
-          ) : null}
-        </p>
+        {editing ? (
+          <Input
+            autoFocus
+            defaultValue={shownName}
+            aria-label={`${item.sourceName} — নতুন নাম`}
+            maxLength={120}
+            onBlur={(e) => {
+              setEditing(false);
+              const next = e.target.value.trim();
+              if (next !== shownName) onChange({ name: next });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              /* Escape puts back what was there rather than saving a
+                 half-typed name. */
+              if (e.key === 'Escape') {
+                e.currentTarget.value = shownName;
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={disabled}
+            className="group flex w-full items-center gap-1.5 text-left"
+          >
+            <span className="text-ink truncate text-sm font-medium" title={item.sourceName}>
+              {shownName}
+            </span>
+            {/* Said on the row, because deciding a heading decides where a
+                hundred others end up. */}
+            {item.isGroup ? (
+              <span className="text-ink-muted shrink-0 text-xs font-normal">— মূল খাত</span>
+            ) : null}
+            <Pencil
+              className="text-ink-muted h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100"
+              aria-hidden
+            />
+          </button>
+        )}
+
+        {/* The name it arrived with, once it is no longer the name it will get —
+            so a row stays recognisable against the other product. */}
+        {item.targetName?.trim() && item.targetName.trim() !== item.sourceName ? (
+          <p className="text-ink-muted truncate text-xs">আগে: {item.sourceName}</p>
+        ) : null}
         <p className="text-ink-muted truncate text-xs">
           {item.detail}
           {item.usageCount > 0 ? ` · ${item.usageCount}টি লেনদেন` : ''}

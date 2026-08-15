@@ -54,6 +54,8 @@ export interface MigrationItemView {
   kind: 'ACCOUNT' | 'CATEGORY';
   sourceId: string;
   sourceName: string;
+  /** What it will be called here, when that is not what it arrived as. */
+  targetName: string | null;
   usageCount: number;
   decision: MigrationDecision;
   targetType: string | null;
@@ -204,6 +206,7 @@ export class MigrationService {
     kind: string;
     sourceId: string;
     sourceName: string;
+    targetName: string | null;
     usageCount: number;
     decision: string;
     targetType: string | null;
@@ -228,6 +231,7 @@ export class MigrationService {
       kind: item.kind as 'ACCOUNT' | 'CATEGORY',
       sourceId: item.sourceId,
       sourceName: item.sourceName,
+      targetName: item.targetName,
       usageCount: item.usageCount,
       decision: item.decision as MigrationDecision,
       targetType: item.targetType,
@@ -444,6 +448,7 @@ export class MigrationService {
       kind: row.kind,
       sourceId: row.sourceId,
       sourceName: row.name,
+      targetName: row.rename || null,
       usageCount: row.usageCount,
       decision: row.decision,
       targetType: row.targetType || (row.kind === 'ACCOUNT' ? 'BANK' : 'EXPENSE'),
@@ -491,6 +496,8 @@ export class MigrationService {
       targetType?: string;
       targetId?: string | null;
       detail?: MigrationDetail | null;
+      /** Empty string clears it, so a rename can be undone. */
+      name?: string;
     },
   ): Promise<MigrationItemView> {
     const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
@@ -524,6 +531,8 @@ export class MigrationService {
       where: { id: item.id },
       data: {
         decision,
+        targetName:
+          patch.name === undefined ? undefined : patch.name.trim() ? patch.name.trim() : null,
         targetType: patch.targetType ?? item.targetType,
         /* Cleared when the decision stops being one that uses it, so an
            abandoned choice cannot resurface if somebody switches back — but
@@ -658,6 +667,10 @@ export class MigrationService {
       kind: item.kind,
       sourceId: item.sourceId,
       name: item.sourceName,
+      /* The source name stays in `name` — it is what a second pull matches on
+         and what somebody recognises from the other product. A rename is its
+         own column. */
+      rename: item.targetName ?? '',
       usageCount: item.usageCount,
       decision: item.decision,
       targetType: item.targetType ?? '',
@@ -753,6 +766,7 @@ export class MigrationService {
           /* Absent columns leave what is there alone — a spreadsheet somebody
              made themselves, carrying only the decisions, must not wipe figures
              typed on the screen. */
+          targetName: row.rename ? row.rename : undefined,
           targetDetail: row.detail === null ? undefined : (row.detail as Prisma.InputJsonObject),
         },
       });
@@ -829,6 +843,7 @@ export class MigrationService {
       id: string;
       kind: string;
       sourceName: string;
+      targetName: string | null;
       decision: string;
       targetType: string | null;
       targetId: string | null;
@@ -841,6 +856,9 @@ export class MigrationService {
   ): Promise<void> {
     const payload = (item.sourcePayload ?? {}) as Record<string, unknown>;
     const detail = (item.targetDetail ?? {}) as MigrationDetail;
+    /* What it will actually be called. Everything below — the duplicate check,
+       the row it creates — uses this and never the source name. */
+    const name = item.targetName?.trim() || item.sourceName;
     const done = (data: Prisma.MigrationItemUpdateInput): Promise<unknown> =>
       this.prisma.migrationItem.update({ where: { id: item.id }, data });
 
@@ -862,7 +880,7 @@ export class MigrationService {
 
     if (item.kind === 'ACCOUNT') {
       const clash = await this.prisma.account.findFirst({
-        where: { workspaceId, deletedAt: null, name: item.sourceName },
+        where: { workspaceId, deletedAt: null, name: name },
         select: { id: true },
       });
       if (clash) {
@@ -874,7 +892,7 @@ export class MigrationService {
       const created = await this.prisma.account.create({
         data: {
           workspaceId,
-          name: item.sourceName,
+          name: name,
           type: (item.targetType ?? 'BANK') as AccountType,
           currency: typeof payload.currency === 'string' ? payload.currency : 'BDT',
           openingBalance: BigInt(0),
@@ -909,7 +927,7 @@ export class MigrationService {
       const created = await this.prisma.savingsPlan.create({
         data: {
           workspaceId,
-          planName: item.sourceName,
+          planName: name,
           planType: 'DPS',
           installmentMinor: BigInt(detail.installmentMinor ?? 0),
           principalMinor: BigInt(detail.principalMinor ?? 0),
@@ -937,7 +955,7 @@ export class MigrationService {
       const created = await this.prisma.insurancePolicy.create({
         data: {
           workspaceId,
-          insurer: item.sourceName,
+          insurer: name,
           sumAssuredMinor: BigInt(detail.sumAssuredMinor ?? 0),
           premiumMinor: BigInt(detail.premiumMinor ?? 0),
           startDate: detail.startDate
@@ -977,7 +995,7 @@ export class MigrationService {
 
     if (owedType) {
       const clashing = await this.prisma.account.findFirst({
-        where: { workspaceId, deletedAt: null, name: item.sourceName },
+        where: { workspaceId, deletedAt: null, name: name },
         select: { id: true },
       });
       if (clashing) {
@@ -989,7 +1007,7 @@ export class MigrationService {
       const created = await this.prisma.account.create({
         data: {
           workspaceId,
-          name: item.sourceName,
+          name: name,
           type: owedType,
           currency: 'BDT',
           /* No balance, as with every account: Wallet's figure is today's, not
@@ -1009,7 +1027,7 @@ export class MigrationService {
       where: {
         workspaceId,
         deletedAt: null,
-        OR: [{ name: item.sourceName }, { nameBn: item.sourceName }],
+        OR: [{ name: name }, { nameBn: name }],
       },
       select: { id: true },
     });
@@ -1064,8 +1082,8 @@ export class MigrationService {
     const created = await this.prisma.category.create({
       data: {
         workspaceId,
-        name: item.sourceName,
-        nameBn: item.sourceName,
+        name: name,
+        nameBn: name,
         kind: item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE',
         parentId,
       },

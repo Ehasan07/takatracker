@@ -1,0 +1,11 @@
+-- Rename a row before it is created, not after.
+--
+-- "Financial expenses" is the other product's English heading over 68 of the
+-- owner's categories; the books here are kept in Bengali. Renaming it after
+-- approval means creating the wrong name first and finding it again on another
+-- screen — and doing that for thirteen headings.
+--
+-- Beside `sourceName`, not over it: the source name is what a second pull
+-- matches on and what somebody recognises from the other product. Overwriting
+-- it would make the row unidentifiable the moment it was renamed.
+ALTER TABLE "MigrationItem" ADD COLUMN IF NOT EXISTS "targetName" TEXT;

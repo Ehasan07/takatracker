@@ -6,6 +6,8 @@ export interface MigrationItem {
   kind: 'ACCOUNT' | 'CATEGORY';
   sourceId: string;
   sourceName: string;
+  /** What it will be called here, when that is not what it arrived as. */
+  targetName: string | null;
   usageCount: number;
   decision: MigrationDecision;
   targetType: string | null;

@@ -61,6 +61,8 @@ const decisionSchema = z.object({
   targetType: z.string().max(40).optional(),
   targetId: cuid.nullish(),
   detail: detailSchema.nullish(),
+  /** Empty clears the rename, so it can be undone. */
+  name: z.string().max(120).optional(),
 });
 export type DecisionInput = z.infer<typeof decisionSchema>;
 

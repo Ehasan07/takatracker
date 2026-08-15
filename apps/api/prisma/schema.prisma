@@ -511,6 +511,11 @@ model MigrationItem {
   /// The id it had over there. What makes a second run skip rather than double.
   sourceId    String
   sourceName  String
+  /// The name to create it with, when it should not be the one it arrived
+  /// with. Kept beside `sourceName` rather than overwriting it: the source name
+  /// is what a second pull matches on and what a person recognises from the
+  /// other product, and losing it would make the row unidentifiable.
+  targetName  String?
   /// Everything else the source said, kept verbatim so a decision made later
   /// has the same information the pull had.
   sourcePayload Json?

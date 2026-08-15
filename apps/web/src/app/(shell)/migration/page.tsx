@@ -117,6 +117,7 @@ export default function MigrationPage() {
         targetType?: string;
         targetId?: string;
         detail?: MigrationDetail;
+        name?: string;
       };
     }) =>
       api<MigrationItem>(`/migration/batches/${current?.id}/items/${input.itemId}`, {
@@ -298,6 +299,7 @@ export default function MigrationPage() {
         item.decision === 'CREATE' && item.kind === 'CATEGORY' && item.targetId
           ? (nameById.get(item.targetId) ?? '')
           : '',
+      rename: item.targetName ?? '',
       note: item.detail,
       detail: item.targetDetail,
     }));
@@ -638,7 +640,7 @@ function ItemList({
   busy: boolean;
   onChange: (
     itemId: string,
-    patch: { decision?: MigrationDecision; targetType?: string; targetId?: string },
+    patch: { decision?: MigrationDecision; targetType?: string; targetId?: string; name?: string },
   ) => void;
   onAskDetail: (itemId: string) => void;
   onApplyGroup?: (

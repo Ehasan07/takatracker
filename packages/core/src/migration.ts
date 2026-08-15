@@ -134,6 +134,8 @@ export interface MigrationRow {
   mergeInto: string;
   /** For a category being created: the existing category it sits under. */
   parent: string;
+  /** What to call it here, when that is not the name it arrived with. */
+  rename: string;
   /** Whatever the source said about it, for a person deciding later. */
   note: string;
   /** The card days, the DPS instalment — only where the row raises them. */
@@ -149,6 +151,7 @@ export const MIGRATION_CSV_COLUMNS = [
   'targetType',
   'mergeInto',
   'parent',
+  'rename',
   'note',
   /* Last, and empty on most rows: they are only asked of credit cards, savings
      plans and policies, and a person scrolling the file should meet the
@@ -185,6 +188,7 @@ export function migrationToCsv(rows: readonly MigrationRow[]): string {
       row.targetType,
       row.mergeInto,
       row.parent,
+      row.rename,
       row.note,
       ...detailToCells(row.detail ?? null),
     ]
@@ -288,6 +292,7 @@ export function migrationFromCsv(text: string): CsvParseResult {
       targetType: at('targetType'),
       mergeInto: at('mergeInto'),
       parent: at('parent'),
+      rename: at('rename'),
       note: at('note'),
       detail: detailFromCells(at),
     });
@@ -372,6 +377,7 @@ export function migrationStartFromCsv(text: string): CsvParseResult {
       targetType: at('targetType'),
       mergeInto: at('mergeInto'),
       parent: at('parent'),
+      rename: at('rename'),
       note: at('note'),
       detail: detailFromCells(at),
     });
@@ -404,7 +410,8 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'BANK',
       mergeInto: '',
       parent: '',
-      note: 'ধরন: BANK, CASH, MOBILE_WALLET, CREDIT_CARD, SAVINGS, ASSET, LIABILITY',
+      rename: 'ব্র্যাক সেভিংস',
+      note: 'rename লিখলে ওই নামে তৈরি হবে — খালি রাখলে বাঁ পাশের নামেই',
       detail: null,
     },
     {
@@ -416,6 +423,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'MOBILE_WALLET',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: '',
       detail: null,
     },
@@ -428,6 +436,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'CREDIT_CARD',
       mergeInto: '',
       parent: '',
+      rename: '',
       /* The one row whose extra columns are the whole point: without both days
          there is no bill reminder, and nothing else on the screen says so. */
       note: 'কার্ড হলে statementDay ও dueDay দিন — না দিলে বিলের রিমাইন্ডার হবে না',
@@ -442,6 +451,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'CASH',
       mergeInto: 'নগদ',
       parent: '',
+      rename: '',
       note: 'আগে থেকে থাকা অ্যাকাউন্টের নাম mergeInto-তে লিখুন',
       detail: null,
     },
@@ -454,6 +464,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'EXPENSE',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: 'খাতের ধরন: EXPENSE বা INCOME',
       detail: null,
     },
@@ -466,6 +477,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'EXPENSE',
       mergeInto: '',
       parent: 'খাবার ও বাজার',
+      rename: '',
       note: 'parent লিখলে ওই খাতের নিচে উপ-খাত হবে — খালি রাখলে নিজেই একটা খাত',
       detail: null,
     },
@@ -478,6 +490,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'INCOME',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: '',
       detail: null,
     },
@@ -490,6 +503,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: '',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: 'ডিপিএস বা এফডিআর খাত নয় — SAVINGS দিলে সঞ্চয় প্ল্যান তৈরি হবে',
       detail: {
         installmentMinor: 1_000_000,
@@ -507,6 +521,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: '',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: 'বীমাও খাত নয় — INSURANCE দিলে পলিসি তৈরি হবে',
       detail: { premiumMinor: 350_000, sumAssuredMinor: 50_000_000, termMonths: 240 },
     },
@@ -519,6 +534,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: '',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: 'যে টাকা আপনি দেবেন — LIABILITY দিলে দেনার অ্যাকাউন্ট তৈরি হবে, খাত নয়',
       detail: null,
     },
@@ -531,6 +547,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: '',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: 'যে টাকা আপনি পাবেন — RECEIVABLE, নাহলে ধার দেওয়াটা খরচ হিসেবে বসে যাবে',
       detail: null,
     },
@@ -543,6 +560,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       targetType: 'EXPENSE',
       mergeInto: '',
       parent: '',
+      rename: '',
       note: 'SKIP দিলে এই সারিটা আনা হবে না',
       detail: null,
     },

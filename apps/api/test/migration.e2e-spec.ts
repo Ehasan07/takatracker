@@ -57,6 +57,7 @@ const WALLET_CATEGORIES = [
 
 interface Item {
   id: string;
+  targetName: string | null;
   group: string | null;
   isGroup: boolean;
   needs: string | null;
@@ -618,6 +619,45 @@ describe('migration', () => {
       where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
     });
     expect(groceries.parentId).toBeNull();
+  });
+
+  it('creates a row under the name it was given, not the one it arrived with', async () => {
+    /* "Financial expenses" is the other product's English heading over 68 rows
+       and these books are kept in Bengali. Renaming after approval means
+       creating the wrong name first and hunting it down on another screen. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    const row = find(batch, 'w-cat-1');
+
+    const named = await decide(user, batch.id, row.id, { name: 'বাজার সদাই' });
+    expect(named.status).toBe(200);
+    expect(named.body.targetName).toBe('বাজার সদাই');
+    /* The source name survives: it is what a second pull matches on and what
+       somebody recognises from the other product. */
+    expect(named.body.sourceName).toBe('Groceries');
+
+    await apply(user, batch.id);
+
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'বাজার সদাই', deletedAt: null },
+      }),
+    ).toBe(1);
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it('undoes a rename when the name is cleared', async () => {
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    const row = find(batch, 'w-cat-1');
+
+    await decide(user, batch.id, row.id, { name: 'বাজার সদাই' }).expect(200);
+    const cleared = await decide(user, batch.id, row.id, { name: '  ' });
+    expect(cleared.body.targetName).toBeNull();
   });
 
   it('puts a new category under an existing one when told to', async () => {
