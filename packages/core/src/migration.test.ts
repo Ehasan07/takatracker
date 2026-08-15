@@ -4,6 +4,7 @@ import {
   migrationStartFromCsv,
   sampleMigrationCsv,
   sampleMigrationRows,
+  splitNameAndPhone,
   migrationFromCsv,
   migrationToCsv,
   suggestNonCategory,
@@ -153,6 +154,45 @@ describe('the migration spreadsheet', () => {
   it('takes the file back with Windows line endings', () => {
     const csv = 'kind,sourceId,decision\r\nCATEGORY,c-1,SKIP\r\n';
     expect(migrationFromCsv(csv).rows).toHaveLength(1);
+  });
+});
+
+describe('a name with a number in it', () => {
+  it('takes the number out and leaves a name behind', () => {
+    /* Every one of these is a real row from the owner's account, typed
+       differently over four years. */
+    expect(splitNameAndPhone('Miza Kaka Ram — 017 80241477')).toEqual({
+      name: 'Miza Kaka Ram',
+      phone: '01780241477',
+    });
+    expect(splitNameAndPhone('Shariful Kaka 01715167152')).toEqual({
+      name: 'Shariful Kaka',
+      phone: '01715167152',
+    });
+    expect(splitNameAndPhone('Shovon JSR -01719060970')).toEqual({
+      name: 'Shovon JSR',
+      phone: '01719060970',
+    });
+    expect(splitNameAndPhone('Mintu Bhi JSR 017 12944218')).toEqual({
+      name: 'Mintu Bhi JSR',
+      phone: '01712944218',
+    });
+  });
+
+  it('leaves a name that has no number alone', () => {
+    expect(splitNameAndPhone('Abbu Loan AC')).toEqual({ name: 'Abbu Loan AC', phone: null });
+  });
+
+  it('refuses a number that is not eleven digits', () => {
+    /* A half-typed number stored as a phone is worse than none: it makes the
+       contact unfindable and looks deliberate. */
+    expect(splitNameAndPhone('Karim 0171234').phone).toBeNull();
+  });
+
+  it('keeps a row that is nothing but a number whole', () => {
+    /* Not a person anybody could recognise, so nothing is gained by splitting
+       it — and the name would end up empty. */
+    expect(splitNameAndPhone('01717455764')).toEqual({ name: '01717455764', phone: null });
   });
 });
 

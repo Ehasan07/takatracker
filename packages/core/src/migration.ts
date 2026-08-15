@@ -58,6 +58,15 @@ export const MIGRATION_DECISIONS = [
    */
   'RECEIVABLE',
   /**
+   * …or a person, when the row is somebody's name.
+   *
+   * "Miza Kaka Ram — 017 80241477" was a category because the other product had
+   * nowhere else to put a person you lend to. Left as a spending head, every
+   * loan to him reads as an expense and every repayment as income, and there is
+   * nowhere to see what he still owes.
+   */
+  'PERSON',
+  /**
    * Not now.
    *
    * Different from `SKIP` in the only way that matters: skip is a decision, and
@@ -583,4 +592,40 @@ export function sampleMigrationRows(): MigrationRow[] {
 /** The sample, as the file a person downloads. */
 export function sampleMigrationCsv(): string {
   return migrationToCsv(sampleMigrationRows());
+}
+
+/**
+ * Pull a Bangladeshi mobile number out of a name that carries one.
+ *
+ * Rows like `Miza Kaka Ram — 017 80241477`, `Shariful Kaka 01715167152` and
+ * `Shovon JSR -01719060970` all name a person and their number, spaced and
+ * punctuated however it was typed years ago. The number is what makes the
+ * contact findable later, so it is worth taking out rather than leaving inside
+ * the name.
+ *
+ * Conservative on purpose: only an eleven-digit number starting `01`, and only
+ * when the rest of the row still leaves a name behind. `Bkash-01717455764` is
+ * an account, not a person, and this cannot tell the difference — which is why
+ * the decision stays a person's to make and this only tidies up after it.
+ */
+export function splitNameAndPhone(raw: string): { name: string; phone: string | null } {
+  const text = raw.trim();
+  /* Digits may be broken by a space or a dash: `017 80241477`. */
+  const match = text.match(/(?<![0-9])01[3-9][0-9\s-]{8,12}(?![0-9])/);
+  if (!match) return { name: text, phone: null };
+
+  const digits = match[0].replace(/[^0-9]/g, '');
+  if (digits.length !== 11) return { name: text, phone: null };
+
+  const name = text
+    .replace(match[0], ' ')
+    /* Whatever joined the two — a dash, an em dash, a comma — goes with it. */
+    .replace(/[\s\-–—,|]+$/u, '')
+    .replace(/^[\s\-–—,|]+/u, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  /* A row that is only a number is not a person anybody can recognise. */
+  if (!name) return { name: text, phone: null };
+  return { name, phone: digits };
 }

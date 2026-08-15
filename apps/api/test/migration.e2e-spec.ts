@@ -47,6 +47,14 @@ const WALLET_ACCOUNTS = [
 ];
 
 const WALLET_CATEGORIES = [
+  /* A person, filed as a category because the other product had nowhere else to
+     put somebody you lend to. Typed the way four years of real rows are. */
+  {
+    id: 'w-cat-5',
+    name: 'Miza Kaka Ram — 017 80241477',
+    group: { name: 'Financial expenses' },
+    customCategory: true,
+  },
   { id: 'w-cat-1', name: 'Groceries', group: { name: 'Food & Drinks' }, customCategory: false },
   /* The one the whole four-way choice exists for: Wallet had no savings plan,
      so a DPS became a category and stayed one for years. */
@@ -160,7 +168,7 @@ describe('migration', () => {
     expect(batch.status).toBe('DRAFT');
     /* Four categories and the four groups they sit in — the groups are staged
        too, because they are the parents and none of them exists here. */
-    expect(batch.counts).toMatchObject({ accounts: 3, categories: 8, created: 0 });
+    expect(batch.counts).toMatchObject({ accounts: 3, categories: 9, created: 0 });
     expect(await ctx.prisma.account.count({ where: { workspaceId: user.workspaceId } })).toBe(
       before,
     );
@@ -513,7 +521,7 @@ describe('migration', () => {
       .send({ csv: edited });
     expect(back.status).toBe(200);
     expect(back.body.errors).toEqual([]);
-    expect(back.body.updated).toBe(11);
+    expect(back.body.updated).toBe(12);
 
     const after = (await detail(user, batch.id)).body as Batch;
     expect(find(after, 'w-cat-1').decision).toBe('SKIP');
@@ -931,6 +939,47 @@ describe('migration', () => {
     expect(find(batch, 'w-cat-1').group).toBe('Food & Drinks');
     /* An account has no group, so its type stands in. */
     expect(find(batch, 'w-acc-3').group).toBe('CreditCard');
+  });
+
+  it('turns a row that is really somebody into a contact, with their number', async () => {
+    /* Left as a spending head, every loan to him reads as an expense and every
+       repayment as income, and there is nowhere to see what he still owes. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    await decide(user, batch.id, find(batch, 'w-cat-5').id, { decision: 'PERSON' }).expect(200);
+    await apply(user, batch.id);
+
+    const person = await ctx.prisma.person.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, deletedAt: null, name: { contains: 'Miza' } },
+    });
+    /* The number comes out of the name, because that is what makes him
+       findable — and it goes through PeopleService, so he has a code. */
+    expect(person.name).toBe('Miza Kaka Ram');
+    expect(person.phone).toBe('01780241477');
+    expect(person.code).toMatch(/^P-\d+$/);
+
+    /* And he is not also a category. */
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: { contains: 'Miza' }, deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it('takes a contact back out again, unless somebody is using them', async () => {
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    await decide(user, batch.id, find(batch, 'w-cat-5').id, { decision: 'PERSON' }).expect(200);
+    await apply(user, batch.id);
+
+    const undone = await rollback(user, batch.id);
+    expect(undone.status).toBe(200);
+    expect(
+      await ctx.prisma.person.count({
+        where: { workspaceId: user.workspaceId, deletedAt: null, name: { contains: 'Miza' } },
+      }),
+    ).toBe(0);
   });
 
   it('turns a category that is really a debt into a liability account', async () => {

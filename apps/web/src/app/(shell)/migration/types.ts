@@ -66,6 +66,7 @@ export const DECISION_LABELS: Record<MigrationDecision, string> = {
   INSURANCE: 'বীমা হিসেবে',
   LIABILITY: 'দেনা হিসেবে (যে টাকা আমি দেব)',
   RECEIVABLE: 'পাওনা হিসেবে (যে টাকা আমি পাব)',
+  PERSON: 'ব্যক্তি হিসেবে (ধার-দেনার মানুষ)',
   LATER: 'পরে করব',
   SKIP: 'বাদ দাও (আনব না)',
 };

@@ -6,6 +6,7 @@ import {
   migrationFromCsv,
   migrationStartFromCsv,
   migrationToCsv,
+  splitNameAndPhone,
   suggestNonCategory,
   type DetailKind,
   type MigrationDecision,
@@ -16,6 +17,7 @@ import { fromLocalDateString } from '@hishab/shared';
 import { Prisma, type AccountType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
+import { PeopleService } from '../people/people.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletClient } from './wallet.client';
 
@@ -117,6 +119,7 @@ export class MigrationService {
     private readonly wallet: WalletClient,
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
+    private readonly people: PeopleService,
   ) {}
 
   // ---------------------------------------------------------------- reading
@@ -939,6 +942,20 @@ export class MigrationService {
     const done = (data: Prisma.MigrationItemUpdateInput): Promise<unknown> =>
       this.prisma.migrationItem.update({ where: { id: item.id }, data });
 
+    if (item.decision === 'PERSON') {
+      /* Through `PeopleService`, not a raw insert: it hands out the P-0001
+         code, writes the identity keys the unique index is actually on, and
+         refuses a second person on a number somebody already has. Reproducing
+         any of that here is how two rows for one human appear. */
+      const { name: personName, phone } = splitNameAndPhone(name);
+      const created = await this.people.create(
+        { id: '', workspaceId, timezone, locale: 'bn' },
+        { name: personName, phone: phone ?? undefined },
+      );
+      await done({ createdEntityId: created.id, createdEntityKind: 'Person', skippedReason: null });
+      return;
+    }
+
     if (item.decision === 'LATER') {
       /* Untouched, and deliberately not given a reason: a reason is what marks
          a row as dealt with, and this one is waiting rather than done. That is
@@ -1278,6 +1295,25 @@ export class MigrationService {
       const used = await this.prisma.ledgerEntry.count({ where: { categoryId: id } });
       if (used > 0) return `${used}টি লেনদেনে ব্যবহার হয়েছে — রাখা হলো`;
       await this.prisma.category.updateMany({
+        where: { id, workspaceId },
+        data: { deletedAt: now },
+      });
+      return null;
+    }
+
+    if (kind === 'Person') {
+      /* Kept if they are named on anything — a loan, a shared expense, a
+         settlement. Removing the person would orphan the record of what they
+         owe, which is the opposite of why the row was made one. */
+      const [loans, members] = await Promise.all([
+        this.prisma.loan.count({ where: { personId: id, deletedAt: null } }),
+        /* A share points at a *member*, and a member points at the person, so
+           this is the join that actually says "somebody is using them". */
+        this.prisma.splitGroupMember.count({ where: { personId: id } }),
+      ]);
+      if (loans > 0) return `${loans}টি ঋণে আছেন — রাখা হলো`;
+      if (members > 0) return `${members}টি ভাগাভাগির দলে আছেন — রাখা হলো`;
+      await this.prisma.person.updateMany({
         where: { id, workspaceId },
         data: { deletedAt: now },
       });
