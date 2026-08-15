@@ -76,6 +76,20 @@ test.describe('bringing another product across', () => {
     await expect(page.getByRole('heading', { name: 'সংযোগ করুন' })).toHaveCount(0);
   });
 
+  test('hands an ordinary account a sample file that actually imports', async ({ page }) => {
+    /* The template is the whole of the spreadsheet route's documentation, so it
+       has to be reachable without an account that has anything special, and the
+       file that comes down has to be the one the parser accepts — which
+       packages/core/src/migration.test.ts checks by round-tripping it. */
+    await signup(page, uniqueEmail());
+    await page.goto('/migration');
+
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'নমুনা ফাইল নামান' }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('migration-sample.csv');
+  });
+
   test('is reachable from আরও and says what it will and will not do', async ({ page }) => {
     await signup(page, allowedEmail());
 

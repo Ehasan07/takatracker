@@ -355,3 +355,132 @@ export function migrationStartFromCsv(text: string): CsvParseResult {
 
   return { rows, errors };
 }
+
+/**
+ * The file to hand somebody who has never seen this screen.
+ *
+ * A blank template teaches nothing: the columns that matter here are the ones
+ * whose *values* are not obvious — that `decision` takes one of five words,
+ * that a DPS is not a category, that a credit card's two dates are what make a
+ * reminder possible at all. So the sample is filled in, one row per case, and
+ * the cases are ordered the way somebody meets them.
+ *
+ * It is deliberately importable as it stands. Whatever is demonstrated here has
+ * to keep working, which is why a test round-trips this exact file through the
+ * parser rather than trusting that it looks right.
+ */
+export function sampleMigrationRows(): MigrationRow[] {
+  return [
+    {
+      kind: 'ACCOUNT',
+      sourceId: 'a-1',
+      name: 'ব্র্যাক ব্যাংক সেভিংস',
+      usageCount: 0,
+      decision: 'CREATE',
+      targetType: 'BANK',
+      mergeInto: '',
+      note: 'ধরন: BANK, CASH, MOBILE_WALLET, CREDIT_CARD, SAVINGS, ASSET, LIABILITY',
+      detail: null,
+    },
+    {
+      kind: 'ACCOUNT',
+      sourceId: 'a-2',
+      name: 'বিকাশ',
+      usageCount: 0,
+      decision: 'CREATE',
+      targetType: 'MOBILE_WALLET',
+      mergeInto: '',
+      note: '',
+      detail: null,
+    },
+    {
+      kind: 'ACCOUNT',
+      sourceId: 'a-3',
+      name: 'সিটি ব্যাংক ক্রেডিট কার্ড',
+      usageCount: 0,
+      decision: 'CREATE',
+      targetType: 'CREDIT_CARD',
+      mergeInto: '',
+      /* The one row whose extra columns are the whole point: without both days
+         there is no bill reminder, and nothing else on the screen says so. */
+      note: 'কার্ড হলে statementDay ও dueDay দিন — না দিলে বিলের রিমাইন্ডার হবে না',
+      detail: { statementDay: 20, dueDay: 8, reminderLeadDays: 3 },
+    },
+    {
+      kind: 'ACCOUNT',
+      sourceId: 'a-4',
+      name: 'হাতের নগদ',
+      usageCount: 0,
+      decision: 'MERGE',
+      targetType: 'CASH',
+      mergeInto: 'নগদ',
+      note: 'আগে থেকে থাকা অ্যাকাউন্টের নাম mergeInto-তে লিখুন',
+      detail: null,
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-1',
+      name: 'খাবার ও বাজার',
+      usageCount: 0,
+      decision: 'CREATE',
+      targetType: 'EXPENSE',
+      mergeInto: '',
+      note: 'খাতের ধরন: EXPENSE বা INCOME',
+      detail: null,
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-2',
+      name: 'বেতন',
+      usageCount: 0,
+      decision: 'CREATE',
+      targetType: 'INCOME',
+      mergeInto: '',
+      note: '',
+      detail: null,
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-3',
+      name: 'সোনালী ডিপিএস',
+      usageCount: 0,
+      decision: 'SAVINGS',
+      targetType: '',
+      mergeInto: '',
+      note: 'ডিপিএস বা এফডিআর খাত নয় — SAVINGS দিলে সঞ্চয় প্ল্যান তৈরি হবে',
+      detail: {
+        installmentMinor: 1_000_000,
+        termMonths: 60,
+        profitRateBps: 950,
+        startDate: '2025-01-15',
+      },
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-4',
+      name: 'জীবন বীমা',
+      usageCount: 0,
+      decision: 'INSURANCE',
+      targetType: '',
+      mergeInto: '',
+      note: 'বীমাও খাত নয় — INSURANCE দিলে পলিসি তৈরি হবে',
+      detail: { premiumMinor: 350_000, sumAssuredMinor: 50_000_000, termMonths: 240 },
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-5',
+      name: 'পুরনো একটা খাত',
+      usageCount: 0,
+      decision: 'SKIP',
+      targetType: 'EXPENSE',
+      mergeInto: '',
+      note: 'SKIP দিলে এই সারিটা আনা হবে না',
+      detail: null,
+    },
+  ];
+}
+
+/** The sample, as the file a person downloads. */
+export function sampleMigrationCsv(): string {
+  return migrationToCsv(sampleMigrationRows());
+}

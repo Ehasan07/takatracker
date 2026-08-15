@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   accountTypeFromWallet,
+  migrationStartFromCsv,
+  sampleMigrationCsv,
+  sampleMigrationRows,
   migrationFromCsv,
   migrationToCsv,
   suggestNonCategory,
@@ -144,6 +147,33 @@ describe('the migration spreadsheet', () => {
   it('takes the file back with Windows line endings', () => {
     const csv = 'kind,sourceId,decision\r\nCATEGORY,c-1,SKIP\r\n';
     expect(migrationFromCsv(csv).rows).toHaveLength(1);
+  });
+});
+
+describe('the sample file', () => {
+  it('imports as it stands, which is the only thing that makes it a sample', () => {
+    /* A template that teaches a shape the parser rejects is worse than none.
+       This is the file somebody downloads, unedited, back through the same
+       route the upload button uses. */
+    const parsed = migrationStartFromCsv(sampleMigrationCsv());
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toHaveLength(sampleMigrationRows().length);
+  });
+
+  it('shows every decision a person has to choose between', () => {
+    /* The columns are obvious; the *values* are not. If a decision stops being
+       demonstrated, somebody meets it for the first time on their own data. */
+    const decisions = new Set(sampleMigrationRows().map((row) => row.decision));
+    expect([...decisions].sort()).toEqual(['CREATE', 'INSURANCE', 'MERGE', 'SAVINGS', 'SKIP']);
+  });
+
+  it('carries the card dates and the DPS figures through', () => {
+    const parsed = migrationStartFromCsv(sampleMigrationCsv());
+    const card = parsed.rows.find((row) => row.targetType === 'CREDIT_CARD');
+    expect(card?.detail).toMatchObject({ statementDay: 20, dueDay: 8, reminderLeadDays: 3 });
+
+    const dps = parsed.rows.find((row) => row.decision === 'SAVINGS');
+    expect(dps?.detail).toMatchObject({ installmentMinor: 1_000_000, termMonths: 60 });
   });
 });
 

@@ -2,12 +2,13 @@
 
 import {
   migrationToCsv,
+  sampleMigrationCsv,
   type MigrationDecision,
   type MigrationDetail,
   type MigrationRow,
 } from '@hishab/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Download, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileDown, RotateCcw, Trash2, Upload } from 'lucide-react';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
@@ -192,6 +193,21 @@ export default function MigrationPage() {
     [categories.data],
   );
 
+  /* One saver for both files. The download is a blob the browser already holds,
+     so neither of these is a request the server has to serve. */
+  function save(filename: string, text: string): void {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Safari needs the URL alive past the click.
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   /* Built here rather than fetched: the browser already has every row, and
      `@hishab/core` is the same module the server would have used — including
      the BOM Excel needs. One less round trip, one less way for the two to
@@ -214,17 +230,7 @@ export default function MigrationPage() {
       detail: item.targetDetail,
     }));
 
-    const blob = new Blob([migrationToCsv(rows)], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'migration.csv';
-    link.rel = 'noopener';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    // Safari needs the URL alive past the click.
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    save('migration.csv', migrationToCsv(rows));
   }
 
   async function onStartFileChosen(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -270,15 +276,25 @@ export default function MigrationPage() {
             একটা CSV ফাইলে <code>name</code> কলাম থাকলেই হবে। চাইলে <code>kind</code> (ACCOUNT বা
             CATEGORY), <code>decision</code> আর <code>targetType</code> কলামও দিতে পারেন।
           </p>
-          <Button
-            variant="outline"
-            className="mt-3"
-            disabled={busy}
-            onClick={() => startInput.current?.click()}
-          >
-            <Upload className="h-4 w-4" aria-hidden />
-            {startCsv.isPending ? 'পড়া হচ্ছে…' : 'ফাইল বেছে নিন'}
-          </Button>
+          <p className="text-ink-muted mt-1 text-xs">
+            প্রথমবার হলে নমুনা ফাইলটা নামিয়ে নিন — প্রতিটা ধরনের একটা করে সারি ভরা আছে, নিজের নাম
+            বসিয়ে সেটাই ফেরত দিতে পারেন।
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {/* The sample first, because somebody who has not done this before
+                needs the shape more than they need the upload box. */}
+            <Button
+              variant="outline"
+              onClick={() => save('migration-sample.csv', sampleMigrationCsv())}
+            >
+              <FileDown className="h-4 w-4" aria-hidden />
+              নমুনা ফাইল নামান
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => startInput.current?.click()}>
+              <Upload className="h-4 w-4" aria-hidden />
+              {startCsv.isPending ? 'পড়া হচ্ছে…' : 'ফাইল বেছে নিন'}
+            </Button>
+          </div>
           <input
             ref={startInput}
             type="file"
