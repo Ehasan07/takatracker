@@ -441,9 +441,16 @@ export class MigrationService {
     if (!item) throw new NotFoundException('সারিটি পাওয়া যায়নি');
 
     const decision = patch.decision ?? (item.decision as MigrationDecision);
-    if (decision === 'MERGE') {
-      const targetId = patch.targetId ?? item.targetId;
-      if (!targetId) throw new BadRequestException('কোন খাতে যুক্ত হবে সেটি বেছে নিন');
+
+    /* A merge with nothing chosen yet is allowed to be saved.
+     *
+     * Refusing it was a deadlock: the control for choosing what to merge into
+     * only appears once the row *is* a merge, so demanding the target at the
+     * moment somebody picks "মেলাও" made the option impossible to pick at all.
+     * This is a draft — half-made decisions are the normal state of one — and
+     * apply is where an unfinished row is caught, with a reason on the row. */
+    const targetId = patch.targetId ?? item.targetId;
+    if (decision === 'MERGE' && targetId) {
       await this.assertMergeTarget(workspaceId, item.kind, targetId);
     }
 
@@ -679,6 +686,13 @@ export class MigrationService {
       return;
     }
     if (item.decision === 'MERGE') {
+      /* Nothing was ever chosen to merge into, so there is nothing to do and
+         nothing to guess. Said on the row rather than silently treated as a
+         skip, which would read as a decision somebody made. */
+      if (!item.targetId) {
+        await done({ skippedReason: 'কোনটার সাথে মেলাবেন বেছে নেওয়া হয়নি' });
+        return;
+      }
       await done({ skippedReason: 'আগের একটিতে যুক্ত করা হয়েছে' });
       return;
     }

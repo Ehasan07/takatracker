@@ -565,6 +565,30 @@ describe('migration', () => {
     expect(refused[0]?.skippedReason).toBeTruthy();
   });
 
+  it('lets a row be told to merge before what it merges into is chosen', async () => {
+    /* Refusing this was a deadlock: the control for choosing a target only
+       appears once the row is a merge, so demanding the target at the moment
+       somebody picks "merge" made the option impossible to pick. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    /* A row with no name match here, so the pull left it as CREATE with no
+       target — `Salary` would already carry one from the seeded category. */
+    const row = find(batch, 'w-acc-1');
+
+    const saved = await decide(user, batch.id, row.id, { decision: 'MERGE' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.decision).toBe('MERGE');
+    expect(saved.body.targetId).toBeNull();
+
+    /* And an unfinished one creates nothing, saying so on its own row rather
+       than being quietly treated as a skip — which would read as a decision
+       somebody had made. */
+    const applied = (await apply(user, batch.id)).body as Batch;
+    const after = find(applied, 'w-acc-1');
+    expect(after.createdEntityId).toBeNull();
+    expect(after.skippedReason).toContain('বেছে নেওয়া হয়নি');
+  });
+
   it('refuses a spreadsheet with no name column, and says which', async () => {
     const user = await signup(ctx);
     const res = await ctx

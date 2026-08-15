@@ -179,6 +179,9 @@ export default function MigrationPage() {
   const categoryItems = items.filter((i) => i.kind === 'CATEGORY');
   const asking = items.find((i) => i.id === askingId) ?? null;
   const outstanding = detail.data?.counts.needsDetail ?? 0;
+  /* Rows told to merge with nothing chosen to merge into. They do nothing when
+     applied, so it is worth saying before the button rather than after. */
+  const unresolvedMerges = items.filter((i) => i.decision === 'MERGE' && !i.targetId).length;
 
   const accountTargets = React.useMemo(
     () => (accounts.data ?? []).map((a) => ({ id: a.id, name: a.name })),
@@ -454,6 +457,14 @@ export default function MigrationPage() {
             {/* Said before the button, not after it. These rows will still be
                 created — the figures can go in later — but somebody about to
                 press this should know which ones will arrive half-filled. */}
+            {unresolvedMerges > 0 ? (
+              <p className="text-expense flex w-full items-center gap-1.5 text-xs">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {unresolvedMerges}টি সারিতে "মেলাও" বলা আছে কিন্তু কোনটার সাথে সেটা বাছা হয়নি —
+                ওগুলো কিছুই করবে না।
+              </p>
+            ) : null}
+
             {outstanding > 0 ? (
               <p className="text-ink-muted flex w-full items-center gap-1.5 text-xs">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />

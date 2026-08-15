@@ -98,9 +98,13 @@ export function DecisionRow({
             aria-label={`${item.sourceName} — কোনটার সাথে`}
             value={item.targetId ?? ''}
             disabled={disabled}
+            /* Marked while it is empty. Choosing "মেলাও" and choosing what to
+               merge into are two separate acts, and a row left between them
+               does nothing at all when the batch is applied. */
+            className={item.targetId ? undefined : 'border-expense'}
             onChange={(e) => onChange({ targetId: e.target.value })}
           >
-            <option value="">বেছে নিন…</option>
+            <option value="">কোনটার সাথে? বেছে নিন…</option>
             {targets.map((target) => (
               <option key={target.id} value={target.id}>
                 {target.name}
