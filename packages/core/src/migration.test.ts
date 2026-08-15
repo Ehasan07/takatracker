@@ -6,6 +6,7 @@ import {
   suggestNonCategory,
   type MigrationRow,
 } from './migration.js';
+import { detailIsComplete, detailKindOf } from './migration-detail.js';
 
 /**
  * The spreadsheet round trip, and the two guesses that save somebody scrolling.
@@ -25,6 +26,9 @@ const ROWS: MigrationRow[] = [
     targetType: 'MOBILE_WALLET',
     mergeInto: '',
     note: 'General, BDT',
+    /* Explicit: a parsed row always carries the key, so a fixture that omitted
+       it would fail the round trip on a difference that is not one. */
+    detail: null,
   },
   {
     kind: 'CATEGORY',
@@ -35,6 +39,7 @@ const ROWS: MigrationRow[] = [
     targetType: '',
     mergeInto: 'যাতায়াত',
     note: 'Transportation',
+    detail: null,
   },
   {
     kind: 'CATEGORY',
@@ -45,6 +50,7 @@ const ROWS: MigrationRow[] = [
     targetType: '',
     mergeInto: '',
     note: 'Investments',
+    detail: { installmentMinor: 200_000, termMonths: 60, profitRateBps: 950 },
   },
 ];
 
@@ -70,6 +76,41 @@ describe('the migration spreadsheet', () => {
     expect(parsed.rows[1]?.name).toBe('Public transport, যাতায়াত');
     expect(parsed.rows[2]?.name).toBe('DPS "Sonali"');
     expect(parsed.rows[1]?.decision).toBe('MERGE');
+  });
+
+  it('carries the card days and the DPS figures out and back', () => {
+    /* The rate goes out as the percentage a bank prints and comes back as basis
+       points, and the money goes out as taka — somebody filling in 28 rows in
+       Excel is copying a passbook, not converting units. */
+    const csv = migrationToCsv(ROWS);
+    expect(csv).toContain('ratePercent');
+    expect(csv).toContain('9.5');
+    expect(csv).toContain('2000.00');
+
+    const parsed = migrationFromCsv(csv);
+    expect(parsed.rows[2]?.detail).toEqual({
+      installmentMinor: 200_000,
+      termMonths: 60,
+      profitRateBps: 950,
+    });
+  });
+
+  it('leaves the detail alone when the columns are not in the file', () => {
+    /* A spreadsheet somebody made themselves, with only the decision columns,
+       must not wipe answers already given on the screen. */
+    const csv = ['kind,sourceId,decision', 'CATEGORY,c-2,SAVINGS'].join('\n');
+    expect(migrationFromCsv(csv).rows[0]?.detail).toBeNull();
+  });
+
+  it('refuses a nonsense day rather than storing it', () => {
+    /* The 47th of the month is a typo, and a due day of 47 would silently never
+       fire a reminder. */
+    const csv = ['kind,sourceId,decision,statementDay,dueDay', 'ACCOUNT,a-9,CREATE,47,5'].join(
+      '\n',
+    );
+    const detail = migrationFromCsv(csv).rows[0]?.detail;
+    expect(detail?.statementDay).toBeUndefined();
+    expect(detail?.dueDay).toBe(5);
   });
 
   it('reads the columns by name, so an added one changes nothing', () => {
@@ -103,6 +144,42 @@ describe('the migration spreadsheet', () => {
   it('takes the file back with Windows line endings', () => {
     const csv = 'kind,sourceId,decision\r\nCATEGORY,c-1,SKIP\r\n';
     expect(migrationFromCsv(csv).rows).toHaveLength(1);
+  });
+});
+
+describe('the questions a row raises', () => {
+  it('asks a credit card for its dates and asks a bank account nothing', () => {
+    /* Statement day and due day are the whole of the card reminder, and Wallet
+       never held either. Every other account type needs nothing beyond a name
+       and a type, and asking would be 22 forms nobody has anything to put in. */
+    expect(detailKindOf('ACCOUNT', 'CREATE', 'CREDIT_CARD')).toBe('CARD');
+    expect(detailKindOf('ACCOUNT', 'CREATE', 'BANK')).toBeNull();
+    expect(detailKindOf('ACCOUNT', 'CREATE', 'SAVINGS')).toBeNull();
+    /* Merged or skipped rows create nothing, so they raise nothing. */
+    expect(detailKindOf('ACCOUNT', 'MERGE', 'CREDIT_CARD')).toBeNull();
+  });
+
+  it('asks a category only when it turns out not to be a category', () => {
+    expect(detailKindOf('CATEGORY', 'SAVINGS', '')).toBe('SAVINGS');
+    expect(detailKindOf('CATEGORY', 'INSURANCE', '')).toBe('INSURANCE');
+    expect(detailKindOf('CATEGORY', 'CREATE', 'EXPENSE')).toBeNull();
+  });
+
+  it('counts a row finished on what the entity actually needs', () => {
+    /* A card is no use with one of its two days; a plan with an instalment and
+       a term is worth creating without its rate, because the rate can be typed
+       later and the schedule cannot be built at all without the other two. */
+    expect(detailIsComplete('CARD', { statementDay: 15 })).toBe(false);
+    expect(detailIsComplete('CARD', { statementDay: 15, dueDay: 5 })).toBe(true);
+
+    expect(detailIsComplete('SAVINGS', { installmentMinor: 200_000 })).toBe(false);
+    expect(detailIsComplete('SAVINGS', { installmentMinor: 200_000, termMonths: 60 })).toBe(true);
+    /* An FDR has no instalment — a lump sum and a term is a whole plan. */
+    expect(detailIsComplete('SAVINGS', { principalMinor: 50_000_000, termMonths: 12 })).toBe(true);
+
+    expect(detailIsComplete('INSURANCE', { premiumMinor: 350_000 })).toBe(true);
+    expect(detailIsComplete('INSURANCE', {})).toBe(false);
+    expect(detailIsComplete('CARD', null)).toBe(false);
   });
 });
 

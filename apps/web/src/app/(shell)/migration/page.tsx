@@ -1,6 +1,11 @@
 'use client';
 
-import { migrationToCsv, type MigrationDecision, type MigrationRow } from '@hishab/core';
+import {
+  migrationToCsv,
+  type MigrationDecision,
+  type MigrationDetail,
+  type MigrationRow,
+} from '@hishab/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Download, RotateCcw, Trash2, Upload } from 'lucide-react';
 import * as React from 'react';
@@ -11,6 +16,7 @@ import { ApiError, api, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { useMigrationAllowed } from './access';
 import { DecisionRow } from './decision-row';
+import { DetailSheet } from './detail-sheet';
 import type {
   CsvResult,
   MigrationBatch,
@@ -46,7 +52,11 @@ export default function MigrationPage() {
   const [csvResult, setCsvResult] = React.useState<CsvResult | null>(null);
   const [rolledBack, setRolledBack] = React.useState<RollbackResult | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = React.useState(false);
+  /* Which row's questions are open, by id — not the row object, so the sheet
+     always renders the freshest copy after a save. */
+  const [askingId, setAskingId] = React.useState<string | null>(null);
   const fileInput = React.useRef<HTMLInputElement>(null);
+  const startInput = React.useRef<HTMLInputElement>(null);
 
   /* Every route behind this screen re-checks the allowlist server-side, so this
      is about not drawing a form somebody cannot submit — not about security. */
@@ -55,7 +65,6 @@ export default function MigrationPage() {
   const batches = useQuery({
     queryKey: BATCHES_KEY,
     queryFn: () => api<MigrationBatch[]>('/migration/batches'),
-    enabled: allowed,
   });
 
   /* The one that matters: a draft if there is one, otherwise the most recent.
@@ -68,19 +77,11 @@ export default function MigrationPage() {
   const detail = useQuery({
     queryKey: ['migration', 'batch', current?.id],
     queryFn: () => api<MigrationBatchDetail>(`/migration/batches/${current?.id}`),
-    enabled: allowed && Boolean(current),
+    enabled: Boolean(current),
   });
 
-  const accounts = useQuery({
-    queryKey: ['accounts'],
-    queryFn: endpoints.accounts,
-    enabled: allowed,
-  });
-  const categories = useQuery({
-    queryKey: ['categories'],
-    queryFn: endpoints.categories,
-    enabled: allowed,
-  });
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
 
   const refresh = React.useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['migration'] });
@@ -107,13 +108,18 @@ export default function MigrationPage() {
   const decide = useMutation({
     mutationFn: (input: {
       itemId: string;
-      patch: { decision?: MigrationDecision; targetType?: string; targetId?: string };
+      patch: {
+        decision?: MigrationDecision;
+        targetType?: string;
+        targetId?: string;
+        detail?: MigrationDetail;
+      };
     }) =>
       api<MigrationItem>(`/migration/batches/${current?.id}/items/${input.itemId}`, {
         method: 'PATCH',
         body: input.patch,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['migration', 'batch'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['migration'] }),
   });
 
   const apply = useMutation({
@@ -150,6 +156,15 @@ export default function MigrationPage() {
     },
   });
 
+  const startCsv = useMutation({
+    mutationFn: (csv: string) =>
+      api<MigrationBatchDetail>('/migration/csv/start', { method: 'POST', body: { csv } }),
+    onSuccess: async () => {
+      haptic('success');
+      await refresh();
+    },
+  });
+
   const importCsv = useMutation({
     mutationFn: (csv: string) =>
       api<CsvResult>(`/migration/batches/${current?.id}/csv`, { method: 'POST', body: { csv } }),
@@ -162,6 +177,8 @@ export default function MigrationPage() {
   const items = detail.data?.items ?? [];
   const accountItems = items.filter((i) => i.kind === 'ACCOUNT');
   const categoryItems = items.filter((i) => i.kind === 'CATEGORY');
+  const asking = items.find((i) => i.id === askingId) ?? null;
+  const outstanding = detail.data?.counts.needsDetail ?? 0;
 
   const accountTargets = React.useMemo(
     () => (accounts.data ?? []).map((a) => ({ id: a.id, name: a.name })),
@@ -191,6 +208,7 @@ export default function MigrationPage() {
       targetType: item.targetType ?? '',
       mergeInto: item.targetId ? (nameById.get(item.targetId) ?? '') : '',
       note: item.detail,
+      detail: item.targetDetail,
     }));
 
     const blob = new Blob([migrationToCsv(rows)], { type: 'text/csv;charset=utf-8;' });
@@ -206,6 +224,12 @@ export default function MigrationPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
+  async function onStartFileChosen(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) startCsv.mutate(await file.text());
+  }
+
   async function onFileChosen(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -214,36 +238,60 @@ export default function MigrationPage() {
     importCsv.mutate(await file.text());
   }
 
-  const busy = pull.isPending || apply.isPending || rollback.isPending || importCsv.isPending;
+  const busy =
+    pull.isPending ||
+    apply.isPending ||
+    rollback.isPending ||
+    importCsv.isPending ||
+    startCsv.isPending;
   const draft = current?.status === 'DRAFT';
-
-  if (!allowed) {
-    /* Says the feature is not open on this account, and stops. Not "you are not
-       allowed", which invites a person to ask how to become allowed — and there
-       is no answer to that. */
-    return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">আগের সফটওয়্যার থেকে আনুন</h1>
-        <p className="text-ink-muted rounded-card border-rule bg-surface border p-4 text-sm">
-          এই সুবিধাটি এই অ্যাকাউন্টে চালু নেই।
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header>
         <h1 className="text-ink text-xl font-semibold sm:text-2xl">আগের সফটওয়্যার থেকে আনুন</h1>
         <p className="text-ink-muted mt-1 text-sm">
-          BudgetBakers Wallet-এর অ্যাকাউন্ট আর খাতগুলো এখানে আনুন। সবকিছু আগে খসড়া হিসেবে থাকবে —
-          আপনি দেখে অনুমোদন না দিলে খাতায় কিছুই তৈরি হবে না, আর অনুমোদনের পরেও ফিরিয়ে নেওয়া যাবে।
+          আগের অ্যাপের অ্যাকাউন্ট আর খাতগুলো এখানে আনুন। সবকিছু আগে খসড়া হিসেবে থাকবে — আপনি দেখে
+          অনুমোদন না দিলে খাতায় কিছুই তৈরি হবে না, আর অনুমোদনের পরেও ফিরিয়ে নেওয়া যাবে।
         </p>
       </header>
 
       {batches.isLoading ? <Skeleton className="h-40 w-full" /> : null}
 
+      {/* The spreadsheet door, open to everybody: a list of headings typed in
+          Excel is a chart of accounts too, and it asks for nobody's password. */}
       {!batches.isLoading && !draft ? (
+        <section className="rounded-card border-rule bg-surface border p-4">
+          <h2 className="text-ink text-sm font-medium">এক্সেল থেকে আনুন</h2>
+          <p className="text-ink-muted mt-1 text-sm">
+            একটা CSV ফাইলে <code>name</code> কলাম থাকলেই হবে। চাইলে <code>kind</code> (ACCOUNT বা
+            CATEGORY), <code>decision</code> আর <code>targetType</code> কলামও দিতে পারেন।
+          </p>
+          <Button
+            variant="outline"
+            className="mt-3"
+            disabled={busy}
+            onClick={() => startInput.current?.click()}
+          >
+            <Upload className="h-4 w-4" aria-hidden />
+            {startCsv.isPending ? 'পড়া হচ্ছে…' : 'ফাইল বেছে নিন'}
+          </Button>
+          <input
+            ref={startInput}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => void onStartFileChosen(e)}
+          />
+          {startCsv.error ? (
+            <p role="alert" className="text-expense mt-2 text-sm">
+              {startCsv.error instanceof ApiError ? startCsv.error.message : 'ফাইলটি পড়া গেল না'}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {!batches.isLoading && !draft && allowed ? (
         <section className="rounded-card border-rule bg-surface border p-4">
           <h2 className="text-ink text-sm font-medium">সংযোগ করুন</h2>
           <p className="text-ink-muted mt-1 text-sm">
@@ -362,6 +410,7 @@ export default function MigrationPage() {
             targets={accountTargets}
             busy={busy}
             onChange={(itemId, patch) => decide.mutate({ itemId, patch })}
+            onAskDetail={setAskingId}
           />
           <ItemList
             title="খাত"
@@ -369,6 +418,7 @@ export default function MigrationPage() {
             targets={categoryTargets}
             busy={busy}
             onChange={(itemId, patch) => decide.mutate({ itemId, patch })}
+            onAskDetail={setAskingId}
           />
 
           <section className="rounded-card border-rule bg-surface flex flex-wrap items-center gap-3 border p-4">
@@ -400,6 +450,17 @@ export default function MigrationPage() {
               তৈরি করার পরেও পুরোটা এক চাপে ফিরিয়ে নেওয়া যাবে — যেগুলোতে ইতিমধ্যে লেনদেন হয়ে গেছে
               সেগুলো ছাড়া।
             </p>
+
+            {/* Said before the button, not after it. These rows will still be
+                created — the figures can go in later — but somebody about to
+                press this should know which ones will arrive half-filled. */}
+            {outstanding > 0 ? (
+              <p className="text-ink-muted flex w-full items-center gap-1.5 text-xs">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {outstanding}টি সারিতে এখনো বাকি তথ্য দেওয়া হয়নি — কার্ডের তারিখ বা ডিপিএসের
+                কিস্তি। এগুলো তৈরি হবে, কিন্তু ওই অংশটুকু খালি থাকবে।
+              </p>
+            ) : null}
             {apply.error ? (
               <p role="alert" className="text-expense w-full text-sm">
                 {apply.error instanceof ApiError ? apply.error.message : 'তৈরি করা গেল না'}
@@ -408,6 +469,23 @@ export default function MigrationPage() {
           </section>
         </>
       ) : null}
+
+      <DetailSheet
+        /* A fresh component per row, so its boxes start from that row's saved
+           figures and nothing copies state across. */
+        key={asking?.id ?? 'none'}
+        item={asking}
+        open={Boolean(asking)}
+        saving={decide.isPending}
+        onClose={() => setAskingId(null)}
+        onSave={(nextDetail) => {
+          if (!asking) return;
+          decide.mutate(
+            { itemId: asking.id, patch: { detail: nextDetail } },
+            { onSuccess: () => setAskingId(null) },
+          );
+        }}
+      />
     </div>
   );
 }
@@ -418,6 +496,7 @@ function ItemList({
   targets,
   busy,
   onChange,
+  onAskDetail,
 }: {
   title: string;
   items: MigrationItem[];
@@ -427,6 +506,7 @@ function ItemList({
     itemId: string,
     patch: { decision?: MigrationDecision; targetType?: string; targetId?: string },
   ) => void;
+  onAskDetail: (itemId: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -442,6 +522,7 @@ function ItemList({
             targets={targets}
             disabled={busy}
             onChange={(patch) => onChange(item.id, patch)}
+            onAskDetail={() => onAskDetail(item.id)}
           />
         ))}
       </ul>

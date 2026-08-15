@@ -270,6 +270,36 @@ written `@example.com`. Empty or unset means nobody, so a deploy that loses the
 variable closes the door rather than opening it. Everybody else finds no link,
 no search result, and a sentence instead of a form.
 
+### Two doors, one allowlist
+
+`POST /migration/wallet/pull` is the only gated route. It is the only one that
+asks somebody to paste a live credential to another finance app, and the day
+that appears in a stranger's menu, "Taka Tracker asks for your other app's
+password" has become a true sentence.
+
+`POST /migration/csv/start` is open to every account: a spreadsheet with a
+`name` column is a chart of accounts too, and it asks for nothing. Not everybody
+is leaving a product with a REST API — most people will arrive with a list they
+typed. Same staging table, same decisions, same apply, same rollback.
+
+### What the source could not tell us
+
+Wallet held no instalment for a DPS and no statement day for a card, because it
+had no concept of either. Those are exactly the fields this product needs to do
+the things it exists to do, so they are asked for **on the draft**, in a sheet
+that opens only on the rows that raise them — 28 rows out of 320 in the
+migration this was built for: nine credit cards, and the categories that turn
+out to be savings plans or policies.
+
+Asked before creation, not after, because a plan created with an invented
+twelve-month term is indistinguishable from one whose term somebody chose. When
+a term is genuinely not known the plan is still created — a migration must not
+be blocked by a figure nobody can find this morning — but its note says the term
+was assumed, and the batch reports how many rows are still outstanding above the
+approve button.
+
+Nothing is required. Blank means not known, and the row keeps its mark.
+
 Four things worth knowing before using it:
 
 - **A category can become a savings plan or an insurance policy, and it arrives

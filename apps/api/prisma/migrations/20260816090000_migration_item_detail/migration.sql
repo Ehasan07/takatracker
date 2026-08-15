@@ -1,0 +1,11 @@
+-- What the other product could not tell us, filled in before anything is created.
+--
+-- A credit card without its statement and due days cannot remind anybody of a
+-- bill; a DPS without its instalment, term and rate has to be created with
+-- invented numbers. Both were previously only fixable after the fact, and an
+-- invented figure sitting in somebody's books is worse than a missing one
+-- because nothing marks it as invented.
+--
+-- Json rather than columns: the fields differ per kind, they are only read by
+-- the code that writes them, and none of them is ever queried.
+ALTER TABLE "MigrationItem" ADD COLUMN IF NOT EXISTS "targetDetail" JSONB;

@@ -523,6 +523,12 @@ model MigrationItem {
   targetType  String?
   /// For `MERGE`: the existing row to fold this into.
   targetId    String?
+  /// What the source could not tell us and the entity cannot do without: a
+  /// credit card's statement and due days, a DPS's instalment, term and rate, a
+  /// policy's premium. Filled in on the draft rather than after applying,
+  /// because a savings plan created with an invented twelve-month term is a
+  /// wrong number nobody can tell was invented.
+  targetDetail Json?
 
   /// Set by apply, read by rollback. The two halves of being able to undo.
   createdEntityId   String?

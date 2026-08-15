@@ -13,3 +13,4 @@ export * from './cash-flow-sections.js';
 export * from './tax.js';
 export * from './parsers/ucbl.js';
 export * from './migration.js';
+export * from './migration-detail.js';

@@ -1,6 +1,7 @@
 'use client';
 
 import type { MigrationDecision } from '@hishab/core';
+import { CircleAlert } from 'lucide-react';
 import * as React from 'react';
 import { Select } from '@/components/ui/field';
 import { ACCOUNT_TYPES, DECISION_LABELS, type MigrationItem } from './types';
@@ -25,6 +26,7 @@ export function DecisionRow({
   targets,
   disabled,
   onChange,
+  onAskDetail,
 }: {
   item: MigrationItem;
   /** What this row could be merged into — accounts or categories, already filtered. */
@@ -35,6 +37,7 @@ export function DecisionRow({
     targetType?: string;
     targetId?: string;
   }) => void;
+  onAskDetail: () => void;
 }) {
   const isAccount = item.kind === 'ACCOUNT';
   /* An account is never a savings plan or a policy: those two exist to rescue a
@@ -54,6 +57,26 @@ export function DecisionRow({
           {item.detail}
           {item.usageCount > 0 ? ` · ${item.usageCount}টি লেনদেন` : ''}
         </p>
+
+        {/* Only where the row raises a question the other product could not
+            answer — a credit card's dates, a DPS's instalment. The mark stays
+            until it is answered, because a card with no due day silently never
+            reminds anybody of anything. */}
+        {item.needs ? (
+          <button
+            type="button"
+            onClick={onAskDetail}
+            disabled={disabled}
+            className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+              item.needsComplete
+                ? 'text-income bg-greenbar'
+                : 'text-expense border-expense/40 border'
+            }`}
+          >
+            {item.needsComplete ? null : <CircleAlert className="h-3.5 w-3.5" aria-hidden />}
+            {item.needsComplete ? 'তথ্য দেওয়া আছে — বদলান' : 'বাকি তথ্য দিন'}
+          </button>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 flex-col gap-2 sm:w-80 sm:flex-row">

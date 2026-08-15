@@ -14,7 +14,6 @@ import {
   matchesQuery,
   type Destination,
 } from '@/components/nav-model';
-import { MIGRATION_HREF, useMigrationAllowed } from '@/app/(shell)/migration/access';
 import { AccountMenu } from '@/components/account-menu';
 import { api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
@@ -38,18 +37,9 @@ export default function MorePage() {
   const [query, setQuery] = React.useState('');
   const searching = query.trim().length > 0;
 
-  /* The migration screen is an allowlist of one, so it is filtered out of both
-     the rows and the search — a hub that finds a page the account cannot open
-     is a hub that lies. */
-  const migrationAllowed = useMigrationAllowed();
-  const visible = React.useCallback(
-    (item: Destination) => migrationAllowed || item.href !== MIGRATION_HREF,
-    [migrationAllowed],
-  );
-
   const matches = React.useMemo(
-    () => ALL_DESTINATIONS.filter((item) => visible(item) && matchesQuery(item, query)),
-    [query, visible],
+    () => ALL_DESTINATIONS.filter((item) => matchesQuery(item, query)),
+    [query],
   );
 
   return (
@@ -106,7 +96,7 @@ export default function MorePage() {
         )
       ) : (
         GROUPS.map((group) => (
-          <Section key={group.id} title={groupTitleOf(group)} items={group.items.filter(visible)} />
+          <Section key={group.id} title={groupTitleOf(group)} items={group.items} />
         ))
       )}
 

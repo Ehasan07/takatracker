@@ -1,7 +1,6 @@
 'use client';
 
 import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
-import { MIGRATION_HREF, useMigrationAllowed } from '@/app/(shell)/migration/access';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
@@ -82,18 +81,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * one, because their workspace does exist (it is where their own audit rows
    * are filed) and breaking it would be a bigger change than this is. */
   const isOperator = useIsOperator();
-  /* One destination is an allowlist of one — see migration/access.ts. Filtered
-     out of the drawn navigation rather than removed from the model, so the
-     titles and the route itself keep working for the account that has it. */
-  const migrationAllowed = useMigrationAllowed();
-  const sidebarGroups = React.useMemo(() => {
-    const groups = isOperator ? OPERATOR_SIDEBAR_GROUPS : SIDEBAR_GROUPS;
-    if (migrationAllowed) return groups;
-    return groups.map((group) => ({
-      ...group,
-      items: group.items.filter((item) => item.href !== MIGRATION_HREF),
-    }));
-  }, [isOperator, migrationAllowed]);
+  const sidebarGroups = React.useMemo(
+    () => (isOperator ? OPERATOR_SIDEBAR_GROUPS : SIDEBAR_GROUPS),
+    [isOperator],
+  );
   const tabs = isOperator ? OPERATOR_PRIMARY : PRIMARY;
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const scrollRef = React.useRef<HTMLElement | null>(null);

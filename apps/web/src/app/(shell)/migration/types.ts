@@ -1,4 +1,4 @@
-import type { MigrationDecision } from '@hishab/core';
+import type { DetailKind, MigrationDecision, MigrationDetail } from '@hishab/core';
 
 /** One staged row, as the API presents it. */
 export interface MigrationItem {
@@ -15,6 +15,10 @@ export interface MigrationItem {
   skippedReason: string | null;
   /** Currency, group, archived — whatever the other product said. */
   detail: string;
+  /** Which questions this row raises, if any, and whether they are answered. */
+  needs: DetailKind | null;
+  needsComplete: boolean;
+  targetDetail: MigrationDetail | null;
 }
 
 export interface MigrationBatch {
@@ -25,7 +29,13 @@ export interface MigrationBatch {
   appliedAt: string | null;
   rolledBackAt: string | null;
   note: string | null;
-  counts: { accounts: number; categories: number; created: number; skipped: number };
+  counts: {
+    accounts: number;
+    categories: number;
+    created: number;
+    skipped: number;
+    needsDetail: number;
+  };
 }
 
 export interface MigrationBatchDetail extends MigrationBatch {

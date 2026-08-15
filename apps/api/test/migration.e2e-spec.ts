@@ -29,6 +29,14 @@ const WALLET_ACCOUNTS = [
     recordStats: { recordCount: 412 },
   },
   {
+    id: 'w-acc-3',
+    name: 'ব্র্যাক কার্ড',
+    accountType: 'CreditCard',
+    currencyCode: 'BDT',
+    archived: false,
+    recordStats: { recordCount: 40 },
+  },
+  {
     id: 'w-acc-2',
     name: 'DBBL Savings',
     accountType: 'SavingAccount',
@@ -49,6 +57,8 @@ const WALLET_CATEGORIES = [
 
 interface Item {
   id: string;
+  needs: string | null;
+  needsComplete: boolean;
   kind: 'ACCOUNT' | 'CATEGORY';
   sourceId: string;
   sourceName: string;
@@ -65,7 +75,13 @@ interface Batch {
   id: string;
   status: string;
   items: Item[];
-  counts: { accounts: number; categories: number; created: number; skipped: number };
+  counts: {
+    accounts: number;
+    categories: number;
+    created: number;
+    skipped: number;
+    needsDetail: number;
+  };
 }
 
 describe('migration', () => {
@@ -139,7 +155,7 @@ describe('migration', () => {
     const batch = res.body as Batch;
 
     expect(batch.status).toBe('DRAFT');
-    expect(batch.counts).toMatchObject({ accounts: 2, categories: 4, created: 0 });
+    expect(batch.counts).toMatchObject({ accounts: 3, categories: 4, created: 0 });
     expect(await ctx.prisma.account.count({ where: { workspaceId: user.workspaceId } })).toBe(
       before,
     );
@@ -187,6 +203,9 @@ describe('migration', () => {
       where: { workspaceId: user.workspaceId, systemKey: null, deletedAt: null },
       select: { name: true, type: true, accountNumberMasked: true },
     });
+    /* Two, not three: the plan's account ceiling. The busiest rows go in first
+       and the one that did not fit says why on its own row, which is the whole
+       point of a batch that never aborts part-way. */
     expect(accounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -194,9 +213,12 @@ describe('migration', () => {
           type: 'BANK',
           accountNumberMasked: '01711••••88',
         }),
-        expect.objectContaining({ name: 'DBBL Savings', type: 'SAVINGS' }),
+        expect.objectContaining({ name: 'ব্র্যাক কার্ড', type: 'CREDIT_CARD' }),
       ]),
     );
+    const overflow = find(applied, 'w-acc-2');
+    expect(overflow.createdEntityId).toBeNull();
+    expect(overflow.skippedReason).toBeTruthy();
 
     /* The category that was really a DPS is a savings plan, and the one that
        was really a policy is a policy. Neither is a category. */
@@ -343,7 +365,7 @@ describe('migration', () => {
       .send({ csv: edited });
     expect(back.status).toBe(200);
     expect(back.body.errors).toEqual([]);
-    expect(back.body.updated).toBe(6);
+    expect(back.body.updated).toBe(7);
 
     const after = (await detail(user, batch.id)).body as Batch;
     expect(find(after, 'w-cat-1').decision).toBe('SKIP');
@@ -385,6 +407,175 @@ describe('migration', () => {
     ).toBe(404);
   });
 
+  it('fills a card and a DPS in on the draft, and creates them with those figures', async () => {
+    /* The whole reason the questions are asked before anything is created: a
+       plan created with an invented term is indistinguishable afterwards from
+       one whose term somebody chose. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    const card = batch.items.find((i) => i.sourceName === 'ব্র্যাক কার্ড') as Item;
+    expect(card.needs).toBe('CARD');
+    expect(card.needsComplete).toBe(false);
+
+    await decide(user, batch.id, card.id, {
+      detail: { statementDay: 20, dueDay: 8, reminderLeadDays: 3 },
+    }).expect(200);
+
+    const dps = find(batch, 'w-cat-2');
+    expect(dps.needs).toBe('SAVINGS');
+    await decide(user, batch.id, dps.id, {
+      detail: { installmentMinor: 1_000_000, termMonths: 60, profitRateBps: 950 },
+    }).expect(200);
+
+    /* The policy is the third row that raises questions, so the batch is not
+       finished until it has been answered too. */
+    const policy = find(batch, 'w-cat-3');
+    expect(policy.needs).toBe('INSURANCE');
+    await decide(user, batch.id, policy.id, {
+      detail: { premiumMinor: 350_000, sumAssuredMinor: 50_000_000 },
+    }).expect(200);
+
+    const ready = (await detail(user, batch.id)).body as Batch;
+    expect(ready.counts.needsDetail).toBe(0);
+
+    await apply(user, batch.id);
+
+    const created = await ctx.prisma.account.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, name: 'ব্র্যাক কার্ড' },
+    });
+    expect(created.statementDayOfMonth).toBe(20);
+    expect(created.dueDayOfMonth).toBe(8);
+    expect(created.reminderLeadDays).toBe(3);
+
+    const plan = await ctx.prisma.savingsPlan.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, planName: 'DPS Sonali' },
+    });
+    expect(Number(plan.installmentMinor)).toBe(1_000_000);
+    expect(plan.termMonths).toBe(60);
+    expect(plan.profitRateBps).toBe(950);
+    /* And the note stops apologising once the figures are real. */
+    expect(plan.note).not.toContain('ধরে নেওয়া');
+  });
+
+  it('says so on the plan when it had to assume a term', async () => {
+    /* Left blank on purpose. The plan is still created — a migration must not
+       be blocked by a figure somebody cannot find this morning — but the note
+       says the term was assumed, because an invented number that looks chosen
+       is the thing to avoid. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    await apply(user, batch.id);
+
+    const plan = await ctx.prisma.savingsPlan.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, planName: 'DPS Sonali' },
+    });
+    expect(plan.termMonths).toBe(12);
+    expect(plan.note).toContain('ধরে নেওয়া');
+  });
+
+  it('only asks the rows that have something to answer', async () => {
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    /* A bank account and an ordinary category are asked nothing at all — that
+       is the difference between 28 forms and 320. */
+    expect(find(batch, 'w-acc-1').needs).toBeNull();
+    expect(find(batch, 'w-cat-1').needs).toBeNull();
+    expect(find(batch, 'w-cat-3').needs).toBe('INSURANCE');
+  });
+
+  it('starts a batch from a spreadsheet somebody typed, with no API at all', async () => {
+    /* The other door, and the one that is open to everybody: not everyone is
+       leaving a product with a REST API. */
+    const stranger = await signup(ctx);
+    process.env.MIGRATION_ALLOWED_EMAILS = '';
+
+    const csv = [
+      'name,kind,decision,targetType,statementDay,dueDay',
+      'হাতের নগদ,ACCOUNT,CREATE,CASH,,',
+      'সিটি কার্ড,ACCOUNT,CREATE,CREDIT_CARD,20,8',
+      'বাজার,CATEGORY,CREATE,EXPENSE,,',
+    ].join('\n');
+
+    const started = await ctx
+      .http()
+      .post('/v1/migration/csv/start')
+      .set(auth(stranger))
+      .send({ csv });
+    expect(started.status).toBe(201);
+
+    const batch = started.body as Batch;
+    expect(batch.counts).toMatchObject({ accounts: 2, categories: 1, created: 0 });
+    /* The card's dates came in with the file, so it asks nothing further. */
+    expect(batch.items.find((i) => i.sourceName === 'সিটি কার্ড')?.needsComplete).toBe(true);
+
+    await ctx
+      .http()
+      .post(`/v1/migration/batches/${batch.id}/apply`)
+      .set(auth(stranger))
+      .send({})
+      .expect(200);
+
+    const card = await ctx.prisma.account.findFirstOrThrow({
+      where: { workspaceId: stranger.workspaceId, name: 'সিটি কার্ড' },
+    });
+    expect(card.type).toBe('CREDIT_CARD');
+    expect(card.dueDayOfMonth).toBe(8);
+  });
+
+  it("holds a spreadsheet to the plan's account ceiling", async () => {
+    /* Mandatory, and the reason the spreadsheet door can be open to everybody:
+       it creates through the same `AccountsService` ceiling every other route
+       obeys. A free plan that allows two accounts allows two here — a CSV is
+       not a way around a plan.
+
+       The rows that do not fit are not lost. Each says why on its own row, so
+       somebody who uploaded forty gets a list rather than a silence. */
+    const user = await signup(ctx);
+
+    const csv = [
+      'name,kind,decision,targetType',
+      ...Array.from({ length: 6 }, (_, i) => `অ্যাকাউন্ট ${i + 1},ACCOUNT,CREATE,BANK`),
+    ].join('\n');
+
+    const started = await ctx
+      .http()
+      .post('/v1/migration/csv/start')
+      .set(auth(user))
+      .send({ csv })
+      .expect(201);
+
+    const applied = (
+      await ctx
+        .http()
+        .post(`/v1/migration/batches/${(started.body as Batch).id}/apply`)
+        .set(auth(user))
+        .send({})
+        .expect(200)
+    ).body as Batch;
+
+    const created = await ctx.prisma.account.count({
+      where: { workspaceId: user.workspaceId, systemKey: null, deletedAt: null },
+    });
+    expect(created).toBeLessThan(6);
+
+    const refused = applied.items.filter((i) => !i.createdEntityId && i.skippedReason);
+    expect(refused.length).toBe(6 - created);
+    expect(refused[0]?.skippedReason).toBeTruthy();
+  });
+
+  it('refuses a spreadsheet with no name column, and says which', async () => {
+    const user = await signup(ctx);
+    const res = await ctx
+      .http()
+      .post('/v1/migration/csv/start')
+      .set(auth(user))
+      .send({ csv: 'kind,decision\nACCOUNT,CREATE' });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('name');
+  });
+
   it('is closed to everybody who is not named in the allowlist', async () => {
     /* The screen asks for a live credential to another finance app. Every
        account that was not given it must find a closed door, whatever its
@@ -393,8 +584,12 @@ describe('migration', () => {
     const stranger = await signup(ctx);
     process.env.MIGRATION_ALLOWED_EMAILS = '';
 
+    /* The Wallet pull is the only gated route, because it is the only one that
+       asks for somebody's credential to another product. */
     expect((await pull(stranger)).status).toBe(403);
-    expect((await ctx.http().get('/v1/migration/batches').set(auth(stranger))).status).toBe(403);
+    /* The spreadsheet door stays open — there is nothing to protect anybody
+       from in a list of headings. */
+    expect((await ctx.http().get('/v1/migration/batches').set(auth(stranger))).status).toBe(200);
 
     /* One route answers rather than refuses, so the navigation can ask. */
     const asked = await ctx.http().get('/v1/migration/availability').set(auth(stranger));

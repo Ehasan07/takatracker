@@ -96,6 +96,13 @@ export function suggestNonCategory(name: string): MigrationDecision | null {
   return null;
 }
 
+import {
+  detailFromCells,
+  detailToCells,
+  MIGRATION_DETAIL_COLUMNS,
+  type MigrationDetail,
+} from './migration-detail.js';
+
 /** One row of the spreadsheet, in the order the columns appear. */
 export interface MigrationRow {
   kind: MigrationKind;
@@ -109,6 +116,8 @@ export interface MigrationRow {
   mergeInto: string;
   /** Whatever the source said about it, for a person deciding later. */
   note: string;
+  /** The card days, the DPS instalment — only where the row raises them. */
+  detail?: MigrationDetail | null;
 }
 
 export const MIGRATION_CSV_COLUMNS = [
@@ -120,6 +129,10 @@ export const MIGRATION_CSV_COLUMNS = [
   'targetType',
   'mergeInto',
   'note',
+  /* Last, and empty on most rows: they are only asked of credit cards, savings
+     plans and policies, and a person scrolling the file should meet the
+     decision columns first. */
+  ...MIGRATION_DETAIL_COLUMNS,
 ] as const;
 
 /** U+FEFF. A literal one in the source is an invisible character in a diff. */
@@ -151,6 +164,7 @@ export function migrationToCsv(rows: readonly MigrationRow[]): string {
       row.targetType,
       row.mergeInto,
       row.note,
+      ...detailToCells(row.detail ?? null),
     ]
       .map(cell)
       .join(','),
@@ -252,6 +266,90 @@ export function migrationFromCsv(text: string): CsvParseResult {
       targetType: at('targetType'),
       mergeInto: at('mergeInto'),
       note: at('note'),
+      detail: detailFromCells(at),
+    });
+  }
+
+  return { rows, errors };
+}
+
+/**
+ * A chart of accounts somebody typed themselves.
+ *
+ * The other entry point. `migrationFromCsv` reads a file this product produced,
+ * so every row already carries the id it had in the source; a person moving in
+ * from a bank statement, a notebook or a product with no API has no such id and
+ * should not be asked to invent one.
+ *
+ * So `sourceId` is optional here and filled in from the row's position, and
+ * `decision` defaults to `CREATE` — the only two differences. Everything else,
+ * including the detail columns, is read exactly as it is above.
+ *
+ * `name` is the one column that cannot be missing: a row with no name is not a
+ * row, and creating "নামহীন খাত" fourteen times helps nobody.
+ */
+export function migrationStartFromCsv(text: string): CsvParseResult {
+  const clean = text.replace(BOM_AT_START, '').replace(/\r\n/g, '\n').trim();
+  if (!clean) return { rows: [], errors: ['ফাইলটি খালি'] };
+
+  const lines = clean.split('\n');
+  const header = splitLine(lines[0] as string).map((h) => h.trim());
+  const index = (name: string): number => header.indexOf(name);
+
+  if (index('name') === -1) {
+    return { rows: [], errors: ['কলাম পাওয়া যায়নি: name'] };
+  }
+
+  const rows: MigrationRow[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 1; i < lines.length; i += 1) {
+    const raw = lines[i] as string;
+    if (!raw.trim()) continue;
+    const cells = splitLine(raw);
+    const at = (name: string): string => (cells[index(name)] ?? '').trim();
+
+    const name = at('name');
+    if (!name) {
+      errors.push(`লাইন ${i + 1}: নাম খালি`);
+      continue;
+    }
+
+    /* Default `CATEGORY`, because a list somebody types is nearly always their
+       spending headings — accounts are few and they name them deliberately. */
+    const kindText = at('kind').toUpperCase();
+    const kind = (
+      MIGRATION_KINDS.includes(kindText as MigrationKind) ? kindText : 'CATEGORY'
+    ) as MigrationKind;
+
+    const decisionText = at('decision').toUpperCase();
+    if (decisionText && !MIGRATION_DECISIONS.includes(decisionText as MigrationDecision)) {
+      errors.push(`লাইন ${i + 1}: decision চেনা যায়নি — "${at('decision')}"`);
+      continue;
+    }
+    const decision = (decisionText || 'CREATE') as MigrationDecision;
+
+    /* The row's own id if it has one, otherwise its position — which is stable
+       for one file and unique within it, and that is all a staging key needs. */
+    const sourceId = at('sourceId') || `row-${i}`;
+    const key = `${kind}:${sourceId}`;
+    if (seen.has(key)) {
+      errors.push(`লাইন ${i + 1}: "${sourceId}" আগেও এসেছে`);
+      continue;
+    }
+    seen.add(key);
+
+    rows.push({
+      kind,
+      sourceId,
+      name,
+      usageCount: Number(at('usageCount')) || 0,
+      decision,
+      targetType: at('targetType'),
+      mergeInto: at('mergeInto'),
+      note: at('note'),
+      detail: detailFromCells(at),
     });
   }
 

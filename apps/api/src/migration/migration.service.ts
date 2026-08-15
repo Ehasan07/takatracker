@@ -1,13 +1,19 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   accountTypeFromWallet,
+  detailIsComplete,
+  detailKindOf,
   migrationFromCsv,
+  migrationStartFromCsv,
   migrationToCsv,
   suggestNonCategory,
+  type DetailKind,
   type MigrationDecision,
+  type MigrationDetail,
   type MigrationRow,
 } from '@hishab/core';
-import type { AccountType, Prisma } from '@prisma/client';
+import { fromLocalDateString } from '@hishab/shared';
+import { Prisma, type AccountType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -57,6 +63,10 @@ export interface MigrationItemView {
   skippedReason: string | null;
   /** Currency, group, archived — whatever the source said, for the screen. */
   detail: string;
+  /** Which questions this row raises, if any, and whether they are answered. */
+  needs: DetailKind | null;
+  needsComplete: boolean;
+  targetDetail: MigrationDetail | null;
 }
 
 export interface BatchView {
@@ -67,7 +77,14 @@ export interface BatchView {
   appliedAt: string | null;
   rolledBackAt: string | null;
   note: string | null;
-  counts: { accounts: number; categories: number; created: number; skipped: number };
+  counts: {
+    accounts: number;
+    categories: number;
+    created: number;
+    skipped: number;
+    /** Rows still waiting on a figure the other product never held. */
+    needsDetail: number;
+  };
 }
 
 export interface BatchDetail extends BatchView {
@@ -99,7 +116,18 @@ export class MigrationService {
     const batches = await this.prisma.migrationBatch.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
-      include: { items: { select: { kind: true, createdEntityId: true, skippedReason: true } } },
+      include: {
+        items: {
+          select: {
+            kind: true,
+            decision: true,
+            targetType: true,
+            targetDetail: true,
+            createdEntityId: true,
+            skippedReason: true,
+          },
+        },
+      },
     });
     return batches.map((batch) => this.presentBatch(batch, batch.items));
   }
@@ -136,6 +164,9 @@ export class MigrationService {
     },
     items: readonly {
       kind: string;
+      decision: string;
+      targetType: string | null;
+      targetDetail: Prisma.JsonValue;
       createdEntityId: string | null;
       skippedReason: string | null;
     }[],
@@ -153,6 +184,10 @@ export class MigrationService {
         categories: items.filter((i) => i.kind === 'CATEGORY').length,
         created: items.filter((i) => i.createdEntityId).length,
         skipped: items.filter((i) => i.skippedReason).length,
+        needsDetail: items.filter((i) => {
+          const needs = detailKindOf(i.kind as 'ACCOUNT' | 'CATEGORY', i.decision, i.targetType);
+          return needs !== null && !detailIsComplete(needs, i.targetDetail as MigrationDetail);
+        }).length,
       },
     };
   }
@@ -170,12 +205,16 @@ export class MigrationService {
     createdEntityKind: string | null;
     skippedReason: string | null;
     sourcePayload: Prisma.JsonValue;
+    targetDetail: Prisma.JsonValue;
   }): MigrationItemView {
     const payload = (item.sourcePayload ?? {}) as Record<string, unknown>;
     const bits = [payload.group, payload.currency, payload.sourceType]
       .filter((v): v is string => typeof v === 'string' && v.length > 0)
       .filter((v, i, all) => all.indexOf(v) === i);
     if (payload.archived === true) bits.push('আর্কাইভ করা');
+
+    const targetDetail = (item.targetDetail ?? null) as MigrationDetail | null;
+    const needs = detailKindOf(item.kind as 'ACCOUNT' | 'CATEGORY', item.decision, item.targetType);
 
     return {
       id: item.id,
@@ -190,6 +229,9 @@ export class MigrationService {
       createdEntityKind: item.createdEntityKind,
       skippedReason: item.skippedReason,
       detail: bits.join(' · '),
+      needs,
+      needsComplete: needs === null || detailIsComplete(needs, targetDetail),
+      targetDetail,
     };
   }
 
@@ -315,13 +357,82 @@ export class MigrationService {
     return this.detail(workspaceId, batch.id);
   }
 
+  /**
+   * Start a batch from a spreadsheet instead of an API.
+   *
+   * The other way in, and the one most people will use: not everybody is
+   * leaving a product with a REST API, and a list of headings typed in Excel is
+   * a chart of accounts too. Nothing about the rest of this changes — same
+   * staging table, same decisions, same apply, same rollback.
+   */
+  async startFromCsv(workspaceId: string, userId: string, csv: string): Promise<BatchDetail> {
+    const open = await this.prisma.migrationBatch.findFirst({
+      where: { workspaceId, status: 'DRAFT' },
+    });
+    if (open) {
+      throw new BadRequestException(
+        'আগের একটি খসড়া এখনো বাকি আছে — সেটি প্রয়োগ করুন বা বাতিল করে আবার চেষ্টা করুন',
+      );
+    }
+
+    const parsed = migrationStartFromCsv(csv);
+    if (parsed.rows.length === 0) {
+      throw new BadRequestException(parsed.errors[0] ?? 'ফাইলে আনার মতো কিছু পাওয়া যায়নি');
+    }
+
+    const items: Prisma.MigrationItemCreateManyBatchInput[] = parsed.rows.map((row) => ({
+      workspaceId,
+      kind: row.kind,
+      sourceId: row.sourceId,
+      sourceName: row.name,
+      usageCount: row.usageCount,
+      decision: row.decision,
+      targetType: row.targetType || (row.kind === 'ACCOUNT' ? 'BANK' : 'EXPENSE'),
+      targetDetail: (row.detail ?? undefined) as Prisma.InputJsonObject | undefined,
+      sourcePayload: { source: 'CSV' },
+    }));
+
+    const batch = await this.prisma.migrationBatch.create({
+      data: {
+        workspaceId,
+        source: 'CSV',
+        status: 'DRAFT',
+        createdByUserId: userId || null,
+        note: `${items.length}টি সারি ফাইল থেকে`,
+        items: { createMany: { data: items } },
+      },
+    });
+
+    this.audit.emit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'migration.pulled',
+      entity: 'MigrationBatch',
+      entityId: batch.id,
+      after: { source: 'CSV', rows: items.length },
+    });
+
+    const detail = await this.detail(workspaceId, batch.id);
+    /* Rows the file could not be read for are reported alongside what worked,
+       rather than swallowed — somebody who typed 40 rows and got 38 should be
+       told which two, not left to count. */
+    if (parsed.errors.length > 0)
+      detail.note = `${detail.note} · ${parsed.errors.length}টি সারি বাদ`;
+    return detail;
+  }
+
   // --------------------------------------------------------------- deciding
 
   async setDecision(
     workspaceId: string,
     batchId: string,
     itemId: string,
-    patch: { decision?: MigrationDecision; targetType?: string; targetId?: string | null },
+    patch: {
+      decision?: MigrationDecision;
+      targetType?: string;
+      targetId?: string | null;
+      detail?: MigrationDetail | null;
+    },
   ): Promise<MigrationItemView> {
     const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
     const item = await this.prisma.migrationItem.findFirst({
@@ -344,6 +455,18 @@ export class MigrationService {
         /* Clearing the target when the decision stops being a merge, so an
            abandoned choice cannot resurface if somebody switches back. */
         targetId: decision === 'MERGE' ? (patch.targetId ?? item.targetId) : null,
+        /* Merged, not replaced: the sheet sends only the fields it asked about,
+           and a card sheet must not wipe a rate somebody typed earlier. An
+           explicit `null` clears the lot, which is how "start again" works. */
+        targetDetail:
+          patch.detail === undefined
+            ? undefined
+            : patch.detail === null
+              ? Prisma.DbNull
+              : ({
+                  ...((item.targetDetail ?? {}) as MigrationDetail),
+                  ...patch.detail,
+                } as Prisma.InputJsonObject),
       },
     });
     return this.presentItem(updated);
@@ -398,6 +521,7 @@ export class MigrationService {
       targetType: item.targetType ?? '',
       mergeInto: item.targetId ? (nameById.get(item.targetId) ?? '') : '',
       note: item.detail,
+      detail: item.targetDetail,
     }));
 
     return migrationToCsv(rows);
@@ -470,6 +594,10 @@ export class MigrationService {
           decision: row.decision,
           targetType: row.targetType || undefined,
           targetId,
+          /* Absent columns leave what is there alone — a spreadsheet somebody
+             made themselves, carrying only the decisions, must not wipe figures
+             typed on the screen. */
+          targetDetail: row.detail === null ? undefined : (row.detail as Prisma.InputJsonObject),
         },
       });
       updated += 1;
@@ -537,10 +665,12 @@ export class MigrationService {
       targetType: string | null;
       targetId: string | null;
       sourcePayload: Prisma.JsonValue;
+      targetDetail: Prisma.JsonValue;
     },
     timezone: string,
   ): Promise<void> {
     const payload = (item.sourcePayload ?? {}) as Record<string, unknown>;
+    const detail = (item.targetDetail ?? {}) as MigrationDetail;
     const done = (data: Prisma.MigrationItemUpdateInput): Promise<unknown> =>
       this.prisma.migrationItem.update({ where: { id: item.id }, data });
 
@@ -574,6 +704,12 @@ export class MigrationService {
           accountNumberMasked:
             typeof payload.accountNumber === 'string' ? payload.accountNumber : null,
           isArchived: payload.archived === true,
+          /* Only a credit card has these, and only if somebody typed them.
+             Null means no reminder, which is the honest state for a card whose
+             dates nobody has looked up yet. */
+          statementDayOfMonth: detail.statementDay ?? null,
+          dueDayOfMonth: detail.dueDay ?? null,
+          reminderLeadDays: detail.reminderLeadDays ?? null,
         },
       });
       await done({
@@ -587,19 +723,27 @@ export class MigrationService {
     // ---- categories, and the two things a category can turn out to be
 
     if (item.decision === 'SAVINGS') {
-      /* Amounts and term stay at zero: Wallet held none of them, and a guessed
-         instalment is a number somebody would have to find and correct later
-         without knowing it was invented. The note says what is missing. */
+      /* Whatever was filled in on the draft, and nothing at all where it was
+         not. A term still has to be a number the column can hold — twelve, and
+         the note says so out loud, because the difference between a figure
+         somebody chose and one this invented has to be visible on the plan
+         itself rather than only in this file. */
+      const known = Boolean(detail.termMonths);
       const created = await this.prisma.savingsPlan.create({
         data: {
           workspaceId,
           planName: item.sourceName,
           planType: 'DPS',
-          installmentMinor: BigInt(0),
-          principalMinor: BigInt(0),
-          termMonths: 12,
-          startDate: new Date(),
-          note: 'আগের সফটওয়্যার থেকে আনা — কিস্তি, মেয়াদ ও মুনাফার হার বসিয়ে নিন',
+          installmentMinor: BigInt(detail.installmentMinor ?? 0),
+          principalMinor: BigInt(detail.principalMinor ?? 0),
+          termMonths: detail.termMonths ?? 12,
+          profitRateBps: detail.profitRateBps ?? 0,
+          startDate: detail.startDate
+            ? fromLocalDateString(detail.startDate, timezone)
+            : new Date(),
+          note: known
+            ? 'আগের সফটওয়্যার থেকে আনা'
+            : 'আগের সফটওয়্যার থেকে আনা — মেয়াদ ১২ মাস ধরে নেওয়া হয়েছে, দেখে ঠিক করে নিন',
         },
       });
       await done({
@@ -617,10 +761,14 @@ export class MigrationService {
         data: {
           workspaceId,
           insurer: item.sourceName,
-          sumAssuredMinor: BigInt(0),
-          premiumMinor: BigInt(0),
-          startDate: new Date(),
-          note: 'আগের সফটওয়্যার থেকে আনা — প্রিমিয়াম ও মেয়াদ বসিয়ে নিন',
+          sumAssuredMinor: BigInt(detail.sumAssuredMinor ?? 0),
+          premiumMinor: BigInt(detail.premiumMinor ?? 0),
+          startDate: detail.startDate
+            ? fromLocalDateString(detail.startDate, timezone)
+            : new Date(),
+          note: detail.premiumMinor
+            ? 'আগের সফটওয়্যার থেকে আনা'
+            : 'আগের সফটওয়্যার থেকে আনা — প্রিমিয়াম ও মেয়াদ বসিয়ে নিন',
         },
       });
       await done({

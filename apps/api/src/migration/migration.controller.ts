@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { MIGRATION_DECISIONS } from '@hishab/core';
-import { cuid } from '@hishab/shared';
+import { cuid, isoDate } from '@hishab/shared';
 import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -33,10 +33,34 @@ const pullSchema = z.object({
 });
 export type PullInput = z.infer<typeof pullSchema>;
 
+/**
+ * What the other product never held, in the units a person types.
+ *
+ * Every field optional and every one bounded: a due day of 47 is a typo that
+ * would silently never fire a reminder, and a term of 9,000 months is a
+ * fat-fingered figure that would generate a schedule nobody wants.
+ */
+const detailSchema = z
+  .object({
+    statementDay: z.number().int().min(1).max(31).nullish(),
+    dueDay: z.number().int().min(1).max(31).nullish(),
+    reminderLeadDays: z.number().int().min(0).max(30).nullish(),
+    installmentMinor: z.number().int().min(0).nullish(),
+    principalMinor: z.number().int().min(0).nullish(),
+    termMonths: z.number().int().min(1).max(600).nullish(),
+    /** Basis points, capped at a 100% annual rate. */
+    profitRateBps: z.number().int().min(0).max(10_000).nullish(),
+    premiumMinor: z.number().int().min(0).nullish(),
+    sumAssuredMinor: z.number().int().min(0).nullish(),
+    startDate: isoDate.nullish(),
+  })
+  .strict();
+
 const decisionSchema = z.object({
   decision: z.enum(MIGRATION_DECISIONS).optional(),
   targetType: z.string().max(40).optional(),
   targetId: cuid.nullish(),
+  detail: detailSchema.nullish(),
 });
 export type DecisionInput = z.infer<typeof decisionSchema>;
 
@@ -64,9 +88,21 @@ export class MigrationController {
   }
 
   @Get('batches')
-  @UseGuards(MigrationAccessGuard)
   list(@CurrentUser() user: AuthUser) {
     return this.migration.list(user.workspaceId);
+  }
+
+  /**
+   * Start from a spreadsheet.
+   *
+   * Not behind the allowlist, unlike the Wallet pull. The reason that one is
+   * gated is that it asks for a live credential to another finance app; a CSV
+   * of headings asks for nothing, so there is nothing to protect anybody from.
+   */
+  @Post('csv/start')
+  @HttpCode(201)
+  startFromCsv(@CurrentUser() user: AuthUser, @Body(zodPipe(csvSchema)) body: CsvInput) {
+    return this.migration.startFromCsv(user.workspaceId, user.id, body.csv);
   }
 
   @Post('wallet/pull')
@@ -76,13 +112,11 @@ export class MigrationController {
   }
 
   @Get('batches/:id')
-  @UseGuards(MigrationAccessGuard)
   detail(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.detail(user.workspaceId, id);
   }
 
   @Patch('batches/:id/items/:itemId')
-  @UseGuards(MigrationAccessGuard)
   decide(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -100,7 +134,6 @@ export class MigrationController {
    * Excel on Windows.
    */
   @Get('batches/:id/csv')
-  @UseGuards(MigrationAccessGuard)
   @Header('content-type', 'text/csv; charset=utf-8')
   @Header('content-disposition', 'attachment; filename="migration.csv"')
   csv(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -108,7 +141,6 @@ export class MigrationController {
   }
 
   @Post('batches/:id/csv')
-  @UseGuards(MigrationAccessGuard)
   @HttpCode(200)
   importCsv(
     @CurrentUser() user: AuthUser,
@@ -119,21 +151,18 @@ export class MigrationController {
   }
 
   @Post('batches/:id/apply')
-  @UseGuards(MigrationAccessGuard)
   @HttpCode(200)
   apply(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.apply(user.workspaceId, user.id, id, user.timezone);
   }
 
   @Post('batches/:id/rollback')
-  @UseGuards(MigrationAccessGuard)
   @HttpCode(200)
   rollback(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.rollback(user.workspaceId, user.id, id);
   }
 
   @Delete('batches/:id')
-  @UseGuards(MigrationAccessGuard)
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.remove(user.workspaceId, id);
   }

@@ -10,12 +10,13 @@ import { expect, test, type Page } from '@playwright/test';
  *
  * What is left is what only a browser can check:
  *
- * - **It is not in anybody else's product.** The screen asks a person to paste
- *   a live credential to another finance app. Every account that is not on the
- *   allowlist must find no link, no search result, and no form — because the
- *   day this appears in a stranger's menu, "Taka Tracker asks for your other
- *   app's password" has become a true sentence.
- * - **It is reachable for the account that has it**, without being told a URL.
+ * - **The token box is in nobody else's product.** It asks a person to paste a
+ *   live credential to another finance app, and the day that appears in a
+ *   stranger's menu, "Taka Tracker asks for your other app's password" has
+ *   become a true sentence. The spreadsheet door beside it asks for nothing, so
+ *   everybody gets that one — two doors, one allowlist, and the test has to
+ *   hold them apart.
+ * - **It is reachable from আরও**, without being told a URL.
  * - **The three promises are written on it** rather than implied.
  * - **The button cannot be pressed with nothing in the box** — a spinner
  *   followed by "token too short" is a worse answer than a button that plainly
@@ -58,21 +59,21 @@ async function signup(page: Page, email: string): Promise<void> {
 }
 
 test.describe('bringing another product across', () => {
-  test('is nowhere to be found for an ordinary account', async ({ page }) => {
+  test('offers an ordinary account the spreadsheet, and never the token box', async ({ page }) => {
+    /* The two doors are not the same door. A spreadsheet of headings asks for
+       nothing, so everybody gets it; the Wallet box asks for a live credential
+       to another finance app, so it is the one thing behind the allowlist. */
     await signup(page, uniqueEmail());
 
     await page.goto('/more');
-    await expect(page.getByRole('link', { name: /^আগের সফটওয়্যার থেকে/ })).toHaveCount(0);
+    await page
+      .getByRole('link', { name: /^আগের সফটওয়্যার থেকে/ })
+      .last()
+      .click();
 
-    /* Not in the search either. A hub that finds a page the account cannot open
-       is a hub that lies. */
-    await page.getByTestId('more-search').fill('আগের');
-    await expect(page.getByRole('link', { name: /^আগের সফটওয়্যার থেকে/ })).toHaveCount(0);
-
-    /* And typing the URL gets a sentence, not a form. */
-    await page.goto('/migration');
-    await expect(page.getByText('এই সুবিধাটি এই অ্যাকাউন্টে চালু নেই')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'এক্সেল থেকে আনুন' })).toBeVisible();
     await expect(page.getByLabel('Wallet API টোকেন')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'সংযোগ করুন' })).toHaveCount(0);
   });
 
   test('is reachable from আরও and says what it will and will not do', async ({ page }) => {
