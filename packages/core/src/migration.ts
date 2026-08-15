@@ -40,23 +40,18 @@ export const MIGRATION_DECISIONS = [
   /** …or an insurance policy. */
   'INSURANCE',
   /**
-   * …or money owed, which is not a spending head at all.
+   * …or money owed to an institution, which is not a spending head at all.
    *
-   * A policy loan, a car loan, a balance carried on a card the other product
-   * had no account for — recorded there as a category because a category was
-   * the only shape available. Left as one, every repayment reads as an expense
-   * and the debt itself appears nowhere on the balance sheet.
+   * A policy loan, a car loan, a balance on a card the other product had no
+   * account for — recorded there as a category because a category was the only
+   * shape available. Left as one, every repayment reads as an expense and the
+   * debt itself appears nowhere on the balance sheet.
+   *
+   * For money owed to or by a *person*, use `PERSON` and record the loan in
+   * ঋণ instead. That keeps one debt in one place: an account of somebody's name
+   * beside a loan in their name is the same fifty thousand counted twice.
    */
   'LIABILITY',
-  /**
-   * …or money owed *to* you, which is the same mistake facing the other way.
-   *
-   * Debt and credit are two sides of one idea, and a product that offers only
-   * one of them quietly pushes everything somebody is owed into the expense
-   * column — money lent to a brother reads as spending, and never comes back
-   * when it is repaid.
-   */
-  'RECEIVABLE',
   /**
    * …or a person, when the row is somebody's name.
    *
@@ -557,20 +552,33 @@ export function sampleMigrationRows(): MigrationRow[] {
       mergeInto: '',
       parent: '',
       rename: '',
-      note: 'যে টাকা আপনি দেবেন — LIABILITY দিলে দেনার অ্যাকাউন্ট তৈরি হবে, খাত নয়',
+      note: 'প্রতিষ্ঠানের ঋণ — LIABILITY দিলে দায়ের অ্যাকাউন্ট তৈরি হবে, খাত নয়',
       detail: null,
     },
     {
       kind: 'CATEGORY',
       sourceId: 'c-6',
-      name: 'করিমকে ধার দেওয়া',
+      name: 'করিম ভাই 01712345678',
       usageCount: 0,
-      decision: 'RECEIVABLE',
+      decision: 'PERSON',
       targetType: '',
       mergeInto: '',
       parent: '',
       rename: '',
-      note: 'যে টাকা আপনি পাবেন — RECEIVABLE, নাহলে ধার দেওয়াটা খরচ হিসেবে বসে যাবে',
+      note: 'কারো নাম হলে PERSON — পরিচিতিতে যাবে, ধার-দেনা ঋণ পাতায় লিখবেন',
+      detail: null,
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-6b',
+      name: 'এখনো ভাবিনি',
+      usageCount: 0,
+      decision: 'LATER',
+      targetType: 'EXPENSE',
+      mergeInto: '',
+      parent: '',
+      rename: '',
+      note: 'LATER দিলে এখন কিছু হবে না, খসড়ায় থেকে যাবে — পরে সিদ্ধান্ত নেবেন',
       detail: null,
     },
     {
@@ -583,7 +591,7 @@ export function sampleMigrationRows(): MigrationRow[] {
       mergeInto: '',
       parent: '',
       rename: '',
-      note: 'SKIP দিলে এই সারিটা আনা হবে না',
+      note: 'SKIP দিলে কোনোদিনই আনা হবে না — পরে করতে চাইলে LATER',
       detail: null,
     },
   ];

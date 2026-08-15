@@ -50,6 +50,25 @@ const ACCOUNT_TYPES: { value: string; label: string; group: string }[] = [
 ];
 
 /**
+ * Two of those cannot be made by hand any more.
+ *
+ * `ঋণ` already records what somebody owes: against a person, in a direction,
+ * with instalments, under one control account per direction and a sub-ledger
+ * per name — which is how IAS 32.42 wants it, receivable and payable kept
+ * apart rather than netted into a figure.
+ *
+ * A hand-made পাওনা account was a second, weaker way to say the same thing,
+ * and the two together let one debt be written twice: fifty thousand in ঋণ and
+ * fifty thousand in an account of the same name is a lakh of net worth that
+ * does not exist. So the types stay — the loan control accounts are made of
+ * them, and existing rows still render by these labels — but nobody is offered
+ * one to fill in.
+ */
+const CREATABLE_TYPES = ACCOUNT_TYPES.filter(
+  (entry) => entry.value !== 'RECEIVABLE' && entry.value !== 'PAYABLE',
+);
+
+/**
  * The accounts whose value can change without a transaction.
  *
  * Cash does not appreciate. If a wallet disagrees with the ledger one of them is
@@ -763,7 +782,7 @@ function EditAccountSheet({
               /* `type`, not `t` — the translator is called `t` and a parameter
                  by that name shadows it inside this very block. */
               <optgroup key={group} label={groupLabel(group)}>
-                {ACCOUNT_TYPES.filter((type) => type.group === group).map((type) => (
+                {CREATABLE_TYPES.filter((type) => type.group === group).map((type) => (
                   <option key={type.value} value={type.value}>
                     {typeLabel(type.value)}
                   </option>
@@ -1052,7 +1071,7 @@ function AddAccountSheet({
               /* `type`, not `t` — the translator is called `t` and a parameter
                  by that name shadows it inside this very block. */
               <optgroup key={group} label={groupLabel(group)}>
-                {ACCOUNT_TYPES.filter((type) => type.group === group).map((type) => (
+                {CREATABLE_TYPES.filter((type) => type.group === group).map((type) => (
                   <option key={type.value} value={type.value}>
                     {typeLabel(type.value)}
                   </option>

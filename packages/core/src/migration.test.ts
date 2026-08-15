@@ -213,9 +213,10 @@ describe('the sample file', () => {
     expect([...decisions].sort()).toEqual([
       'CREATE',
       'INSURANCE',
+      'LATER',
       'LIABILITY',
       'MERGE',
-      'RECEIVABLE',
+      'PERSON',
       'SAVINGS',
       'SKIP',
     ]);

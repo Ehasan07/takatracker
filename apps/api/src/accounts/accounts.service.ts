@@ -345,6 +345,24 @@ export class AccountsService {
     timezone = 'Asia/Dhaka',
     actorUserId?: string,
   ): Promise<AccountWithBalance> {
+    /* Not by hand.
+     *
+     * `ঋণ` already records what somebody owes — against a person, in a
+     * direction, with instalments — under one control account per direction,
+     * which is where these two types are used and how IAS 32.42 wants it:
+     * receivable and payable kept apart rather than netted.
+     *
+     * A hand-made one was a second, weaker way to say the same thing, and the
+     * two together let one debt be written twice: fifty thousand in ঋণ and
+     * fifty thousand in an account of the same name is a lakh of net worth
+     * nobody has. The control accounts are made through
+     * `ensureControlAccount`, which does not come through here. */
+    if (input.type === 'RECEIVABLE' || input.type === 'PAYABLE') {
+      throw new BadRequestException(
+        'পাওনা বা দেনা অ্যাকাউন্ট হিসেবে নয় — ঋণ পাতা থেকে ব্যক্তির নামে লিখুন',
+      );
+    }
+
     // Archived accounts do not count, so hitting the ceiling has a way out that
     // is not "delete your history".
     await this.entitlements.assertWithinLimit(workspaceId, 'accounts.max', timezone);

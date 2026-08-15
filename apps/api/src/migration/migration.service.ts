@@ -1074,18 +1074,16 @@ export class MigrationService {
       return;
     }
 
-    /* Money owed, either way round.
+    /* Money owed to an institution.
      *
-     * An account, not a `Loan` record. A loan posts a disbursement transaction,
+     * An account, not a `Loan` record: a loan posts a disbursement transaction,
      * and this knows neither the principal nor which account the money moved
-     * through — writing one would be inventing entries in somebody's books. An
-     * account of the right type puts the debt or the credit on the balance
-     * sheet with nothing made up, and the loan proper can be recorded against
-     * it later.
+     * through. An account of the right type puts the debt on the balance sheet
+     * with nothing made up.
      *
-     * Both directions, because offering only one pushes everything somebody is
-     * owed into the expense column: money lent reads as spending and never
-     * comes back when it is repaid. */
+     * Only this direction, and only for institutions. What a *person* owes goes
+     * through `PERSON` and ঋণ, where it belongs — an account in somebody's name
+     * beside a loan in their name is one debt counted twice. */
     const owedType =
       item.decision === 'LIABILITY'
         ? 'LIABILITY'
@@ -1108,7 +1106,7 @@ export class MigrationService {
         data: {
           workspaceId,
           name: name,
-          type: owedType,
+          type: 'LIABILITY',
           currency: 'BDT',
           /* No balance, as with every account: Wallet's figure is today's, not
              the opening one, and importing it would double-count the history. */

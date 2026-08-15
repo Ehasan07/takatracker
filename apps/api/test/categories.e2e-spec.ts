@@ -127,11 +127,11 @@ describe('categories', () => {
     expect(bobs.body.some((c: { id: string }) => c.id === created.body.id)).toBe(false);
   });
 
-  it('accepts asset and liability accounts', async () => {
+  it('accepts asset and liability accounts, but not receivable or payable', async () => {
     const user = await signup(ctx);
     // One account per type; the free plan sells two in total.
     await unlimit(ctx, user.workspaceId);
-    for (const type of ['ASSET', 'LIABILITY', 'RECEIVABLE', 'PAYABLE']) {
+    for (const type of ['ASSET', 'LIABILITY']) {
       await ctx
         .http()
         .post('/v1/accounts')
@@ -140,10 +140,23 @@ describe('categories', () => {
         .expect(201);
     }
 
+    /* RECEIVABLE and PAYABLE are what the loan control accounts are made of,
+       and ঋণ makes those itself — against a person, in a direction, with
+       instalments. A hand-made one beside a loan of the same name is one debt
+       written twice. */
+    for (const type of ['RECEIVABLE', 'PAYABLE']) {
+      await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: `acct-${type}`, type })
+        .expect(400);
+    }
+
     const accounts = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
-    expect(accounts.body.map((a: { type: string }) => a.type)).toEqual(
-      expect.arrayContaining(['ASSET', 'LIABILITY', 'RECEIVABLE', 'PAYABLE']),
-    );
+    const types = accounts.body.map((a: { type: string }) => a.type);
+    expect(types).toEqual(expect.arrayContaining(['ASSET', 'LIABILITY']));
+    expect(types).not.toContain('RECEIVABLE');
   });
 });
 

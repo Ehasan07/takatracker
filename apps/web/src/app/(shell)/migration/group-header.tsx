@@ -68,7 +68,7 @@ export function GroupHeader({
         >
           <option value="">সবগুলোতে একসাথে…</option>
           {(
-            ['CREATE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'RECEIVABLE', 'LATER', 'SKIP'] as const
+            ['CREATE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'PERSON', 'LATER', 'SKIP'] as const
           ).map((choice) => (
             <option key={choice} value={choice}>
               {DECISION_LABELS[choice]}

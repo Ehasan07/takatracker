@@ -1022,24 +1022,6 @@ describe('migration', () => {
     ).toBe(0);
   });
 
-  it('turns a category that is really money owed to you into a receivable', async () => {
-    const user = await allowedUser();
-    const batch = (await pull(user)).body as Batch;
-
-    for (const sourceId of ['w-acc-1', 'w-acc-2', 'w-acc-3']) {
-      await decide(user, batch.id, find(batch, sourceId).id, { decision: 'SKIP' }).expect(200);
-    }
-    await decide(user, batch.id, find(batch, 'w-cat-1').id, { decision: 'RECEIVABLE' }).expect(200);
-
-    await apply(user, batch.id);
-
-    const account = await ctx.prisma.account.findFirst({
-      where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
-    });
-    expect(account?.type).toBe('RECEIVABLE');
-    expect(Number(account?.openingBalance)).toBe(0);
-  });
-
   it('lets a row be told to merge before what it merges into is chosen', async () => {
     /* Refusing this was a deadlock: the control for choosing a target only
        appears once the row is a merge, so demanding the target at the moment
