@@ -15,6 +15,8 @@ export interface MigrationItem {
   skippedReason: string | null;
   /** Currency, group, archived — whatever the other product said. */
   detail: string;
+  /** The heading it had over there — what the bulk control works on. */
+  group: string | null;
   /** Which questions this row raises, if any, and whether they are answered. */
   needs: DetailKind | null;
   needsComplete: boolean;

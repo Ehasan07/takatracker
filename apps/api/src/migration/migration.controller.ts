@@ -64,6 +64,13 @@ const decisionSchema = z.object({
 });
 export type DecisionInput = z.infer<typeof decisionSchema>;
 
+const bulkDecisionSchema = decisionSchema.extend({
+  /* 400 is past every real chart of accounts and short enough that one request
+     cannot become a long-running write. */
+  itemIds: z.array(cuid).min(1).max(400),
+});
+export type BulkDecisionInput = z.infer<typeof bulkDecisionSchema>;
+
 const csvSchema = z.object({
   /* Two hundred rows of Bengali names with a BOM. A megabyte is far more than
      that and far less than something worth streaming. */
@@ -124,6 +131,16 @@ export class MigrationController {
     @Body(zodPipe(decisionSchema)) body: DecisionInput,
   ) {
     return this.migration.setDecision(user.workspaceId, id, itemId, body);
+  }
+
+  @Patch('batches/:id/items')
+  decideMany(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(bulkDecisionSchema)) body: BulkDecisionInput,
+  ) {
+    const { itemIds, ...patch } = body;
+    return this.migration.setDecisions(user.workspaceId, id, itemIds, patch);
   }
 
   /**

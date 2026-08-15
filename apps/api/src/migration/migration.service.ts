@@ -63,6 +63,11 @@ export interface MigrationItemView {
   skippedReason: string | null;
   /** Currency, group, archived — whatever the source said, for the screen. */
   detail: string;
+  /**
+   * The heading the row had over there — Wallet's own group, or an account's
+   * type. What makes deciding 296 rows a job of about ten decisions instead.
+   */
+  group: string | null;
   /** Which questions this row raises, if any, and whether they are answered. */
   needs: DetailKind | null;
   needsComplete: boolean;
@@ -229,6 +234,12 @@ export class MigrationService {
       createdEntityKind: item.createdEntityKind,
       skippedReason: item.skippedReason,
       detail: bits.join(' · '),
+      group:
+        typeof payload.group === 'string' && payload.group
+          ? payload.group
+          : typeof payload.sourceType === 'string' && payload.sourceType
+            ? payload.sourceType
+            : null,
       needs,
       needsComplete: needs === null || detailIsComplete(needs, targetDetail),
       targetDetail,
@@ -499,6 +510,44 @@ export class MigrationService {
    * meets the refusal while deciding, rather than as a row that quietly did
    * nothing when the batch was applied.
    */
+  /**
+   * The same decision across many rows.
+   *
+   * Wallet's own groups are the shape somebody actually thinks in — "all of
+   * Vehicle is a sub-category of যাতায়াত" — and making that 40 requests would
+   * be 40 chances to lose one and a screen that stutters through it. Each row
+   * still goes through `setDecision`, so nothing is validated more loosely
+   * because it arrived in company.
+   */
+  async setDecisions(
+    workspaceId: string,
+    batchId: string,
+    itemIds: readonly string[],
+    patch: {
+      decision?: MigrationDecision;
+      targetType?: string;
+      targetId?: string | null;
+      detail?: MigrationDetail | null;
+    },
+  ): Promise<{ updated: number; errors: string[] }> {
+    const errors: string[] = [];
+    let updated = 0;
+
+    for (const itemId of itemIds) {
+      try {
+        await this.setDecision(workspaceId, batchId, itemId, patch);
+        updated += 1;
+      } catch (error) {
+        /* One row's refusal is that row's, not the batch's — a parent of the
+           wrong kind among forty must not undo the other thirty-nine. */
+        errors.push(error instanceof Error ? error.message : 'সারিটি বদলানো গেল না');
+      }
+    }
+
+    /* The same complaint forty times is one complaint. */
+    return { updated, errors: [...new Set(errors)] };
+  }
+
   private async assertParentCategory(
     workspaceId: string,
     parentId: string,

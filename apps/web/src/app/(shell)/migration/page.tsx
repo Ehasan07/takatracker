@@ -8,7 +8,7 @@ import {
   type MigrationRow,
 } from '@hishab/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Download, FileDown, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileDown, RotateCcw, Search, Trash2, Upload } from 'lucide-react';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { haptic } from '@/lib/haptics';
 import { useMigrationAllowed } from './access';
 import { DecisionRow } from './decision-row';
 import { DetailSheet } from './detail-sheet';
+import { GroupHeader } from './group-header';
 import type {
   CsvResult,
   MigrationBatch,
@@ -56,6 +57,8 @@ export default function MigrationPage() {
   /* Which row's questions are open, by id — not the row object, so the sheet
      always renders the freshest copy after a save. */
   const [askingId, setAskingId] = React.useState<string | null>(null);
+  const [query, setQuery] = React.useState('');
+  const [onlyUnfinished, setOnlyUnfinished] = React.useState(false);
   const fileInput = React.useRef<HTMLInputElement>(null);
   const startInput = React.useRef<HTMLInputElement>(null);
 
@@ -120,7 +123,34 @@ export default function MigrationPage() {
         method: 'PATCH',
         body: input.patch,
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['migration'] }),
+    /* The changed row is written straight into the cache. Refetching the batch
+       instead — 320 rows, each with two or three controls — turned every tap
+       into a full re-render, and deciding 296 of them on a phone that way is
+       not something anybody finishes. */
+    onSuccess: (updated) => {
+      queryClient.setQueryData<MigrationBatchDetail>(['migration', 'batch', current?.id], (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.map((item) => (item.id === updated.id ? updated : item)),
+            }
+          : old,
+      );
+    },
+  });
+
+  /* A whole group at once — one request, then one refetch, because the counts
+     at the top and every row in the group have moved. */
+  const decideMany = useMutation({
+    mutationFn: (input: {
+      itemIds: string[];
+      patch: { decision?: MigrationDecision; targetId?: string | null };
+    }) =>
+      api<{ updated: number; errors: string[] }>(`/migration/batches/${current?.id}/items`, {
+        method: 'PATCH',
+        body: { ...input.patch, itemIds: input.itemIds },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['migration', 'batch'] }),
   });
 
   const apply = useMutation({
@@ -176,8 +206,31 @@ export default function MigrationPage() {
   });
 
   const items = detail.data?.items ?? [];
-  const accountItems = items.filter((i) => i.kind === 'ACCOUNT');
-  const categoryItems = items.filter((i) => i.kind === 'CATEGORY');
+
+  /* What still wants a person: a card or plan missing its figures, or a merge
+     with nothing chosen to merge into. Both do nothing useful when applied, and
+     among 296 rows they are impossible to find by scrolling. */
+  const unfinished = React.useCallback(
+    (item: MigrationItem) =>
+      (item.needs !== null && !item.needsComplete) || (item.decision === 'MERGE' && !item.targetId),
+    [],
+  );
+
+  const shown = React.useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter((item) => {
+      if (onlyUnfinished && !unfinished(item)) return false;
+      if (!needle) return true;
+      return (
+        item.sourceName.toLowerCase().includes(needle) ||
+        (item.group ?? '').toLowerCase().includes(needle)
+      );
+    });
+  }, [items, query, onlyUnfinished, unfinished]);
+
+  const accountItems = shown.filter((i) => i.kind === 'ACCOUNT');
+  const categoryItems = shown.filter((i) => i.kind === 'CATEGORY');
+  const unfinishedCount = items.filter(unfinished).length;
   const asking = items.find((i) => i.id === askingId) ?? null;
   const outstanding = detail.data?.counts.needsDetail ?? 0;
   /* Rows told to merge with nothing chosen to merge into. They do nothing when
@@ -442,6 +495,33 @@ export default function MigrationPage() {
             ) : null}
           </section>
 
+          {/* 296 rows is not a list somebody scrolls twice. The box searches
+              names and the group they came from; the toggle narrows to what
+              still wants an answer. */}
+          <section className="rounded-card border-rule bg-surface flex flex-col gap-2 border p-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search
+                className="text-ink-muted pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                aria-hidden
+              />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="সারি খুঁজুন"
+                placeholder="নাম বা গ্রুপ দিয়ে খুঁজুন"
+                className="border-rule bg-surface text-ink placeholder:text-ink-muted min-h-11 w-full rounded-md border pl-9 pr-3 text-sm"
+              />
+            </div>
+            <Button
+              variant={onlyUnfinished ? 'primary' : 'outline'}
+              aria-pressed={onlyUnfinished}
+              onClick={() => setOnlyUnfinished((on) => !on)}
+            >
+              বাকি আছে ({unfinishedCount})
+            </Button>
+          </section>
+
           <ItemList
             title="অ্যাকাউন্ট"
             items={accountItems}
@@ -458,6 +538,7 @@ export default function MigrationPage() {
             busy={busy}
             onChange={(itemId, patch) => decide.mutate({ itemId, patch })}
             onAskDetail={setAskingId}
+            onApplyGroup={(itemIds, patch) => decideMany.mutate({ itemIds, patch })}
           />
 
           <section className="rounded-card border-rule bg-surface flex flex-wrap items-center gap-3 border p-4">
@@ -545,6 +626,7 @@ function ItemList({
   busy,
   onChange,
   onAskDetail,
+  onApplyGroup,
 }: {
   title: string;
   items: MigrationItem[];
@@ -559,7 +641,22 @@ function ItemList({
     patch: { decision?: MigrationDecision; targetType?: string; targetId?: string },
   ) => void;
   onAskDetail: (itemId: string) => void;
+  onApplyGroup?: (
+    itemIds: string[],
+    patch: { decision?: MigrationDecision; targetId?: string | null },
+  ) => void;
 }) {
+  /* Kept in the order the API sent them, so a group's rows stay together and
+     the busiest still come first inside it. */
+  const groups = React.useMemo(() => {
+    const byGroup = new Map<string, MigrationItem[]>();
+    for (const item of items) {
+      const key = item.group ?? '';
+      byGroup.set(key, [...(byGroup.get(key) ?? []), item]);
+    }
+    return [...byGroup.entries()];
+  }, [items]);
+
   if (items.length === 0) return null;
   return (
     <section className="rounded-card border-rule bg-surface border p-4">
@@ -567,20 +664,41 @@ function ItemList({
         {title} <span className="text-ink-muted">({items.length})</span>
       </h2>
       <ul className="mt-1">
-        {items.map((item) => (
-          <DecisionRow
-            key={item.id}
-            item={item}
-            targets={targets}
-            parents={
-              parentsByKind
-                ? parentsByKind[item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE']
-                : undefined
-            }
-            disabled={busy}
-            onChange={(patch) => onChange(item.id, patch)}
-            onAskDetail={() => onAskDetail(item.id)}
-          />
+        {groups.map(([group, rows]) => (
+          <React.Fragment key={group}>
+            {/* Only where there is more than one — a heading over a single row
+                is noise, and its bulk control would be a slower way to use the
+                row's own. */}
+            {group && rows.length > 1 && parentsByKind && onApplyGroup ? (
+              <GroupHeader
+                group={group}
+                count={rows.length}
+                parents={parentsByKind[rows[0]?.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE']}
+                disabled={busy}
+                onApply={(patch) =>
+                  onApplyGroup(
+                    rows.map((row) => row.id),
+                    patch,
+                  )
+                }
+              />
+            ) : null}
+            {rows.map((item) => (
+              <DecisionRow
+                key={item.id}
+                item={item}
+                targets={targets}
+                parents={
+                  parentsByKind
+                    ? parentsByKind[item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE']
+                    : undefined
+                }
+                disabled={busy}
+                onChange={(patch) => onChange(item.id, patch)}
+                onAskDetail={() => onAskDetail(item.id)}
+              />
+            ))}
+          </React.Fragment>
         ))}
       </ul>
     </section>

@@ -57,6 +57,7 @@ const WALLET_CATEGORIES = [
 
 interface Item {
   id: string;
+  group: string | null;
   needs: string | null;
   needsComplete: boolean;
   kind: 'ACCOUNT' | 'CATEGORY';
@@ -616,6 +617,55 @@ describe('migration', () => {
     expect(
       (await decide(user, batch.id, expense.id, { decision: 'CREATE', targetId: child.id })).status,
     ).toBe(400);
+  });
+
+  it('sets a whole group in one request, and one bad row does not undo the rest', async () => {
+    /* 296 categories is not 296 decisions: they arrive grouped the way the
+       other product grouped them, and that grouping is very close to the
+       answer. Doing it as 40 requests would be 40 chances to lose one. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    const expenses = batch.items.filter((i) => i.kind === 'CATEGORY' && i.targetType === 'EXPENSE');
+    expect(expenses.length).toBeGreaterThan(1);
+
+    const res = await ctx
+      .http()
+      .patch(`/v1/migration/batches/${batch.id}/items`)
+      .set(auth(user))
+      .send({ decision: 'SKIP', itemIds: expenses.map((i) => i.id) });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(expenses.length);
+    expect(res.body.errors).toEqual([]);
+
+    const after = (await detail(user, batch.id)).body as Batch;
+    for (const row of expenses) {
+      expect(find(after, row.sourceId).decision).toBe('SKIP');
+    }
+
+    /* A row the batch does not hold is reported, and the others still change. */
+    const mixed = await ctx
+      .http()
+      .patch(`/v1/migration/batches/${batch.id}/items`)
+      .set(auth(user))
+      .send({
+        decision: 'CREATE',
+        itemIds: [expenses[0]?.id, 'cmsu000000000000000000000'],
+      });
+    expect(mixed.body.updated).toBe(1);
+    expect(mixed.body.errors).toHaveLength(1);
+    expect(find((await detail(user, batch.id)).body as Batch, expenses[0]!.sourceId).decision).toBe(
+      'CREATE',
+    );
+  });
+
+  it('carries the group across, because that is what a bulk decision works on', async () => {
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    /* Wallet's own heading for the row — "Food & Drinks", "Investments". */
+    expect(find(batch, 'w-cat-1').group).toBe('Food & Drinks');
+    /* An account has no group, so its type stands in. */
+    expect(find(batch, 'w-acc-3').group).toBe('CreditCard');
   });
 
   it('turns a category that is really a debt into a liability account', async () => {
