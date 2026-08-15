@@ -982,6 +982,47 @@ describe('migration', () => {
     ).toBe(0);
   });
 
+  it('refuses a decision this build no longer knows rather than guessing', async () => {
+    /* A draft can sit open for weeks while the product changes under it. A row
+       carrying a retired choice must not fall through to "make it a category" —
+       that is how a debt ends up in the spending report. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    const row = find(batch, 'w-cat-1');
+
+    await ctx.prisma.migrationItem.update({
+      where: { id: row.id },
+      data: { decision: 'RECEIVABLE' },
+    });
+
+    const applied = (await apply(user, batch.id)).body as Batch;
+    const after = find(applied, 'w-cat-1');
+    expect(after.createdEntityId).toBeNull();
+    expect(after.skippedReason).toContain('চেনা যায় না');
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it('will not make a receivable or payable account by hand', async () => {
+    /* ঋণ already records what somebody owes — against a person, in a
+       direction, with instalments, under one control account per direction.
+       A hand-made account of the same name is the same debt written twice. */
+    const user = await allowedUser();
+
+    for (const type of ['RECEIVABLE', 'PAYABLE']) {
+      const res = await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: `হাতে বানানো ${type}`, type, openingBalance: 0 });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toContain('ঋণ পাতা');
+    }
+  });
+
   it('turns a category that is really a debt into a liability account', async () => {
     /* "ALICO LOAN" was a category in the other product because a category was
        the only shape it had. Left as one, every repayment reads as an expense

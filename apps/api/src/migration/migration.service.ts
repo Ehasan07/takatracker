@@ -1084,14 +1084,7 @@ export class MigrationService {
      * Only this direction, and only for institutions. What a *person* owes goes
      * through `PERSON` and ঋণ, where it belongs — an account in somebody's name
      * beside a loan in their name is one debt counted twice. */
-    const owedType =
-      item.decision === 'LIABILITY'
-        ? 'LIABILITY'
-        : item.decision === 'RECEIVABLE'
-          ? 'RECEIVABLE'
-          : null;
-
-    if (owedType) {
+    if (item.decision === 'LIABILITY') {
       const clashing = await this.prisma.account.findFirst({
         where: { workspaceId, deletedAt: null, name: name },
         select: { id: true },
@@ -1117,6 +1110,18 @@ export class MigrationService {
         createdEntityId: created.id,
         createdEntityKind: 'Account',
         skippedReason: null,
+      });
+      return;
+    }
+
+    /* Everything above returned. What is left has to be `CREATE`, and if it is
+       not, the row carries a decision this build no longer knows — a
+       spreadsheet from an older version, or a choice retired while the draft
+       sat open. Falling through would quietly make it a category, which is how
+       a debt ends up in the spending report. */
+    if (item.decision !== 'CREATE') {
+      await done({
+        skippedReason: `"${item.decision}" এখন আর চেনা যায় না — নতুন করে বেছে নিন`,
       });
       return;
     }
