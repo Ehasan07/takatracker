@@ -18,6 +18,11 @@ export const AUDIT_ACTIONS = [
    * sign it happened. */
   'auth.signin_code_requested',
   'auth.signin_code',
+  'obligation.created',
+  'obligation.updated',
+  'obligation.completed',
+  'obligation.deleted',
+  'obligation.reminded',
   'migration.pulled',
   'migration.applied',
   'migration.rolledBack',

@@ -128,6 +128,7 @@ export const TEST_TABLES = [
   'LoanPayment',
   'Loan',
   /* Staged imports before the accounts and categories they point at. */
+  'AssetObligation',
   'MigrationItem',
   'MigrationBatch',
   'SavingsInstallment',

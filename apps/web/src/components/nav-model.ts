@@ -5,6 +5,7 @@ import {
   Ellipsis,
   FileSpreadsheet,
   FolderInput,
+  CalendarClock,
   HandCoins,
   Inbox,
   LayoutDashboard,
@@ -172,6 +173,13 @@ export const GROUPS: Group[] = [
         icon: PiggyBank,
         blurb: 'ডিপিএস ও সঞ্চয় স্কিমের কিস্তি, মেয়াদ ও মুনাফা',
         synonyms: 'savings dps সঞ্চয়পত্র জমা',
+      },
+      {
+        href: '/renewals',
+        label: 'নবায়ন ও কাগজপত্র',
+        icon: CalendarClock,
+        blurb: 'ফিটনেস, খাজনা, হোল্ডিং ট্যাক্স, ট্রেড লাইসেন্স — কবে শেষ হচ্ছে',
+        synonyms: 'renewal fitness khajna tax token trade licence পাসপোর্ট নবায়ন কাগজ মেয়াদ',
       },
       {
         href: '/insurance',

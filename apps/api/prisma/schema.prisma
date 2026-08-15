@@ -368,6 +368,7 @@ model Workspace {
   locale       String          @default("bn")
   translations WorkspaceTranslation[]
   migrations   MigrationBatch[]
+  obligations  AssetObligation[]
   /// Defines the ledger day. All date arithmetic resolves against this.
   timezone     String          @default("Asia/Dhaka")
   trialEndsAt  DateTime?
@@ -657,6 +658,7 @@ model Account {
   splitPots        SplitGroup[]        @relation("SplitGroupPot")
   splitContributions SplitContribution[]
   reminderCycles CardReminderCycle[]
+  obligations    AssetObligation[]
   loansFunded    Loan[]              @relation("LoanCashAccount")
   /// Many, not one: every LENT loan in the workspace posts to the same
   /// SYSTEM_LOAN_RECEIVABLE account and every BORROWED one to the same
@@ -1938,4 +1940,60 @@ model SplitContribution {
   transaction Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, groupId, date])
+}
+
+/// A paper that expires.
+///
+/// A car needs a fitness certificate and a tax token every year; land carries
+/// khajna, a flat holding tax, a business a trade licence. None of it is
+/// bookkeeping — it is a calendar with money attached, and missing one costs a
+/// fine, an impounded vehicle, or a mutation that will not go through.
+///
+/// Deliberately not modelled as a transaction: the obligation exists whether or
+/// not it has been paid, and the payment when it happens is an ordinary expense
+/// like any other.
+model AssetObligation {
+  id          String  @id @default(cuid())
+  workspaceId String
+  /// The asset it belongs to. Nullable because a passport and a trade licence
+  /// belong to a person, not to a plot of land.
+  accountId   String?
+
+  /// `FITNESS`, `KHAJNA`, `TRADE_LICENCE` … see `RENEWAL_KINDS` in core.
+  kind        String
+  /// What this one is called. Free text, because the list is always missing one.
+  title       String
+  /// `YEARLY` | `HALF_YEARLY` | `QUARTERLY` | `MONTHLY` | `ONE_OFF`.
+  recurrence  String  @default("YEARLY")
+
+  /// The next one, as a local date. A deadline is a day, not an instant.
+  dueDate     DateTime
+  /// How much warning this one deserves. A passport needs more than a khajna.
+  reminderLeadDays Int @default(30)
+  /// So the year ahead can be totalled. The person's own estimate, never ours.
+  estimatedCostMinor BigInt @default(0)
+
+  /// What rolls the date forward, and the record that it was ever done.
+  lastCompletedOn DateTime?
+  /// Registration number, plot number, licence number. Masked like an account's.
+  documentRef String?
+  note        String?
+
+  /// `YYYY-MM-DD` of the day a reminder last went out, in the workspace's own
+  /// timezone. The idempotency guard the card reminders already use: a restart,
+  /// an overlapping sweep or a second instance cannot send twice in a day.
+  lastRemindedOn String?
+  /// Muted without being deleted — the paper still exists.
+  isMuted     Boolean @default(false)
+
+  status      String  @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, dueDate])
+  @@index([workspaceId, accountId])
 }

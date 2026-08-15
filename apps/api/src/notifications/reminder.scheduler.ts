@@ -1,4 +1,5 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { RenewalReminderService } from '../renewals/renewal-reminder.service';
 import { CardRemindersService } from './card-reminders.service';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -17,7 +18,12 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
-  constructor(private readonly reminders: CardRemindersService) {}
+  constructor(
+    private readonly reminders: CardRemindersService,
+    /* One sweep, two questions. A second scheduler would mean a second thing to
+       forget to start, and both are answering "is anything due today". */
+    private readonly renewals: RenewalReminderService,
+  ) {}
 
   onModuleInit(): void {
     if (process.env.NODE_ENV === 'test' || process.env.DISABLE_REMINDER_SCHEDULER === 'true') {
@@ -26,7 +32,7 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     // Give the app a moment to finish booting before the first sweep.
     this.timer = setInterval(() => void this.tick(), HOUR_MS);
     setTimeout(() => void this.tick(), 30_000).unref();
-    this.logger.log('Credit-card reminder sweep scheduled hourly');
+    this.logger.log('Reminder sweep scheduled hourly — cards and renewals');
   }
 
   onModuleDestroy(): void {
@@ -37,8 +43,23 @@ export class ReminderScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.running) return; // a slow sweep must not overlap itself
     this.running = true;
     try {
-      const { checked, sent } = await this.reminders.runDueReminders();
-      if (sent > 0) this.logger.log(`Card reminders: ${sent} sent of ${checked} card(s) checked`);
+      const cards = await this.reminders.runDueReminders();
+      if (cards.sent > 0) {
+        this.logger.log(`Card reminders: ${cards.sent} sent of ${cards.checked} card(s) checked`);
+      }
+
+      /* Separately, so a failure in one does not silence the other — a card
+         bill and a fitness certificate have nothing to do with each other. */
+      try {
+        const renewals = await this.renewals.runDueReminders();
+        if (renewals.sent > 0) {
+          this.logger.log(
+            `Renewal reminders: ${renewals.sent} sent of ${renewals.checked} checked`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(`Renewal sweep failed: ${(err as Error).message}`);
+      }
     } catch (err) {
       this.logger.error(`Reminder sweep failed: ${(err as Error).message}`);
     } finally {

@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ImportModule } from './import/import.module';
 import { MigrationModule } from './migration/migration.module';
+import { RenewalsModule } from './renewals/renewals.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { LoansModule } from './loans/loans.module';
@@ -53,6 +54,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     MailAccountsModule,
     ImportModule,
     MigrationModule,
+    RenewalsModule,
     AttachmentsModule,
     AdminModule,
     IngestionModule,

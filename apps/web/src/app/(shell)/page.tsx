@@ -16,6 +16,29 @@ import { SkeletonCard } from '@/components/skeleton';
 import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
 import { endpoints } from '@/lib/api';
 
+/**
+ * The breakdown, in the three parts a balance sheet reads in.
+ *
+ * A flat list of every account put a plot of land between two bank accounts and
+ * a credit card under both, and left the reader to work out which of the
+ * fourteen lines they could actually spend. Grouping is not decoration here: it
+ * is the current/non-current distinction, and the whole reason it is required.
+ */
+const BREAKDOWN_GROUPS = [
+  { key: 'liquid', label: 'হাতে ও ব্যাংকে' },
+  { key: 'asset', label: 'সম্পদ' },
+  { key: 'liability', label: 'দায়' },
+] as const;
+
+type BreakdownGroup = (typeof BREAKDOWN_GROUPS)[number]['key'];
+
+type AccountType = keyof typeof ACCOUNT_CLASS;
+
+const groupOfAccount = (type: AccountType): BreakdownGroup => {
+  if (LIQUID_TYPES.includes(type)) return 'liquid';
+  return ACCOUNT_CLASS[type] === 'LIABILITY' ? 'liability' : 'asset';
+};
+
 export default function DashboardPage() {
   /* An operator has no books, so this screen has nothing to tell them. They are
    * sent to the platform overview instead — `replace`, not `push`, so the back
@@ -152,26 +175,51 @@ export default function DashboardPage() {
             {t('dashboard.netWorthHint', 'জমি, সঞ্চয়, পাওনা — সব ধরে, দায় বাদ দিয়ে')}
           </p>
 
-          {/* Never a bare number: the breakdown is always visible. */}
+          {/* Never a bare number: the breakdown is always visible — and grouped,
+              with a subtotal on each heading, because "how much is on my ten
+              credit cards" is a question a flat list of fourteen rows cannot
+              answer. */}
           <ul className="divide-rule mt-3 divide-y border-t pt-1">
-            {(accounts.data ?? []).map((account) => (
-              <li key={account.id} className="flex items-center justify-between gap-3 py-1.5">
-                <span className="text-ink min-w-0 truncate text-sm">
-                  {account.name}
-                  {/* Says why a line is not in the figure above it. Without
-                      this the breakdown looks like it should add up to the
-                      headline, and it deliberately does not. */}
-                  {LIQUID_TYPES.includes(account.type) ? null : (
-                    <span className="text-ink-muted ml-1.5 text-xs">
-                      {ACCOUNT_CLASS[account.type] === 'LIABILITY'
-                        ? t('dashboard.isLiability', '· দায়')
-                        : t('dashboard.isAsset', '· সম্পদ')}
-                    </span>
-                  )}
-                </span>
-                <Money minor={account.balanceMinor} className="shrink-0 text-sm" />
-              </li>
-            ))}
+            {BREAKDOWN_GROUPS.flatMap(({ key, label }) => {
+              const rows = (accounts.data ?? []).filter(
+                (account) => groupOfAccount(account.type as AccountType) === key,
+              );
+              if (rows.length === 0) return [];
+              const subtotal = rows.reduce((sum, account) => sum + account.balanceMinor, 0);
+              const cards = rows.filter((account) => account.type === 'CREDIT_CARD');
+              const cardTotal = cards.reduce((sum, account) => sum + account.balanceMinor, 0);
+
+              return [
+                <li
+                  key={`head-${key}`}
+                  className="text-ink flex items-center justify-between gap-3 pb-1 pt-2 text-xs font-medium"
+                >
+                  <span>{t(`dashboard.group.${key}`, label)}</span>
+                  <Money minor={subtotal} className="shrink-0" />
+                </li>,
+                /* The cards on their own line: ten of them is the common case
+                   and the one number nobody can add up by eye. */
+                ...(cards.length > 1
+                  ? [
+                      <li
+                        key={`cards-${key}`}
+                        className="text-ink-muted flex items-center justify-between gap-3 py-1 pl-3 text-xs"
+                      >
+                        <span>
+                          {t('dashboard.ofWhichCards', 'এর মধ্যে ক্রেডিট কার্ড')} ({cards.length})
+                        </span>
+                        <Money minor={cardTotal} className="shrink-0" />
+                      </li>,
+                    ]
+                  : []),
+                ...rows.map((account) => (
+                  <li key={account.id} className="flex items-center justify-between gap-3 py-1.5">
+                    <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
+                    <Money minor={account.balanceMinor} className="shrink-0 text-sm" />
+                  </li>
+                )),
+              ];
+            })}
             {accounts.data?.length === 0 ? (
               <li className="text-ink-muted py-2 text-sm">
                 {t('dashboard.noAccounts', 'কোনো অ্যাকাউন্ট নেই।')}{' '}
