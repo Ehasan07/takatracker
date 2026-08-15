@@ -215,8 +215,23 @@ Each side carries the other with it, so pairing needs no lookup table:
 }
 ```
 
-Write one `TRANSFER` per `transferId` — from the negative side's account to
-`mirrorRecord.accountId` — and skip the mirror when it comes round.
+Group by `transferId` first and fall back to the mirror pointer, because
+neither is reliable alone. Counted over the whole history on 16 August 2026:
+
+|                                                       | Transfers |
+| ----------------------------------------------------- | --------- |
+| Both sides present, paired by id                      | 1,310     |
+| Both sides present, **no mirror pointer on either**   | 1         |
+| One side only, mirror pointer names the other account | 1         |
+| `{"type":"unpaired"}`, no id at all                   | 2 records |
+
+Trusting the pointer alone loses the first of those; trusting the id alone loses
+the second. Three records out of 9,625 resolve to neither, and they belong in a
+list somebody can look at rather than in a silence — one is a ৳225,000 salary
+transfer, which is not a rounding error.
+
+The 2,625 transfer records are 1,311 transfers plus those 3. Everything adds up,
+and an import that cannot say that about its own arithmetic should not run.
 
 ---
 
