@@ -24,6 +24,7 @@ import { ACCOUNT_TYPES, DECISION_LABELS, type MigrationItem } from './types';
 export function DecisionRow({
   item,
   targets,
+  parents,
   disabled,
   onChange,
   onAskDetail,
@@ -31,6 +32,8 @@ export function DecisionRow({
   item: MigrationItem;
   /** What this row could be merged into — accounts or categories, already filtered. */
   targets: { id: string; name: string }[];
+  /** Top-level categories of this row's kind — what it could sit under. */
+  parents?: { id: string; name: string }[];
   disabled: boolean;
   onChange: (patch: {
     decision?: MigrationDecision;
@@ -108,6 +111,26 @@ export function DecisionRow({
             {targets.map((target) => (
               <option key={target.id} value={target.id}>
                 {target.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+
+        {/* A category being created can sit under one that already exists.
+            Optional, and blank is the ordinary answer: most rows are their own
+            heading. Only two levels are allowed, so this lists top-level
+            categories of the same kind and nothing else. */}
+        {!isAccount && item.decision === 'CREATE' && parents && parents.length > 0 ? (
+          <Select
+            aria-label={`${item.sourceName} — কার নিচে`}
+            value={item.targetId ?? ''}
+            disabled={disabled}
+            onChange={(e) => onChange({ targetId: e.target.value })}
+          >
+            <option value="">নিজেই একটা খাত</option>
+            {parents.map((parent) => (
+              <option key={parent.id} value={parent.id}>
+                {parent.name}-এর নিচে
               </option>
             ))}
           </Select>

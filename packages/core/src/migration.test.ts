@@ -28,6 +28,7 @@ const ROWS: MigrationRow[] = [
     decision: 'CREATE',
     targetType: 'MOBILE_WALLET',
     mergeInto: '',
+    parent: '',
     note: 'General, BDT',
     /* Explicit: a parsed row always carries the key, so a fixture that omitted
        it would fail the round trip on a difference that is not one. */
@@ -41,6 +42,7 @@ const ROWS: MigrationRow[] = [
     decision: 'MERGE',
     targetType: '',
     mergeInto: 'যাতায়াত',
+    parent: '',
     note: 'Transportation',
     detail: null,
   },
@@ -52,6 +54,7 @@ const ROWS: MigrationRow[] = [
     decision: 'SAVINGS',
     targetType: '',
     mergeInto: '',
+    parent: '',
     note: 'Investments',
     detail: { installmentMinor: 200_000, termMonths: 60, profitRateBps: 950 },
   },

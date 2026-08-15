@@ -453,15 +453,26 @@ export class MigrationService {
     if (decision === 'MERGE' && targetId) {
       await this.assertMergeTarget(workspaceId, item.kind, targetId);
     }
+    /* The same column, a different question. For a merge it is "which existing
+       row is this one really"; for a category being created it is "which one
+       does this sit under". Both are a pointer at a row here, so they share the
+       field, and which is meant follows from the decision. */
+    if (decision === 'CREATE' && item.kind === 'CATEGORY' && targetId) {
+      await this.assertParentCategory(workspaceId, targetId, item.targetType);
+    }
 
     const updated = await this.prisma.migrationItem.update({
       where: { id: item.id },
       data: {
         decision,
         targetType: patch.targetType ?? item.targetType,
-        /* Clearing the target when the decision stops being a merge, so an
-           abandoned choice cannot resurface if somebody switches back. */
-        targetId: decision === 'MERGE' ? (patch.targetId ?? item.targetId) : null,
+        /* Cleared when the decision stops being one that uses it, so an
+           abandoned choice cannot resurface if somebody switches back — but
+           kept for a category being created, where it names the parent. */
+        targetId:
+          decision === 'MERGE' || (decision === 'CREATE' && item.kind === 'CATEGORY')
+            ? (patch.targetId ?? item.targetId)
+            : null,
         /* Merged, not replaced: the sheet sends only the fields it asked about,
            and a card sheet must not wipe a rate somebody typed earlier. An
            explicit `null` clears the lot, which is how "start again" works. */
@@ -477,6 +488,33 @@ export class MigrationService {
       },
     });
     return this.presentItem(updated);
+  }
+
+  /**
+   * A category may sit under exactly one other, and that one may sit under
+   * none.
+   *
+   * The two-level rule is the product's, not this module's — a tree deeper than
+   * that turns a report into an outline nobody reads. Checked here so a person
+   * meets the refusal while deciding, rather than as a row that quietly did
+   * nothing when the batch was applied.
+   */
+  private async assertParentCategory(
+    workspaceId: string,
+    parentId: string,
+    kind: string | null,
+  ): Promise<void> {
+    const parent = await this.prisma.category.findFirst({
+      where: { id: parentId, workspaceId, deletedAt: null },
+      select: { id: true, kind: true, parentId: true },
+    });
+    if (!parent) throw new NotFoundException('মূল খাত পাওয়া যায়নি');
+    if (kind && parent.kind !== kind) {
+      throw new BadRequestException('উপ-খাত ও মূল খাতের ধরন এক হতে হবে');
+    }
+    if (parent.parentId) {
+      throw new BadRequestException('উপ-খাতের নিচে আরেকটি উপ-খাত রাখা যায় না');
+    }
   }
 
   private async assertMergeTarget(
@@ -526,7 +564,15 @@ export class MigrationService {
       usageCount: item.usageCount,
       decision: item.decision,
       targetType: item.targetType ?? '',
-      mergeInto: item.targetId ? (nameById.get(item.targetId) ?? '') : '',
+      /* The same column split in two on the way out, because the file is for a
+         person: `mergeInto` where the row folds into another, `parent` where it
+         sits under one. */
+      mergeInto:
+        item.decision === 'MERGE' && item.targetId ? (nameById.get(item.targetId) ?? '') : '',
+      parent:
+        item.decision === 'CREATE' && item.kind === 'CATEGORY' && item.targetId
+          ? (nameById.get(item.targetId) ?? '')
+          : '',
       note: item.detail,
       detail: item.targetDetail,
     }));
@@ -591,6 +637,12 @@ export class MigrationService {
              answer — the alternative is creating it, which is a different
              decision from the one written in the file. */
           errors.push(`"${row.name}" — "${row.mergeInto}" নামে কিছু পাওয়া যায়নি`);
+          continue;
+        }
+      } else if (row.decision === 'CREATE' && row.kind === 'CATEGORY' && row.parent) {
+        targetId = categoryIdByName.get(normalise(row.parent)) ?? null;
+        if (!targetId) {
+          errors.push(`"${row.name}" — "${row.parent}" নামে কোনো খাত পাওয়া যায়নি`);
           continue;
         }
       }
@@ -855,12 +907,30 @@ export class MigrationService {
       return;
     }
 
+    /* Re-checked rather than trusted: the parent was valid when it was chosen,
+       and a category deleted in between would otherwise put this one at the top
+       level without anybody being told the shape had changed. Refusing the row
+       is the honest answer — it can be made by hand, and a wrong place in the
+       tree is the kind of thing nobody notices for a year. */
+    if (item.targetId) {
+      const parent = await this.prisma.category.findFirst({
+        where: { id: item.targetId, workspaceId, deletedAt: null },
+        select: { kind: true, parentId: true },
+      });
+      const usable = parent && !parent.parentId && parent.kind === (item.targetType ?? parent.kind);
+      if (!usable) {
+        await done({ skippedReason: 'যে খাতের নিচে বসার কথা ছিল সেটি আর নেই' });
+        return;
+      }
+    }
+
     const created = await this.prisma.category.create({
       data: {
         workspaceId,
         name: item.sourceName,
         nameBn: item.sourceName,
         kind: item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE',
+        parentId: item.targetId,
       },
     });
     await done({ createdEntityId: created.id, createdEntityKind: 'Category', skippedReason: null });

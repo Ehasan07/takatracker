@@ -193,6 +193,20 @@ export default function MigrationPage() {
     [categories.data],
   );
 
+  /* Only top-level ones, and split by kind: the product allows two levels, and
+     a sub-category's parent has to be income where it is income. */
+  const parentsByKind = React.useMemo(() => {
+    const top = (categories.data ?? []).filter((c) => !c.parentId);
+    return {
+      INCOME: top
+        .filter((c) => c.kind === 'INCOME')
+        .map((c) => ({ id: c.id, name: c.nameBn ?? c.name })),
+      EXPENSE: top
+        .filter((c) => c.kind === 'EXPENSE')
+        .map((c) => ({ id: c.id, name: c.nameBn ?? c.name })),
+    };
+  }, [categories.data]);
+
   /* One saver for both files. The download is a blob the browser already holds,
      so neither of these is a request the server has to serve. */
   function save(filename: string, text: string): void {
@@ -225,7 +239,12 @@ export default function MigrationPage() {
       usageCount: item.usageCount,
       decision: item.decision,
       targetType: item.targetType ?? '',
-      mergeInto: item.targetId ? (nameById.get(item.targetId) ?? '') : '',
+      mergeInto:
+        item.decision === 'MERGE' && item.targetId ? (nameById.get(item.targetId) ?? '') : '',
+      parent:
+        item.decision === 'CREATE' && item.kind === 'CATEGORY' && item.targetId
+          ? (nameById.get(item.targetId) ?? '')
+          : '',
       note: item.detail,
       detail: item.targetDetail,
     }));
@@ -435,6 +454,7 @@ export default function MigrationPage() {
             title="খাত"
             items={categoryItems}
             targets={categoryTargets}
+            parentsByKind={parentsByKind}
             busy={busy}
             onChange={(itemId, patch) => decide.mutate({ itemId, patch })}
             onAskDetail={setAskingId}
@@ -521,6 +541,7 @@ function ItemList({
   title,
   items,
   targets,
+  parentsByKind,
   busy,
   onChange,
   onAskDetail,
@@ -528,6 +549,10 @@ function ItemList({
   title: string;
   items: MigrationItem[];
   targets: { id: string; name: string }[];
+  parentsByKind?: {
+    INCOME: { id: string; name: string }[];
+    EXPENSE: { id: string; name: string }[];
+  };
   busy: boolean;
   onChange: (
     itemId: string,
@@ -547,6 +572,11 @@ function ItemList({
             key={item.id}
             item={item}
             targets={targets}
+            parents={
+              parentsByKind
+                ? parentsByKind[item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE']
+                : undefined
+            }
             disabled={busy}
             onChange={(patch) => onChange(item.id, patch)}
             onAskDetail={() => onAskDetail(item.id)}

@@ -565,6 +565,59 @@ describe('migration', () => {
     expect(refused[0]?.skippedReason).toBeTruthy();
   });
 
+  it('puts a new category under an existing one when told to', async () => {
+    /* Some of the 296 are headings of their own; some belong under a heading
+       that already exists here. Both are "create" — the difference is only
+       where it sits, so it is a second control on the same decision rather than
+       a decision of its own. */
+    const user = await allowedUser();
+    const parent = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, kind: 'EXPENSE', parentId: null, deletedAt: null },
+    });
+
+    const batch = (await pull(user)).body as Batch;
+    const row = find(batch, 'w-cat-1');
+    await decide(user, batch.id, row.id, { decision: 'CREATE', targetId: parent.id }).expect(200);
+
+    await apply(user, batch.id);
+
+    const created = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+    });
+    expect(created.parentId).toBe(parent.id);
+  });
+
+  it('refuses a parent of the wrong kind, and one that is already a child', async () => {
+    /* Two levels only, and income under income. Said while somebody is
+       deciding rather than as a row that quietly did nothing. */
+    const user = await allowedUser();
+    const expenseParent = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, kind: 'EXPENSE', parentId: null, deletedAt: null },
+    });
+    const child = await ctx.prisma.category.create({
+      data: {
+        workspaceId: user.workspaceId,
+        name: 'উপ-খাত',
+        nameBn: 'উপ-খাত',
+        kind: 'EXPENSE',
+        parentId: expenseParent.id,
+      },
+    });
+
+    const batch = (await pull(user)).body as Batch;
+    /* `Salary` is income; an expense heading cannot hold it. */
+    const income = find(batch, 'w-cat-4');
+    expect(
+      (await decide(user, batch.id, income.id, { decision: 'CREATE', targetId: expenseParent.id }))
+        .status,
+    ).toBe(400);
+
+    const expense = find(batch, 'w-cat-1');
+    expect(
+      (await decide(user, batch.id, expense.id, { decision: 'CREATE', targetId: child.id })).status,
+    ).toBe(400);
+  });
+
   it('turns a category that is really a debt into a liability account', async () => {
     /* "ALICO LOAN" was a category in the other product because a category was
        the only shape it had. Left as one, every repayment reads as an expense
