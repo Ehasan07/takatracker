@@ -83,13 +83,28 @@ describe('migration', () => {
 
   beforeEach(async () => {
     await resetDatabase(ctx.prisma);
+    process.env.MIGRATION_ALLOWED_EMAILS = '';
   });
 
   afterAll(async () => {
     await ctx.app.close();
+    delete process.env.MIGRATION_ALLOWED_EMAILS;
   });
 
   type User = Awaited<ReturnType<typeof signup>>;
+
+  /**
+   * Sign up somebody the migration screen is open for.
+   *
+   * The allowlist lives in the environment and is read on every request, so
+   * naming the address after the account exists is enough — and it keeps every
+   * test honest about the fact that this is off by default.
+   */
+  async function allowedUser(): Promise<User> {
+    const user = await signup(ctx);
+    process.env.MIGRATION_ALLOWED_EMAILS = user.email;
+    return user;
+  }
 
   const pull = (user: User) =>
     ctx
@@ -116,7 +131,7 @@ describe('migration', () => {
   it('stages everything and creates nothing', async () => {
     /* The promise the owner was given in as many words: drafts until approved.
        If a pull ever creates an account, this is the test that says so. */
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const before = await ctx.prisma.account.count({ where: { workspaceId: user.workspaceId } });
 
     const res = await pull(user);
@@ -134,7 +149,7 @@ describe('migration', () => {
   });
 
   it('guesses the account type, and guesses savings and insurance from the name', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
 
     expect(find(batch, 'w-acc-1').targetType).toBe('BANK');
@@ -148,7 +163,7 @@ describe('migration', () => {
   });
 
   it('defaults a name that already exists here to merge, not to a second copy', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     await ctx.prisma.category.create({
       data: { workspaceId: user.workspaceId, name: 'Groceries', nameBn: 'বাজার', kind: 'EXPENSE' },
     });
@@ -160,7 +175,7 @@ describe('migration', () => {
   });
 
   it('creates what the decisions say, and nothing the decisions do not', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
 
     await decide(user, batch.id, find(batch, 'w-cat-1').id, { decision: 'SKIP' });
@@ -209,7 +224,7 @@ describe('migration', () => {
   });
 
   it('reads the income group as income and everything else as spending', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
     await apply(user, batch.id);
 
@@ -220,7 +235,7 @@ describe('migration', () => {
   });
 
   it('takes the whole batch back, softly', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
     await apply(user, batch.id);
 
@@ -243,7 +258,7 @@ describe('migration', () => {
   it('keeps an account that has been posted to, and says why', async () => {
     /* The safety property. A rollback that could take a real transaction with
        it is a button nobody should ever press. */
-    const user = await signup(ctx);
+    const user = await allowedUser();
     /* A category that was here before the import, so the only thing this test
        expects to be kept is the account. */
     const category = await ctx.prisma.category.findFirstOrThrow({
@@ -282,7 +297,7 @@ describe('migration', () => {
   });
 
   it('applies twice without doubling anything', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
     await apply(user, batch.id);
     /* A second apply on an applied batch is refused outright — but the row-level
@@ -298,14 +313,14 @@ describe('migration', () => {
   });
 
   it('refuses a second draft while one is still undecided', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     await pull(user);
     const second = await pull(user);
     expect(second.status).toBe(400);
   });
 
   it('sends the spreadsheet out and takes the decisions back', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
 
     const csv = await ctx.http().get(`/v1/migration/batches/${batch.id}/csv`).set(auth(user));
@@ -335,7 +350,7 @@ describe('migration', () => {
   });
 
   it('refuses a spreadsheet naming something that is not here', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
 
     const csv = [
@@ -357,8 +372,10 @@ describe('migration', () => {
   });
 
   it('will not let one workspace read or apply another’s batch', async () => {
-    const mine = await signup(ctx);
+    const mine = await allowedUser();
+    /* Both on the allowlist: this is about workspaces, not about the door. */
     const theirs = await signup(ctx);
+    process.env.MIGRATION_ALLOWED_EMAILS = `${mine.email},${theirs.email}`;
     const batch = (await pull(mine)).body as Batch;
 
     expect((await detail(theirs, batch.id)).status).toBe(404);
@@ -368,8 +385,43 @@ describe('migration', () => {
     ).toBe(404);
   });
 
+  it('is closed to everybody who is not named in the allowlist', async () => {
+    /* The screen asks for a live credential to another finance app. Every
+       account that was not given it must find a closed door, whatever its
+       browser believes — and an empty or missing variable must close the door
+       rather than open it to everyone. */
+    const stranger = await signup(ctx);
+    process.env.MIGRATION_ALLOWED_EMAILS = '';
+
+    expect((await pull(stranger)).status).toBe(403);
+    expect((await ctx.http().get('/v1/migration/batches').set(auth(stranger))).status).toBe(403);
+
+    /* One route answers rather than refuses, so the navigation can ask. */
+    const asked = await ctx.http().get('/v1/migration/availability').set(auth(stranger));
+    expect(asked.status).toBe(200);
+    expect(asked.body.allowed).toBe(false);
+
+    process.env.MIGRATION_ALLOWED_EMAILS = stranger.email.toUpperCase();
+    /* Case is not part of an address for this purpose. */
+    const again = await ctx.http().get('/v1/migration/availability').set(auth(stranger));
+    expect(again.body.allowed).toBe(true);
+
+    /* A whole domain is allowed to be an entry — but `@` alone is not a domain
+       and must not become a way to open this to everybody. */
+    const domain = stranger.email.slice(stranger.email.lastIndexOf('@'));
+    process.env.MIGRATION_ALLOWED_EMAILS = domain;
+    expect(
+      (await ctx.http().get('/v1/migration/availability').set(auth(stranger))).body.allowed,
+    ).toBe(true);
+
+    process.env.MIGRATION_ALLOWED_EMAILS = '@';
+    expect(
+      (await ctx.http().get('/v1/migration/availability').set(auth(stranger))).body.allowed,
+    ).toBe(false);
+  });
+
   it('discards a draft, but not an applied batch', async () => {
-    const user = await signup(ctx);
+    const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
 
     expect(

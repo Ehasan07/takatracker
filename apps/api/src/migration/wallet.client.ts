@@ -20,10 +20,20 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
  */
 
 const BASE_URL = 'https://rest.budgetbakers.com/wallet/v1/api';
-/** Wallet caps a page well below this; the loop follows `nextOffset` anyway. */
 const PAGE = 200;
-/** Enough pages to cover any personal account, and a stop against a bad loop. */
-const MAX_PAGES = 50;
+/** Enough pages for any personal account, and a stop against a bad loop. */
+const MAX_PAGES = 200;
+
+/**
+ * The date filter that means "everything".
+ *
+ * `/records` without one is **not** every record: it silently applies the last
+ * three months. Measured on 16 August 2026 — 436 rows came back where the
+ * accounts' own `recordCount` totals 7,215. An import that trusted the default
+ * would look like it worked and bring six per cent of somebody's history, which
+ * is worse than failing. The syntax is the API's own: `recordDate=gte.<iso>`.
+ */
+const SINCE_EVERYTHING = 'recordDate=gte.2000-01-01T00:00:00.000Z';
 
 export interface WalletAccount {
   id: string;
@@ -43,9 +53,42 @@ export interface WalletCategory {
   archived?: boolean;
 }
 
+/**
+ * One record, as it really comes back.
+ *
+ * `amount.value` is a float — `-601.66` — and this codebase bans float
+ * arithmetic on money, so it must be converted through its string form.
+ *
+ * `transfer` is null on an ordinary record and, on a transfer, carries the
+ * other side with it: `{ type, transferId, mirrorRecord: { id, amount,
+ * accountId } }`. That is what makes pairing possible without holding the whole
+ * history in memory — each side already names its partner.
+ */
+export interface WalletRecord {
+  id: string;
+  accountId?: string;
+  amount?: { value?: number; currencyCode?: string };
+  recordDate?: string;
+  category?: { id?: string; name?: string };
+  recordType?: string;
+  recordState?: string;
+  note?: string;
+  payee?: string;
+  transfer?: {
+    type?: string;
+    transferId?: string;
+    mirrorRecord?: { id?: string; accountId?: string; amount?: { value?: number } };
+  } | null;
+}
+
 @Injectable()
 export class WalletClient {
-  private async page<T>(token: string, path: string, offset: number): Promise<T[]> {
+  private async page<T>(
+    token: string,
+    path: string,
+    offset: number,
+    query = '',
+  ): Promise<{ rows: T[]; nextOffset: number | null }> {
     const controller = new AbortController();
     /* Twenty seconds. A pull is a person waiting at a screen, and a third-party
        API having a slow morning must not hold a request open past the point
@@ -53,7 +96,8 @@ export class WalletClient {
     const timer = setTimeout(() => controller.abort(), 20_000);
 
     try {
-      const res = await fetch(`${BASE_URL}/${path}?limit=${PAGE}&offset=${offset}`, {
+      const url = `${BASE_URL}/${path}?limit=${PAGE}&offset=${offset}${query ? `&${query}` : ''}`;
+      const res = await fetch(url, {
         headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
         signal: controller.signal,
       });
@@ -68,21 +112,37 @@ export class WalletClient {
 
       const body = (await res.json()) as Record<string, unknown>;
       const rows = body[path];
-      return Array.isArray(rows) ? (rows as T[]) : [];
+      const next = body.nextOffset;
+      return {
+        rows: Array.isArray(rows) ? (rows as T[]) : [],
+        nextOffset: typeof next === 'number' ? next : null,
+      };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  /** Every page of one collection, following the API's own paging. */
-  private async all<T>(token: string, path: string): Promise<T[]> {
+  /**
+   * Every page of one collection.
+   *
+   * Follows `nextOffset` rather than guessing from the row count: the API
+   * answers a short page in the middle of a run, and stopping on one would end
+   * the import early with no error and no way to tell. The absent `nextOffset`
+   * is the end, and `MAX_PAGES` is only there so a server that always sends one
+   * cannot loop for ever.
+   */
+  private async all<T>(token: string, path: string, query = ''): Promise<T[]> {
     const out: T[] = [];
+    let offset = 0;
+
     for (let i = 0; i < MAX_PAGES; i += 1) {
-      const rows = await this.page<T>(token, path, out.length);
-      out.push(...rows);
-      /* A short page is the last page. Wallet also sends `nextOffset`, but a
-         count that never grows is the condition that cannot loop for ever. */
-      if (rows.length < PAGE) break;
+      const page = await this.page<T>(token, path, offset, query);
+      out.push(...page.rows);
+      if (page.nextOffset === null || page.rows.length === 0) break;
+      /* Only ever forwards. A server repeating an offset would otherwise pull
+         the same page until MAX_PAGES, quietly importing it dozens of times. */
+      if (page.nextOffset <= offset) break;
+      offset = page.nextOffset;
     }
     return out;
   }
@@ -93,5 +153,10 @@ export class WalletClient {
 
   categories(token: string): Promise<WalletCategory[]> {
     return this.all<WalletCategory>(token, 'categories');
+  }
+
+  /** Every record there has ever been — see `SINCE_EVERYTHING`. */
+  records(token: string): Promise<WalletRecord[]> {
+    return this.all<WalletRecord>(token, 'records', SINCE_EVERYTHING);
   }
 }

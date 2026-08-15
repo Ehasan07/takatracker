@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { ApiError, api, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { useMigrationAllowed } from './access';
 import { DecisionRow } from './decision-row';
 import type {
   CsvResult,
@@ -47,9 +48,14 @@ export default function MigrationPage() {
   const [confirmingDiscard, setConfirmingDiscard] = React.useState(false);
   const fileInput = React.useRef<HTMLInputElement>(null);
 
+  /* Every route behind this screen re-checks the allowlist server-side, so this
+     is about not drawing a form somebody cannot submit — not about security. */
+  const allowed = useMigrationAllowed();
+
   const batches = useQuery({
     queryKey: BATCHES_KEY,
     queryFn: () => api<MigrationBatch[]>('/migration/batches'),
+    enabled: allowed,
   });
 
   /* The one that matters: a draft if there is one, otherwise the most recent.
@@ -62,11 +68,19 @@ export default function MigrationPage() {
   const detail = useQuery({
     queryKey: ['migration', 'batch', current?.id],
     queryFn: () => api<MigrationBatchDetail>(`/migration/batches/${current?.id}`),
-    enabled: Boolean(current),
+    enabled: allowed && Boolean(current),
   });
 
-  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
-  const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
+  const accounts = useQuery({
+    queryKey: ['accounts'],
+    queryFn: endpoints.accounts,
+    enabled: allowed,
+  });
+  const categories = useQuery({
+    queryKey: ['categories'],
+    queryFn: endpoints.categories,
+    enabled: allowed,
+  });
 
   const refresh = React.useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['migration'] });
@@ -202,6 +216,20 @@ export default function MigrationPage() {
 
   const busy = pull.isPending || apply.isPending || rollback.isPending || importCsv.isPending;
   const draft = current?.status === 'DRAFT';
+
+  if (!allowed) {
+    /* Says the feature is not open on this account, and stops. Not "you are not
+       allowed", which invites a person to ask how to become allowed — and there
+       is no answer to that. */
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <h1 className="text-ink text-xl font-semibold sm:text-2xl">আগের সফটওয়্যার থেকে আনুন</h1>
+        <p className="text-ink-muted rounded-card border-rule bg-surface border p-4 text-sm">
+          এই সুবিধাটি এই অ্যাকাউন্টে চালু নেই।
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">

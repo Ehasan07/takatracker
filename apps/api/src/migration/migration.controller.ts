@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
+import { MigrationAccessGuard, migrationAllowed } from './migration-access.guard';
 import { MigrationService } from './migration.service';
 
 /**
@@ -51,22 +52,37 @@ export type CsvInput = z.infer<typeof csvSchema>;
 export class MigrationController {
   constructor(private readonly migration: MigrationService) {}
 
+  /**
+   * Whether to draw the link at all.
+   *
+   * The one route without the allowlist guard: the navigation has to be able to
+   * ask, and an answer of `false` is not a refusal — it is the answer.
+   */
+  @Get('availability')
+  availability(@CurrentUser() user: AuthUser) {
+    return { allowed: migrationAllowed(user.email) };
+  }
+
   @Get('batches')
+  @UseGuards(MigrationAccessGuard)
   list(@CurrentUser() user: AuthUser) {
     return this.migration.list(user.workspaceId);
   }
 
   @Post('wallet/pull')
+  @UseGuards(MigrationAccessGuard)
   pull(@CurrentUser() user: AuthUser, @Body(zodPipe(pullSchema)) body: PullInput) {
     return this.migration.pull(user.workspaceId, user.id, body.token);
   }
 
   @Get('batches/:id')
+  @UseGuards(MigrationAccessGuard)
   detail(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.detail(user.workspaceId, id);
   }
 
   @Patch('batches/:id/items/:itemId')
+  @UseGuards(MigrationAccessGuard)
   decide(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -84,6 +100,7 @@ export class MigrationController {
    * Excel on Windows.
    */
   @Get('batches/:id/csv')
+  @UseGuards(MigrationAccessGuard)
   @Header('content-type', 'text/csv; charset=utf-8')
   @Header('content-disposition', 'attachment; filename="migration.csv"')
   csv(@CurrentUser() user: AuthUser, @Param('id') id: string) {
@@ -91,6 +108,7 @@ export class MigrationController {
   }
 
   @Post('batches/:id/csv')
+  @UseGuards(MigrationAccessGuard)
   @HttpCode(200)
   importCsv(
     @CurrentUser() user: AuthUser,
@@ -101,18 +119,21 @@ export class MigrationController {
   }
 
   @Post('batches/:id/apply')
+  @UseGuards(MigrationAccessGuard)
   @HttpCode(200)
   apply(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.apply(user.workspaceId, user.id, id, user.timezone);
   }
 
   @Post('batches/:id/rollback')
+  @UseGuards(MigrationAccessGuard)
   @HttpCode(200)
   rollback(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.rollback(user.workspaceId, user.id, id);
   }
 
   @Delete('batches/:id')
+  @UseGuards(MigrationAccessGuard)
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.migration.remove(user.workspaceId, id);
   }

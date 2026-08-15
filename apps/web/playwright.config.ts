@@ -13,6 +13,9 @@ const API_PORT = process.env.E2E_API_PORT ?? '4100';
 const BASE_URL = `http://127.0.0.1:${WEB_PORT}`;
 const API_URL = `http://127.0.0.1:${API_PORT}`;
 
+/** Shared with e2e/migration.spec.ts — the one domain the migration screen opens for. */
+const MIGRATION_DOMAIN = '@migration.test';
+
 const DATABASE_URL =
   process.env.E2E_DATABASE_URL ??
   'postgresql://hishab:hishab@localhost:5433/hishab_e2e?schema=public';
@@ -69,6 +72,11 @@ export default defineConfig({
         JWT_ACCESS_SECRET: 'e2e-access-secret',
         JWT_REFRESH_SECRET: 'e2e-refresh-secret',
         CORS_ORIGINS: BASE_URL,
+        /* The migration screen is an allowlist held in the server's
+           environment. A whole domain here lets every test sign up a fresh
+           address that has it — and, by signing up anywhere else, check that
+           the screen and its link are not there at all. */
+        MIGRATION_ALLOWED_EMAILS: MIGRATION_DOMAIN,
       },
     },
     {

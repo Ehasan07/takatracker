@@ -1,28 +1,41 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * The way in from another product.
+ * The way in from another product, and the door it sits behind.
  *
  * The staging, the spreadsheet and the rollback are covered against a stubbed
  * Wallet in apps/api/test/migration.e2e-spec.ts, and nothing here reaches a
  * third-party API — a browser test that depends on somebody else's server being
  * up is a test that fails for reasons nobody can fix.
  *
- * What is left is what only a browser can check, and it is the part a person
- * meets first: that the screen is reachable without being told a URL, that the
- * three promises the feature rests on are written on it rather than implied,
- * and that the button cannot be pressed with nothing in the box — a request
- * that returns "token too short" after a spinner is a worse answer than a
- * button that plainly is not ready.
+ * What is left is what only a browser can check:
+ *
+ * - **It is not in anybody else's product.** The screen asks a person to paste
+ *   a live credential to another finance app. Every account that is not on the
+ *   allowlist must find no link, no search result, and no form — because the
+ *   day this appears in a stranger's menu, "Taka Tracker asks for your other
+ *   app's password" has become a true sentence.
+ * - **It is reachable for the account that has it**, without being told a URL.
+ * - **The three promises are written on it** rather than implied.
+ * - **The button cannot be pressed with nothing in the box** — a spinner
+ *   followed by "token too short" is a worse answer than a button that plainly
+ *   is not ready.
+ *
+ * The allowlist in `playwright.config.ts` names a whole domain, so each test
+ * below signs up a fresh address either inside it or outside it. That one
+ * choice is the whole difference between the two halves of this file.
  */
 
 const PASSWORD = 'hishab1234';
 
 let counter = 0;
-function uniqueEmail(): string {
+function uniqueEmail(domain = '@example.test'): string {
   counter += 1;
-  return `migration-${Date.now()}-${counter}-${Math.trunc(performance.now())}@example.test`;
+  return `migration-${Date.now()}-${counter}-${Math.trunc(performance.now())}${domain}`;
 }
+
+/** The domain `playwright.config.ts` puts in the API's `MIGRATION_ALLOWED_EMAILS`. */
+const allowedEmail = (): string => uniqueEmail('@migration.test');
 
 let phoneSeq = 0;
 function uniquePhone(): string {
@@ -32,10 +45,10 @@ function uniquePhone(): string {
     .padStart(8, '0')}`;
 }
 
-async function signup(page: Page): Promise<void> {
+async function signup(page: Page, email: string): Promise<void> {
   await page.goto('/signup');
   await page.getByLabel('নাম').fill('মাইগ্রেশন পরীক্ষা');
-  await page.getByLabel('ইমেইল').fill(uniqueEmail());
+  await page.getByLabel('ইমেইল').fill(email);
   await page.getByLabel('পাসওয়ার্ড').fill(PASSWORD);
   await page.getByLabel('মোবাইল নম্বর').fill(uniquePhone());
   await page.getByRole('button', { name: 'অ্যাকাউন্ট খুলুন' }).click();
@@ -45,8 +58,25 @@ async function signup(page: Page): Promise<void> {
 }
 
 test.describe('bringing another product across', () => {
+  test('is nowhere to be found for an ordinary account', async ({ page }) => {
+    await signup(page, uniqueEmail());
+
+    await page.goto('/more');
+    await expect(page.getByRole('link', { name: /^আগের সফটওয়্যার থেকে/ })).toHaveCount(0);
+
+    /* Not in the search either. A hub that finds a page the account cannot open
+       is a hub that lies. */
+    await page.getByTestId('more-search').fill('আগের');
+    await expect(page.getByRole('link', { name: /^আগের সফটওয়্যার থেকে/ })).toHaveCount(0);
+
+    /* And typing the URL gets a sentence, not a form. */
+    await page.goto('/migration');
+    await expect(page.getByText('এই সুবিধাটি এই অ্যাকাউন্টে চালু নেই')).toBeVisible();
+    await expect(page.getByLabel('Wallet API টোকেন')).toHaveCount(0);
+  });
+
   test('is reachable from আরও and says what it will and will not do', async ({ page }) => {
-    await signup(page);
+    await signup(page, allowedEmail());
 
     /* The route a person walks. A screen only reachable by typing the URL is a
        file in the repository, not a feature.
@@ -74,7 +104,7 @@ test.describe('bringing another product across', () => {
   });
 
   test('will not send an empty or half-pasted token', async ({ page }) => {
-    await signup(page);
+    await signup(page, allowedEmail());
     await page.goto('/migration');
 
     const submit = page.getByRole('button', { name: 'অ্যাকাউন্ট ও খাত আনুন' });
@@ -90,7 +120,7 @@ test.describe('bringing another product across', () => {
   test('the token box is a password field, so it is not left on screen', async ({ page }) => {
     /* Somebody pastes this at a desk with other people in the room, and it is a
        live credential to their bank records in another app. */
-    await signup(page);
+    await signup(page, allowedEmail());
     await page.goto('/migration');
     await expect(page.getByLabel('Wallet API টোকেন')).toHaveAttribute('type', 'password');
   });

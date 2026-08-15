@@ -172,6 +172,54 @@ while deciding what to do about 200 categories at their own pace.
 
 ---
 
+## 5a. What the account really holds — measured again, properly, 16 August 2026
+
+The table in §1 was taken from `recordStats` and one page of records. Counting
+every row over the whole history gives different, larger figures:
+
+|                     | §1 said | Really                                   |
+| ------------------- | ------- | ---------------------------------------- |
+| Accounts            | 20      | **24**                                   |
+| Categories          | 200     | **296** — 62 of them never used once     |
+| Records             | 7,215   | **9,625**                                |
+| Of those, transfers | unknown | **2,625** records, i.e. ~1,312 transfers |
+
+### The trap that produced the smaller number
+
+`GET /records` **without a date filter silently returns only the last three
+months.** It answers 200, it pages normally, and it says so only in an
+`appliedRecordDateFilters` field nobody reads:
+
+```
+["gte.2026-05-15T08:20:21.344Z","lt.2026-08-16T08:20:21.344Z"]
+```
+
+436 rows came back where the history holds 9,625. An import that trusted the
+default would look like it worked and bring six per cent of somebody's books —
+worse than failing, because nothing says anything is missing. The filter that
+means everything is `recordDate=gte.2000-01-01T00:00:00.000Z`; `from`/`to`,
+`dateFrom`, and `filter=` are all 400s.
+
+Paging has a second trap: a short page is **not** the last page. Follow
+`nextOffset`, and treat its absence as the end.
+
+### What a transfer actually looks like
+
+Each side carries the other with it, so pairing needs no lookup table:
+
+```json
+"transfer": {
+  "type": "paired",
+  "transferId": "2386A2C2-5AB7-4D8B-926F-1E501605FF7A",
+  "mirrorRecord": { "id": "…", "accountId": "…", "amount": { "value": 4500 } }
+}
+```
+
+Write one `TRANSFER` per `transferId` — from the negative side's account to
+`mirrorRecord.accountId` — and skip the mirror when it comes round.
+
+---
+
 ## 5b. What is built, as of 15 August 2026
 
 Phases A and B, and the spreadsheet round trip. Phase C — the 7,215 records —
@@ -198,6 +246,14 @@ POST   batches/:id/apply        create what the decisions say
 POST   batches/:id/rollback     undo exactly what apply created
 DELETE batches/:id              discard a draft
 ```
+
+**It is off for everybody by default.** This is not a plan feature — it is one
+person's tool for leaving another product, and it asks that person to paste a
+live credential into a form. `MIGRATION_ALLOWED_EMAILS` in
+`/etc/hishab/hishab.env` names who may see it: full addresses, or a whole domain
+written `@example.com`. Empty or unset means nobody, so a deploy that loses the
+variable closes the door rather than opening it. Everybody else finds no link,
+no search result, and a sentence instead of a form.
 
 Four things worth knowing before using it:
 
