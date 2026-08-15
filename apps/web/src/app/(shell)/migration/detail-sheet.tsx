@@ -34,12 +34,14 @@ const TITLES: Record<DetailKind, string> = {
   CARD: 'কার্ডের বিলের তারিখ',
   SAVINGS: 'সঞ্চয়ের হিসাব',
   INSURANCE: 'বীমার হিসাব',
+  CATEGORY: 'খোঁজার শব্দ',
 };
 
 const BLURBS: Record<DetailKind, string> = {
   CARD: 'এগুলো না দিলে বিলের কোনো মনে করিয়ে দেওয়া যাবে না।',
   SAVINGS: 'কিস্তি ও মেয়াদ দিলে পুরো সূচি আর মেয়াদপূর্তির অঙ্ক নিজে থেকেই বেরোবে।',
   INSURANCE: 'প্রিমিয়াম দিলে কিস্তির সূচি তৈরি হবে।',
+  CATEGORY: 'যে শব্দগুলো লিখে এই খাতটা খুঁজবেন। নামে যা নেই সেগুলোই কাজে লাগে।',
 };
 
 /** Taka as typed, to poisha, by integer maths — never `* 100` on a float. */
@@ -100,6 +102,7 @@ export function DetailSheet({
       premium: fromMinor(d.premiumMinor),
       sumAssured: fromMinor(d.sumAssuredMinor),
       startDate: d.startDate ?? '',
+      aliases: (d.aliases ?? []).join(', '),
     };
   });
 
@@ -122,6 +125,12 @@ export function DetailSheet({
       premiumMinor: toMinor(form.premium ?? ''),
       sumAssuredMinor: toMinor(form.sumAssured ?? ''),
       startDate: /^\d{4}-\d{2}-\d{2}$/.test(form.startDate ?? '') ? form.startDate : null,
+      aliases: (form.aliases ?? '')
+        .split(/[,;]/)
+        .map((piece) => piece.trim())
+        .filter((piece) => piece.length > 0 && piece.length <= 40)
+        .filter((piece, index, all) => all.indexOf(piece) === index)
+        .slice(0, 24),
     });
   };
 
@@ -259,6 +268,19 @@ export function DetailSheet({
           </>
         ) : null}
 
+        {/* On every category, not only the ones that turned out to be
+            something else: Postgres cannot transliterate — `khabar` and `খাবার`
+            share no trigrams — so a name imported from an English-speaking
+            product is not what anybody types when they are standing in a shop. */}
+        <Field label="খোঁজার শব্দ (কমা দিয়ে আলাদা)" htmlFor="d-aliases">
+          <Input
+            id="d-aliases"
+            value={form.aliases ?? ''}
+            placeholder="fridge, ফ্রিজ, refrigerator"
+            onChange={set('aliases')}
+          />
+        </Field>
+
         <div className="flex gap-2 pt-1">
           <Button onClick={submit} disabled={saving}>
             {saving ? 'রাখা হচ্ছে…' : 'রাখুন'}
@@ -268,11 +290,13 @@ export function DetailSheet({
           </Button>
         </div>
 
-        {/* Said plainly, because the alternative is somebody inventing a rate to
-            make a red mark go away. */}
-        <p className="text-ink-muted text-xs">
-          জানা না থাকলে খালি রাখুন — পরে বসানো যাবে। আন্দাজে কিছু লিখবেন না।
-        </p>
+        {kind === 'CATEGORY' ? null : (
+          /* Said plainly, because the alternative is somebody inventing a rate
+             to make a red mark go away. */
+          <p className="text-ink-muted text-xs">
+            জানা না থাকলে খালি রাখুন — পরে বসানো যাবে। আন্দাজে কিছু লিখবেন না।
+          </p>
+        )}
       </div>
     </Sheet>
   );

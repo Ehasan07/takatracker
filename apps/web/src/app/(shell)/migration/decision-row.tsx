@@ -123,13 +123,19 @@ export function DecisionRow({
             onClick={onAskDetail}
             disabled={disabled}
             className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
-              item.needsComplete
-                ? 'text-income bg-greenbar'
-                : 'text-expense border-expense/40 border'
+              item.needs === 'CATEGORY'
+                ? 'text-ink-muted border-rule border'
+                : item.needsComplete
+                  ? 'text-income bg-greenbar'
+                  : 'text-expense border-expense/40 border'
             }`}
           >
             {item.needsComplete ? null : <CircleAlert className="h-3.5 w-3.5" aria-hidden />}
-            {item.needsComplete ? 'তথ্য দেওয়া আছে — বদলান' : 'বাকি তথ্য দিন'}
+            {item.needs === 'CATEGORY'
+              ? 'খোঁজার শব্দ'
+              : item.needsComplete
+                ? 'তথ্য দেওয়া আছে — বদলান'
+                : 'বাকি তথ্য দিন'}
           </button>
         ) : null}
       </div>

@@ -483,11 +483,19 @@ describe('migration', () => {
     const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
 
-    /* A bank account and an ordinary category are asked nothing at all — that
-       is the difference between 28 forms and 320. */
+    /* A bank account is asked nothing at all — that is the difference between
+       28 forms and 320. */
     expect(find(batch, 'w-acc-1').needs).toBeNull();
-    expect(find(batch, 'w-cat-1').needs).toBeNull();
     expect(find(batch, 'w-cat-3').needs).toBe('INSURANCE');
+
+    /* An ordinary category opens the same sheet, for search words — but it is
+       never *wanting*, because a category without them is finished and marking
+       296 rows unfinished over an optional field would make the filter
+       useless. */
+    const ordinary = find(batch, 'w-cat-1');
+    expect(ordinary.needs).toBe('CATEGORY');
+    expect(ordinary.needsComplete).toBe(true);
+    expect((await detail(user, batch.id)).body.counts.needsDetail).toBeGreaterThan(0);
   });
 
   it('starts a batch from a spreadsheet somebody typed, with no API at all', async () => {
@@ -619,6 +627,26 @@ describe('migration', () => {
       where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
     });
     expect(groceries.parentId).toBeNull();
+  });
+
+  it('creates a category with the words somebody will actually search for', async () => {
+    /* Postgres cannot transliterate — `khabar` and `খাবার` share no trigrams,
+       and no collation makes them match — so the app folds these in TypeScript.
+       A name imported from an English-speaking product is not what anybody
+       types when they are standing in a shop. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    await decide(user, batch.id, find(batch, 'w-cat-1').id, {
+      detail: { aliases: ['bajar', 'বাজার', 'grocery'] },
+    }).expect(200);
+
+    await apply(user, batch.id);
+
+    const created = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+    });
+    expect(created.searchAliases).toEqual(['bajar', 'বাজার', 'grocery']);
   });
 
   it('creates a row under the name it was given, not the one it arrived with', async () => {

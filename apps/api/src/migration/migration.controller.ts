@@ -53,6 +53,9 @@ const detailSchema = z
     premiumMinor: z.number().int().min(0).nullish(),
     sumAssuredMinor: z.number().int().min(0).nullish(),
     startDate: isoDate.nullish(),
+    /* The same ceilings the category screen enforces, so a migrated category
+       cannot hold what a hand-made one could not. */
+    aliases: z.array(z.string().trim().min(1).max(40)).max(24).nullish(),
   })
   .strict();
 

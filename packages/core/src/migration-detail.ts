@@ -27,7 +27,7 @@
 import { parseMoneyToMinor } from '@hishab/shared';
 
 /** Which questions a row raises, if any. */
-export type DetailKind = 'CARD' | 'SAVINGS' | 'INSURANCE';
+export type DetailKind = 'CARD' | 'SAVINGS' | 'INSURANCE' | 'CATEGORY';
 
 /* `null` and absent mean the same thing — not known — because the sheet clears
    a field by sending null and the spreadsheet clears it by leaving it blank.
@@ -56,6 +56,17 @@ export interface MigrationDetail {
 
   /** Both plans and policies. `YYYY-MM-DD`. */
   startDate?: string | null;
+
+  /**
+   * Words that should find this category which its name will not.
+   *
+   * The reason the field exists at all is that Postgres cannot transliterate:
+   * `khabar` and `খাবার` share no trigrams, and no collation makes them match.
+   * The app folds these in TypeScript instead. Worth setting during a migration
+   * because a name imported from an English-speaking product — "Refrigerator" —
+   * is not what anybody types when they are standing in a shop.
+   */
+  aliases?: string[] | null;
 }
 
 /**
@@ -74,6 +85,10 @@ export function detailKindOf(
   }
   if (decision === 'SAVINGS') return 'SAVINGS';
   if (decision === 'INSURANCE') return 'INSURANCE';
+  /* Not a question anybody has to answer — a category is complete without
+     search words. It opens the same sheet so there is somewhere to put them,
+     and `detailIsComplete` never marks it wanting. */
+  if (decision === 'CREATE') return 'CATEGORY';
   /* `LIABILITY` raises nothing. It becomes an account, and no account brings a
      balance across — Wallet's figure is today's, not the opening one, and
      importing it as an opening balance would double-count the history. The
@@ -89,6 +104,10 @@ export function detailKindOf(
  * point of the flag is to mark what is still worth a minute, not to gate.
  */
 export function detailIsComplete(kind: DetailKind, detail: MigrationDetail | null): boolean {
+  /* Search words are an improvement, not a requirement: a category without them
+     is finished, and marking 296 rows unfinished over an optional field would
+     make the "still wants an answer" filter useless. */
+  if (kind === 'CATEGORY') return true;
   if (!detail) return false;
   if (kind === 'CARD') return Boolean(detail.statementDay && detail.dueDay);
   if (kind === 'SAVINGS') {
@@ -120,6 +139,9 @@ export const MIGRATION_DETAIL_COLUMNS = [
   'premium',
   'sumAssured',
   'startDate',
+  /* Semicolons, not commas: the file is comma-separated and a list inside a
+     cell has to survive being opened in Excel and saved again. */
+  'aliases',
 ] as const;
 
 const dayOrNull = (value: number | null | undefined): string => (value ? String(value) : '');
@@ -145,6 +167,7 @@ export function detailToCells(detail: MigrationDetail | null): string[] {
     majorOf(d.premiumMinor),
     majorOf(d.sumAssuredMinor),
     d.startDate ?? '',
+    (d.aliases ?? []).join('; '),
   ];
 }
 
@@ -221,6 +244,17 @@ export function detailFromCells(at: (column: string) => string): MigrationDetail
 
   const startDate = at('startDate').trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(startDate)) detail.startDate = startDate;
+
+  /* Split on either, because somebody typing a list will reach for a comma even
+     though a comma is what separates the columns — Excel quotes the cell and
+     the parser hands it back whole. */
+  const aliases = at('aliases')
+    .split(/[,;]/)
+    .map((piece) => piece.trim())
+    .filter((piece) => piece.length > 0 && piece.length <= 40)
+    .filter((piece, index, all) => all.indexOf(piece) === index)
+    .slice(0, 24);
+  if (aliases.length > 0) detail.aliases = aliases;
 
   return Object.keys(detail).length > 0 ? detail : null;
 }

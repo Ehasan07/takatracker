@@ -1086,6 +1086,9 @@ export class MigrationService {
         nameBn: name,
         kind: item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE',
         parentId,
+        /* Set at creation rather than left for later: an English name imported
+           from an English-speaking product is not what anybody types. */
+        searchAliases: detail.aliases ?? [],
       },
     });
     await done({ createdEntityId: created.id, createdEntityKind: 'Category', skippedReason: null });

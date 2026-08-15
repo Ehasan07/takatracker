@@ -206,7 +206,14 @@ describe('the questions a row raises', () => {
   it('asks a category only when it turns out not to be a category', () => {
     expect(detailKindOf('CATEGORY', 'SAVINGS', '')).toBe('SAVINGS');
     expect(detailKindOf('CATEGORY', 'INSURANCE', '')).toBe('INSURANCE');
-    expect(detailKindOf('CATEGORY', 'CREATE', 'EXPENSE')).toBeNull();
+    /* An ordinary category opens the sheet too, for search words — but it is
+       never counted as wanting one, so 296 optional fields cannot swamp the
+       "still needs an answer" filter. */
+    expect(detailKindOf('CATEGORY', 'CREATE', 'EXPENSE')).toBe('CATEGORY');
+    expect(detailIsComplete('CATEGORY', null)).toBe(true);
+    /* A row that will not be created asks nothing at all. */
+    expect(detailKindOf('CATEGORY', 'SKIP', 'EXPENSE')).toBeNull();
+    expect(detailKindOf('CATEGORY', 'MERGE', 'EXPENSE')).toBeNull();
   });
 
   it('counts a row finished on what the entity actually needs', () => {
