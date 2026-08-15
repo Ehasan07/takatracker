@@ -5,6 +5,118 @@ import { auth, createTestApp, resetDatabase, signup, type TestContext } from './
 
 const today = new Date().toISOString().slice(0, 10);
 
+describe('a card limit', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  it('reports what is drawn and what is left, and adds neither to anything', async () => {
+    /* IAS 7.6 keeps cash to what is held, and an undrawn limit is money the
+       bank still has and may withdraw — the Conceptual Framework would not call
+       it a controlled resource, and no past event has occurred. IAS 7.50(a):
+       disclosed, never recognised. Adding it to net worth would make somebody
+       a lakh richer for being handed a card. */
+    const user = await signup(ctx);
+    const card = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({
+        name: 'সিটি কার্ড',
+        type: 'CREDIT_CARD',
+        creditLimitMinor: 100_000_00,
+        openingBalance: 0,
+      })
+      .expect(201);
+
+    const category = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, kind: 'EXPENSE', deletedAt: null },
+    });
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        type: 'EXPENSE',
+        date: '2026-08-16',
+        amountMinor: 20_000_00,
+        accountId: card.body.id,
+        categoryId: category.id,
+      })
+      .expect(201);
+
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    const row = accounts.body.find((a: { id: string }) => a.id === card.body.id);
+
+    expect(row.creditLimitMinor).toBe(100_000_00);
+    expect(row.drawnMinor).toBe(20_000_00);
+    expect(row.undrawnMinor).toBe(80_000_00);
+    /* Only what was spent is owed. */
+    expect(row.balanceMinor).toBe(-20_000_00);
+
+    /* And the eighty thousand is nowhere near the balance sheet: net worth is
+       the twenty thousand owed, and nothing can be spent from a card that has
+       not been drawn on. */
+    const summary = await ctx.http().get('/v1/transactions/summary').set(auth(user)).expect(200);
+    expect(summary.body.netWorthMinor).toBe(-20_000_00);
+    expect(summary.body.liquidMinor).toBe(0);
+  });
+
+  it('never reports room left below zero on a card that is over its limit', async () => {
+    /* Over the limit is a fact about the debt, not spare room, and a negative
+       "left to spend" would read as one. */
+    const user = await signup(ctx);
+    const card = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'ছোট কার্ড', type: 'CREDIT_CARD', creditLimitMinor: 5_000_00 })
+      .expect(201);
+
+    const category = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, kind: 'EXPENSE', deletedAt: null },
+    });
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        type: 'EXPENSE',
+        date: '2026-08-16',
+        amountMinor: 7_000_00,
+        accountId: card.body.id,
+        categoryId: category.id,
+      })
+      .expect(201);
+
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    const row = accounts.body.find((a: { id: string }) => a.id === card.body.id);
+    expect(row.drawnMinor).toBe(7_000_00);
+    expect(row.undrawnMinor).toBe(0);
+  });
+
+  it('reports no limit on anything that is not a card', async () => {
+    const user = await signup(ctx);
+    const bank = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'ব্যাংক', type: 'BANK', creditLimitMinor: 50_000_00 })
+      .expect(201);
+
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    const row = accounts.body.find((a: { id: string }) => a.id === bank.body.id);
+    expect(row.creditLimitMinor).toBe(0);
+    expect(row.undrawnMinor).toBe(0);
+  });
+});
+
 describe('credit-card reminders', () => {
   let ctx: TestContext;
   let reminders: CardRemindersService;

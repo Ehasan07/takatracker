@@ -152,6 +152,10 @@ export const EN: Record<string, string> = {
   'dashboard.group.asset': 'Assets',
   'dashboard.group.liability': 'Liabilities',
   'dashboard.ofWhichCards': 'of which credit cards',
+  'dashboard.spendingPower': 'Could spend today',
+  'dashboard.undrawn': 'of which card headroom',
+  'dashboard.undrawnHint':
+    'The card part is borrowing, not yours — spending it adds a liability and starts interest. It is not in net worth.',
   'dashboard.netWorthHint': 'Land, savings and money owed to you, less what you owe',
   'dashboard.isAsset': '· asset',
   'dashboard.isLiability': '· liability',
@@ -714,6 +718,13 @@ export const EN: Record<string, string> = {
   'account.colour.grey': 'Grey',
   'account.name': 'Name',
   'account.nameHint': 'e.g. BRAC Bank',
+  'account.creditLimit': 'Card limit (৳)',
+  /* IAS 7.50(a): an undrawn facility is disclosed, never recognised. */
+  'account.creditLimitHint':
+    'A limit is not your money, and not a liability until it is spent. It is left out of net worth.',
+  'account.limit': 'Limit',
+  'account.drawn': 'Used',
+  'account.undrawn': 'Left',
   'account.total': 'Total',
   /* Four figures rather than one: IAS 7.6 keeps "cash and cash equivalents"
      narrow, and IAS 1.32 does not let assets and liabilities be offset into a

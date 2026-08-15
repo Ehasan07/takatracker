@@ -61,6 +61,12 @@ export default function DashboardPage() {
   const topCategories = (summary.data?.expenseByCategory ?? []).slice(0, 5);
   const largest = topCategories[0]?.totalMinor ?? 0;
 
+  /* Reported beside net worth, never added into it. */
+  const undrawn = (accounts.data ?? []).reduce(
+    (sum, account) => sum + (account.undrawnMinor ?? 0),
+    0,
+  );
+
   if (isOperator) return null;
 
   if (summary.isLoading && accounts.isLoading) {
@@ -174,6 +180,42 @@ export default function DashboardPage() {
           <p className="text-ink-muted text-xs">
             {t('dashboard.netWorthHint', 'জমি, সঞ্চয়, পাওনা — সব ধরে, দায় বাদ দিয়ে')}
           </p>
+
+          {/* Spending power, kept firmly outside net worth.
+           *
+           * "How much could I spend today" and "how much am I worth" are
+           * different questions, and a credit limit answers only the first. It
+           * is not cash — IAS 7.6 keeps that to what is held, and the undrawn
+           * part sits with the bank, which may withdraw it. The Conceptual
+           * Framework asks for a resource the entity controls; an unused
+           * facility is not one, and no past event has occurred. IAS 7.50(a)
+           * settles the treatment: undrawn facilities are disclosed, never
+           * recognised.
+           *
+           * Adding it above would make net worth jump by four lakh for doing
+           * nothing at all, which is what makes this a separate block with its
+           * own warning rather than another line in the same list. */}
+          {undrawn > 0 ? (
+            <div className="border-rule mt-3 border-t pt-2">
+              <p className="text-ink-muted flex items-baseline justify-between gap-3 text-sm">
+                <span>{t('dashboard.spendingPower', 'খরচ করার সামর্থ্য')}</span>
+                <Money
+                  minor={(summary.data?.liquidMinor ?? 0) + undrawn}
+                  className="text-ink shrink-0 font-medium"
+                />
+              </p>
+              <p className="text-ink-muted mt-0.5 flex items-baseline justify-between gap-3 text-xs">
+                <span>{t('dashboard.undrawn', 'এর মধ্যে কার্ডে তোলা যাবে')}</span>
+                <Money minor={undrawn} className="shrink-0" />
+              </p>
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'dashboard.undrawnHint',
+                  'কার্ডের অংশটা আপনার টাকা নয়, ধার — খরচ করলে দায় বাড়বে আর সুদ শুরু হবে। নিট সম্পদে এটি ধরা হয়নি।',
+                )}
+              </p>
+            </div>
+          ) : null}
 
           {/* Never a bare number: the breakdown is always visible — and grouped,
               with a subtotal on each heading, because "how much is on my ten

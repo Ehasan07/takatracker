@@ -356,6 +356,20 @@ export default function AccountsPage() {
                         ? ` · ${t('account.dueOn', 'প্রতি মাসের {day} তারিখে পেমেন্ট').replace('{day}', fmtNumber(String(account.dueDayOfMonth)))}`
                         : ''}
                     </span>
+
+                    {/* Three figures, because the balance alone answers only
+                        one of the questions a card raises. The room left is
+                        never added to anything: it is the bank's money until it
+                        is spent, and spending it starts interest. */}
+                    {account.creditLimitMinor > 0 ? (
+                      <span className="text-ink-muted block truncate text-xs">
+                        {t('account.limit', 'লিমিট')} {formatMinor(account.creditLimitMinor)} ·{' '}
+                        {t('account.drawn', 'খরচ')} {formatMinor(account.drawnMinor)} ·{' '}
+                        <span className="text-income">
+                          {t('account.undrawn', 'বাকি')} {formatMinor(account.undrawnMinor)}
+                        </span>
+                      </span>
+                    ) : null}
                   </span>
                   <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
                 </button>
@@ -608,6 +622,8 @@ interface AccountForm {
   icon: string;
   color: string;
   sortOrder: string;
+  /** Credit cards only, in major units as typed. */
+  creditLimit: string;
   statementDay: string;
   dueDay: string;
   leadDays: string;
@@ -624,6 +640,7 @@ const toForm = (a: AccountDto | null): AccountForm => ({
   icon: a?.icon ?? '',
   color: a?.color ?? '',
   sortOrder: String(a?.sortOrder ?? 0),
+  creditLimit: a?.creditLimitMinor ? formatMinor(a.creditLimitMinor, { symbol: false }) : '',
   statementDay: a?.statementDayOfMonth ? String(a.statementDayOfMonth) : '',
   dueDay: a?.dueDayOfMonth ? String(a.dueDayOfMonth) : '',
   leadDays: a?.reminderLeadDays ? String(a.reminderLeadDays) : '',
@@ -656,6 +673,9 @@ function accountPatch(
     sortOrder: Number(form.sortOrder || '0'),
     // Only a card has these. Switching away clears them rather than leaving a
     // payment date on a savings account.
+    /* Zero when the field is empty: "no limit recorded" is the honest state,
+       and it is cleared outright if the account stops being a card. */
+    creditLimitMinor: isCard && form.creditLimit.trim() ? parseMoneyToMinor(form.creditLimit) : 0,
     statementDayOfMonth: isCard && form.statementDay ? Number(form.statementDay) : null,
     dueDayOfMonth: isCard && form.dueDay ? Number(form.dueDay) : null,
     reminderLeadDays: isCard && form.leadDays ? Number(form.leadDays) : null,
@@ -670,6 +690,7 @@ function accountPatch(
     icon: account.icon ?? '',
     color: account.color ?? '',
     sortOrder: account.sortOrder,
+    creditLimitMinor: account.creditLimitMinor,
     statementDayOfMonth: account.statementDayOfMonth,
     dueDayOfMonth: account.dueDayOfMonth,
     reminderLeadDays: account.reminderLeadDays,
@@ -799,6 +820,23 @@ function EditAccountSheet({
 
         {isCard ? (
           <>
+            <Field label={t('account.creditLimit', 'কার্ডের লিমিট (৳)')} htmlFor="edit-acc-limit">
+              <Input
+                id="edit-acc-limit"
+                inputMode="decimal"
+                value={form.creditLimit}
+                onChange={set('creditLimit')}
+                placeholder={fmtNumber('100000')}
+              />
+              {/* Said where it is typed, because this is the number people
+                  most expect to see added to their money. */}
+              <p className="text-ink-muted text-xs">
+                {t(
+                  'account.creditLimitHint',
+                  'লিমিট আপনার টাকা নয় — খরচ না করা পর্যন্ত দায়ও নয়। নিট সম্পদে ধরা হবে না।',
+                )}
+              </p>
+            </Field>
             <Field
               label={t('account.dueDay', 'পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)')}
               htmlFor="edit-acc-due-day"
@@ -1015,6 +1053,7 @@ function AddAccountSheet({
   const [type, setType] = React.useState('CASH');
   const [openingBalance, setOpeningBalance] = React.useState('');
   const [dueDay, setDueDay] = React.useState('');
+  const [creditLimit, setCreditLimit] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   const save = useMutation({
@@ -1027,6 +1066,10 @@ function AddAccountSheet({
           openingBalance: openingBalance ? parseMoneyToMinor(openingBalance, currency) : 0,
           // Only a card has a payment due day; sending it for cash would be noise.
           dueDayOfMonth: type === 'CREDIT_CARD' && dueDay ? Number(dueDay) : undefined,
+          creditLimitMinor:
+            type === 'CREDIT_CARD' && creditLimit.trim()
+              ? parseMoneyToMinor(creditLimit, currency)
+              : undefined,
         },
       }),
     onSuccess: () => {
@@ -1081,21 +1124,40 @@ function AddAccountSheet({
           </Select>
         </Field>
         {type === 'CREDIT_CARD' ? (
-          <Field
-            label={t('account.dueDay', 'পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)')}
-            htmlFor="acc-due-day"
-          >
-            <Input
-              id="acc-due-day"
-              type="number"
-              min={1}
-              max={31}
-              inputMode="numeric"
-              value={dueDay}
-              onChange={(e) => setDueDay(e.target.value)}
-              placeholder={fmtNumber('12')}
-            />
-          </Field>
+          <>
+            <Field label={t('account.creditLimit', 'কার্ডের লিমিট (৳)')} htmlFor="acc-limit">
+              <Input
+                id="acc-limit"
+                inputMode="decimal"
+                value={creditLimit}
+                onChange={(e) => setCreditLimit(e.target.value)}
+                placeholder={fmtNumber('100000')}
+              />
+              {/* Said where it is typed, because this is the number people
+                  most expect to see added to their money. */}
+              <p className="text-ink-muted text-xs">
+                {t(
+                  'account.creditLimitHint',
+                  'লিমিট আপনার টাকা নয় — খরচ না করা পর্যন্ত দায়ও নয়। নিট সম্পদে ধরা হবে না।',
+                )}
+              </p>
+            </Field>
+            <Field
+              label={t('account.dueDay', 'পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)')}
+              htmlFor="acc-due-day"
+            >
+              <Input
+                id="acc-due-day"
+                type="number"
+                min={1}
+                max={31}
+                inputMode="numeric"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                placeholder={fmtNumber('12')}
+              />
+            </Field>
+          </>
         ) : null}
 
         <Field

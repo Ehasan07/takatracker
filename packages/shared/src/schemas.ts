@@ -111,6 +111,13 @@ export const createAccountSchema = z.object({
   icon: z.string().max(40).optional(),
   color: z.string().max(20).optional(),
   sortOrder: z.number().int().default(0),
+  /* Credit cards only. What the bank allows the card to carry.
+   *
+   * Recorded so the app can say what could be spent today, and never added to
+   * anything: an undrawn limit is money the bank still holds and may withdraw,
+   * so it is not cash under IAS 7.6 and not a resource the Conceptual Framework
+   * would call controlled. IAS 7.50(a) — disclosed, not recognised. */
+  creditLimitMinor: minorAmount.nonnegative().default(0),
   /* Credit cards only. A due day past the end of a short month is clamped, so
    * 31 means "the 28th" in February rather than spilling into March. */
   statementDayOfMonth: z.number().int().min(1).max(31).nullish(),

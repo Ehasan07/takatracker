@@ -188,6 +188,10 @@ export interface AccountDto {
   sortOrder: number;
   icon: string | null;
   color: string | null;
+  /** Credit cards: what the bank allows, what is drawn, what is left. */
+  creditLimitMinor: number;
+  drawnMinor: number;
+  undrawnMinor: number;
   statementDayOfMonth: number | null;
   dueDayOfMonth: number | null;
   reminderLeadDays: number | null;

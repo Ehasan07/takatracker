@@ -642,6 +642,16 @@ model Account {
   /// balance sheet does *not* filter on this: it sorts by account class, so the
   /// loan control accounts appear there and the nominal ones do not.
   systemKey           String?
+  /// Credit cards only. What the bank will let this card carry, in poisha.
+  ///
+  /// Never an asset. IAS 7.6 keeps cash to what is held — cash in hand and
+  /// demand deposits — and an undrawn limit is neither: the money sits with the
+  /// bank, which may reduce or withdraw the facility, so there is nothing the
+  /// Conceptual Framework would call a controlled resource and no past event to
+  /// recognise. IAS 7.50(a) has it exactly right: undrawn facilities are
+  /// *disclosed*, not recognised. It is held here so the app can say what could
+  /// be spent, beside — never inside — what is owned.
+  creditLimitMinor    BigInt @default(0)
   /// Credit cards only. 1–31; a due day past the end of a short month is
   /// clamped to its last day, so the 31st is the 28th in February.
   statementDayOfMonth Int?

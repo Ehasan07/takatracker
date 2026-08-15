@@ -58,6 +58,17 @@ export interface AccountWithBalance {
   statementDayOfMonth: number | null;
   dueDayOfMonth: number | null;
   reminderLeadDays: number | null;
+  /**
+   * Credit cards only: what the bank allows, what is drawn, what is left.
+   *
+   * `undrawnMinor` is reported and never added to anything. It is not cash —
+   * IAS 7.6 keeps that to what is held, and an undrawn facility is money the
+   * bank still has and may withdraw. IAS 7.50(a) disclosure: a figure beside
+   * the balance sheet, not a line inside it.
+   */
+  creditLimitMinor: number;
+  drawnMinor: number;
+  undrawnMinor: number;
 }
 
 @Injectable()
@@ -310,6 +321,11 @@ export class AccountsService {
   }
 
   private static present(a: Account, balanceMinor: number): AccountWithBalance {
+    /* Only a card has a limit. Anything else reports zero rather than an
+       absence, so a caller never has to ask which kind it is holding. */
+    const limit = a.type === 'CREDIT_CARD' ? minorToNumber(a.creditLimitMinor) : 0;
+    const balance = balanceMinor;
+
     return {
       id: a.id,
       name: a.name,
@@ -324,6 +340,14 @@ export class AccountsService {
       sortOrder: a.sortOrder,
       icon: a.icon,
       color: a.color,
+      creditLimitMinor: limit,
+      /* A card carries what is owed as a negative balance, so the drawn amount
+         is the negative part and nothing else — a card in credit because
+         something was refunded has drawn nothing. */
+      drawnMinor: balance < 0 ? -balance : 0,
+      /* Never below zero: over the limit is a fact about the debt, not spare
+         room, and a negative "left to spend" would read as one. */
+      undrawnMinor: Math.max(0, limit - (balance < 0 ? -balance : 0)),
       statementDayOfMonth: a.statementDayOfMonth,
       dueDayOfMonth: a.dueDayOfMonth,
       reminderLeadDays: a.reminderLeadDays,
@@ -380,6 +404,7 @@ export class AccountsService {
         icon: input.icon,
         color: input.color,
         sortOrder: input.sortOrder,
+        creditLimitMinor: BigInt(input.creditLimitMinor ?? 0),
         statementDayOfMonth: input.statementDayOfMonth ?? null,
         dueDayOfMonth: input.dueDayOfMonth ?? null,
         reminderLeadDays: input.reminderLeadDays ?? null,
@@ -441,6 +466,8 @@ export class AccountsService {
         color: input.color,
         sortOrder: input.sortOrder,
         isArchived: input.isArchived,
+        creditLimitMinor:
+          input.creditLimitMinor === undefined ? undefined : BigInt(input.creditLimitMinor),
         statementDayOfMonth: input.statementDayOfMonth,
         dueDayOfMonth: input.dueDayOfMonth,
         reminderLeadDays: input.reminderLeadDays,
