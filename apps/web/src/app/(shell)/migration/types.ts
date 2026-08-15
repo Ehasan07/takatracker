@@ -66,7 +66,8 @@ export const DECISION_LABELS: Record<MigrationDecision, string> = {
   INSURANCE: 'বীমা হিসেবে',
   LIABILITY: 'দেনা হিসেবে (যে টাকা আমি দেব)',
   RECEIVABLE: 'পাওনা হিসেবে (যে টাকা আমি পাব)',
-  SKIP: 'বাদ দাও',
+  LATER: 'পরে করব',
+  SKIP: 'বাদ দাও (আনব না)',
 };
 
 /** Account types offered for an imported account, in the order they matter. */

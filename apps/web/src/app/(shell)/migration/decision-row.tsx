@@ -58,8 +58,8 @@ export function DecisionRow({
      *category* that was standing in for one. Offering them here would invite a
      bank account to become a DPS record with no balance. */
   const choices: MigrationDecision[] = isAccount
-    ? ['CREATE', 'MERGE', 'SKIP']
-    : ['CREATE', 'MERGE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'RECEIVABLE', 'SKIP'];
+    ? ['CREATE', 'MERGE', 'LATER', 'SKIP']
+    : ['CREATE', 'MERGE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'RECEIVABLE', 'LATER', 'SKIP'];
 
   return (
     <li className="border-rule flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-3">

@@ -67,13 +67,13 @@ export function GroupHeader({
           }}
         >
           <option value="">সবগুলোতে একসাথে…</option>
-          {(['CREATE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'RECEIVABLE', 'SKIP'] as const).map(
-            (choice) => (
-              <option key={choice} value={choice}>
-                {DECISION_LABELS[choice]}
-              </option>
-            ),
-          )}
+          {(
+            ['CREATE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'RECEIVABLE', 'LATER', 'SKIP'] as const
+          ).map((choice) => (
+            <option key={choice} value={choice}>
+              {DECISION_LABELS[choice]}
+            </option>
+          ))}
         </Select>
 
         {decision === 'CREATE' && parents.length > 0 ? (

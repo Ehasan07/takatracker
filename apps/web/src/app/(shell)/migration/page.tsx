@@ -59,6 +59,11 @@ export default function MigrationPage() {
   const [askingId, setAskingId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
   const [onlyUnfinished, setOnlyUnfinished] = React.useState(false);
+  /* Rows told to skip are out of the way by default. Deciding 336 of them is a
+     list that has to get shorter as the work goes, and a row nobody is bringing
+     across has nothing left to say. Nothing is lost — the toggle brings them
+     back, and they are still in the batch. */
+  const [showSkipped, setShowSkipped] = React.useState(false);
   const fileInput = React.useRef<HTMLInputElement>(null);
   const startInput = React.useRef<HTMLInputElement>(null);
 
@@ -221,6 +226,12 @@ export default function MigrationPage() {
   const shown = React.useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
+      /* Both kinds of "not now" are out of the way by default: deciding 336
+         rows is a list that has to get shorter as the work goes. Neither is
+         lost — the toggles bring them back and both are still in the batch. */
+      if (!showSkipped && !item.createdEntityId) {
+        if (item.decision === 'SKIP' || item.decision === 'LATER') return false;
+      }
       if (onlyUnfinished && !unfinished(item)) return false;
       if (!needle) return true;
       return (
@@ -228,11 +239,15 @@ export default function MigrationPage() {
         (item.group ?? '').toLowerCase().includes(needle)
       );
     });
-  }, [items, query, onlyUnfinished, unfinished]);
+  }, [items, query, onlyUnfinished, showSkipped, unfinished]);
 
   const accountItems = shown.filter((i) => i.kind === 'ACCOUNT');
   const categoryItems = shown.filter((i) => i.kind === 'CATEGORY');
   const unfinishedCount = items.filter(unfinished).length;
+  const laterCount = items.filter((i) => i.decision === 'LATER' && !i.createdEntityId).length;
+  const skippedCount = items.filter(
+    (i) => (i.decision === 'SKIP' || i.decision === 'LATER') && !i.createdEntityId,
+  ).length;
   const asking = items.find((i) => i.id === askingId) ?? null;
   const outstanding = detail.data?.counts.needsDetail ?? 0;
   /* Rows told to merge with nothing chosen to merge into. They do nothing when
@@ -523,6 +538,15 @@ export default function MigrationPage() {
             >
               বাকি আছে ({unfinishedCount})
             </Button>
+            {skippedCount > 0 ? (
+              <Button
+                variant={showSkipped ? 'primary' : 'ghost'}
+                aria-pressed={showSkipped}
+                onClick={() => setShowSkipped((on) => !on)}
+              >
+                পরে/বাদ ({skippedCount})
+              </Button>
+            ) : null}
           </section>
 
           <ItemList
@@ -578,6 +602,15 @@ export default function MigrationPage() {
             {/* Said before the button, not after it. These rows will still be
                 created — the figures can go in later — but somebody about to
                 press this should know which ones will arrive half-filled. */}
+            {/* Said before the button. Somebody about to approve should know
+                what is deliberately not being approved — and that it stays. */}
+            {laterCount > 0 ? (
+              <p className="text-ink-muted w-full text-xs">
+                {laterCount}টি সারিতে "পরে করব" দেওয়া আছে — এগুলো এখন তৈরি হবে না, খসড়াতেই থেকে
+                যাবে। যখন খুশি ফিরে এসে করতে পারবেন।
+              </p>
+            ) : null}
+
             {unresolvedMerges > 0 ? (
               <p className="text-expense flex w-full items-center gap-1.5 text-xs">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />

@@ -57,7 +57,20 @@ export const MIGRATION_DECISIONS = [
    * when it is repaid.
    */
   'RECEIVABLE',
-  /** Leave it behind. */
+  /**
+   * Not now.
+   *
+   * Different from `SKIP` in the only way that matters: skip is a decision, and
+   * this is the absence of one. A skipped row has been dealt with and the batch
+   * can close over it; a deferred row keeps the batch open, is never created by
+   * an apply, and is still sitting there whenever somebody comes back to it.
+   *
+   * The two were one word until somebody who wanted to approve a hundred rows
+   * and think about the other two hundred had to mark those two hundred with
+   * the word for "leave it behind".
+   */
+  'LATER',
+  /** Leave it behind — deliberately, and for good. */
   'SKIP',
 ] as const;
 export type MigrationDecision = (typeof MIGRATION_DECISIONS)[number];

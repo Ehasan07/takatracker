@@ -500,11 +500,33 @@ export class MigrationService {
       name?: string;
     },
   ): Promise<MigrationItemView> {
-    const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
+    /* Not "must be a draft".
+     *
+     * Somebody skipping 200 rows to get the other hundred in is not throwing
+     * those 200 away — they are deferring them, and the batch closing over that
+     * decision would make it permanent. So a row is changeable for as long as
+     * it has not been created, whatever the batch's status, and a batch that
+     * had been closed reopens when one of its rows is picked up again.
+     *
+     * The one thing that cannot change is a row already in the books: altering
+     * a decision that has been carried out would say something untrue about
+     * what happened. Rollback is how that gets undone. */
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      select: { id: true, status: true },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+    if (batch.status === 'ROLLED_BACK') {
+      throw new BadRequestException('এটি ফিরিয়ে নেওয়া হয়েছে — আবার শুরু করুন');
+    }
+
     const item = await this.prisma.migrationItem.findFirst({
       where: { id: itemId, batchId: batch.id, workspaceId },
     });
     if (!item) throw new NotFoundException('সারিটি পাওয়া যায়নি');
+    if (item.createdEntityId) {
+      throw new BadRequestException('এটি তৈরি হয়ে গেছে — বদলাতে হলে আগে ফিরিয়ে নিন');
+    }
 
     const decision = patch.decision ?? (item.decision as MigrationDecision);
 
@@ -527,9 +549,20 @@ export class MigrationService {
       await this.assertParentCategory(workspaceId, targetId, item.targetType);
     }
 
+    /* Reopened, so the screen shows it as work in progress again rather than as
+       something finished that mysteriously changed. */
+    if (batch.status === 'APPLIED') {
+      await this.prisma.migrationBatch.update({
+        where: { id: batch.id },
+        data: { status: 'DRAFT' },
+      });
+    }
+
     const updated = await this.prisma.migrationItem.update({
       where: { id: item.id },
       data: {
+        /* Whatever it said last time about being left behind no longer holds. */
+        skippedReason: null,
         decision,
         targetName:
           patch.name === undefined ? undefined : patch.name.trim() ? patch.name.trim() : null,
@@ -702,12 +735,23 @@ export class MigrationService {
     batchId: string,
     csv: string,
   ): Promise<{ updated: number; errors: string[] }> {
-    const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
+    /* Same rule as the row controls: changeable until it is created. */
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      select: { id: true, status: true },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+    if (batch.status === 'ROLLED_BACK') {
+      throw new BadRequestException('এটি ফিরিয়ে নেওয়া হয়েছে — আবার শুরু করুন');
+    }
     const parsed = migrationFromCsv(csv);
     const errors = [...parsed.errors];
 
     const items = await this.prisma.migrationItem.findMany({
-      where: { batchId: batch.id, workspaceId },
+      /* Rows already in the books are left alone rather than reported as
+         errors: a spreadsheet exported before a group was approved still
+         carries them, and refusing the whole file over that would be useless. */
+      where: { batchId: batch.id, workspaceId, createdEntityId: null },
       select: { id: true, kind: true, sourceId: true },
     });
     const itemBySource = new Map(items.map((i) => [`${i.kind}:${i.sourceId}`, i]));
@@ -734,7 +778,8 @@ export class MigrationService {
     for (const row of parsed.rows) {
       const item = itemBySource.get(`${row.kind}:${row.sourceId}`);
       if (!item) {
-        errors.push(`"${row.name}" (${row.sourceId}) এই খসড়ায় নেই`);
+        /* Either not in this batch, or already created. Both are "nothing to
+           do here" rather than a mistake worth stopping for. */
         continue;
       }
 
@@ -894,6 +939,12 @@ export class MigrationService {
     const done = (data: Prisma.MigrationItemUpdateInput): Promise<unknown> =>
       this.prisma.migrationItem.update({ where: { id: item.id }, data });
 
+    if (item.decision === 'LATER') {
+      /* Untouched, and deliberately not given a reason: a reason is what marks
+         a row as dealt with, and this one is waiting rather than done. That is
+         also what keeps the batch open. */
+      return;
+    }
     if (item.decision === 'SKIP') {
       await done({ skippedReason: 'বাদ দেওয়া হয়েছে' });
       return;

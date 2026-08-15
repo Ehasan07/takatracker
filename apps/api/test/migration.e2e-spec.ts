@@ -390,6 +390,82 @@ describe('migration', () => {
     expect((await rollback(user, batch.id)).status).toBe(400);
   });
 
+  it('keeps the batch open for rows put off until later', async () => {
+    /* "Later" and "skip" were one word until somebody who wanted to approve a
+       hundred rows and think about the rest had to mark those with the word for
+       "leave it behind". Skip is a decision; later is the absence of one. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    for (const item of batch.items) {
+      const decision = item.sourceId === 'w-cat-1' ? 'LATER' : 'SKIP';
+      await decide(user, batch.id, item.id, { decision }).expect(200);
+    }
+
+    const applied = (await apply(user, batch.id)).body as Batch;
+    /* Nothing created for it, no reason written against it, and the batch is
+       still open because of it. */
+    const deferred = find(applied, 'w-cat-1');
+    expect(deferred.createdEntityId).toBeNull();
+    expect(deferred.skippedReason).toBeNull();
+    expect(applied.status).toBe('DRAFT');
+
+    /* Weeks later, it is picked up and approved on its own. */
+    await decide(user, batch.id, deferred.id, { decision: 'CREATE' }).expect(200);
+    const done = (await apply(user, batch.id)).body as Batch;
+    expect(find(done, 'w-cat-1').createdEntityId).toBeTruthy();
+    expect(done.status).toBe('APPLIED');
+  });
+
+  it('lets a skipped row be picked up again after the batch was closed', async () => {
+    /* Skipping 200 rows to get the other hundred in is deferring them, not
+       throwing them away. A batch that closed over that decision would make it
+       permanent, which is not what the person meant by "skip for now". */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    /* Skip everything, so applying closes the batch with nothing created. */
+    for (const item of batch.items) {
+      await decide(user, batch.id, item.id, { decision: 'SKIP' }).expect(200);
+    }
+    const closed = (await apply(user, batch.id)).body as Batch;
+    expect(closed.status).toBe('APPLIED');
+
+    /* Months later, one of them turns out to be wanted after all. */
+    const again = await decide(user, batch.id, find(closed, 'w-cat-1').id, { decision: 'CREATE' });
+    expect(again.status).toBe(200);
+    /* The reason it was left behind no longer holds, and the batch is open. */
+    expect(again.body.skippedReason).toBeNull();
+    expect(((await detail(user, batch.id)).body as Batch).status).toBe('DRAFT');
+
+    await apply(user, batch.id);
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      }),
+    ).toBe(1);
+  });
+
+  it('will not let a decision change after it has been carried out', async () => {
+    /* The one thing that cannot be changed: altering a decision already in the
+       books would say something untrue about what happened. Rollback is how
+       that gets undone. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    const row = find(batch, 'w-cat-1');
+
+    await ctx
+      .http()
+      .post(`/v1/migration/batches/${batch.id}/apply`)
+      .set(auth(user))
+      .send({ itemIds: [row.id] })
+      .expect(200);
+
+    const refused = await decide(user, batch.id, row.id, { decision: 'SKIP' });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('ফিরিয়ে');
+  });
+
   it('applies twice without doubling anything', async () => {
     const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;
