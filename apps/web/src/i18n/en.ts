@@ -709,6 +709,13 @@ export const EN: Record<string, string> = {
   'account.name': 'Name',
   'account.nameHint': 'e.g. BRAC Bank',
   'account.total': 'Total',
+  /* Four figures rather than one: IAS 7.6 keeps "cash and cash equivalents"
+     narrow, and IAS 1.32 does not let assets and liabilities be offset into a
+     single number. */
+  'account.total.liquid': 'Cash & bank',
+  'account.total.asset': 'Assets (land, gold, receivable)',
+  'account.total.liability': 'Liabilities (cards, loans, payable)',
+  'account.total.net': 'Net worth',
   'account.empty': 'No accounts yet.',
   'account.new': 'New account',
   'account.edit': 'Edit account',

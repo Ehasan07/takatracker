@@ -69,6 +69,11 @@ const GROUP_LABELS: Record<(typeof TYPE_GROUPS)[number], string> = {
 const groupLabel = (group: (typeof TYPE_GROUPS)[number]): string =>
   t(`account.group.${group}`, GROUP_LABELS[group]);
 
+/** Which of the three an account type belongs to. `liquid` when unknown. */
+const groupOfType = (type: string): (typeof TYPE_GROUPS)[number] =>
+  (ACCOUNT_TYPES.find((entry) => entry.value === type)?.group as
+    (typeof TYPE_GROUPS)[number] | undefined) ?? 'liquid';
+
 /** Offered only because the row draws it — see AccountAvatar. */
 const ACCOUNT_COLORS: { value: string; key: string; label: string }[] = [
   { value: '#0F7B4F', key: 'green', label: t('colour.green', 'সবুজ') },
@@ -155,7 +160,45 @@ export default function AccountsPage() {
     },
   });
 
-  const total = (accounts.data ?? []).reduce((sum, a) => sum + a.balanceMinor, 0);
+  /**
+   * Four figures, because one was a lie.
+   *
+   * This used to be a single "মোট" that added every account together — cash,
+   * a plot of land, a credit card. IAS 7.6 defines cash and cash equivalents
+   * narrowly (cash in hand, demand deposits, and investments of three months or
+   * less whose value cannot really move), and land is none of those; IAS 1.32
+   * says assets and liabilities are not offset into one number at all. So a
+   * ৳12,00,000 plot was quietly being reported as money in hand.
+   *
+   * The sum of the three groups is exactly what that number was — it was net
+   * worth wearing the word "total". It keeps its place at the bottom, under the
+   * name of the thing it actually is.
+   */
+  const subtotals = React.useMemo(() => {
+    const sums: Record<(typeof TYPE_GROUPS)[number], number> = {
+      liquid: 0,
+      asset: 0,
+      liability: 0,
+    };
+    for (const account of accounts.data ?? []) {
+      sums[groupOfType(account.type)] += account.balanceMinor;
+    }
+    return sums;
+  }, [accounts.data]);
+
+  const netWorth = subtotals.liquid + subtotals.asset + subtotals.liability;
+
+  /* The list in the same three parts as the figures above, and in the same
+     order a balance sheet reads. A flat list put a plot of land between two
+     bank accounts. */
+  const grouped = React.useMemo(
+    () =>
+      TYPE_GROUPS.map(
+        (group) =>
+          [group, (accounts.data ?? []).filter((a) => groupOfType(a.type) === group)] as const,
+      ).filter(([, rows]) => rows.length > 0),
+    [accounts.data],
+  );
 
   const accountLimit = entitlements.data?.entitlements['accounts.max'] ?? null;
   const accountsUsed = entitlements.data?.usage['accounts.max'] ?? 0;
@@ -204,8 +247,31 @@ export default function AccountsPage() {
       </header>
 
       <section className="rounded-card border-rule bg-surface border p-4">
-        <p className="text-ink-muted text-sm">{t('account.total', 'মোট')}</p>
-        <Money minor={total} className="text-2xl font-semibold" />
+        {/* The headline is cash and cash equivalents alone — the only figure
+            that answers "how much can I spend today". */}
+        <p className="text-ink-muted text-sm">{t('account.total.liquid', 'হাতে ও ব্যাংকে')}</p>
+        <Money minor={subtotals.liquid} className="text-2xl font-semibold" />
+
+        <dl className="text-ink-muted mt-3 flex flex-col gap-1 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt>{t('account.total.asset', 'সম্পদ (জমি, স্বর্ণ, পাওনা)')}</dt>
+            <dd>
+              <Money minor={subtotals.asset} />
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt>{t('account.total.liability', 'দায় (কার্ড, ঋণ, দেনা)')}</dt>
+            <dd>
+              <Money minor={subtotals.liability} />
+            </dd>
+          </div>
+          <div className="border-rule text-ink flex items-center justify-between gap-3 border-t pt-1 font-medium">
+            <dt>{t('account.total.net', 'নিট সম্পদ')}</dt>
+            <dd>
+              <Money minor={netWorth} />
+            </dd>
+          </div>
+        </dl>
         <UsageMeter
           className="mt-3"
           label={t('nav.accounts', 'অ্যাকাউন্ট')}
@@ -235,85 +301,94 @@ export default function AccountsPage() {
         </div>
       ) : (
         <ul className="rounded-card border-rule bg-surface overflow-hidden border">
-          {(accounts.data ?? []).map((account) => (
+          {grouped.flatMap(([group, rows]) => [
             <li
-              key={account.id}
-              className="ledger-row border-rule flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
+              key={`head-${group}`}
+              className="border-rule bg-greenbar/40 text-ink-muted flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs font-medium"
             >
-              {/* The whole name block opens the editor: a fourth icon button
-                  would leave nothing of the name at 320px. */}
-              <button
-                type="button"
-                aria-label={`${account.name} — ${t('common.edit', 'সম্পাদনা')}`}
-                onClick={() => {
-                  haptic('tap');
-                  setEditing(account);
-                }}
-                className="press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
+              <span>{groupLabel(group)}</span>
+              <Money minor={rows.reduce((sum, a) => sum + a.balanceMinor, 0)} />
+            </li>,
+            ...rows.map((account) => (
+              <li
+                key={account.id}
+                className="ledger-row border-rule flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
               >
-                <AccountAvatar account={account} />
-                <span className="min-w-0 flex-1">
-                  <span className="text-ink block truncate text-sm font-medium">
-                    {account.name}
-                  </span>
-                  <span className="text-ink-muted block truncate text-xs">
-                    {typeLabel(account.type)}
-                    {account.accountNumberMasked ? ` · ${account.accountNumberMasked}` : ''}
-                    {account.dueDayOfMonth
-                      ? ` · ${t('account.dueOn', 'প্রতি মাসের {day} তারিখে পেমেন্ট').replace('{day}', fmtNumber(String(account.dueDayOfMonth)))}`
-                      : ''}
-                  </span>
-                </span>
-                <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
-              </button>
-              <Money minor={account.balanceMinor} className="amount-col shrink-0 pl-2 text-sm" />
-              {account.dueDayOfMonth ? (
+                {/* The whole name block opens the editor: a fourth icon button
+                  would leave nothing of the name at 320px. */}
                 <button
                   type="button"
-                  aria-label={`${account.name} — ${t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}`}
-                  title={t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}
-                  onClick={() => muteReminders.mutate(account.id)}
-                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                  aria-label={`${account.name} — ${t('common.edit', 'সম্পাদনা')}`}
+                  onClick={() => {
+                    haptic('tap');
+                    setEditing(account);
+                  }}
+                  className="press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
                 >
-                  <BellOff className="h-4 w-4" aria-hidden />
+                  <AccountAvatar account={account} />
+                  <span className="min-w-0 flex-1">
+                    <span className="text-ink block truncate text-sm font-medium">
+                      {account.name}
+                    </span>
+                    <span className="text-ink-muted block truncate text-xs">
+                      {typeLabel(account.type)}
+                      {account.accountNumberMasked ? ` · ${account.accountNumberMasked}` : ''}
+                      {account.dueDayOfMonth
+                        ? ` · ${t('account.dueOn', 'প্রতি মাসের {day} তারিখে পেমেন্ট').replace('{day}', fmtNumber(String(account.dueDayOfMonth)))}`
+                        : ''}
+                    </span>
+                  </span>
+                  <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
                 </button>
-              ) : null}
-              {/* The account's own statement: opening balance, every movement,
+                <Money minor={account.balanceMinor} className="amount-col shrink-0 pl-2 text-sm" />
+                {account.dueDayOfMonth ? (
+                  <button
+                    type="button"
+                    aria-label={`${account.name} — ${t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}`}
+                    title={t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}
+                    onClick={() => muteReminders.mutate(account.id)}
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                  >
+                    <BellOff className="h-4 w-4" aria-hidden />
+                  </button>
+                ) : null}
+                {/* The account's own statement: opening balance, every movement,
                   closing balance. The question "when did money go in and out of
                   this one?" had no answer anywhere before this link. */}
-              <Link
-                href={`/accounts/${account.id}/statement`}
-                aria-label={`${account.name} — ${t('account.statement', 'হিসাব বিবরণী')}`}
-                title={t('account.statement', 'হিসাব বিবরণী')}
-                className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
-              >
-                <FileText className="h-4 w-4" aria-hidden />
-              </Link>
-              {/* Two different questions wearing one icon would be worse than
+                <Link
+                  href={`/accounts/${account.id}/statement`}
+                  aria-label={`${account.name} — ${t('account.statement', 'হিসাব বিবরণী')}`}
+                  title={t('account.statement', 'হিসাব বিবরণী')}
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                >
+                  <FileText className="h-4 w-4" aria-hidden />
+                </Link>
+                {/* Two different questions wearing one icon would be worse than
                   two icons. Cash and bank accounts get "মেলান" — the ledger may
                   be wrong about money that already exists. Land, gold and a car
                   get "মূল্যায়ন" — the ledger is right and the world moved. */}
-              {REVALUABLE.has(account.type) ? (
-                <button
-                  type="button"
-                  aria-label={`${account.name} — ${t('account.revalue', 'মূল্যায়ন')}`}
-                  onClick={() => setRevaluing(account)}
-                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
-                >
-                  <TrendingUp className="h-4 w-4" aria-hidden />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  aria-label={`${account.name} — ${t('account.reconcile', 'মেলান')}`}
-                  onClick={() => setReconciling(account)}
-                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
-                >
-                  <Scale className="h-4 w-4" aria-hidden />
-                </button>
-              )}
-            </li>
-          ))}
+                {REVALUABLE.has(account.type) ? (
+                  <button
+                    type="button"
+                    aria-label={`${account.name} — ${t('account.revalue', 'মূল্যায়ন')}`}
+                    onClick={() => setRevaluing(account)}
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                  >
+                    <TrendingUp className="h-4 w-4" aria-hidden />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`${account.name} — ${t('account.reconcile', 'মেলান')}`}
+                    onClick={() => setReconciling(account)}
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                  >
+                    <Scale className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+              </li>
+            )),
+          ])}
         </ul>
       )}
 
