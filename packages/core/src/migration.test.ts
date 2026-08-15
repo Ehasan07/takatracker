@@ -169,6 +169,7 @@ describe('the sample file', () => {
       'INSURANCE',
       'LIABILITY',
       'MERGE',
+      'RECEIVABLE',
       'SAVINGS',
       'SKIP',
     ]);

@@ -734,41 +734,7 @@ export class MigrationService {
       return;
     }
 
-    // ---- categories, and the three things a category can turn out to be
-
-    if (item.decision === 'LIABILITY') {
-      /* An account, not a loan record. A `Loan` posts a disbursement
-         transaction, and this knows neither the principal nor which account
-         the money moved through — writing one would be inventing entries in
-         somebody's books. An account of the right type puts the debt on the
-         balance sheet with nothing made up, and the loan proper can be
-         recorded later against it. */
-      const clashing = await this.prisma.account.findFirst({
-        where: { workspaceId, deletedAt: null, name: item.sourceName },
-        select: { id: true },
-      });
-      if (clashing) {
-        await done({ skippedReason: 'একই নামে অ্যাকাউন্ট আগে থেকেই আছে' });
-        return;
-      }
-      await this.entitlements.assertWithinLimit(workspaceId, 'accounts.max', timezone);
-
-      const created = await this.prisma.account.create({
-        data: {
-          workspaceId,
-          name: item.sourceName,
-          type: 'LIABILITY',
-          currency: 'BDT',
-          openingBalance: BigInt(0),
-        },
-      });
-      await done({
-        createdEntityId: created.id,
-        createdEntityKind: 'Account',
-        skippedReason: null,
-      });
-      return;
-    }
+    // ---- categories, and the four things a category can turn out to be
 
     if (item.decision === 'SAVINGS') {
       /* Whatever was filled in on the draft, and nothing at all where it was
@@ -822,6 +788,55 @@ export class MigrationService {
       await done({
         createdEntityId: created.id,
         createdEntityKind: 'InsurancePolicy',
+        skippedReason: null,
+      });
+      return;
+    }
+
+    /* Money owed, either way round.
+     *
+     * An account, not a `Loan` record. A loan posts a disbursement transaction,
+     * and this knows neither the principal nor which account the money moved
+     * through — writing one would be inventing entries in somebody's books. An
+     * account of the right type puts the debt or the credit on the balance
+     * sheet with nothing made up, and the loan proper can be recorded against
+     * it later.
+     *
+     * Both directions, because offering only one pushes everything somebody is
+     * owed into the expense column: money lent reads as spending and never
+     * comes back when it is repaid. */
+    const owedType =
+      item.decision === 'LIABILITY'
+        ? 'LIABILITY'
+        : item.decision === 'RECEIVABLE'
+          ? 'RECEIVABLE'
+          : null;
+
+    if (owedType) {
+      const clashing = await this.prisma.account.findFirst({
+        where: { workspaceId, deletedAt: null, name: item.sourceName },
+        select: { id: true },
+      });
+      if (clashing) {
+        await done({ skippedReason: 'একই নামে অ্যাকাউন্ট আগে থেকেই আছে' });
+        return;
+      }
+      await this.entitlements.assertWithinLimit(workspaceId, 'accounts.max', timezone);
+
+      const created = await this.prisma.account.create({
+        data: {
+          workspaceId,
+          name: item.sourceName,
+          type: owedType,
+          currency: 'BDT',
+          /* No balance, as with every account: Wallet's figure is today's, not
+             the opening one, and importing it would double-count the history. */
+          openingBalance: BigInt(0),
+        },
+      });
+      await done({
+        createdEntityId: created.id,
+        createdEntityKind: 'Account',
         skippedReason: null,
       });
       return;

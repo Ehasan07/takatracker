@@ -48,6 +48,15 @@ export const MIGRATION_DECISIONS = [
    * and the debt itself appears nowhere on the balance sheet.
    */
   'LIABILITY',
+  /**
+   * …or money owed *to* you, which is the same mistake facing the other way.
+   *
+   * Debt and credit are two sides of one idea, and a product that offers only
+   * one of them quietly pushes everything somebody is owed into the expense
+   * column — money lent to a brother reads as spending, and never comes back
+   * when it is repaid.
+   */
+  'RECEIVABLE',
   /** Leave it behind. */
   'SKIP',
 ] as const;
@@ -483,12 +492,23 @@ export function sampleMigrationRows(): MigrationRow[] {
       decision: 'LIABILITY',
       targetType: '',
       mergeInto: '',
-      note: 'যে টাকা আপনি দেবেন — LIABILITY দিলে দায়ের অ্যাকাউন্ট তৈরি হবে, খাত নয়',
+      note: 'যে টাকা আপনি দেবেন — LIABILITY দিলে দেনার অ্যাকাউন্ট তৈরি হবে, খাত নয়',
       detail: null,
     },
     {
       kind: 'CATEGORY',
       sourceId: 'c-6',
+      name: 'করিমকে ধার দেওয়া',
+      usageCount: 0,
+      decision: 'RECEIVABLE',
+      targetType: '',
+      mergeInto: '',
+      note: 'যে টাকা আপনি পাবেন — RECEIVABLE, নাহলে ধার দেওয়াটা খরচ হিসেবে বসে যাবে',
+      detail: null,
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-7',
       name: 'পুরনো একটা খাত',
       usageCount: 0,
       decision: 'SKIP',
