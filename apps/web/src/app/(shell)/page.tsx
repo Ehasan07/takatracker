@@ -32,6 +32,21 @@ const BREAKDOWN_GROUPS = [
 
 type BreakdownGroup = (typeof BREAKDOWN_GROUPS)[number]['key'];
 
+/**
+ * A tint per group, and never the only signal.
+ *
+ * Green for what is held, red for what is owed, and a neutral brass for what is
+ * owned but not spendable. The heading still says which is which in words and
+ * every figure still carries its sign, because a colour alone fails anybody
+ * reading this in sunlight or with a red-green deficiency — about one man in
+ * twelve.
+ */
+const GROUP_TINT: Record<BreakdownGroup, string> = {
+  liquid: 'bg-income/10 text-income',
+  asset: 'bg-brass/10 text-brass',
+  liability: 'bg-expense/10 text-expense',
+};
+
 type AccountType = keyof typeof ACCOUNT_CLASS;
 
 const groupOfAccount = (type: AccountType): BreakdownGroup => {
@@ -174,7 +189,8 @@ export default function DashboardPage() {
             <Money
               minor={summary.data?.netWorthMinor ?? 0}
               colored
-              className="text-ink shrink-0 font-medium"
+              signed
+              className="shrink-0 font-medium"
             />
           </p>
           <p className="text-ink-muted text-xs">
@@ -217,10 +233,19 @@ export default function DashboardPage() {
             </div>
           ) : null}
 
-          {/* Never a bare number: the breakdown is always visible — and grouped,
-              with a subtotal on each heading, because "how much is on my ten
-              credit cards" is a question a flat list of fourteen rows cannot
-              answer. */}
+          {/* Never a bare number: the breakdown is always visible.
+           *
+           * Two of the three groups are itemised and one is not, and that is
+           * IAS 1.60 rather than a layout preference. The current/non-current
+           * split exists so a reader can tell what will turn into cash soon
+           * from what will not, and IAS 1.29 asks for dissimilar things to be
+           * presented apart. A plot of land is not going to be spent this
+           * month; listing it row by row between two bank accounts answers a
+           * question nobody asked of this screen and buries the one they did.
+           *
+           * So land, gold and a car arrive as one line with a way through to
+           * the detail. Net worth still counts every taka of them — leaving
+           * them out of the total would be a different and worse lie. */}
           <ul className="divide-rule mt-3 divide-y border-t pt-1">
             {BREAKDOWN_GROUPS.flatMap(({ key, label }) => {
               const rows = (accounts.data ?? []).filter(
@@ -231,16 +256,41 @@ export default function DashboardPage() {
               const cards = rows.filter((account) => account.type === 'CREDIT_CARD');
               const cardTotal = cards.reduce((sum, account) => sum + account.balanceMinor, 0);
 
-              return [
+              const header = (
                 <li
                   key={`head-${key}`}
-                  className="text-ink flex items-center justify-between gap-3 pb-1 pt-2 text-xs font-medium"
+                  className={`flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-xs font-medium ${GROUP_TINT[key]}`}
                 >
                   <span>{t(`dashboard.group.${key}`, label)}</span>
-                  <Money minor={subtotal} className="shrink-0" />
-                </li>,
-                /* The cards on their own line: ten of them is the common case
-                   and the one number nobody can add up by eye. */
+                  <Money minor={subtotal} signed colored className="shrink-0" />
+                </li>
+              );
+
+              /* The one group that is summarised. Everything a person could
+                 spend or owes this month is spelled out; what is locked up in
+                 land is a figure and a door. */
+              if (key === 'asset') {
+                return [
+                  header,
+                  <li key="asset-summary" className="py-1.5">
+                    <Link
+                      href="/accounts"
+                      className="press text-ink-muted hover:text-ink flex items-center justify-between gap-3 text-sm"
+                    >
+                      <span>
+                        {t('dashboard.assetCount', '{n}টি সম্পদ — জমি, স্বর্ণ, পাওনা').replace(
+                          '{n}',
+                          String(rows.length),
+                        )}
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                    </Link>
+                  </li>,
+                ];
+              }
+
+              return [
+                header,
                 ...(cards.length > 1
                   ? [
                       <li
@@ -250,14 +300,19 @@ export default function DashboardPage() {
                         <span>
                           {t('dashboard.ofWhichCards', 'এর মধ্যে ক্রেডিট কার্ড')} ({cards.length})
                         </span>
-                        <Money minor={cardTotal} className="shrink-0" />
+                        <Money minor={cardTotal} signed colored className="shrink-0" />
                       </li>,
                     ]
                   : []),
                 ...rows.map((account) => (
                   <li key={account.id} className="flex items-center justify-between gap-3 py-1.5">
                     <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
-                    <Money minor={account.balanceMinor} className="shrink-0 text-sm" />
+                    <Money
+                      minor={account.balanceMinor}
+                      signed
+                      colored
+                      className="shrink-0 text-sm"
+                    />
                   </li>
                 )),
               ];

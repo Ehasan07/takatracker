@@ -85,6 +85,20 @@ const GROUP_LABELS: Record<(typeof TYPE_GROUPS)[number], string> = {
   liability: t('account.group.liability', 'দায়'),
 };
 
+/**
+ * A tint per group, and never the only signal.
+ *
+ * Green for what is held, red for what is owed, brass for what is owned but
+ * cannot be spent this month. The heading names the group in words and every
+ * figure carries its sign, because colour alone fails in sunlight and fails
+ * about one man in twelve outright.
+ */
+const GROUP_TINT: Record<(typeof TYPE_GROUPS)[number], string> = {
+  liquid: 'bg-income/10 text-income',
+  asset: 'bg-brass/10 text-brass',
+  liability: 'bg-expense/10 text-expense',
+};
+
 const groupLabel = (group: (typeof TYPE_GROUPS)[number]): string =>
   t(`account.group.${group}`, GROUP_LABELS[group]);
 
@@ -269,25 +283,25 @@ export default function AccountsPage() {
         {/* The headline is cash and cash equivalents alone — the only figure
             that answers "how much can I spend today". */}
         <p className="text-ink-muted text-sm">{t('account.total.liquid', 'হাতে ও ব্যাংকে')}</p>
-        <Money minor={subtotals.liquid} className="text-2xl font-semibold" />
+        <Money minor={subtotals.liquid} colored className="text-2xl font-semibold" />
 
         <dl className="text-ink-muted mt-3 flex flex-col gap-1 text-sm">
           <div className="flex items-center justify-between gap-3">
             <dt>{t('account.total.asset', 'সম্পদ (জমি, স্বর্ণ, পাওনা)')}</dt>
             <dd>
-              <Money minor={subtotals.asset} />
+              <Money minor={subtotals.asset} signed colored />
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt>{t('account.total.liability', 'দায় (কার্ড, ঋণ, দেনা)')}</dt>
             <dd>
-              <Money minor={subtotals.liability} />
+              <Money minor={subtotals.liability} signed colored />
             </dd>
           </div>
           <div className="border-rule text-ink flex items-center justify-between gap-3 border-t pt-1 font-medium">
             <dt>{t('account.total.net', 'নিট সম্পদ')}</dt>
             <dd>
-              <Money minor={netWorth} />
+              <Money minor={netWorth} signed colored />
             </dd>
           </div>
         </dl>
@@ -323,10 +337,14 @@ export default function AccountsPage() {
           {grouped.flatMap(([group, rows]) => [
             <li
               key={`head-${group}`}
-              className="border-rule bg-greenbar/40 text-ink-muted flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs font-medium"
+              className={`border-rule flex items-center justify-between gap-2 border-b px-3 py-2 text-xs font-medium ${GROUP_TINT[group]}`}
             >
               <span>{groupLabel(group)}</span>
-              <Money minor={rows.reduce((sum, a) => sum + a.balanceMinor, 0)} />
+              <Money
+                minor={rows.reduce((sum, a) => sum + a.balanceMinor, 0)}
+                signed
+                className="shrink-0"
+              />
             </li>,
             ...rows.map((account) => (
               <li

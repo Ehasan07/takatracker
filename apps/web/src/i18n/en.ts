@@ -152,6 +152,9 @@ export const EN: Record<string, string> = {
   'dashboard.group.asset': 'Assets',
   'dashboard.group.liability': 'Liabilities',
   'dashboard.ofWhichCards': 'of which credit cards',
+  /* IAS 1.60: current and non-current apart, so a reader can tell what turns
+     into cash soon from what does not. */
+  'dashboard.assetCount': '{n} assets — land, gold, receivables',
   'dashboard.spendingPower': 'Could spend today',
   'dashboard.undrawn': 'of which card headroom',
   'dashboard.undrawnHint':
