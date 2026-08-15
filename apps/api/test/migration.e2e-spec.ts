@@ -58,6 +58,7 @@ const WALLET_CATEGORIES = [
 interface Item {
   id: string;
   group: string | null;
+  isGroup: boolean;
   needs: string | null;
   needsComplete: boolean;
   kind: 'ACCOUNT' | 'CATEGORY';
@@ -156,7 +157,9 @@ describe('migration', () => {
     const batch = res.body as Batch;
 
     expect(batch.status).toBe('DRAFT');
-    expect(batch.counts).toMatchObject({ accounts: 3, categories: 4, created: 0 });
+    /* Four categories and the four groups they sit in — the groups are staged
+       too, because they are the parents and none of them exists here. */
+    expect(batch.counts).toMatchObject({ accounts: 3, categories: 8, created: 0 });
     expect(await ctx.prisma.account.count({ where: { workspaceId: user.workspaceId } })).toBe(
       before,
     );
@@ -366,7 +369,7 @@ describe('migration', () => {
       .send({ csv: edited });
     expect(back.status).toBe(200);
     expect(back.body.errors).toEqual([]);
-    expect(back.body.updated).toBe(7);
+    expect(back.body.updated).toBe(11);
 
     const after = (await detail(user, batch.id)).body as Batch;
     expect(find(after, 'w-cat-1').decision).toBe('SKIP');
@@ -564,6 +567,57 @@ describe('migration', () => {
     const refused = applied.items.filter((i) => !i.createdEntityId && i.skippedReason);
     expect(refused.length).toBe(6 - created);
     expect(refused[0]?.skippedReason).toBeTruthy();
+  });
+
+  it("brings the source's own groups across as parents, with the categories under them", async () => {
+    /* The other product keeps two levels — a group and the categories in it —
+       and none of the groups exists here. Without staging them too, a tree
+       somebody spent years arranging arrives as a flat list of 296 headings. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    /* One row per group, named after it. */
+    const groups = batch.items.filter((i) => i.sourceId.startsWith('group:'));
+    expect(groups.map((g) => g.sourceName).sort()).toEqual([
+      'Financial expenses',
+      'Food & Drinks',
+      'Income',
+      'Investments',
+    ]);
+    /* An income group is an income category, so its children can sit under it. */
+    expect(groups.find((g) => g.sourceName === 'Income')?.targetType).toBe('INCOME');
+    /* Marked, and filed under itself so it sits with the rows it holds. */
+    expect(groups.every((g) => g.isGroup)).toBe(true);
+    expect(groups.find((g) => g.sourceName === 'Income')?.group).toBe('Income');
+    expect(find(batch, 'w-cat-1').isGroup).toBe(false);
+
+    await apply(user, batch.id);
+
+    const groceries = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      include: { parent: true },
+    });
+    expect(groceries.parent?.name).toBe('Food & Drinks');
+    /* And the parent is a heading in its own right, not a child of anything. */
+    expect(groceries.parent?.parentId).toBeNull();
+  });
+
+  it('leaves a category standing on its own when its group was skipped', async () => {
+    /* The name is what somebody came for. A child whose parent was refused
+       becomes a heading rather than disappearing — a top-level category is a
+       thing they can move; a missing one is a thing they have to notice. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    const foodGroup = batch.items.find((i) => i.sourceName === 'Food & Drinks') as Item;
+    await decide(user, batch.id, foodGroup.id, { decision: 'SKIP' }).expect(200);
+
+    await apply(user, batch.id);
+
+    const groceries = await ctx.prisma.category.findFirstOrThrow({
+      where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+    });
+    expect(groceries.parentId).toBeNull();
   });
 
   it('puts a new category under an existing one when told to', async () => {

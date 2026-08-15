@@ -17,6 +17,8 @@ export interface MigrationItem {
   detail: string;
   /** The heading it had over there — what the bulk control works on. */
   group: string | null;
+  /** This row *is* that heading, staged so it can be the parent. */
+  isGroup: boolean;
   /** Which questions this row raises, if any, and whether they are answered. */
   needs: DetailKind | null;
   needsComplete: boolean;

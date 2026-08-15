@@ -55,6 +55,11 @@ export function DecisionRow({
       <div className="min-w-0 flex-1">
         <p className="text-ink truncate text-sm font-medium" title={item.sourceName}>
           {item.sourceName}
+          {/* Said on the row, because deciding a heading decides where a
+              hundred others end up. */}
+          {item.isGroup ? (
+            <span className="text-ink-muted ml-1.5 text-xs font-normal">— মূল খাত</span>
+          ) : null}
         </p>
         <p className="text-ink-muted truncate text-xs">
           {item.detail}

@@ -68,6 +68,8 @@ export interface MigrationItemView {
    * type. What makes deciding 296 rows a job of about ten decisions instead.
    */
   group: string | null;
+  /** This row *is* one of those headings, staged so it can be the parent. */
+  isGroup: boolean;
   /** Which questions this row raises, if any, and whether they are answered. */
   needs: DetailKind | null;
   needsComplete: boolean;
@@ -234,12 +236,17 @@ export class MigrationService {
       createdEntityKind: item.createdEntityKind,
       skippedReason: item.skippedReason,
       detail: bits.join(' · '),
+      /* A heading is filed under itself, so it sits with the rows it holds
+         rather than alone at the bottom of the list. */
       group:
-        typeof payload.group === 'string' && payload.group
-          ? payload.group
-          : typeof payload.sourceType === 'string' && payload.sourceType
-            ? payload.sourceType
-            : null,
+        payload.isGroup === true
+          ? item.sourceName
+          : typeof payload.group === 'string' && payload.group
+            ? payload.group
+            : typeof payload.sourceType === 'string' && payload.sourceType
+              ? payload.sourceType
+              : null,
+      isGroup: payload.isGroup === true,
       needs,
       needsComplete: needs === null || detailIsComplete(needs, targetDetail),
       targetDetail,
@@ -315,6 +322,40 @@ export class MigrationService {
       });
     }
 
+    /* The other product's groups are its categories' parents — thirteen of
+       them over 296 categories, and not one exists in this workspace. Staged
+       here as ordinary rows so the tree somebody spent years arranging arrives
+       intact instead of flattening into 296 headings.
+     *
+     * Their ids are `group:<name>` rather than anything the source gave,
+     * because a group is not a category over there and has no id of its own. */
+    const groupRows = new Map<string, { name: string; kind: 'INCOME' | 'EXPENSE' }>();
+    for (const category of categories) {
+      const groupName = (category.group?.name ?? '').trim();
+      if (!groupName) continue;
+      const kind = categoryKindOf(category.group?.name);
+      /* Keyed by name *and* kind: a group holding both income and spending
+         cannot be one category here, because a parent's kind must match its
+         children's. */
+      groupRows.set(`${kind}:${groupName}`, { name: groupName, kind });
+    }
+
+    for (const [key, group] of groupRows) {
+      const match = categoryByName.get(normalise(group.name));
+      items.push({
+        workspaceId,
+        kind: 'CATEGORY',
+        sourceId: `group:${key}`,
+        sourceName: group.name,
+        /* Sorted above its children by the count of what it holds. */
+        usageCount: 0,
+        decision: match ? 'MERGE' : 'CREATE',
+        targetType: group.kind,
+        targetId: match ?? null,
+        sourcePayload: { group: null, isGroup: true },
+      });
+    }
+
     for (const category of categories) {
       const name = (category.name ?? '').trim() || 'নামহীন খাত';
       const match = categoryByName.get(normalise(name));
@@ -333,6 +374,13 @@ export class MigrationService {
         decision,
         targetType: categoryKindOf(category.group?.name),
         targetId: decision === 'MERGE' ? (match ?? null) : null,
+        /* The row that will become this one's parent, if the group produced
+           one. Cleared by the screen the moment somebody chooses a different
+           parent, so it is a starting point rather than a rule. */
+        parentSourceId:
+          decision === 'CREATE' && category.group?.name
+            ? `group:${categoryKindOf(category.group?.name)}:${category.group.name.trim()}`
+            : null,
         sourcePayload: {
           group: category.group?.name ?? null,
           custom: category.customCategory === true,
@@ -731,7 +779,19 @@ export class MigrationService {
       orderBy: [{ kind: 'asc' }, { usageCount: 'desc' }],
     });
 
-    for (const item of items) {
+    /* A row that is somebody's parent goes first, because a child resolves its
+       parent by looking for the row it already created. Sorting is enough —
+       the tree is two deep by the product's own rule, so no parent has a
+       parent and one pass cannot be out of order. */
+    const isParent = new Set(
+      items.map((item) => item.parentSourceId).filter((id): id is string => Boolean(id)),
+    );
+    const ordered = [
+      ...items.filter((item) => isParent.has(item.sourceId)),
+      ...items.filter((item) => !isParent.has(item.sourceId)),
+    ];
+
+    for (const item of ordered) {
       if (item.createdEntityId) continue;
       try {
         await this.applyOne(workspaceId, item, timezone);
@@ -772,6 +832,8 @@ export class MigrationService {
       decision: string;
       targetType: string | null;
       targetId: string | null;
+      parentSourceId: string | null;
+      batchId: string;
       sourcePayload: Prisma.JsonValue;
       targetDetail: Prisma.JsonValue;
     },
@@ -956,14 +1018,40 @@ export class MigrationService {
       return;
     }
 
+    /* A parent staged in this same batch: whatever it turned into, a moment
+       ago, in this same loop. `MERGE` counts — a group folded into an existing
+       category is still where its children belong — so the merge target is
+       read as readily as a created id. */
+    let parentId = item.targetId;
+    if (!parentId && item.parentSourceId) {
+      const staged = await this.prisma.migrationItem.findFirst({
+        where: { batchId: item.batchId, workspaceId, sourceId: item.parentSourceId },
+        select: { createdEntityId: true, createdEntityKind: true, targetId: true, decision: true },
+      });
+      const fromStaged =
+        staged?.createdEntityKind === 'Category'
+          ? staged.createdEntityId
+          : staged?.decision === 'MERGE'
+            ? staged.targetId
+            : null;
+      if (!fromStaged) {
+        /* The group was skipped, or failed. Its children become headings of
+           their own rather than disappearing — the name is what the person
+           came for, and a top-level category is a thing they can move. */
+        parentId = null;
+      } else {
+        parentId = fromStaged;
+      }
+    }
+
     /* Re-checked rather than trusted: the parent was valid when it was chosen,
        and a category deleted in between would otherwise put this one at the top
        level without anybody being told the shape had changed. Refusing the row
        is the honest answer — it can be made by hand, and a wrong place in the
        tree is the kind of thing nobody notices for a year. */
-    if (item.targetId) {
+    if (parentId) {
       const parent = await this.prisma.category.findFirst({
-        where: { id: item.targetId, workspaceId, deletedAt: null },
+        where: { id: parentId, workspaceId, deletedAt: null },
         select: { kind: true, parentId: true },
       });
       const usable = parent && !parent.parentId && parent.kind === (item.targetType ?? parent.kind);
@@ -979,7 +1067,7 @@ export class MigrationService {
         name: item.sourceName,
         nameBn: item.sourceName,
         kind: item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE',
-        parentId: item.targetId,
+        parentId,
       },
     });
     await done({ createdEntityId: created.id, createdEntityKind: 'Category', skippedReason: null });

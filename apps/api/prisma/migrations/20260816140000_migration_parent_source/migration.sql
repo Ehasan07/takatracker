@@ -1,0 +1,12 @@
+-- A staged row may be the parent of another staged row.
+--
+-- The other product keeps two levels: a group, and the categories inside it.
+-- Every one of the owner's 296 categories sits under one of thirteen groups,
+-- and not one of those groups exists in this workspace. Pointing a child at an
+-- existing category (targetId) therefore cannot express what was there; the
+-- parent has to be created by the same batch, immediately before its children.
+--
+-- It holds the parent's `sourceId`, not its row id: both rows are written in
+-- one createMany, which cannot know the ids it is about to generate. Apply
+-- resolves the sibling by source id and reports a parent it cannot find.
+ALTER TABLE "MigrationItem" ADD COLUMN IF NOT EXISTS "parentSourceId" TEXT;

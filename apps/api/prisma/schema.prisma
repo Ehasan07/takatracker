@@ -521,8 +521,17 @@ model MigrationItem {
   decision    String @default("CREATE")
   /// For an account: which `AccountType`. Guessed from the source, overridable.
   targetType  String?
-  /// For `MERGE`: the existing row to fold this into.
+  /// For `MERGE`: the existing row to fold this into. For a category being
+  /// created: the existing category it sits under.
   targetId    String?
+  /// …or the `sourceId` of another row in this same batch, when the parent is
+  /// itself being created here. The other product's groups are its categories'
+  /// parents, and none of the thirteen exists in this workspace yet — so the
+  /// parent is staged alongside the children and created just before them.
+  ///
+  /// A source id rather than a row id because both are written in one
+  /// `createMany`, which cannot know the ids it is about to generate.
+  parentSourceId String?
   /// What the source could not tell us and the entity cannot do without: a
   /// credit card's statement and due days, a DPS's instalment, term and rate, a
   /// policy's premium. Filled in on the draft rather than after applying,

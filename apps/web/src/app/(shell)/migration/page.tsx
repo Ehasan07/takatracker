@@ -654,7 +654,12 @@ function ItemList({
       const key = item.group ?? '';
       byGroup.set(key, [...(byGroup.get(key) ?? []), item]);
     }
-    return [...byGroup.entries()];
+    /* The heading itself first inside its own group — it is the row the others
+       point at, and deciding it after them reads backwards. */
+    return [...byGroup.entries()].map(
+      ([key, rows]) =>
+        [key, [...rows.filter((r) => r.isGroup), ...rows.filter((r) => !r.isGroup)]] as const,
+    );
   }, [items]);
 
   if (items.length === 0) return null;
