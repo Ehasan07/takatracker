@@ -734,7 +734,41 @@ export class MigrationService {
       return;
     }
 
-    // ---- categories, and the two things a category can turn out to be
+    // ---- categories, and the three things a category can turn out to be
+
+    if (item.decision === 'LIABILITY') {
+      /* An account, not a loan record. A `Loan` posts a disbursement
+         transaction, and this knows neither the principal nor which account
+         the money moved through — writing one would be inventing entries in
+         somebody's books. An account of the right type puts the debt on the
+         balance sheet with nothing made up, and the loan proper can be
+         recorded later against it. */
+      const clashing = await this.prisma.account.findFirst({
+        where: { workspaceId, deletedAt: null, name: item.sourceName },
+        select: { id: true },
+      });
+      if (clashing) {
+        await done({ skippedReason: 'একই নামে অ্যাকাউন্ট আগে থেকেই আছে' });
+        return;
+      }
+      await this.entitlements.assertWithinLimit(workspaceId, 'accounts.max', timezone);
+
+      const created = await this.prisma.account.create({
+        data: {
+          workspaceId,
+          name: item.sourceName,
+          type: 'LIABILITY',
+          currency: 'BDT',
+          openingBalance: BigInt(0),
+        },
+      });
+      await done({
+        createdEntityId: created.id,
+        createdEntityKind: 'Account',
+        skippedReason: null,
+      });
+      return;
+    }
 
     if (item.decision === 'SAVINGS') {
       /* Whatever was filled in on the draft, and nothing at all where it was

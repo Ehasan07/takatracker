@@ -74,6 +74,10 @@ export function detailKindOf(
   }
   if (decision === 'SAVINGS') return 'SAVINGS';
   if (decision === 'INSURANCE') return 'INSURANCE';
+  /* `LIABILITY` raises nothing. It becomes an account, and no account brings a
+     balance across — Wallet's figure is today's, not the opening one, and
+     importing it as an opening balance would double-count the history. The
+     amount still owed is typed on the account screen like every other. */
   return null;
 }
 

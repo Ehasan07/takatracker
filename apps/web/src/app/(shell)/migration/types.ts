@@ -58,6 +58,7 @@ export const DECISION_LABELS: Record<MigrationDecision, string> = {
   MERGE: 'আগেরটার সাথে মেলাও',
   SAVINGS: 'সঞ্চয়/ডিপিএস হিসেবে',
   INSURANCE: 'বীমা হিসেবে',
+  LIABILITY: 'দায় হিসেবে (যে টাকা আমি দেব)',
   SKIP: 'বাদ দাও',
 };
 

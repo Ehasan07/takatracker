@@ -164,7 +164,14 @@ describe('the sample file', () => {
     /* The columns are obvious; the *values* are not. If a decision stops being
        demonstrated, somebody meets it for the first time on their own data. */
     const decisions = new Set(sampleMigrationRows().map((row) => row.decision));
-    expect([...decisions].sort()).toEqual(['CREATE', 'INSURANCE', 'MERGE', 'SAVINGS', 'SKIP']);
+    expect([...decisions].sort()).toEqual([
+      'CREATE',
+      'INSURANCE',
+      'LIABILITY',
+      'MERGE',
+      'SAVINGS',
+      'SKIP',
+    ]);
   });
 
   it('carries the card dates and the DPS figures through', () => {

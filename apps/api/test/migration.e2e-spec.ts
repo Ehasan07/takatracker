@@ -565,6 +565,46 @@ describe('migration', () => {
     expect(refused[0]?.skippedReason).toBeTruthy();
   });
 
+  it('turns a category that is really a debt into a liability account', async () => {
+    /* "ALICO LOAN" was a category in the other product because a category was
+       the only shape it had. Left as one, every repayment reads as an expense
+       and the debt itself appears on no balance sheet.
+
+       It becomes an account, not a `Loan`: a loan posts a disbursement
+       transaction, and nothing here knows the principal or which account the
+       money moved through. An account of the right type puts the debt where it
+       belongs with nothing invented. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    /* The three account rows are skipped first: they would otherwise fill the
+       plan's account ceiling before the categories are reached, and this test
+       is about the decision, not the limit — which has a test of its own. */
+    for (const sourceId of ['w-acc-1', 'w-acc-2', 'w-acc-3']) {
+      await decide(user, batch.id, find(batch, sourceId).id, { decision: 'SKIP' }).expect(200);
+    }
+
+    await decide(user, batch.id, find(batch, 'w-cat-1').id, { decision: 'LIABILITY' }).expect(200);
+    /* Nothing further is asked of it — no account brings a balance across. */
+    const staged = (await detail(user, batch.id)).body as Batch;
+    expect(find(staged, 'w-cat-1').needs).toBeNull();
+
+    await apply(user, batch.id);
+
+    const account = await ctx.prisma.account.findFirst({
+      where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+    });
+    expect(account?.type).toBe('LIABILITY');
+    expect(Number(account?.openingBalance)).toBe(0);
+
+    /* And it is not also a category. */
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
   it('lets a row be told to merge before what it merges into is chosen', async () => {
     /* Refusing this was a deadlock: the control for choosing a target only
        appears once the row is a merge, so demanding the target at the moment

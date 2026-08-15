@@ -39,6 +39,15 @@ export const MIGRATION_DECISIONS = [
   'SAVINGS',
   /** …or an insurance policy. */
   'INSURANCE',
+  /**
+   * …or money owed, which is not a spending head at all.
+   *
+   * A policy loan, a car loan, a balance carried on a card the other product
+   * had no account for — recorded there as a category because a category was
+   * the only shape available. Left as one, every repayment reads as an expense
+   * and the debt itself appears nowhere on the balance sheet.
+   */
+  'LIABILITY',
   /** Leave it behind. */
   'SKIP',
 ] as const;
@@ -469,6 +478,17 @@ export function sampleMigrationRows(): MigrationRow[] {
     {
       kind: 'CATEGORY',
       sourceId: 'c-5',
+      name: 'গাড়ির ঋণ',
+      usageCount: 0,
+      decision: 'LIABILITY',
+      targetType: '',
+      mergeInto: '',
+      note: 'যে টাকা আপনি দেবেন — LIABILITY দিলে দায়ের অ্যাকাউন্ট তৈরি হবে, খাত নয়',
+      detail: null,
+    },
+    {
+      kind: 'CATEGORY',
+      sourceId: 'c-6',
       name: 'পুরনো একটা খাত',
       usageCount: 0,
       decision: 'SKIP',
