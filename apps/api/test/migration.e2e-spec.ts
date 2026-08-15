@@ -323,6 +323,73 @@ describe('migration', () => {
     ).toBeTruthy();
   });
 
+  it('approves a few rows now and keeps the rest open', async () => {
+    /* 312 categories is not one sitting. A batch that could only be approved
+       whole meant either finishing every row first or approving rows nobody
+       had looked at. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+
+    const first = find(batch, 'w-cat-1');
+    const res = await ctx
+      .http()
+      .post(`/v1/migration/batches/${batch.id}/apply`)
+      .set(auth(user))
+      .send({ itemIds: [first.id] });
+    expect(res.status).toBe(200);
+
+    const after = res.body as Batch;
+    /* Still a draft: there is work left in it. */
+    expect(after.status).toBe('DRAFT');
+    expect(find(after, 'w-cat-1').createdEntityId).toBeTruthy();
+    expect(find(after, 'w-cat-4').createdEntityId).toBeNull();
+
+    /* The rest can still be decided, and approved later. */
+    await decide(user, batch.id, find(after, 'w-cat-4').id, { decision: 'SKIP' }).expect(200);
+    const rest = (await apply(user, batch.id)).body as Batch;
+    expect(find(rest, 'w-cat-4').skippedReason).toBeTruthy();
+    /* And a second pass does not create the first row again. */
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      }),
+    ).toBe(1);
+  });
+
+  it('takes back what a part-approved draft created', async () => {
+    /* Rollback is about what was created, not what state the batch is in — a
+       batch approved a group at a time is still a draft. */
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    const row = find(batch, 'w-cat-1');
+
+    await ctx
+      .http()
+      .post(`/v1/migration/batches/${batch.id}/apply`)
+      .set(auth(user))
+      .send({ itemIds: [row.id] })
+      .expect(200);
+
+    const undone = await rollback(user, batch.id);
+    expect(undone.status).toBe(200);
+    expect(undone.body.removed).toBe(1);
+
+    /* Back to a plain draft, because there is still work in it. */
+    const after = (await detail(user, batch.id)).body as Batch;
+    expect(after.status).toBe('DRAFT');
+    expect(
+      await ctx.prisma.category.count({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it('refuses a rollback when nothing was ever created', async () => {
+    const user = await allowedUser();
+    const batch = (await pull(user)).body as Batch;
+    expect((await rollback(user, batch.id)).status).toBe(400);
+  });
+
   it('applies twice without doubling anything', async () => {
     const user = await allowedUser();
     const batch = (await pull(user)).body as Batch;

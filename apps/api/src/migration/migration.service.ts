@@ -778,16 +778,33 @@ export class MigrationService {
 
   // ------------------------------------------------------------------ apply
 
+  /**
+   * Create what the decisions say — all of it, or only the rows named.
+   *
+   * Partial on purpose. 312 categories is not a thing anybody decides in one
+   * sitting, and a batch that could only be approved whole meant either
+   * finishing every row before getting anything, or approving rows nobody had
+   * looked at. Approving a group at a time is how the work actually goes.
+   *
+   * The batch stays a draft while anything is left, so the rest can be decided
+   * and approved later — and rollback keeps working throughout, because what it
+   * undoes is what was created, not what state the batch is in.
+   */
   async apply(
     workspaceId: string,
     userId: string,
     batchId: string,
     timezone: string,
+    itemIds?: readonly string[],
   ): Promise<BatchDetail> {
     const batch = await this.requireBatch(workspaceId, batchId, 'DRAFT');
 
     const items = await this.prisma.migrationItem.findMany({
-      where: { batchId: batch.id, workspaceId },
+      where: {
+        batchId: batch.id,
+        workspaceId,
+        ...(itemIds && itemIds.length > 0 ? { id: { in: [...itemIds] } } : {}),
+      },
       /* Accounts before categories. Nothing here depends on that today, but a
          later phase that imports records does, and the order costs nothing. */
       orderBy: [{ kind: 'asc' }, { usageCount: 'desc' }],
@@ -820,9 +837,24 @@ export class MigrationService {
       }
     }
 
+    /* Finished only when nothing is left to do. A row counts as handled once it
+       has been created or has said why it was not; anything else is still
+       waiting for a person, and closing the batch over it would strand it. */
+    const outstanding = await this.prisma.migrationItem.count({
+      where: {
+        batchId: batch.id,
+        workspaceId,
+        createdEntityId: null,
+        OR: [{ skippedReason: null }, { skippedReason: '' }],
+      },
+    });
+
     await this.prisma.migrationBatch.update({
       where: { id: batch.id },
-      data: { status: 'APPLIED', appliedAt: new Date() },
+      data:
+        outstanding === 0
+          ? { status: 'APPLIED', appliedAt: new Date() }
+          : { appliedAt: new Date() },
     });
 
     const applied = await this.detail(workspaceId, batch.id);
@@ -1107,10 +1139,22 @@ export class MigrationService {
     userId: string,
     batchId: string,
   ): Promise<{ removed: number; kept: { name: string; reason: string }[] }> {
-    const batch = await this.requireBatch(workspaceId, batchId, 'APPLIED');
+    /* Not `requireBatch(… 'APPLIED')`: a batch approved a group at a time is
+       still a draft, and what rollback undoes is what was created — the status
+       is beside the point. A batch that created nothing has nothing to undo. */
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      select: { id: true, status: true },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+    if (batch.status === 'ROLLED_BACK') {
+      throw new BadRequestException('এটি আগেই ফিরিয়ে নেওয়া হয়েছে');
+    }
+
     const items = await this.prisma.migrationItem.findMany({
       where: { batchId: batch.id, workspaceId, NOT: { createdEntityId: null } },
     });
+    if (items.length === 0) throw new BadRequestException('ফিরিয়ে নেওয়ার মতো কিছু তৈরি হয়নি');
 
     const kept: { name: string; reason: string }[] = [];
     let removed = 0;
@@ -1140,9 +1184,14 @@ export class MigrationService {
       });
     }
 
+    /* A draft that had a group approved goes back to being a draft — there is
+       still work in it. Only a finished batch becomes ROLLED_BACK. */
     await this.prisma.migrationBatch.update({
       where: { id: batch.id },
-      data: { status: 'ROLLED_BACK', rolledBackAt: now },
+      data:
+        batch.status === 'APPLIED'
+          ? { status: 'ROLLED_BACK', rolledBackAt: now }
+          : { rolledBackAt: now },
     });
 
     this.audit.emit({

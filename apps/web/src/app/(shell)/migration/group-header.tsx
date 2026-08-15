@@ -1,8 +1,9 @@
 'use client';
 
 import type { MigrationDecision } from '@hishab/core';
-import { Layers } from 'lucide-react';
+import { Check, Layers } from 'lucide-react';
 import * as React from 'react';
+import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/field';
 import { DECISION_LABELS } from './types';
 
@@ -27,6 +28,8 @@ export function GroupHeader({
   parents,
   disabled,
   onApply,
+  onCreateNow,
+  pending,
 }: {
   group: string;
   count: number;
@@ -34,6 +37,10 @@ export function GroupHeader({
   parents: { id: string; name: string }[];
   disabled: boolean;
   onApply: (patch: { decision?: MigrationDecision; targetId?: string | null }) => void;
+  /** Create this group's rows now and leave the rest of the batch open. */
+  onCreateNow?: () => void;
+  /** How many of them are still waiting to be created. */
+  pending: number;
 }) {
   const [decision, setDecision] = React.useState<MigrationDecision | ''>('');
 
@@ -83,6 +90,21 @@ export function GroupHeader({
               </option>
             ))}
           </Select>
+        ) : null}
+
+        {/* 312 rows is not one sitting. A group decided is a group worth
+            keeping, and the batch stays open for the rest. */}
+        {onCreateNow && pending > 0 ? (
+          <Button variant="ghost" disabled={disabled} onClick={onCreateNow}>
+            <Check className="h-4 w-4" aria-hidden />
+            এই {pending}টা এখনই তৈরি করুন
+          </Button>
+        ) : null}
+        {pending === 0 ? (
+          <span className="text-income inline-flex items-center gap-1 px-2 text-xs">
+            <Check className="h-3.5 w-3.5" aria-hidden />
+            তৈরি হয়ে গেছে
+          </span>
         ) : null}
       </div>
     </li>

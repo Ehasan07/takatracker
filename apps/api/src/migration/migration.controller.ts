@@ -76,6 +76,12 @@ const bulkDecisionSchema = decisionSchema.extend({
 });
 export type BulkDecisionInput = z.infer<typeof bulkDecisionSchema>;
 
+const applySchema = z.object({
+  /** Absent means the whole batch. */
+  itemIds: z.array(cuid).min(1).max(1000).optional(),
+});
+export type ApplyInput = z.infer<typeof applySchema>;
+
 const csvSchema = z.object({
   /* Two hundred rows of Bengali names with a BOM. A megabyte is far more than
      that and far less than something worth streaming. */
@@ -172,10 +178,21 @@ export class MigrationController {
     return this.migration.fromCsv(user.workspaceId, id, body.csv);
   }
 
+  /**
+   * Create what the decisions say.
+   *
+   * With `itemIds`, only those rows — 312 categories is not a thing anybody
+   * decides in one sitting, and approving a group at a time is how the work
+   * actually goes. Without it, everything.
+   */
   @Post('batches/:id/apply')
   @HttpCode(200)
-  apply(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.migration.apply(user.workspaceId, user.id, id, user.timezone);
+  apply(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(applySchema)) body: ApplyInput,
+  ) {
+    return this.migration.apply(user.workspaceId, user.id, id, user.timezone, body.itemIds);
   }
 
   @Post('batches/:id/rollback')

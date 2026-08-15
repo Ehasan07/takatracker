@@ -50,6 +50,10 @@ export function DecisionRow({
   const [editing, setEditing] = React.useState(false);
   const shownName = item.targetName?.trim() || item.sourceName;
   const isAccount = item.kind === 'ACCOUNT';
+  /* Already in the books. Its controls are frozen because changing a decision
+     that has been carried out would say something untrue about what happened. */
+  const done = Boolean(item.createdEntityId);
+  const frozen = disabled || done;
   /* An account is never a savings plan or a policy: those two exist to rescue a
      *category* that was standing in for one. Offering them here would invite a
      bank account to become a DPS record with no balance. */
@@ -85,7 +89,7 @@ export function DecisionRow({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            disabled={disabled}
+            disabled={frozen}
             className="group flex w-full items-center gap-1.5 text-left"
           >
             <span className="text-ink truncate text-sm font-medium" title={item.sourceName}>
@@ -102,6 +106,12 @@ export function DecisionRow({
             />
           </button>
         )}
+
+        {done ? (
+          <p className="text-income text-xs">✓ তৈরি হয়ে গেছে</p>
+        ) : item.skippedReason ? (
+          <p className="text-ink-muted text-xs">{item.skippedReason}</p>
+        ) : null}
 
         {/* The name it arrived with, once it is no longer the name it will get —
             so a row stays recognisable against the other product. */}
@@ -121,7 +131,7 @@ export function DecisionRow({
           <button
             type="button"
             onClick={onAskDetail}
-            disabled={disabled}
+            disabled={frozen}
             className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
               item.needs === 'CATEGORY'
                 ? 'text-ink-muted border-rule border'
@@ -158,7 +168,7 @@ export function DecisionRow({
           <Select
             aria-label={`${item.sourceName} — কোনটার সাথে`}
             value={item.targetId ?? ''}
-            disabled={disabled}
+            disabled={frozen}
             /* Marked while it is empty. Choosing "মেলাও" and choosing what to
                merge into are two separate acts, and a row left between them
                does nothing at all when the batch is applied. */
@@ -182,7 +192,7 @@ export function DecisionRow({
           <Select
             aria-label={`${item.sourceName} — কার নিচে`}
             value={item.targetId ?? ''}
-            disabled={disabled}
+            disabled={frozen}
             onChange={(e) => onChange({ targetId: e.target.value })}
           >
             <option value="">নিজেই একটা খাত</option>
@@ -198,7 +208,7 @@ export function DecisionRow({
           <Select
             aria-label={`${item.sourceName} — ধরন`}
             value={item.targetType ?? 'BANK'}
-            disabled={disabled}
+            disabled={frozen}
             onChange={(e) => onChange({ targetType: e.target.value })}
           >
             {ACCOUNT_TYPES.map((type) => (

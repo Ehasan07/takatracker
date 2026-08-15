@@ -155,10 +155,11 @@ export default function MigrationPage() {
   });
 
   const apply = useMutation({
-    mutationFn: () =>
+    /* No ids means the whole batch; a group's own button sends its rows. */
+    mutationFn: (itemIds?: string[]) =>
       api<MigrationBatchDetail>(`/migration/batches/${current?.id}/apply`, {
         method: 'POST',
-        body: {},
+        body: itemIds ? { itemIds } : {},
       }),
     onSuccess: async () => {
       haptic('success');
@@ -541,10 +542,11 @@ export default function MigrationPage() {
             onChange={(itemId, patch) => decide.mutate({ itemId, patch })}
             onAskDetail={setAskingId}
             onApplyGroup={(itemIds, patch) => decideMany.mutate({ itemIds, patch })}
+            onCreateGroup={(itemIds) => apply.mutate(itemIds)}
           />
 
           <section className="rounded-card border-rule bg-surface flex flex-wrap items-center gap-3 border p-4">
-            <Button onClick={() => apply.mutate()} disabled={busy}>
+            <Button onClick={() => apply.mutate(undefined)} disabled={busy}>
               {apply.isPending ? 'তৈরি হচ্ছে…' : 'অনুমোদন করে তৈরি করুন'}
             </Button>
 
@@ -629,6 +631,7 @@ function ItemList({
   onChange,
   onAskDetail,
   onApplyGroup,
+  onCreateGroup,
 }: {
   title: string;
   items: MigrationItem[];
@@ -647,6 +650,7 @@ function ItemList({
     itemIds: string[],
     patch: { decision?: MigrationDecision; targetId?: string | null },
   ) => void;
+  onCreateGroup?: (itemIds: string[]) => void;
 }) {
   /* Kept in the order the API sent them, so a group's rows stay together and
      the busiest still come first inside it. */
@@ -687,6 +691,12 @@ function ItemList({
                     rows.map((row) => row.id),
                     patch,
                   )
+                }
+                pending={rows.filter((r) => !r.createdEntityId && !r.skippedReason).length}
+                onCreateNow={
+                  onCreateGroup
+                    ? () => onCreateGroup(rows.filter((r) => !r.createdEntityId).map((r) => r.id))
+                    : undefined
                 }
               />
             ) : null}
