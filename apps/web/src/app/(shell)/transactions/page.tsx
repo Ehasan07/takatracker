@@ -16,6 +16,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { addDays, startOfMonth, toLocalDateString } from '@hishab/shared';
 import { AttachmentPicker } from '@/components/attachment-picker';
+import { CategoryOptions } from '@/components/category-options';
 import {
   AttachmentBadge,
   AttachmentViewer,
@@ -427,7 +428,7 @@ function TransactionsScreen() {
         filters={filters}
         setFilters={setFilters}
         accounts={accounts.data ?? []}
-        categories={categories.data ?? []}
+        categories={categories.data}
         tags={tags.data ?? []}
         activeCount={activeCount}
         panelOpen={panelOpen}
@@ -683,7 +684,10 @@ function FilterBar({
   filters: FilterState;
   setFilters: (patch: Partial<FilterState>) => void;
   accounts: AccountDto[];
-  categories: CategoryDto[];
+  /* `query.data`, not `?? []`: a fresh array literal on every render of this
+     screen would re-group and re-sort three hundred categories on every
+     keystroke in the search box above. */
+  categories: CategoryDto[] | undefined;
   tags: TagDto[];
   activeCount: number;
   panelOpen: boolean;
@@ -753,7 +757,7 @@ function FilterBar({
     list.find((row) => row.id === id)?.name ?? id;
 
   const categoryName = (id: string): string => {
-    const hit = categories.find((c) => c.id === id);
+    const hit = categories?.find((c) => c.id === id);
     return hit ? displayNameOf(hit) : id;
   };
 
@@ -882,11 +886,11 @@ function FilterBar({
             onChange={(e) => setFilters({ categoryId: e.target.value })}
           >
             <option value="">{t('txn.allCategories', 'সব ক্যাটাগরি')}</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {displayNameOf(c)}
-              </option>
-            ))}
+            {/* `ALL`, and this is the only control in the app allowed to say
+                so: a filter is not filing anything, so restricting it to one
+                kind would make half the ledger unreachable from here. The
+                grouping is what makes three hundred rows navigable. */}
+            <CategoryOptions categories={categories} kind="ALL" />
           </Select>
         </Field>
         {/* Only when there are tags to choose from. An empty dropdown next to

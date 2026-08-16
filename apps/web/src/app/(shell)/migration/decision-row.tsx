@@ -3,7 +3,10 @@
 import type { MigrationDecision } from '@hishab/core';
 import { CircleAlert, Pencil } from 'lucide-react';
 import * as React from 'react';
+import { CategoryOptions } from '@/components/category-options';
 import { Input, Select } from '@/components/ui/field';
+import type { CategoryDto } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { ACCOUNT_TYPES, DECISION_LABELS, type MigrationItem } from './types';
 
 /**
@@ -24,14 +27,25 @@ import { ACCOUNT_TYPES, DECISION_LABELS, type MigrationItem } from './types';
 export function DecisionRow({
   item,
   targets,
+  categoryTargets,
   parents,
   disabled,
   onChange,
   onAskDetail,
 }: {
   item: MigrationItem;
-  /** What this row could be merged into — accounts or categories, already filtered. */
-  targets: { id: string; name: string }[];
+  /** What an account row could be merged into. Flat: accounts have no tree. */
+  targets?: { id: string; name: string }[];
+  /**
+   * Every category in the workspace — what a category row could be merged into.
+   *
+   * Whole rather than flattened, because this is the screen that turns a
+   * twelve-category workspace into a three-hundred-category one, and a flat
+   * alphabetical three hundred is where "Air Filter" sits between "Abir
+   * CCJ-01973689593" and "Alarm" with nothing saying it belongs under
+   * যাতায়াত. `CategoryOptions` needs the parent links to say so.
+   */
+  categoryTargets?: readonly CategoryDto[];
   /** Top-level categories of this row's kind — what it could sit under. */
   parents?: { id: string; name: string }[];
   disabled: boolean;
@@ -47,6 +61,7 @@ export function DecisionRow({
      product's English heading over 68 rows and these books are kept in Bengali.
      Renaming after approval means creating the wrong name first and finding it
      again on another screen — thirteen times. */
+  const { name: displayName } = useDisplayName();
   const [editing, setEditing] = React.useState(false);
   const shownName = item.targetName?.trim() || item.sourceName;
   const isAccount = item.kind === 'ACCOUNT';
@@ -60,6 +75,22 @@ export function DecisionRow({
   const choices: MigrationDecision[] = isAccount
     ? ['CREATE', 'MERGE', 'LATER', 'SKIP']
     : ['CREATE', 'MERGE', 'SAVINGS', 'INSURANCE', 'LIABILITY', 'PERSON', 'LATER', 'SKIP'];
+  /* Which half of the books this row belongs to. Same default the parent picker
+     and the server both take when the staged row never said. */
+  const mergeKind = item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE';
+
+  /* A target the kind-filtered list will not contain.
+   *
+   * Staging matches an imported name against existing categories by name and
+   * nothing else, so a খরচ row can arrive already pointed at বাড়ি ভাড়া the
+   * *income* category. Silently dropping it from the list would show an empty
+   * box over a decision that has in fact been made, and the apply would still
+   * carry it out. So it is shown, and it says which side it is on — which is
+   * also the first time anybody gets told the match was wrong. */
+  const offSideTarget =
+    !isAccount && item.targetId
+      ? (categoryTargets ?? []).find((c) => c.id === item.targetId && c.kind !== mergeKind)
+      : undefined;
 
   return (
     <li className="border-rule flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-3">
@@ -176,11 +207,28 @@ export function DecisionRow({
             onChange={(e) => onChange({ targetId: e.target.value })}
           >
             <option value="">কোনটার সাথে? বেছে নিন…</option>
-            {targets.map((target) => (
-              <option key={target.id} value={target.id}>
-                {target.name}
-              </option>
-            ))}
+            {isAccount ? (
+              (targets ?? []).map((target) => (
+                <option key={target.id} value={target.id}>
+                  {target.name}
+                </option>
+              ))
+            ) : (
+              <>
+                {offSideTarget ? (
+                  <option value={offSideTarget.id}>
+                    {displayName(offSideTarget)} —{' '}
+                    {offSideTarget.kind === 'INCOME' ? 'আয়ের খাত' : 'খরচের খাত'}
+                  </option>
+                ) : null}
+                {/* This row's own side of the books and no other. An income
+                    category folded into an expense one is a merge that no
+                    report could ever explain, and the other product already
+                    told us which side this row is — its own "Income" heading is
+                    where `targetType` came from, so it is a fact, not a guess. */}
+                <CategoryOptions categories={categoryTargets} kind={mergeKind} />
+              </>
+            )}
           </Select>
         ) : null}
 

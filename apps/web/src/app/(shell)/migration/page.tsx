@@ -22,7 +22,8 @@ import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
-import { ApiError, api, endpoints } from '@/lib/api';
+import { ApiError, api, endpoints, type CategoryDto } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { useMigrationAllowed } from './access';
 import { DecisionRow } from './decision-row';
@@ -110,6 +111,7 @@ export default function MigrationPage() {
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
+  const { name: display, compare } = useDisplayName();
 
   const refresh = React.useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['migration'] });
@@ -277,24 +279,29 @@ export default function MigrationPage() {
     () => (accounts.data ?? []).map((a) => ({ id: a.id, name: a.name })),
     [accounts.data],
   );
-  const categoryTargets = React.useMemo(
-    () => (categories.data ?? []).map((c) => ({ id: c.id, name: c.nameBn ?? c.name })),
-    [categories.data],
-  );
+  /* Handed down whole rather than flattened to `{id, name}` the way the account
+     list is. A merge target has to be shown inside the খাত it belongs to — this
+     screen is where a workspace acquires three hundred of them, and it is the
+     one list where "Air Filter" and "Alarm" sitting side by side with nothing
+     saying one is a যাতায়াত part is actually unusable. `CategoryOptions` needs
+     the parent links to do that, so it gets the rows. */
+  const categoryTargets = categories.data;
 
   /* Only top-level ones, and split by kind: the product allows two levels, and
-     a sub-category's parent has to be income where it is income. */
+     a sub-category's parent has to be income where it is income. Flat on
+     purpose — every row here is already a parent, so there is no tree to show
+     — but named and sorted the way the rest of the app names and sorts a
+     category, which `nameBn ?? name` was not: that is "always Bengali", and on
+     an English workspace it made this the one screen still in Bengali. */
   const parentsByKind = React.useMemo(() => {
     const top = (categories.data ?? []).filter((c) => !c.parentId);
-    return {
-      INCOME: top
-        .filter((c) => c.kind === 'INCOME')
-        .map((c) => ({ id: c.id, name: c.nameBn ?? c.name })),
-      EXPENSE: top
-        .filter((c) => c.kind === 'EXPENSE')
-        .map((c) => ({ id: c.id, name: c.nameBn ?? c.name })),
-    };
-  }, [categories.data]);
+    const of = (kind: 'INCOME' | 'EXPENSE') =>
+      top
+        .filter((c) => c.kind === kind)
+        .sort(compare)
+        .map((c) => ({ id: c.id, name: display(c) }));
+    return { INCOME: of('INCOME'), EXPENSE: of('EXPENSE') };
+  }, [categories.data, compare, display]);
 
   /* One saver for both files. The download is a blob the browser already holds,
      so neither of these is a request the server has to serve. */
@@ -318,9 +325,11 @@ export default function MigrationPage() {
   function downloadSpreadsheet(): void {
     if (!detail.data) return;
     const nameById = new Map<string, string>();
-    for (const target of [...accountTargets, ...categoryTargets]) {
-      nameById.set(target.id, target.name);
-    }
+    for (const account of accountTargets) nameById.set(account.id, account.name);
+    /* The workspace's own language, the same one the picker showed. A
+       spreadsheet that names the merge target in a different language from the
+       screen it was chosen on is a spreadsheet nobody can reconcile. */
+    for (const category of categoryTargets ?? []) nameById.set(category.id, display(category));
     const rows: MigrationRow[] = detail.data.items.map((item) => ({
       kind: item.kind,
       sourceId: item.sourceId,
@@ -586,7 +595,7 @@ export default function MigrationPage() {
           <ItemList
             title="খাত"
             items={categoryItems}
-            targets={categoryTargets}
+            categoryTargets={categoryTargets}
             parentsByKind={parentsByKind}
             busy={busy}
             onChange={(itemId, patch) => decide.mutate({ itemId, patch })}
@@ -685,6 +694,7 @@ function ItemList({
   title,
   items,
   targets,
+  categoryTargets,
   parentsByKind,
   busy,
   onChange,
@@ -694,7 +704,10 @@ function ItemList({
 }: {
   title: string;
   items: MigrationItem[];
-  targets: { id: string; name: string }[];
+  /** What an ACCOUNT row could be merged into. Flat: accounts have no tree. */
+  targets?: { id: string; name: string }[];
+  /** What a CATEGORY row could be merged into, whole, so it can be grouped. */
+  categoryTargets?: readonly CategoryDto[];
   parentsByKind?: {
     INCOME: { id: string; name: string }[];
     EXPENSE: { id: string; name: string }[];
@@ -764,6 +777,7 @@ function ItemList({
                 key={item.id}
                 item={item}
                 targets={targets}
+                categoryTargets={categoryTargets}
                 parents={
                   parentsByKind
                     ? parentsByKind[item.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE']

@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { createCategorySchema } from '@hishab/shared';
+import { createCategorySchema, cuid } from '@hishab/shared';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { zodPipe } from '../common/zod.pipe';
@@ -30,6 +30,19 @@ const categoryBodySchema = createCategorySchema.extend({
 });
 
 const updateCategorySchema = categoryBodySchema.partial();
+
+/**
+ * Where the transactions go, and whether the emptied খাত goes with them.
+ *
+ * `deleteAfter` defaults to false in the service rather than here, so a body
+ * that omits it and a body that sends `false` are the same request: this is the
+ * one endpoint in the module that can retire a category as a side effect, and
+ * it should never do it because a field was missing.
+ */
+const moveCategorySchema = z.object({
+  toCategoryId: cuid,
+  deleteAfter: z.boolean().optional(),
+});
 
 @Controller('categories')
 @UseGuards(JwtAuthGuard)
@@ -70,5 +83,32 @@ export class CategoriesController {
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.categories.remove(user.workspaceId, user.id, id);
+  }
+
+  /**
+   * `POST /v1/categories/:id/move` — re-file every transaction under `:id`
+   * beneath `toCategoryId`, and with `deleteAfter` retire the emptied খাত in the
+   * same database transaction.
+   *
+   * The answer to the refusal `DELETE` has always given: "এই ক্যাটাগরিতে ৪১২টি
+   * লেনদেন আছে — আগে সেগুলো অন্য ক্যাটাগরিতে সরান". One foreign key changes; no
+   * amount, date, account or direction is touched. See `CategoriesService.move`
+   * for the refusals — same খাত, other workspace, different kind, or a source
+   * that still has sub-খাত.
+   */
+  @Post(':id/move')
+  move(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(moveCategorySchema)) body: ReturnType<typeof moveCategorySchema.parse>,
+  ) {
+    return this.categories.move(
+      user.workspaceId,
+      user.id,
+      id,
+      body.toCategoryId,
+      body.deleteAfter ?? false,
+      user.locale,
+    );
   }
 }

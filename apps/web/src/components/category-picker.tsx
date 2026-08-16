@@ -26,6 +26,13 @@
  *     supply. Picking a child there fills both boxes, and the ক্যাটাগরি box then
  *     reads যাতায়াত: the answer the screenshot could not give.
  *
+ *     That list is now `CategoryOptions`, shared with the six other category
+ *     `<select>`s in the app. This file used to own the only grouped one; the
+ *     rest were flat and alphabetical, which on a workspace of three hundred
+ *     imported categories is unreadable. Moving the loop out is what let them
+ *     all have it — and it is also what stops the "use `displayName`, not the
+ *     English `name`" bug from being reintroduced one screen at a time.
+ *
  *  3. **A search box above two native selects.** The whole tree is in the
  *     selects, where the platform's type-ahead handles it on a desktop and the
  *     OS wheel handles it on a phone — but a wheel through forty rows is slow
@@ -46,38 +53,16 @@ import { t } from '@/lib/t';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
 import { useDisplayName } from '@/lib/display-name';
+import {
+  CategoryOptions,
+  groupCategories,
+  type CategoryGroup,
+  type CategoryKind,
+} from './category-options';
 import { CategorySearch } from './category-search';
 import { Field, Select } from './ui/field';
 
-type Kind = 'INCOME' | 'EXPENSE';
-
-/** A top-level খাত and whatever sits under it. Two levels, never three. */
-export interface CategoryGroup {
-  parent: CategoryDto;
-  children: CategoryDto[];
-}
-
-/**
- * Group one kind's flat list the way `(shell)/categories/page.tsx` groups it.
- *
- * A child whose parent is not in the list is treated as a root rather than
- * dropped. That can only happen if the two disagree about `kind`, and a category
- * that has quietly vanished from the picker is a far worse failure than one
- * shown a level too high.
- */
-export function groupCategories(categories: readonly CategoryDto[], kind: Kind): CategoryGroup[] {
-  const mine = categories.filter((c) => c.kind === kind);
-  const ids = new Set(mine.map((c) => c.id));
-  const parentOf = (c: CategoryDto): string | null =>
-    c.parentId && ids.has(c.parentId) ? c.parentId : null;
-
-  return mine
-    .filter((c) => parentOf(c) === null)
-    .map((parent) => ({
-      parent,
-      children: mine.filter((c) => parentOf(c) === parent.id),
-    }));
-}
+type Kind = CategoryKind;
 
 /** What the two boxes hold, read back out of the single id being saved. */
 export interface CategorySelection {
@@ -134,12 +119,18 @@ export function CategoryPicker({
    */
   unknownName?: string | null;
 }) {
-  const { name: nameOf } = useDisplayName();
+  const { name: nameOf, compare } = useDisplayName();
   const groups = React.useMemo(() => groupCategories(categories, kind), [categories, kind]);
   const { parentId, childId } = selectionOf(value, groups);
 
   const group = groups.find((g) => g.parent.id === parentId) ?? null;
-  const children = group?.children ?? [];
+  /* Sorted the same way the box above sorts them. Two controls listing one
+     parent's children in two different orders is the kind of thing that reads
+     as a bug in whichever one you looked at second. */
+  const children = React.useMemo(
+    () => [...(group?.children ?? [])].sort(compare),
+    [group, compare],
+  );
   const parentUnknown = parentId !== '' && group === null;
 
   const categoryFieldId = `${idPrefix}-category`;
@@ -165,26 +156,10 @@ export function CategoryPicker({
         >
           <option value="">{t('common.choose', 'বেছে নিন')}</option>
           {parentUnknown ? <option value={parentId}>{unknownName ?? '…'}</option> : null}
-          {groups.map(({ parent, children: kids }) => (
-            <React.Fragment key={parent.id}>
-              <option value={parent.id}>{nameOf(parent)}</option>
-              {/* Children in document order right below their parent, so the
-                  dropdown reads as the tree it is. The group's own name is on
-                  the heading because a bare "রিকশা" three rows down from
-                  যাতায়াত is exactly the ambiguity being fixed. */}
-              {kids.length > 0 ? (
-                <optgroup
-                  label={t('entry.subOf', '{name}-এর উপ-খাত').replace('{name}', nameOf(parent))}
-                >
-                  {kids.map((child) => (
-                    <option key={child.id} value={child.id}>
-                      {nameOf(child)}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </React.Fragment>
-          ))}
+          {/* The shared tree: a group per parent, the parent choosable inside
+              its own group, children by their own bare name. A child picked
+              here is still one id, which the two boxes derive from. */}
+          <CategoryOptions categories={categories} kind={kind} />
         </Select>
       </Field>
 

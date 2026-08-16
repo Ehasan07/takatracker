@@ -349,6 +349,286 @@ describe('sub-categories', () => {
 });
 
 /**
+ * `POST /categories/:id/move` — re-filing a whole খাত at once.
+ *
+ * The endpoint `DELETE` has been pointing at for as long as it has existed: its
+ * refusal says "আগে সেগুলো অন্য ক্যাটাগরিতে সরান" and until now there was no way
+ * to do that but one transaction at a time.
+ *
+ * Two of the assertions below are the ones that matter, and neither is about
+ * categories. **No account balance may change** — the operation touches one
+ * foreign key and a bulk tool that quietly adjusted a balance would be found
+ * months later, by which time the books are wrong and nobody knows when they
+ * started being wrong. And **the income statement must gain on the target
+ * exactly what it lost on the source** — the money did not appear, disappear or
+ * change sides, it is filed under a different heading.
+ */
+describe('moving a category’s transactions', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  interface Cat {
+    id: string;
+    kind: string;
+    nameBn: string | null;
+    usageCount: number;
+  }
+
+  const list = async (user: Awaited<ReturnType<typeof signup>>): Promise<Cat[]> =>
+    (await ctx.http().get('/v1/categories').set(auth(user)).expect(200)).body as Cat[];
+
+  const byName = async (user: Awaited<ReturnType<typeof signup>>, nameBn: string): Promise<Cat> => {
+    const found = (await list(user)).find((c) => c.nameBn === nameBn);
+    if (!found) throw new Error(`no seeded category named ${nameBn}`);
+    return found;
+  };
+
+  const account = async (user: Awaited<ReturnType<typeof signup>>, name = 'নগদ') =>
+    (await ctx.http().post('/v1/accounts').set(auth(user)).send({ name, type: 'CASH' }).expect(201))
+      .body as { id: string };
+
+  const spend = (
+    user: Awaited<ReturnType<typeof signup>>,
+    accountId: string,
+    categoryId: string,
+    amountMinor: number,
+    type: 'EXPENSE' | 'INCOME' = 'EXPENSE',
+  ) =>
+    ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({ date: today, type, amountMinor, accountId, categoryId })
+      .expect(201);
+
+  const move = (
+    user: Awaited<ReturnType<typeof signup>>,
+    id: string,
+    body: Record<string, unknown>,
+  ) => ctx.http().post(`/v1/categories/${id}/move`).set(auth(user)).send(body);
+
+  /** Every account's balance, keyed by id — the figure that must not move. */
+  const balances = async (
+    user: Awaited<ReturnType<typeof signup>>,
+  ): Promise<Record<string, number>> => {
+    const res = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    const out: Record<string, number> = {};
+    for (const a of res.body as { id: string; balanceMinor: number }[]) {
+      out[a.id] = a.balanceMinor;
+    }
+    return out;
+  };
+
+  it('moves every transaction and reports the count it moved', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const from = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await spend(user, cash.id, from.id, 30_000);
+    await spend(user, cash.id, from.id, 20_000);
+    await spend(user, cash.id, to.id, 10_000);
+
+    const res = await move(user, from.id, { toCategoryId: to.id }).expect(201);
+    expect(res.body.movedCount).toBe(2);
+    expect(res.body.deleted).toBe(false);
+
+    const after = await list(user);
+    expect(after.find((c) => c.id === from.id)?.usageCount).toBe(0);
+    /* Its own one plus the two that arrived. The count the list reports and the
+       count the endpoint returns are the same number by construction — the
+       sheet quotes the first before the press and the second after it. */
+    expect(after.find((c) => c.id === to.id)?.usageCount).toBe(3);
+
+    /* Not deleted, because nobody asked for it to be. An emptied খাত is still a
+       খাত somebody may want to keep using. */
+    expect(after.some((c) => c.id === from.id)).toBe(true);
+  });
+
+  it('leaves every account balance exactly where it was', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const from = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await spend(user, cash.id, from.id, 45_000);
+    await spend(user, cash.id, from.id, 5_500);
+    await spend(user, cash.id, to.id, 12_000, 'INCOME');
+
+    const before = await balances(user);
+    const res = await move(user, from.id, { toCategoryId: to.id }).expect(201);
+    expect(res.body.movedCount).toBe(2);
+
+    /* The whole promise of this endpoint, asserted rather than asserted-in-a-
+       comment: one foreign key changed and the money is where it was. Not just
+       the wallet — every account in the workspace, the nominal ones included,
+       so a change of sign would show up here too. */
+    expect(await balances(user)).toEqual(before);
+  });
+
+  it('grows the target on the income statement by exactly what the source held', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const from = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await spend(user, cash.id, from.id, 30_000);
+    await spend(user, cash.id, from.id, 20_000);
+    await spend(user, cash.id, to.id, 70_000);
+
+    const statement = async () =>
+      (await ctx.http().get('/v1/reports/income-statement').set(auth(user)).expect(200)).body as {
+        expenseMinor: number;
+        expenses: { categoryId: string; totalMinor: number; rolledUpMinor: number }[];
+      };
+
+    const before = await statement();
+    const sourceBefore = before.expenses.find((n) => n.categoryId === from.id)?.rolledUpMinor ?? 0;
+    const targetBefore = before.expenses.find((n) => n.categoryId === to.id)?.rolledUpMinor ?? 0;
+    expect(sourceBefore).toBe(50_000);
+    expect(targetBefore).toBe(70_000);
+
+    await move(user, from.id, { toCategoryId: to.id }).expect(201);
+
+    const after = await statement();
+    const targetAfter = after.expenses.find((n) => n.categoryId === to.id)?.rolledUpMinor ?? 0;
+    expect(targetAfter).toBe(targetBefore + sourceBefore);
+    /* The source is gone from the report because it holds nothing, not because
+       anything was deleted — and the period's total is untouched, which is the
+       arithmetic proof that the money was re-labelled rather than moved. */
+    expect(after.expenses.some((n) => n.categoryId === from.id)).toBe(false);
+    expect(after.expenseMinor).toBe(before.expenseMinor);
+  });
+
+  it('empties and retires the source when asked to', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const from = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await spend(user, cash.id, from.id, 30_000);
+
+    const res = await move(user, from.id, { toCategoryId: to.id, deleteAfter: true }).expect(201);
+    expect(res.body).toMatchObject({ movedCount: 1, deleted: true });
+
+    const after = await list(user);
+    expect(after.some((c) => c.id === from.id)).toBe(false);
+    expect(after.find((c) => c.id === to.id)?.usageCount).toBe(1);
+
+    /* Soft-deleted, so the transactions are still readable — they simply answer
+       with the খাত they were moved to. */
+    const txns = await ctx.http().get('/v1/transactions').set(auth(user)).expect(200);
+    const rows = txns.body.items as { categoryId: string | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.categoryId).toBe(to.id);
+  });
+
+  it('refuses to move an income khat’s transactions into an expense one', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const salary = await byName(user, 'বেতন');
+    const food = await byName(user, 'খাবার ও বাজার');
+
+    await spend(user, cash.id, salary.id, 500_000, 'INCOME');
+
+    /* The refusal that is about money rather than tidiness: the entry's sign
+       lives on the entry, so re-filing income under an expense heading leaves
+       the ledger balanced and the income statement rewritten. */
+    const refused = await move(user, salary.id, { toCategoryId: food.id }).expect(400);
+    expect(refused.body.message).toContain('ধরন');
+
+    const after = await list(user);
+    expect(after.find((c) => c.id === salary.id)?.usageCount).toBe(1);
+    expect(after.find((c) => c.id === food.id)?.usageCount).toBe(0);
+  });
+
+  it('404s on a target belonging to somebody else, and moves nothing', async () => {
+    const alice = await signup(ctx);
+    const bob = await signup(ctx);
+    const cash = await account(alice);
+    const from = await byName(alice, 'যাতায়াত');
+    const bobs = await byName(bob, 'খাবার ও বাজার');
+
+    await spend(alice, cash.id, from.id, 30_000);
+
+    /* A 404 and not a 403: the shape of the refusal must not tell Alice that
+       Bob's category id is a real row somewhere. */
+    await move(alice, from.id, { toCategoryId: bobs.id }).expect(404);
+    /* And the other direction — Bob cannot reach into Alice's books either. */
+    await move(bob, from.id, { toCategoryId: bobs.id }).expect(404);
+
+    expect((await list(alice)).find((c) => c.id === from.id)?.usageCount).toBe(1);
+    expect((await list(bob)).find((c) => c.id === bobs.id)?.usageCount).toBe(0);
+  });
+
+  it('refuses a source that still has sub-khat, in the same words as delete', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const parent = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await ctx
+      .http()
+      .post('/v1/categories')
+      .set(auth(user))
+      .send({ name: 'রিকশা', nameBn: 'রিকশা', kind: 'EXPENSE', parentId: parent.id })
+      .expect(201);
+    await spend(user, cash.id, parent.id, 30_000);
+
+    /* Never silently re-parented. Where the children belong is a second decision
+       this endpoint was not told how to make. */
+    const refused = await move(user, parent.id, { toCategoryId: to.id }).expect(400);
+    expect(refused.body.message).toContain('উপ-খাত');
+
+    expect((await list(user)).find((c) => c.id === parent.id)?.usageCount).toBe(1);
+  });
+
+  it('refuses a khat moved into itself, and a target that is already gone', async () => {
+    const user = await signup(ctx);
+    const from = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await move(user, from.id, { toCategoryId: from.id }).expect(400);
+
+    await ctx.http().delete(`/v1/categories/${to.id}`).set(auth(user)).expect(200);
+    await move(user, from.id, { toCategoryId: to.id }).expect(404);
+    /* And a deleted source cannot be the one moved from either. */
+    await move(user, to.id, { toCategoryId: from.id }).expect(404);
+  });
+
+  it('records the merge against the surviving khat', async () => {
+    const user = await signup(ctx);
+    const cash = await account(user);
+    const from = await byName(user, 'যাতায়াত');
+    const to = await byName(user, 'খাবার ও বাজার');
+
+    await spend(user, cash.id, from.id, 30_000);
+    await move(user, from.id, { toCategoryId: to.id, deleteAfter: true }).expect(201);
+
+    /* Fire-and-forget by design, so the row may land a beat after the response. */
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const events = await ctx.prisma.auditEvent.findMany({
+      where: { workspaceId: user.workspaceId, action: 'category.merged' },
+    });
+    expect(events).toHaveLength(1);
+    /* Filed against the survivor: an entityId pointing at a খাত that no longer
+       appears in any list would answer nothing. */
+    expect(events[0]?.entityId).toBe(to.id);
+    expect(events[0]?.before).toMatchObject({ id: from.id });
+    expect(events[0]?.after).toMatchObject({ movedCount: 1, deleted: true });
+  });
+});
+
+/**
  * `GET /categories?q=` — the endpoint the entry sheet's খাত search reads.
  *
  * The ranking itself is @hishab/core's and tested there. What is asserted here

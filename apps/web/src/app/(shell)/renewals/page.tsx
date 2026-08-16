@@ -11,13 +11,13 @@ import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/share
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Plus, Trash2 } from 'lucide-react';
 import * as React from 'react';
+import { CategoryOptions } from '@/components/category-options';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api, endpoints } from '@/lib/api';
-import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { invalidateAfterWrite } from '@/lib/invalidate';
 
@@ -354,7 +354,6 @@ function CompleteSheet({
   onClose: () => void;
   onDone: (result: CompletedObligation) => void;
 }) {
-  const { name: display, compare } = useDisplayName();
   const [date, setDate] = React.useState(() => toLocalDateString(new Date()));
   const [amount, setAmount] = React.useState(() => prefillAmount(obligation.estimatedCostMinor));
   const [accountId, setAccountId] = React.useState(accounts[0]?.id ?? '');
@@ -366,18 +365,6 @@ function CompleteSheet({
     queryFn: () => endpoints.categories(),
     staleTime: 5 * 60_000,
   });
-
-  /* Expense categories only, named in the workspace's own language and sorted
-     in it. Filing a fee under an income category would be a hole in the books
-     that no report could explain. */
-  const expenseCategories = React.useMemo(
-    () =>
-      (categories.data ?? [])
-        .filter((c) => c.kind === 'EXPENSE')
-        .sort(compare)
-        .map((c) => ({ id: c.id, label: display(c) })),
-    [categories.data, compare, display],
-  );
 
   const complete = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -484,11 +471,9 @@ function CompleteSheet({
             disabled={!canBook}
           >
             <option value="">বেছে নিন</option>
-            {expenseCategories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.label}
-              </option>
-            ))}
+            {/* Expense only. Filing a fee under an income category would be a
+                hole in the books that no report could explain. */}
+            <CategoryOptions categories={categories.data} kind="EXPENSE" />
           </Select>
         </Field>
 

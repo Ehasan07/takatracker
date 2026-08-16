@@ -40,6 +40,12 @@ export const AUDIT_ACTIONS = [
   'category.created',
   'category.updated',
   'category.deleted',
+  /* Every transaction filed under one খাত re-filed under another, in one press.
+     Its own action and not `category.updated`: an update touches a name, this
+     rewrites which rows every spending report attributes to which heading, and
+     "why does যাতায়াত suddenly hold four hundred more transactions?" is a
+     question only a row that names both খাত and the count can answer. */
+  'category.merged',
   'person.created',
   'person.updated',
   'person.deleted',

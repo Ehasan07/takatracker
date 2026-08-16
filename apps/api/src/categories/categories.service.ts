@@ -6,8 +6,15 @@ import {
   type CreateCategoryInput,
   type Locale,
 } from '@hishab/shared';
-import { AuditService } from '../audit/audit.service';
+import { AuditService, type AuditAction } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+
+/**
+ * Annotated, never `as AuditAction` — a cast would compile whatever string sat
+ * on the right of it, so a typo would ship rows under an action name no query
+ * looks for. The annotation makes the union upstream the authority.
+ */
+const CATEGORY_MERGED: AuditAction = 'category.merged';
 
 export interface CategoryView {
   id: string;
@@ -35,6 +42,26 @@ export interface CategoryView {
    * on an unfiltered list, so that response is byte-for-byte what it always was.
    */
   matched?: boolean;
+}
+
+/** What `POST /categories/:id/move` hands back. */
+export interface MoveCategoryResult {
+  /**
+   * Ledger entries whose `categoryId` changed hands.
+   *
+   * Exactly the number the list endpoint calls `usageCount`, and deliberately
+   * so: the sheet promises "৪১২টি লেনদেন সরানো হবে" from that field before the
+   * press, and a response that reported a different number would make the
+   * promise a lie. Both count every entry pointing at the খাত, including the
+   * ones belonging to binned transactions — see `move`.
+   */
+  movedCount: number;
+  /** Whether the emptied source was retired in the same transaction. */
+  deleted: boolean;
+  from: { id: string; name: string };
+  into: { id: string; name: string };
+  /** Bengali, ready to show. What the screen puts in its toast. */
+  message: string;
 }
 
 /**
@@ -299,6 +326,172 @@ export class CategoriesService {
     });
 
     return { id };
+  }
+
+  /**
+   * Re-file every transaction under one খাত beneath another, and optionally
+   * retire the emptied one.
+   *
+   * ## Why this exists
+   *
+   * `remove` above tells people to "আগে সেগুলো অন্য ক্যাটাগরিতে সরান" — move the
+   * transactions somewhere else first — and until now the product offered no way
+   * to do it. The only route was `PATCH /transactions/:id`, one row at a time,
+   * which is not a route at all for the four-hundred-row categories arriving
+   * from the other product's export. Bringing years of books across means
+   * merging categories that should never have been two, and that is a bulk
+   * operation or it does not happen.
+   *
+   * ## What it changes, and what it must never change
+   *
+   * One foreign key. `LedgerEntry.categoryId` — and `SharedExpense.categoryId`,
+   * which points at the same table and would otherwise start disagreeing with
+   * the ledger row it was booked as. Nothing else: not `amountMinor`, not
+   * `direction`, not `accountId`, not the transaction's date. The money does not
+   * move, no balance changes, and every account's total is the same poisha after
+   * this call as before it. That is stated here because the temptation to "fix"
+   * a little more while holding a thousand rows open is exactly how a bulk tool
+   * destroys a set of books, and because the e2e suite asserts it.
+   *
+   * ## Every entry, including the binned ones
+   *
+   * The `where` deliberately does not filter on the transaction's `deletedAt`. A
+   * soft-deleted transaction keeps its ledger entries and can be restored, and
+   * restoring one into a খাত that was retired underneath it would resurrect a
+   * row pointing at nothing. Counting them also keeps `movedCount` equal to the
+   * `usageCount` the screen showed, and to the number `remove` refuses on.
+   *
+   * ## One transaction
+   *
+   * Reads and writes both. A half-moved category — some entries here, some
+   * there, the source deleted or not depending on where it stopped — is worse
+   * than one that never moved, and doing the lookups outside would leave a
+   * window where the target could be deleted between the check and the update.
+   */
+  async move(
+    workspaceId: string,
+    actorUserId: string,
+    id: string,
+    toCategoryId: string,
+    deleteAfter = false,
+    locale: Locale = 'bn',
+  ): Promise<MoveCategoryResult> {
+    if (id === toCategoryId) {
+      throw new BadRequestException('একই খাতে লেনদেন সরানো যায় না — অন্য একটি খাত বেছে নিন');
+    }
+
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      /* Both rows read through `workspaceId`, so a target belonging to somebody
+       * else is simply not found. One message for both halves and a 404 rather
+       * than a 403: a workspace must not be able to learn that a category id
+       * exists elsewhere from the shape of the refusal it gets back. */
+      const [source, target] = await Promise.all([
+        tx.category.findFirst({
+          where: { id, workspaceId, deletedAt: null },
+          include: { _count: { select: { children: { where: { deletedAt: null } } } } },
+        }),
+        tx.category.findFirst({ where: { id: toCategoryId, workspaceId, deletedAt: null } }),
+      ]);
+      if (!source || !target) throw new NotFoundException('ক্যাটাগরি পাওয়া যায়নি');
+
+      /* The one refusal that is about money rather than tidiness. An INCOME
+       * entry sits on the nominal income account as a CREDIT and an EXPENSE
+       * entry on the nominal expense account as a DEBIT; the category is what
+       * names the line, and the sign lives on the entry. Re-filing an income
+       * category's entries under an expense heading would therefore leave the
+       * ledger balanced and the income statement silently rewritten — earnings
+       * reported as spending, the surplus wrong by twice the amount, and nothing
+       * on any screen to show it happened. There is no correct bulk answer, so
+       * there is no bulk answer. */
+      if (source.kind !== target.kind) {
+        throw new BadRequestException(
+          source.kind === 'INCOME'
+            ? 'আয়ের খাতের লেনদেন খরচের খাতে সরানো যায় না — দুটো খাতের ধরন এক হতে হবে'
+            : 'খরচের খাতের লেনদেন আয়ের খাতে সরানো যায় না — দুটো খাতের ধরন এক হতে হবে',
+        );
+      }
+
+      /* Refused rather than silently re-parented, and refused whether or not
+       * `deleteAfter` was asked for, so the rule is the same either way.
+       *
+       * A parent's own entries can be moved while its children stay behind —
+       * they are different categories and the sub-খাতগুলো keep their own
+       * transactions — but then the "খাত" the person thought they were emptying
+       * still holds everything filed one level down, and the delete cannot fire.
+       * Re-homing the children for them would be a second decision this endpoint
+       * was never told to make, and the wrong one as often as not: they may
+       * belong under the target, beside it, or nowhere. `remove` says the same
+       * thing in the same words, so the two refusals are learnable as one rule. */
+      if (source._count.children > 0) {
+        throw new BadRequestException('আগে এর উপ-খাতগুলো সরান');
+      }
+
+      /* One column, one value. Not `amountMinor`, not `direction`, not
+       * `accountId`, not the transaction behind it. */
+      const { count } = await tx.ledgerEntry.updateMany({
+        where: { workspaceId, categoryId: id },
+        data: { categoryId: toCategoryId },
+      });
+
+      /* A shared bill files the owner's own share under a household category,
+       * and the ledger entry it booked carries the same id. Leaving these
+       * behind would let the split screen and the spending report name two
+       * different খাত for one piece of spending. */
+      await tx.sharedExpense.updateMany({
+        where: { workspaceId, categoryId: id },
+        data: { categoryId: toCategoryId },
+      });
+
+      /* Not history — a proposal nobody has accepted yet, and the only other
+       * place a category id is written down. It has no foreign key, so a
+       * retired source leaves a pointer at a row `acceptDraft` will refuse to
+       * resolve, and the reviewer is asked to pick a category again for no
+       * reason they can see. Moved with everything else; rejected and already
+       * accepted drafts are left exactly as they were, because those are a
+       * record of what was decided at the time. */
+      await tx.transactionDraft.updateMany({
+        where: { workspaceId, categoryId: id, status: 'PENDING' },
+        data: { categoryId: toCategoryId },
+      });
+
+      /* "Merge into" as one press rather than two. Inside the same transaction
+       * on purpose: a source emptied and then left standing because the second
+       * call failed is a খাত that reads as unused and is not. */
+      if (deleteAfter) {
+        await tx.category.update({ where: { id }, data: { deletedAt: new Date() } });
+      }
+
+      return { count, source, target };
+    });
+
+    const fromName = displayName(outcome.source, locale);
+    const intoName = displayName(outcome.target, locale);
+    const movedCount = outcome.count;
+
+    this.audit.emit({
+      workspaceId,
+      actorUserId,
+      action: CATEGORY_MERGED,
+      entity: 'Category',
+      /* Filed against the survivor. "Where did the four hundred transactions
+       * under পরিবহন go?" is the question this row exists to answer, and an
+       * entityId pointing at a খাত that no longer appears in any list answers
+       * nothing. The source is named in `before`. */
+      entityId: toCategoryId,
+      before: { id, name: fromName, kind: outcome.source.kind, usageCount: movedCount },
+      after: { id: toCategoryId, name: intoName, movedCount, deleted: deleteAfter },
+    });
+
+    const moved = toBengaliDigits(String(movedCount));
+    return {
+      movedCount,
+      deleted: deleteAfter,
+      from: { id, name: fromName },
+      into: { id: toCategoryId, name: intoName },
+      message: deleteAfter
+        ? `"${fromName}"-এর ${moved}টি লেনদেন "${intoName}"-এ সরানো হয়েছে এবং খাতটি মুছে ফেলা হয়েছে।`
+        : `"${fromName}"-এর ${moved}টি লেনদেন "${intoName}"-এ সরানো হয়েছে।`,
+    };
   }
 
   /**

@@ -1,12 +1,23 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CornerDownRight, Info, Pencil, Plus, RotateCw, Trash2, TriangleAlert } from 'lucide-react';
+import {
+  ArrowRight,
+  CornerDownRight,
+  Info,
+  Merge,
+  Pencil,
+  Plus,
+  RotateCw,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react';
 import * as React from 'react';
 import { t } from '@/lib/t';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
+import { CategoryOptions } from '@/components/category-options';
 import { Sheet } from '@/components/ui/sheet';
 import { api, ApiError, type CategoryDto } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
@@ -31,6 +42,16 @@ interface Group {
   children: CategoryRow[];
 }
 
+/** What `POST /categories/:id/move` hands back. */
+interface MoveResult {
+  movedCount: number;
+  deleted: boolean;
+  from: { id: string; name: string };
+  into: { id: string; name: string };
+  /** Bengali, already written by the API. Shown as-is. */
+  message: string;
+}
+
 const bn = (n: number): string => fmtNumber(String(n));
 const usageLabel = (c: CategoryRow): string =>
   c.usageCount > 0 ? `${bn(c.usageCount)}টি লেনদেন` : t('cat.noTransactions', 'কোনো লেনদেন নেই');
@@ -44,6 +65,9 @@ export default function CategoriesPage() {
   /** Set when adding a sub-category, so the sheet knows its parent. */
   const [addUnder, setAddUnder] = React.useState<CategoryRow | null>(null);
   const [deleting, setDeleting] = React.useState<CategoryRow | null>(null);
+  /** The খাত whose transactions are being re-filed. `null` closes the sheet. */
+  const [moving, setMoving] = React.useState<CategoryRow | null>(null);
+  const [toast, setToast] = React.useState<string | null>(null);
 
   const categories = useQuery({
     queryKey: ['categories'],
@@ -89,6 +113,25 @@ export default function CategoriesPage() {
     remove.reset();
     setDeleting(category);
   };
+
+  const openMove = (category: CategoryRow): void => {
+    haptic('tap');
+    setMoving(category);
+  };
+
+  /**
+   * Every khat of the same kind, in the order the list is already in.
+   *
+   * The picker is built from this and never from the group tree: a sub-খাত is a
+   * perfectly good destination — "রিকশা under যাতায়াত" is exactly where somebody
+   * folding a stray "CNG" wants it — and a tree-shaped picker would hide half
+   * the legal answers. The other kind is not offered at all, because the API
+   * refuses it and an option that always errors is a trap, not a choice.
+   */
+  const sameKind = React.useMemo(
+    () => (categories.data ?? []).filter((c) => c.kind === (moving?.kind ?? kind)),
+    [categories.data, moving, kind],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -188,6 +231,7 @@ export default function CategoriesPage() {
                     ? `${bn(children.length)}টি উপ-খাত · ${usageLabel(parent)}`
                     : usageLabel(parent)
                 }
+                childCount={children.length}
                 deleteBlockedBy={
                   parent.usageCount > 0
                     ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
@@ -197,6 +241,7 @@ export default function CategoriesPage() {
                 }
                 onEdit={() => openEdit(parent)}
                 onDelete={() => openDelete(parent)}
+                onMove={() => openMove(parent)}
               />
 
               {children.length > 0 ? (
@@ -208,6 +253,7 @@ export default function CategoriesPage() {
                       <CategoryLine
                         category={child}
                         meta={`উপ-খাত · ${usageLabel(child)}`}
+                        childCount={0}
                         deleteBlockedBy={
                           child.usageCount > 0
                             ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
@@ -215,6 +261,7 @@ export default function CategoriesPage() {
                         }
                         onEdit={() => openEdit(child)}
                         onDelete={() => openDelete(child)}
+                        onMove={() => openMove(child)}
                         nested
                       />
                     </li>
@@ -278,6 +325,17 @@ export default function CategoriesPage() {
           if (deleting) remove.mutate(deleting.id);
         }}
       />
+
+      <MoveSheet
+        source={moving}
+        candidates={sameKind}
+        onOpenChange={(open) => {
+          if (!open) setMoving(null);
+        }}
+        onMoved={(result) => setToast(result.message)}
+      />
+
+      {toast ? <Toast message={toast} onDismiss={() => setToast(null)} /> : null}
     </div>
   );
 }
@@ -289,23 +347,45 @@ export default function CategoriesPage() {
  * would leave nothing of the name at 320px. `nested` adds the arrow and the
  * indent that mark a child — the "উপ-খাত" in `meta` says it in words, because
  * neither an arrow nor an indent survives a glance on a small phone.
+ *
+ * ## Why the trailing control changes rather than doubling
+ *
+ * Two icons is the ceiling this row can carry, and the two actions are almost
+ * never both available anyway: a খাত with history cannot be deleted, and a খাত
+ * with no history has nothing to move. So the slot shows whichever one is real.
+ *
+ * That also repairs the oldest dead end on this screen. The bin used to sit
+ * there greyed out with `title="এই খাতে লেনদেন আছে"` — a tooltip, on a phone,
+ * where there is no hover — and the API's refusal told people to "আগে সেগুলো
+ * অন্য ক্যাটাগরিতে সরান" while offering nowhere to do it. Now the row that
+ * cannot be deleted offers the thing that would make it deletable.
+ *
+ * A parent that still has sub-খাত keeps the disabled bin, because the API
+ * refuses to move one too and an enabled button that always errors is worse
+ * than a disabled one that says why.
  */
 function CategoryLine({
   category,
   meta,
+  childCount,
   deleteBlockedBy,
   onEdit,
   onDelete,
+  onMove,
   nested = false,
 }: {
   category: CategoryRow;
   meta: string;
+  /** Live sub-categories. Above zero the server refuses to move this row. */
+  childCount: number;
   deleteBlockedBy: string | null;
   onEdit: () => void;
   onDelete: () => void;
+  onMove: () => void;
   nested?: boolean;
 }) {
   const { name: nameOf } = useDisplayName();
+  const canMove = category.usageCount > 0 && childCount === 0;
   return (
     <div className={cn('flex items-center gap-1 px-2 py-1.5', nested && 'pl-1')}>
       {nested ? (
@@ -327,16 +407,28 @@ function CategoryLine({
         </span>
         <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
       </button>
-      <button
-        type="button"
-        aria-label={`${nameOf(category)} মুছুন`}
-        disabled={deleteBlockedBy !== null}
-        title={deleteBlockedBy ?? undefined}
-        onClick={onDelete}
-        className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md disabled:opacity-30"
-      >
-        <Trash2 className="h-4 w-4" aria-hidden />
-      </button>
+      {canMove ? (
+        <button
+          type="button"
+          aria-label={`${nameOf(category)}-এর লেনদেন অন্য খাতে সরান`}
+          title={t('cat.moveTitle', 'লেনদেনগুলো অন্য খাতে সরান')}
+          onClick={onMove}
+          className="press touch-target text-income hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+        >
+          <Merge className="h-4 w-4" aria-hidden />
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-label={`${nameOf(category)} মুছুন`}
+          disabled={deleteBlockedBy !== null}
+          title={deleteBlockedBy ?? undefined}
+          onClick={onDelete}
+          className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md disabled:opacity-30"
+        >
+          <Trash2 className="h-4 w-4" aria-hidden />
+        </button>
+      )}
     </div>
   );
 }
@@ -408,6 +500,235 @@ function ConfirmSheet({
         >
           {confirmLabel}
         </Button>
+        <Button variant="outline" size="block" onClick={() => onOpenChange(false)}>
+          থাক
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Said once, at the bottom of the screen, and gone. A local copy of the same
+ * six-second banner the tags screen uses, for the reason given above: a feature
+ * folder reaching into another one's internals is how a shared module gets
+ * created without anybody deciding to create one.
+ */
+function Toast({
+  message,
+  onDismiss,
+  seconds = 6,
+}: {
+  message: string;
+  onDismiss: () => void;
+  seconds?: number;
+}) {
+  React.useEffect(() => {
+    const timer = setTimeout(onDismiss, seconds * 1000);
+    return () => clearTimeout(timer);
+  }, [seconds, onDismiss, message]);
+
+  return (
+    <div
+      role="status"
+      className="toast-enter bg-ink text-paper no-print fixed inset-x-3 z-40 rounded-lg px-4 py-3 text-sm shadow-xl md:inset-x-auto md:bottom-6 md:right-6 md:w-96"
+      style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
+    >
+      {message}
+    </div>
+  );
+}
+
+/**
+ * Re-file every transaction under one খাত beneath another.
+ *
+ * ## Why the screen needs this at all
+ *
+ * The books coming across from the other product have two hundred categories,
+ * and a good number of them are the same thing written twice — a "Transport"
+ * and a "যাতায়াত", a "Grocery" and a "বাজার". Repairing that one transaction at
+ * a time is four hundred taps per pair, so nobody does it, and every spending
+ * report is split down the middle by a spelling forever.
+ *
+ * ## What the sheet is actually for
+ *
+ * Not the picking — the *saying*. This is a bulk write over a person's whole
+ * history, and the only defence against a misfire is that the number and the
+ * direction are stated in words before the button, not discovered after it. So
+ * the count is spelled out in Bengali digits ("৪১২টি লেনদেন সরানো হবে"), both
+ * names appear either side of an arrow, and the sentence nobody would think to
+ * ask about — that no money moves — is the last line rather than an omission.
+ *
+ * The কেবল-একই-ধরন rule is enforced by not offering the other side at all: the
+ * API refuses a cross-kind move because it would flip the sign of every amount,
+ * and an option that always errors is a trap rather than a choice.
+ */
+function MoveSheet({
+  source,
+  candidates,
+  onOpenChange,
+  onMoved,
+}: {
+  /** The খাত being emptied. `null` closes the sheet. */
+  source: CategoryRow | null;
+  /** Every খাত of the same kind, the source included; it is filtered out here. */
+  candidates: CategoryRow[];
+  onOpenChange: (open: boolean) => void;
+  onMoved: (result: MoveResult) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { name: nameOf } = useDisplayName();
+  const [toId, setToId] = React.useState('');
+  const [deleteAfter, setDeleteAfter] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const sourceId = source?.id ?? null;
+  React.useEffect(() => {
+    setToId('');
+    /* Unticked every time the sheet opens. Deleting a খাত is a second decision
+       and it must never be inherited from the last one somebody made. */
+    setDeleteAfter(false);
+    setError(null);
+  }, [sourceId]);
+
+  const targets = candidates.filter((c) => c.id !== sourceId);
+  const into = targets.find((c) => c.id === toId) ?? null;
+
+  const move = useMutation({
+    mutationFn: (targetId: string) =>
+      api<MoveResult>(`/categories/${sourceId}/move`, {
+        method: 'POST',
+        body: { toCategoryId: targetId, deleteAfter },
+      }),
+    onSuccess: (result) => {
+      haptic('success');
+      /* Everything, not just this list: the by-category report, the খাতা's
+         chips and the entry sheet's picker all name the খাত that just changed
+         under a thousand rows. */
+      void queryClient.invalidateQueries();
+      onMoved(result);
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      haptic('warn');
+      setError(err instanceof ApiError ? err.message : t('cat.moveFailed', 'সরানো যায়নি'));
+    },
+  });
+
+  const fromName = source ? nameOf(source) : '';
+  const intoName = into ? nameOf(into) : '';
+  const count = source?.usageCount ?? 0;
+
+  return (
+    <Sheet
+      open={source !== null}
+      onOpenChange={onOpenChange}
+      title={t('cat.moveTitle', 'লেনদেনগুলো অন্য খাতে সরান')}
+      description={source ? fromName : undefined}
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-ink text-sm">
+          একই জিনিসের জন্য দুটো খাত হয়ে গেলে একটিকে অন্যটির ভেতরে নিয়ে আসুন। এই খাতের{' '}
+          <span className="font-medium">{bn(count)}টি লেনদেন</span> নতুন খাতে চলে যাবে — টাকার অঙ্ক,
+          তারিখ বা অ্যাকাউন্ট কিছুই বদলাবে না।
+        </p>
+
+        {targets.length === 0 ? (
+          <p className="text-ink-muted text-sm">
+            {t('cat.moveNoTarget', 'সরানোর মতো একই ধরনের আর কোনো খাত নেই।')}
+          </p>
+        ) : (
+          <>
+            <Field label="কোন খাতে সরাবেন?" htmlFor="cat-move-to">
+              <Select
+                id="cat-move-to"
+                value={toId}
+                onChange={(e) => {
+                  setError(null);
+                  setToId(e.target.value);
+                }}
+              >
+                <option value="">বেছে নিন</option>
+                {/* Grouped, like every other category picker in the app. The
+                    parent heading is what tells two sub-খাত both called ভাড়া
+                    apart, and it says it once per group rather than on every
+                    row. `targets` is already this khat's own kind and already
+                    excludes itself, so the scope here only has to match. */}
+                <CategoryOptions categories={targets} kind={source?.kind ?? 'EXPENSE'} />
+              </Select>
+            </Field>
+
+            {/* The direction, drawn. A sentence can be misread; an arrow between
+                two named boxes cannot. */}
+            <div className="rounded-card border-rule bg-greenbar flex items-center gap-2 border p-3">
+              <span className="text-ink min-w-0 truncate text-sm line-through">{fromName}</span>
+              <ArrowRight className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />
+              <span className="text-ink min-w-0 truncate text-sm font-medium">
+                {intoName || t('cat.moveWhich', 'কোন খাতে?')}
+              </span>
+            </div>
+
+            <label className="flex min-h-11 items-center gap-2">
+              <input
+                type="checkbox"
+                checked={deleteAfter}
+                onChange={(e) => setDeleteAfter(e.target.checked)}
+                className="accent-brand h-5 w-5 shrink-0"
+              />
+              <span className="text-ink text-sm">
+                {t('cat.moveThenDelete', 'সরানোর পর খালি খাতটি মুছে ফেলুন')}
+              </span>
+            </label>
+
+            {into ? (
+              <ul className="text-ink flex list-disc flex-col gap-1.5 pl-5 text-sm">
+                <li>
+                  <span className="font-medium">{bn(count)}টি লেনদেন</span> সরানো হবে — &ldquo;
+                  {fromName}&rdquo; থেকে &ldquo;{intoName}&rdquo;-এ।
+                </li>
+                <li>
+                  প্রতিবেদনে এই খরচগুলো এখন থেকে &ldquo;{intoName}&rdquo;-এর মোটের সঙ্গে যোগ হবে।
+                </li>
+                {deleteAfter ? (
+                  <li>
+                    &ldquo;{fromName}&rdquo; খাতটি আর থাকবে না — পুরনো লেনদেন পড়তে অসুবিধা হবে না।
+                  </li>
+                ) : (
+                  <li>&ldquo;{fromName}&rdquo; খাতটি খালি অবস্থায় থেকে যাবে।</li>
+                )}
+                <li className="text-income">
+                  কোনো টাকা সরছে না — কোনো অ্যাকাউন্টের ব্যালেন্স বদলাবে না, কোনো লেনদেন মুছবে না।
+                </li>
+              </ul>
+            ) : (
+              <p className="text-ink-muted text-xs">
+                {t('cat.movePickFirst', 'উপরে একটি খাত বেছে নিলে ঠিক কী হবে তা এখানে লেখা থাকবে।')}
+              </p>
+            )}
+
+            {error ? (
+              <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+                {error}
+              </p>
+            ) : null}
+
+            <Button
+              size="block"
+              disabled={!into || move.isPending}
+              onClick={() => {
+                if (!into) return;
+                haptic('warn');
+                move.mutate(into.id);
+              }}
+            >
+              <Merge className="h-4 w-4" aria-hidden />
+              {move.isPending
+                ? t('cat.moving', 'সরানো হচ্ছে…')
+                : t('cat.moveConfirm', 'সরিয়ে দিন')}
+            </Button>
+          </>
+        )}
+
         <Button variant="outline" size="block" onClick={() => onOpenChange(false)}>
           থাক
         </Button>

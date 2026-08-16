@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 import { parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { CategoryOptions } from '@/components/category-options';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
@@ -10,7 +11,6 @@ import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api, endpoints } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { useDisplayName } from '@/lib/display-name';
 import { t } from '@/lib/t';
 import { fetchExpenses, splitKeys, type GroupDetail, type SplitMethod } from '../queries';
 
@@ -108,7 +108,6 @@ export function AddExpenseSheet({
   group: GroupDetail;
 }) {
   const queryClient = useQueryClient();
-  const { name: display } = useDisplayName();
   const active = React.useMemo(() => group.members.filter((m) => !m.removedAt), [group.members]);
   const self = active.find((m) => m.isSelf);
 
@@ -210,25 +209,6 @@ export function AddExpenseSheet({
 
   const nameOf = (memberId: string): string =>
     active.find((m) => m.id === memberId)?.displayName ?? '';
-
-  /* Parents before their children, each child prefixed with its parent, so a
-     flat `<select>` still reads as the tree it is. */
-  const expenseCategories = React.useMemo(() => {
-    const all = (categories.data ?? []).filter((c) => c.kind === 'EXPENSE');
-    const byId = new Map(all.map((c) => [c.id, c]));
-    return all
-      .map((c) => {
-        const parent = c.parentId ? byId.get(c.parentId) : undefined;
-        /* `displayName`, not `c.name`. The API sends both names and `name` is
-           the English one, so this list read `Food & groceries` on a Bengali
-           workspace where every other picker in the app reads খাবার ও বাজার. */
-        return {
-          id: c.id,
-          label: parent ? `${display(parent)} › ${display(c)}` : display(c),
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label, 'bn'));
-  }, [categories.data, display]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -464,11 +444,12 @@ export function AddExpenseSheet({
               onChange={(e) => setCategoryId(e.target.value || undefined)}
             >
               <option value="">{t('split.pickCategory', 'খাত বেছে নিন')}</option>
-              {expenseCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
+              {/* Was a flat alphabetical list built right here, with every child
+                  prefixed `parent › child`. The grouping, the sort and the
+                  "`displayName`, never the English `name`" rule all moved into
+                  `CategoryOptions` — this screen was the only place in the app
+                  that had them, and the other five pickers had none of it. */}
+              <CategoryOptions categories={categories.data} kind="EXPENSE" />
             </Select>
           </Field>
         ) : null}

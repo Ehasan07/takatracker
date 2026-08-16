@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, Plus, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
+import { CategoryOptions } from '@/components/category-options';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,6 @@ import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api, endpoints } from '@/lib/api';
 import { fmtDate, fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { useDisplayName } from '@/lib/display-name';
 import { t } from '@/lib/t';
 import {
   fetchGroups,
@@ -120,7 +120,6 @@ export default function SplitGroupsPage() {
  */
 function InboxCard() {
   const queryClient = useQueryClient();
-  const { name: display } = useDisplayName();
   const inbox = useQuery({ queryKey: splitKeys.inbox(), queryFn: fetchInbox });
   const categories = useQuery({
     queryKey: ['categories'],
@@ -135,20 +134,6 @@ function InboxCard() {
    * shared bill used to end up. The button stays disabled until one is picked:
    * a refusal from the server after the tap would be a worse way to learn it. */
   const [filedAs, setFiledAs] = React.useState<Record<string, string>>({});
-
-  const expenseCategories = React.useMemo(() => {
-    const all = (categories.data ?? []).filter((c) => c.kind === 'EXPENSE');
-    const byId = new Map(all.map((c) => [c.id, c]));
-    return all
-      .map((c) => {
-        const parent = c.parentId ? byId.get(c.parentId) : undefined;
-        return {
-          id: c.id,
-          label: parent ? `${display(parent)} › ${display(c)}` : display(c),
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label, 'bn'));
-  }, [categories.data, display]);
 
   const decide = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>
@@ -192,11 +177,7 @@ function InboxCard() {
               className="w-40 shrink-0"
             >
               <option value="">{t('split.pickCategory', 'খাত বেছে নিন')}</option>
-              {expenseCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
+              <CategoryOptions categories={categories.data} kind="EXPENSE" />
             </Select>
             <div className="flex shrink-0 gap-1">
               <Button

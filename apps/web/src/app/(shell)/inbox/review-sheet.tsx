@@ -12,12 +12,12 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, MoneyParseError, parseMoneyToMinor } from '@hishab/shared';
+import { CategoryOptions } from '@/components/category-options';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { useIsDesktop } from '@/hooks/use-device';
 import { ApiError, endpoints } from '@/lib/api';
-import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
@@ -169,7 +169,6 @@ function ReviewForm({
   onSticky: (pick: StickyPick) => void;
 }) {
   const queryClient = useQueryClient();
-  const { name: nameOf } = useDisplayName();
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
   const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
 
@@ -200,9 +199,6 @@ function ReviewForm({
 
   const liveAccounts = (accounts.data ?? []).filter((account) => !account.isArchived);
   const wantedKind = categoryKindFor(form.direction);
-  const liveCategories = (categories.data ?? []).filter(
-    (category) => wantedKind === null || category.kind === wantedKind,
-  );
 
   /* A category carried over from an expense must not survive a switch to
      income: the server would refuse it, and leaving it on screen would make
@@ -474,11 +470,13 @@ function ReviewForm({
             disabled={!pending || busy || wantedKind === null}
           >
             <option value="">{wantedKind === null ? 'আগে দিক বেছে নিন' : 'খাত বেছে নিন'}</option>
-            {liveCategories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {nameOf(category)}
-              </option>
-            ))}
+            {/* Nothing at all until the direction says which half of the tree
+                this is. The box is disabled in that state anyway; listing both
+                kinds behind the disable would only mean the wrong one flashes
+                past on the way to the right one. */}
+            {wantedKind === null ? null : (
+              <CategoryOptions categories={categories.data} kind={wantedKind} />
+            )}
           </Select>
         </EvidenceField>
 

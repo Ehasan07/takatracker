@@ -438,6 +438,14 @@ export const EN: Record<string, string> = {
   'cat.income': 'Income categories',
   'cat.incomeAdj': 'income',
   'cat.listFailed': 'Could not fetch the categories.',
+  'cat.moveConfirm': 'Move them',
+  'cat.moveFailed': 'Could not move them',
+  'cat.moveNoTarget': 'There is no other category of the same kind to move them to.',
+  'cat.movePickFirst': 'Pick a category above and this will say exactly what happens.',
+  'cat.moveThenDelete': 'Delete the emptied category afterwards',
+  'cat.moveTitle': 'Move the transactions to another category',
+  'cat.moveWhich': 'Which category?',
+  'cat.moving': 'Moving…',
   'cat.new': 'New category',
   'cat.newSub': 'New sub-category',
   'cat.noTransactions': 'No transactions',
@@ -652,10 +660,10 @@ export const EN: Record<string, string> = {
   'entry.toAccount': 'To account',
   'entry.category': 'Category',
   'entry.subCategory': 'Sub-category',
-  /* `{name}` is filled in with the parent's name at the call site. Kept as a
-     placeholder rather than concatenated, because Bengali puts the possessive
-     after the name and English puts "of" before it. */
-  'entry.subOf': 'Inside {name}',
+  /* The heading over top-level categories that have nothing under them, in
+     every category dropdown. Not "Other": these are not leftovers, they are
+     categories that simply have no sub-categories yet. */
+  'entry.soloCategories': 'Standalone categories',
   'entry.subCategoryHint':
     'Optional. A sub-category still adds into its parent’s total on the report.',
   'entry.description': 'Description',
