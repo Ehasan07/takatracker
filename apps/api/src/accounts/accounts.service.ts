@@ -14,7 +14,7 @@ import {
   type UpdateAccountInput,
 } from '@hishab/shared';
 import { Prisma } from '@prisma/client';
-import type { Account, AccountType, LoanDirection } from '@prisma/client';
+import type { Account, AccountType, AssetKind, LoanDirection } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -96,6 +96,11 @@ export interface AccountWithBalance {
   institution: string | null;
   /** Free text: branch, nominee, whoever else can sign. */
   note: string | null;
+  /** `ASSET` accounts only: land, a car, gold, a share account. */
+  assetKind: AssetKind | null;
+  /** What it cost. The balance is the carrying amount; this is the original. */
+  purchaseCostMinor: number | null;
+  purchaseDate: string | null;
   accountNumberMasked: string | null;
   matchHints: string[];
   isArchived: boolean;
@@ -515,6 +520,9 @@ export class AccountsService {
       balanceMinor,
       institution: a.institution,
       note: a.note,
+      assetKind: a.assetKind,
+      purchaseCostMinor: a.purchaseCostMinor === null ? null : minorToNumber(a.purchaseCostMinor),
+      purchaseDate: a.purchaseDate ? toLocalDateString(a.purchaseDate, timezone) : null,
       accountNumberMasked: a.accountNumberMasked,
       matchHints: a.matchHints,
       isArchived: a.isArchived,
@@ -745,6 +753,12 @@ export class AccountsService {
         currency: input.currency,
         institution: input.institution,
         note: input.note,
+        /* Only meaningful on an asset. Cleared outright when the account is not
+           one, so a wallet that briefly passed through `ASSET` does not keep a
+           stale "গাড়ি" nobody can see. */
+        assetKind: input.type === 'ASSET' ? (input.assetKind ?? 'OTHER') : null,
+        purchaseCostMinor: input.purchaseCostMinor == null ? null : BigInt(input.purchaseCostMinor),
+        purchaseDate: input.purchaseDate ? fromLocalDateString(input.purchaseDate, timezone) : null,
         accountNumberMasked: input.accountNumberMasked,
         matchHints: input.matchHints,
         icon: input.icon,
@@ -861,6 +875,23 @@ export class AccountsService {
         currency: input.currency,
         institution: input.institution,
         note: input.note,
+        /* Untouched when absent; cleared when the account stops being an asset,
+           for the same reason as on create. */
+        ...(input.assetKind === undefined ? {} : { assetKind: input.assetKind }),
+        ...(input.type !== undefined && input.type !== 'ASSET' ? { assetKind: null } : {}),
+        ...(input.purchaseCostMinor === undefined
+          ? {}
+          : {
+              purchaseCostMinor:
+                input.purchaseCostMinor === null ? null : BigInt(input.purchaseCostMinor),
+            }),
+        ...(input.purchaseDate === undefined
+          ? {}
+          : {
+              purchaseDate: input.purchaseDate
+                ? fromLocalDateString(input.purchaseDate, timezone)
+                : null,
+            }),
         accountNumberMasked: input.accountNumberMasked,
         matchHints: input.matchHints,
         icon: input.icon,

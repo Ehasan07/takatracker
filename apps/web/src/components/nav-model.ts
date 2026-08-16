@@ -175,6 +175,13 @@ export const GROUPS: Group[] = [
         synonyms: 'savings dps সঞ্চয়পত্র জমা',
       },
       {
+        href: '/assets',
+        label: 'স্থাবর সম্পদ',
+        icon: Building2,
+        blurb: 'জমি, গাড়ি, স্বর্ণ, শেয়ার — কেনা দাম আর এখনকার মূল্য',
+        synonyms: 'asset property land car gold জমি ফ্ল্যাট গাড়ি সোনা গয়না শেয়ার সম্পদ স্থাবর',
+      },
+      {
         href: '/renewals',
         label: 'নবায়ন ও কাগজপত্র',
         icon: CalendarClock,

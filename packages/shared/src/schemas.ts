@@ -3,6 +3,7 @@ import { normaliseBdPhone } from './phone.js';
 import { DEFAULT_CURRENCY, isSupportedCurrency } from './currency.js';
 import {
   ACCOUNT_TYPES,
+  ASSET_KINDS,
   CATEGORY_KINDS,
   DEVICE_KINDS,
   ENTRY_DIRECTIONS,
@@ -130,6 +131,15 @@ export const createAccountSchema = z.object({
      remembered and belongs in no other field. Without it these facts end up in
      the account's *name*, which is where they were going before. */
   note: z.string().max(2000).optional(),
+  /* `ASSET` accounts only. Ignored elsewhere rather than refused: the type can
+     change after the fact, and refusing would make "make this a car" a
+     two-request operation with a broken state in between. */
+  assetKind: z.enum(ASSET_KINDS).nullish(),
+  /* What it cost and when. Never derived from the balance — the balance is the
+     carrying amount, cost plus every revaluation since, and the whole point of
+     keeping the original is that the two differ (IAS 16.77(e)). */
+  purchaseCostMinor: minorAmount.nonnegative().nullish(),
+  purchaseDate: isoDate.nullish(),
   accountNumberMasked: z.string().max(60).optional(),
   matchHints: z.array(z.string().max(60)).max(20).default([]),
   icon: z.string().max(40).optional(),
@@ -370,6 +380,36 @@ export const revalueSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 export type RevalueInput = z.infer<typeof revalueSchema>;
+
+/**
+ * Selling an asset — the land, the car, the gold, the shares.
+ *
+ * Distinct from `revalueSchema` for the reason the two operations are distinct:
+ * revaluing moves net worth with no money changing hands and posts to equity
+ * (IAS 16.39), while selling turns the asset into cash and the gain or loss
+ * goes to profit or loss (IAS 16.68).
+ *
+ * The carrying amount is deliberately absent. The books already know it — cost
+ * plus every revaluation since — and asking somebody to retype it is how an
+ * asset ends up not quite at zero after it has been sold.
+ */
+export const sellAssetSchema = z.object({
+  /** What was actually received. Never the valuation the books were carrying. */
+  proceedsMinor: positiveMinorAmount,
+  /** Where the money went — the bank, the wallet, cash in hand. */
+  destinationAccountId: cuid,
+  /**
+   * The খাত the gain or loss is filed under.
+   *
+   * Required, and its kind has to match which way the sale fell: income for a
+   * gain, expense for a loss. The server checks, because a gain filed under an
+   * expense head is a figure nobody looking for it would ever find.
+   */
+  categoryId: cuid,
+  date: isoDate,
+  note: z.string().trim().max(500).optional(),
+});
+export type SellAssetInput = z.infer<typeof sellAssetSchema>;
 
 export type ReconcileInput = z.infer<typeof reconcileSchema>;
 

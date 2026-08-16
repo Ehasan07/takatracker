@@ -319,14 +319,14 @@ export default function DashboardPage() {
                   header,
                   <li key="asset-summary" className="py-1.5">
                     <Link
-                      href="/accounts"
+                      href="/assets"
                       className="press text-ink-muted hover:text-ink flex items-center justify-between gap-3 text-sm"
                     >
                       <span>
-                        {t('dashboard.assetCount', '{n}টি সম্পদ — জমি, স্বর্ণ, পাওনা').replace(
-                          '{n}',
-                          String(rows.length),
-                        )}
+                        {t(
+                          'dashboard.assetCount',
+                          '{n}টি সম্পদ — জমি, গাড়ি, স্বর্ণ, শেয়ার',
+                        ).replace('{n}', String(rows.length))}
                       </span>
                       <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
                     </Link>

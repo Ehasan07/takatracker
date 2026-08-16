@@ -393,3 +393,73 @@ describe('current and non-current (IAS 1.60)', () => {
     expect(sheet.currentAssetsMinor).toBeLessThan(sheet.nonCurrentAssetsMinor);
   });
 });
+
+/**
+ * Assets, split the way IAS 1.54 splits them.
+ *
+ * A flat and a share portfolio are both assets and answer different questions,
+ * which is why the standard puts them on separate lines. One combined "সম্পদ"
+ * total answers neither.
+ */
+describe('grouping assets by kind', () => {
+  const row = (
+    id: string,
+    type: 'ASSET' | 'BANK',
+    balanceMinor: number,
+    assetKind?: 'PROPERTY' | 'VEHICLE' | 'GOLD' | 'INVESTMENT' | 'OTHER',
+  ) => ({ id, name: id, type, balanceMinor, assetKind: assetKind ?? null }) as const;
+
+  it('folds each kind into one line, biggest first', () => {
+    const sheet = buildBalanceSheet([
+      row('flat', 'ASSET', 5_000_000, 'PROPERTY'),
+      row('land', 'ASSET', 3_000_000, 'PROPERTY'),
+      row('car', 'ASSET', 1_500_000, 'VEHICLE'),
+      row('shares', 'ASSET', 900_000, 'INVESTMENT'),
+    ]);
+
+    expect(sheet.assetGroups).toEqual([
+      { kind: 'PROPERTY', amountMinor: 8_000_000, count: 2 },
+      { kind: 'VEHICLE', amountMinor: 1_500_000, count: 1 },
+      { kind: 'INVESTMENT', amountMinor: 900_000, count: 1 },
+    ]);
+  });
+
+  it('leaves a bank balance out of the split entirely', () => {
+    /* A bank account is an asset and is not the kind of thing IAS 1.54 asks to
+       be separated out — it is already on the current side of the sheet. */
+    const sheet = buildBalanceSheet([
+      row('bank', 'BANK', 2_000_000),
+      row('flat', 'ASSET', 5_000_000, 'PROPERTY'),
+    ]);
+
+    expect(sheet.assetGroups).toEqual([{ kind: 'PROPERTY', amountMinor: 5_000_000, count: 1 }]);
+    // Still counted in the totals, though — it is only the *split* it is out of.
+    expect(sheet.assetsMinor).toBe(7_000_000);
+  });
+
+  it('calls an unclassified asset OTHER rather than dropping it', () => {
+    /* Every row imported before the column existed has no kind. Silently
+       omitting them would make the groups add up to less than the total, which
+       is the one thing a breakdown must never do. */
+    const sheet = buildBalanceSheet([row('unknown', 'ASSET', 400_000)]);
+
+    expect(sheet.assetGroups).toEqual([{ kind: 'OTHER', amountMinor: 400_000, count: 1 }]);
+  });
+
+  it('groups add up to the non-current asset total', () => {
+    const sheet = buildBalanceSheet([
+      row('bank', 'BANK', 2_000_000),
+      row('flat', 'ASSET', 5_000_000, 'PROPERTY'),
+      row('car', 'ASSET', 1_500_000, 'VEHICLE'),
+      row('gold', 'ASSET', 700_000, 'GOLD'),
+    ]);
+
+    const grouped = sheet.assetGroups.reduce((sum, g) => sum + g.amountMinor, 0);
+    expect(grouped).toBe(sheet.nonCurrentAssetsMinor);
+  });
+
+  it('reports nothing when there are no assets to split', () => {
+    // Not a row of zeroes. A household with no gold should not read about gold.
+    expect(buildBalanceSheet([row('bank', 'BANK', 2_000_000)]).assetGroups).toEqual([]);
+  });
+});

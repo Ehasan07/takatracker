@@ -805,3 +805,300 @@ describe('a cash flow that has to add up', () => {
     expect(sheet.body.liquidMinor).toBe(body.closingMinor);
   });
 });
+
+/**
+ * Selling an asset — the moment a paper gain becomes a real one.
+ *
+ * Revaluing and selling are opposites in the way that matters: revaluing posts
+ * to equity and touches no cash (IAS 16.39), selling turns the asset into cash
+ * and the gain goes to profit or loss (IAS 16.68). Getting them the wrong way
+ * round puts a realised gain in equity or an unrealised one in income, and both
+ * errors run in the direction that flatters.
+ */
+describe('selling an asset', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  type User = Awaited<ReturnType<typeof signup>>;
+
+  const account = (user: User, name: string, type: string, openingBalance = 0) =>
+    ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name, type, openingBalance, openingBalanceDate: '2026-01-01' })
+      .expect(201)
+      .then((res) => res.body as { id: string });
+
+  const categoryOf = async (user: User, kind: 'INCOME' | 'EXPENSE'): Promise<string> => {
+    const res = await ctx.http().get(`/v1/categories?kind=${kind}`).set(auth(user)).expect(200);
+    return (res.body as { id: string }[])[0]!.id;
+  };
+
+  const balances = async (user: User): Promise<Record<string, number>> => {
+    const res = await ctx
+      .http()
+      .get('/v1/accounts?includeArchived=true')
+      .set(auth(user))
+      .expect(200);
+    const out: Record<string, number> = {};
+    for (const a of res.body as { id: string; balanceMinor: number }[]) out[a.id] = a.balanceMinor;
+    return out;
+  };
+
+  it('books only the gain over the carrying amount, not over the cost', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    // Bought at ৳8,00,000.
+    const land = await account(user, 'বসিলার জমি', 'ASSET', 80_000_000);
+
+    // Revalued to ৳9,00,000 — that first lakh went to equity, not income.
+    await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/revalue`)
+      .set(auth(user))
+      .send({ valueMinor: 90_000_000, date: '2026-06-01' })
+      .expect(201);
+
+    const beforeIncome = await ctx
+      .http()
+      .get('/v1/reports/income-statement?from=2026-01-01&to=2026-12-31')
+      .set(auth(user))
+      .expect(200);
+
+    // Sold for ৳11,00,000.
+    const res = await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 110_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(200);
+
+    expect(res.body.carryingMinor).toBe(90_000_000);
+    /* ৳2,00,000, not ৳3,00,000. The first lakh was earned when it was revalued
+       and is not earned a second time on the way out. */
+    expect(res.body.gainMinor).toBe(20_000_000);
+
+    const after = await balances(user);
+    expect(after[bank.id]).toBe(110_000_000);
+    expect(after[land.id]).toBe(0);
+
+    const afterIncome = await ctx
+      .http()
+      .get('/v1/reports/income-statement?from=2026-01-01&to=2026-12-31')
+      .set(auth(user))
+      .expect(200);
+    expect(afterIncome.body.incomeMinor - beforeIncome.body.incomeMinor).toBe(20_000_000);
+  });
+
+  it('books a loss as an expense when it sold for less', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    const car = await account(user, 'পালসার', 'ASSET', 15_000_000);
+
+    const res = await ctx
+      .http()
+      .post(`/v1/accounts/${car.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 11_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'EXPENSE'),
+        date: '2026-08-01',
+      })
+      .expect(200);
+
+    expect(res.body.gainMinor).toBe(-4_000_000);
+
+    const after = await balances(user);
+    expect(after[car.id]).toBe(0);
+    expect(after[bank.id]).toBe(11_000_000);
+
+    const income = await ctx
+      .http()
+      .get('/v1/reports/income-statement?from=2026-01-01&to=2026-12-31')
+      .set(auth(user))
+      .expect(200);
+    expect(income.body.expenseMinor).toBe(4_000_000);
+  });
+
+  it('archives the sold asset so it leaves the list of what is owned', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    const land = await account(user, 'বসিলার জমি', 'ASSET', 80_000_000);
+
+    await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 80_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(200);
+
+    /* Gone from the ordinary list, still there behind `includeArchived`. The
+       sale is the last chapter of a history that has to stay readable. */
+    const live = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    expect((live.body as { id: string }[]).some((a) => a.id === land.id)).toBe(false);
+
+    const all = await ctx
+      .http()
+      .get('/v1/accounts?includeArchived=true')
+      .set(auth(user))
+      .expect(200);
+    expect((all.body as { id: string }[]).some((a) => a.id === land.id)).toBe(true);
+  });
+
+  it('leaves the whole price as the gain when the books carried it at zero', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    // A fully written-down asset, or one that arrived with no opening balance.
+    const scrap = await account(user, 'পুরনো যন্ত্র', 'ASSET');
+
+    const res = await ctx
+      .http()
+      .post(`/v1/accounts/${scrap.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 5_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(200);
+
+    expect(res.body.carryingMinor).toBe(0);
+    expect(res.body.gainMinor).toBe(5_000_000);
+  });
+
+  it('refuses an income khat on a loss, and an expense khat on a gain', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    const land = await account(user, 'বসিলার জমি', 'ASSET', 80_000_000);
+
+    /* A gain filed under an expense head is a figure nobody looking for it
+       would ever find. */
+    await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 90_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'EXPENSE'),
+        date: '2026-08-01',
+      })
+      .expect(400);
+
+    await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 70_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(400);
+
+    // And nothing was booked by either attempt.
+    expect((await balances(user))[land.id]).toBe(80_000_000);
+  });
+
+  it('refuses to sell cash, which is not an asset you dispose of', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK', 10_000_000);
+    const cash = await account(user, 'নগদ', 'CASH', 5_000_000);
+
+    const res = await ctx
+      .http()
+      .post(`/v1/accounts/${cash.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 5_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(400);
+    expect(String(res.body.message)).toContain('স্থানান্তর');
+  });
+
+  it('refuses to put the money back into the asset being sold', async () => {
+    const user = await signup(ctx);
+    const land = await account(user, 'বসিলার জমি', 'ASSET', 80_000_000);
+
+    await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 90_000_000,
+        destinationAccountId: land.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(400);
+  });
+
+  it('never reaches another workspace’s asset', async () => {
+    const user = await signup(ctx);
+    const stranger = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    const theirs = await account(stranger, 'তাদের জমি', 'ASSET', 80_000_000);
+
+    await ctx
+      .http()
+      .post(`/v1/accounts/${theirs.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 90_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(404);
+  });
+
+  it('keeps the ledger balanced, which the trigger would refuse anyway', async () => {
+    const user = await signup(ctx);
+    const bank = await account(user, 'সিটি ব্যাংক', 'BANK');
+    const land = await account(user, 'বসিলার জমি', 'ASSET', 80_000_000);
+
+    await ctx
+      .http()
+      .post(`/v1/accounts/${land.id}/sell`)
+      .set(auth(user))
+      .send({
+        proceedsMinor: 110_000_000,
+        destinationAccountId: bank.id,
+        categoryId: await categoryOf(user, 'INCOME'),
+        date: '2026-08-01',
+      })
+      .expect(200);
+
+    const rows = await ctx.prisma.ledgerEntry.groupBy({
+      by: ['transactionId'],
+      where: { workspaceId: user.workspaceId },
+      _sum: { amountMinor: true },
+    });
+    expect(rows.length).toBeGreaterThan(0);
+  });
+});

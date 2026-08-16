@@ -1,4 +1,5 @@
 import {
+  HttpCode,
   Body,
   Controller,
   Delete,
@@ -15,6 +16,7 @@ import {
   isoDate,
   reconcileSchema,
   revalueSchema,
+  sellAssetSchema,
   updateAccountSchema,
 } from '@hishab/shared';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
@@ -107,6 +109,26 @@ export class AccountsController {
     @Body(zodPipe(revalueSchema)) body: ReturnType<typeof revalueSchema.parse>,
   ) {
     return this.transactions.revalue(user, id, body);
+  }
+
+  /**
+   * Sold it. The money comes in, the asset goes to zero, and the difference is
+   * a realised gain or loss on the income statement (IAS 16.68).
+   *
+   * Separate from `revalue` because the two are opposites in the way that
+   * matters: revaluing posts to equity and touches no cash, selling does the
+   * reverse. The account is archived in the same database transaction, so a
+   * sold asset can never be left sitting at zero among the things somebody
+   * still owns.
+   */
+  @Post(':id/sell')
+  @HttpCode(200)
+  sell(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(sellAssetSchema)) body: ReturnType<typeof sellAssetSchema.parse>,
+  ) {
+    return this.transactions.sell(user, id, body);
   }
 
   /**

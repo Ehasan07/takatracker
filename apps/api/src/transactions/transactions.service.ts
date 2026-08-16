@@ -847,6 +847,190 @@ export class TransactionsService {
     return { deltaMinor, transaction: this.present(created, ctx) };
   }
 
+  /**
+   * Selling the asset: the land, the car, the gold, the shares.
+   *
+   * ## Why this is not a revaluation, and not a transfer
+   *
+   * Revaluing says the world moved and the money has not: it posts against
+   * equity and touches no cash (IAS 16.39). Selling is the moment that stops
+   * being true. The asset leaves the books, cash arrives, and the difference
+   * between the two is a **realised** gain or loss that belongs in profit or
+   * loss (IAS 16.68).
+   *
+   * Booking a sale as a revaluation would leave a realised gain sitting in
+   * equity; booking it as a plain transfer would silently lose the gain
+   * altogether, because a transfer of the sale price out of an account holding
+   * less than that cannot balance. Both errors run in the direction that
+   * flatters, which is why this is its own operation rather than three things a
+   * careful person could assemble by hand.
+   *
+   * ## The three legs
+   *
+   * ```
+   *   DEBIT   the destination account      the price actually received
+   *   CREDIT  the asset                    its carrying amount — it goes to zero
+   *   CREDIT  income  (or DEBIT expense)   the difference, whichever way it fell
+   * ```
+   *
+   * The carrying amount is read from the ledger rather than taken from the
+   * caller. It is cost plus every revaluation since, and asking somebody to
+   * retype a figure the books already know is how the asset ends up not quite
+   * at zero.
+   *
+   * ## Only the gain reaches income
+   *
+   * Land bought at ৳8,00,000, revalued to ৳9,00,000, sold for ৳11,00,000 books
+   * ৳2,00,000 of income — not ৳3,00,000. The first lakh went to equity when it
+   * was revalued and is not earned twice. Nothing here moves it out of equity
+   * either: IAS 16.41 permits transferring the surplus to retained earnings on
+   * disposal, and this product has no retained-earnings line to move it to.
+   */
+  async sell(
+    ctx: TenantContext,
+    accountId: string,
+    input: {
+      proceedsMinor: number;
+      destinationAccountId: string;
+      categoryId: string;
+      date: string;
+      note?: string;
+    },
+  ): Promise<{
+    proceedsMinor: number;
+    carryingMinor: number;
+    gainMinor: number;
+    transaction: TransactionView;
+  }> {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, workspaceId: ctx.workspaceId, deletedAt: null, systemKey: null },
+    });
+    if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
+    if (account.type !== 'ASSET') {
+      throw new BadRequestException(
+        'শুধু সম্পদ (জমি, গাড়ি, স্বর্ণ, শেয়ার) বিক্রি করা যায় — নগদ বা ব্যাংকের জন্য “স্থানান্তর” ব্যবহার করুন',
+      );
+    }
+    if (accountId === input.destinationAccountId) {
+      throw new BadRequestException('টাকাটা অন্য একটি অ্যাকাউন্টে নিতে হবে');
+    }
+
+    const destination = await this.prisma.account.findFirst({
+      where: {
+        id: input.destinationAccountId,
+        workspaceId: ctx.workspaceId,
+        deletedAt: null,
+        systemKey: null,
+      },
+    });
+    if (!destination) throw new NotFoundException('যে অ্যাকাউন্টে টাকা যাবে সেটি পাওয়া যায়নি');
+
+    const balances = await this.accounts.balances(ctx.workspaceId);
+    const carryingMinor = balances.get(accountId) ?? 0;
+    /* A negative carrying amount is not a cheap asset, it is a broken one —
+       something has been booked the wrong way round — and pretending to sell it
+       would write that error into the income statement as a gain. */
+    if (carryingMinor < 0) {
+      throw new BadRequestException(
+        'এই সম্পদের হিসাব ঋণাত্মক দেখাচ্ছে — বিক্রির আগে সেটি ঠিক করে নিন',
+      );
+    }
+    const gainMinor = input.proceedsMinor - carryingMinor;
+
+    /* The category has to sit on the right side of the ledger, because the leg
+       it labels is decided by the sign of the gain. An income খাত on a loss
+       would file the loss where nobody looking for it would ever find it. */
+    const category = await this.prisma.category.findFirst({
+      where: { id: input.categoryId, workspaceId: ctx.workspaceId, deletedAt: null },
+    });
+    if (!category) throw new NotFoundException('খাত পাওয়া যায়নি');
+    if (gainMinor > 0 && category.kind !== 'INCOME') {
+      throw new BadRequestException('লাভ হয়েছে — আয়ের একটি খাত বেছে নিন');
+    }
+    if (gainMinor < 0 && category.kind !== 'EXPENSE') {
+      throw new BadRequestException('লোকসান হয়েছে — খরচের একটি খাত বেছে নিন');
+    }
+
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    /* The workspace's own currency throughout. The three legs of a sale are all
+       denominated the same way — the price, the carrying amount and the
+       difference between them — so a per-leg currency here would only be a way
+       to get them out of step. */
+    const currency = destination.currency;
+    const leg = (
+      legAccountId: string,
+      direction: 'DEBIT' | 'CREDIT',
+      amountMinor: number,
+      categoryId?: string,
+    ): EntryDraft => ({
+      accountId: legAccountId,
+      direction,
+      amountMinor,
+      currency,
+      fxRate: 1,
+      categoryId: categoryId ?? null,
+    });
+
+    const entries: EntryDraft[] = [leg(input.destinationAccountId, 'DEBIT', input.proceedsMinor)];
+    /* Nothing to relieve when the books already carry it at zero — a fully
+       written-down car, or one that arrived with no opening balance. The whole
+       price is then the gain, which is correct. A zero-amount leg would be
+       refused by the ledger and is meaningless anyway. */
+    if (carryingMinor > 0) entries.push(leg(accountId, 'CREDIT', carryingMinor));
+    if (gainMinor > 0) {
+      entries.push(leg(system.incomeAccountId, 'CREDIT', gainMinor, input.categoryId));
+    } else if (gainMinor < 0) {
+      entries.push(leg(system.expenseAccountId, 'DEBIT', -gainMinor, input.categoryId));
+    }
+    assertBalanced(entries);
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.transaction.create({
+        data: {
+          workspaceId: ctx.workspaceId,
+          createdByUserId: ctx.id,
+          date: fromLocalDateString(input.date, ctx.timezone),
+          type: 'DISPOSAL',
+          description: input.note?.trim() || `${account.name} — বিক্রি`,
+          source: 'MANUAL',
+          entries: {
+            create: entries.map((e) => TransactionsService.toEntryData(e, ctx.workspaceId)),
+          },
+        },
+        include: txInclude,
+      });
+
+      /* Archived in the same transaction, so a sold asset can never be left
+         sitting at zero among the things somebody still owns. It is archived
+         rather than deleted: the sale is the last chapter of a history that
+         has to stay readable. */
+      await tx.account.update({ where: { id: accountId }, data: { isArchived: true } });
+      return row;
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'account.sold',
+      entity: 'Account',
+      entityId: accountId,
+      before: { carryingMinor },
+      after: {
+        proceedsMinor: input.proceedsMinor,
+        gainMinor,
+        destinationAccountId: input.destinationAccountId,
+        date: input.date,
+      },
+    });
+
+    return {
+      proceedsMinor: input.proceedsMinor,
+      carryingMinor,
+      gainMinor,
+      transaction: this.present(created, ctx),
+    };
+  }
+
   /** Every revaluation of one account, newest first. The history IFRS expects. */
   async revaluations(ctx: TenantContext, accountId: string) {
     const rows = await this.prisma.transaction.findMany({

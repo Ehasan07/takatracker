@@ -31,6 +31,7 @@ export const EN: Record<string, string> = {
   'nav.more': 'More',
   'nav.accounts': 'Accounts',
   'nav.savings': 'Savings & DPS',
+  'nav.assets': 'Property & assets',
   'nav.renewals': 'Renewals & papers',
   'nav.renewals.blurb': 'Fitness, khajna, holding tax, trade licence — when each one runs out',
   'nav.insurance': 'Insurance',
@@ -88,6 +89,7 @@ export const EN: Record<string, string> = {
   'nav.admin.audit.blurb': 'Across every tenant',
   'nav.accounts.blurb': 'Balances across bank, mobile wallets and cash',
   'nav.savings.blurb': 'DPS and savings instalments, terms and profit',
+  'nav.assets.blurb': 'Land, vehicles, gold, shares \u2014 what they cost and what they are worth',
   'nav.insurance.blurb': 'When each premium is due, how much, what is outstanding',
   'nav.mail.blurb': 'Letters from a connected mailbox — bank statements live here',
   'nav.inbox.blurb': 'Drafts from messages — nothing reaches your books unasked',
@@ -154,7 +156,7 @@ export const EN: Record<string, string> = {
   'dashboard.ofWhichCards': 'of which credit cards',
   /* IAS 1.60: current and non-current apart, so a reader can tell what turns
      into cash soon from what does not. */
-  'dashboard.assetCount': '{n} assets — land, gold, receivables',
+  'dashboard.assetCount': '{n} assets — land, vehicles, gold, shares',
   'dashboard.spendingPower': 'Could spend today',
   'dashboard.undrawn': 'of which card headroom',
   'dashboard.undrawnHint':
@@ -778,6 +780,49 @@ export const EN: Record<string, string> = {
     'You can move this head under another one. Its transactions move with it \u2014 nothing is lost.',
   'cat.parentLocked':
     'This head has sub-heads of its own, so it cannot be moved under another. Move the sub-heads first.',
+  'account.sell': 'Sell',
+  'account.sellTitle': 'Sell an asset',
+  'account.sellPrice': 'What did you sell it for (\u09f3)',
+  'account.sellCarrying': 'What the books carry it at',
+  'account.sellGain': 'Gain on sale',
+  'account.sellLoss': 'Loss on sale',
+  'account.sellHint':
+    'The gain on sale goes to the income statement. Whatever it had already risen by on revaluation is not counted again \u2014 that was recognised at the time.',
+  'account.sellInto': 'Where the money landed',
+  'account.sellGainCategory': 'File the gain under',
+  'account.sellLossCategory': 'File the loss under',
+  'account.sellDate': 'On what date',
+  'account.sellNotePlaceholder': 'e.g. registry completed',
+  'account.sellArchiveNote':
+    'After the sale it moves to \u201cSold assets\u201d \u2014 nothing is deleted, it just leaves the totals.',
+  'account.sellNeedsPrice': 'Enter what you sold it for',
+  'account.sellNeedsCategory': 'Choose where the gain or loss is filed',
+  'assets.sold': 'Sold assets',
+  'assets.soldNote':
+    'These are left out of the totals above. The gain or loss on sale is on the income statement.',
+  'account.assetKind': 'What kind of asset',
+  'account.assetKindHint': 'The fixed-assets page groups them by this.',
+  'account.purchaseCost': 'What it cost (\u09f3)',
+  'account.purchaseCostHint':
+    'What you paid for it. Use \u201crevalue\u201d to change what it is worth now \u2014 the cost stays as it was.',
+  'account.purchaseCostHintShort':
+    'What you paid for it. If the value rises later, use \u201crevalue\u201d \u2014 this box stays as it was.',
+  'account.purchaseDate': 'Date bought',
+  'assets.title': 'Property and long-term assets',
+  'assets.none': 'No land, vehicle or gold has been added yet.',
+  'assets.noneHint':
+    'Go to Accounts, choose the type \u201casset\u201d, then say which of them is land and which is a car.',
+  'assets.goToAccounts': 'Go to Accounts',
+  'assets.totalValue': 'Worth now',
+  'assets.totalCost': 'What it cost',
+  'assets.surplus': 'Value has risen',
+  'assets.deficit': 'Value has fallen',
+  'assets.surplusNote':
+    'A rise in value is not income \u2014 until you sell, it is not money in hand, and it never reaches the income statement.',
+  'assets.missingCost':
+    '{n} asset(s) have no cost recorded, so they are left out of the comparison above.',
+  'assets.noCost': 'No cost recorded',
+  'assets.boughtFor': 'Cost',
   'account.note': 'Note',
   'account.notePlaceholder': 'e.g. Gulshan branch, nominee \u2014 Ammu, cheque book 4501\u20134550',
   'account.noteHint': 'Branch, nominee, cheque book \u2014 whatever you need to remember.',

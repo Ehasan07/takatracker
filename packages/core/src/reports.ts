@@ -1,4 +1,4 @@
-import { sumMinor, type AccountType } from '@hishab/shared';
+import { sumMinor, type AccountType, type AssetKind } from '@hishab/shared';
 
 /**
  * Report assembly. The database does the grouping; this decides what the groups
@@ -39,6 +39,14 @@ export interface AccountBalanceRow {
   type: AccountType;
   /** Signed the way a human reads it: positive means the account holds value. */
   balanceMinor: number;
+  /**
+   * `ASSET` rows only: land, a car, gold, a share account.
+   *
+   * Optional because most rows are not assets and because the column was added
+   * late — a caller that has not been updated still gets a correct sheet, just
+   * without the sub-totals.
+   */
+  assetKind?: AssetKind | null;
 }
 
 export interface BalanceSheetLine {
@@ -46,6 +54,24 @@ export interface BalanceSheetLine {
   name: string;
   type: AccountType;
   amountMinor: number;
+  assetKind?: AssetKind | null;
+}
+
+/**
+ * Non-current assets, split the way IAS 1.54 splits them.
+ *
+ * The standard puts property, plant and equipment on one line and financial
+ * investments on another, and it is not a formatting preference: a flat and a
+ * share portfolio behave differently, are valued differently, and answer
+ * different questions. One combined "সম্পদ" total answers neither.
+ *
+ * Empty groups are dropped by the caller rather than reported as zero — a
+ * household that owns no gold should not read a line saying it owns no gold.
+ */
+export interface AssetGroup {
+  kind: AssetKind;
+  amountMinor: number;
+  count: number;
 }
 
 export interface BalanceSheet {
@@ -55,6 +81,12 @@ export interface BalanceSheet {
   liquidMinor: number;
   assets: BalanceSheetLine[];
   liabilities: BalanceSheetLine[];
+  /**
+   * The `ASSET` rows grouped by what they actually are. Present even when the
+   * caller supplied no kinds, in which case everything lands under `OTHER`,
+   * which is the truthful answer to "what kind is it" when nobody has said.
+   */
+  assetGroups: AssetGroup[];
   /**
    * The same lines again, split the way IAS 1.60 requires.
    *
@@ -117,7 +149,13 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
   const liabilities: BalanceSheetLine[] = [];
 
   for (const row of rows) {
-    const line = { id: row.id, name: row.name, type: row.type, amountMinor: row.balanceMinor };
+    const line = {
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      amountMinor: row.balanceMinor,
+      assetKind: row.assetKind ?? null,
+    };
     switch (ACCOUNT_CLASS[row.type]) {
       case 'ASSET':
         assets.push(line);
@@ -155,7 +193,33 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
     workingCapitalMinor: currentAssetsMinor - currentLiabilitiesMinor,
     assets: assets.sort((a, b) => b.amountMinor - a.amountMinor),
     liabilities: liabilities.sort((a, b) => b.amountMinor - a.amountMinor),
+    assetGroups: groupAssets(assets),
   };
+}
+
+/**
+ * `ASSET` rows folded into their kinds, biggest first.
+ *
+ * Only `type === 'ASSET'`: a bank balance is an asset and is not the kind of
+ * thing IAS 1.54 is asking to be separated out. A row with no kind counts as
+ * `OTHER`, which is what "nobody has said" honestly is.
+ */
+export function groupAssets(lines: readonly BalanceSheetLine[]): AssetGroup[] {
+  const totals = new Map<AssetKind, { amountMinor: number; count: number }>();
+
+  for (const line of lines) {
+    if (line.type !== 'ASSET') continue;
+    const kind: AssetKind = line.assetKind ?? 'OTHER';
+    const current = totals.get(kind) ?? { amountMinor: 0, count: 0 };
+    totals.set(kind, {
+      amountMinor: current.amountMinor + line.amountMinor,
+      count: current.count + 1,
+    });
+  }
+
+  return [...totals.entries()]
+    .map(([kind, value]) => ({ kind, ...value }))
+    .sort((a, b) => b.amountMinor - a.amountMinor);
 }
 
 /**

@@ -653,6 +653,22 @@ model Account {
   /// with a form nobody fills in, and the one fact that actually mattered was
   /// never one of the columns anyway.
   note                String?
+  /// What kind of thing this is, for `type = ASSET` only.
+  ///
+  /// Land, a car and a BO share account are all `ASSET` and are three different
+  /// things on a balance sheet: IAS 1.54 puts property, plant and equipment on
+  /// one line and financial investments on another. Without this they were one
+  /// undifferentiated pile and no screen could separate them.
+  assetKind           AssetKind?
+  /// What it cost, in poisha, and when. Nullable because most accounts are not
+  /// assets and because somebody may not remember.
+  ///
+  /// Kept alongside the ledger balance rather than replacing it. The balance is
+  /// the carrying amount — cost plus every revaluation since — and this is the
+  /// original. IAS 16.77(e) asks for exactly that comparison under the
+  /// revaluation model: what the carrying amount would have been at cost.
+  purchaseCostMinor   BigInt?
+  purchaseDate        DateTime?
   isArchived          Boolean     @default(false)
   sortOrder           Int         @default(0)
   icon                String?
@@ -1096,6 +1112,23 @@ model LoanInterestAccrual {
 // ---------------------------------------------------------------------------
 // Savings & insurance
 // ---------------------------------------------------------------------------
+
+/// The kinds of long-term asset a household actually holds.
+///
+/// Deliberately short. A longer list is a longer form, and every extra option
+/// is one more chance to file the same flat under two different headings in two
+/// different years — which destroys the comparability the split exists for.
+enum AssetKind {
+  /// Land, flats, shops. IAS 16 property.
+  PROPERTY
+  /// Cars, motorcycles, machinery. IAS 16 plant and equipment.
+  VEHICLE
+  /// Gold, jewellery, anything held for its metal.
+  GOLD
+  /// Shares, bonds, a BO account. IFRS 9 rather than IAS 16.
+  INVESTMENT
+  OTHER
+}
 
 enum SavingsPlanType {
   DPS
@@ -1567,6 +1600,15 @@ enum TransactionType {
   /// reconciliation on the statement of changes in net worth, which is the one
   /// place a reader goes to ask why net worth moved without any income.
   REVALUATION
+  /// Selling the asset: land, a car, gold, shares.
+  ///
+  /// Its own type because it is the opposite of REVALUATION in the one way that
+  /// matters. Revaluing moves net worth without any money changing hands and
+  /// posts to equity (IAS 16.39); selling turns the asset into cash and the
+  /// gain or loss goes to profit or loss (IAS 16.68). Mixing the two would put
+  /// a realised gain in equity or an unrealised one in income, and both are
+  /// wrong in the direction that flatters.
+  DISPOSAL
   OPENING_BALANCE
 }
 

@@ -23,7 +23,7 @@ import {
   withShares,
 } from '@hishab/core';
 import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
-import type { AccountType } from '@prisma/client';
+import type { AccountType, AssetKind } from '@prisma/client';
 import { minorToNumber } from '../common/bigint-json';
 import { AccountsService } from '../accounts/accounts.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -598,7 +598,7 @@ export class ReportsService {
      * per date, by `balances`. */
     const accounts = await this.prisma.account.findMany({
       where: { workspaceId: ctx.workspaceId, deletedAt: null },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true, type: true, assetKind: true },
     });
 
     const [current, earlier] = await Promise.all([
@@ -647,7 +647,12 @@ export class ReportsService {
    */
   private async balanceSheetLines(
     ctx: TenantContext,
-    accounts: readonly { id: string; name: string; type: AccountType }[],
+    accounts: readonly {
+      id: string;
+      name: string;
+      type: AccountType;
+      assetKind: AssetKind | null;
+    }[],
     asOf?: string,
   ): Promise<AccountBalanceRow[]> {
     /* The exclusive upper bound of the local day: midnight at the start of the
@@ -665,6 +670,7 @@ export class ReportsService {
         name: a.name,
         type: a.type,
         balanceMinor: balances.get(a.id) ?? 0,
+        assetKind: a.assetKind,
       }));
   }
 

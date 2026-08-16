@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
+  HandCoins,
   Archive,
   ArchiveRestore,
   BellOff,
@@ -18,6 +19,7 @@ import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
+import { CategoryOptions, type CategoryScope } from '@/components/category-options';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
@@ -170,6 +172,8 @@ export default function AccountsPage() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [reconciling, setReconciling] = React.useState<AccountDto | null>(null);
   const [revaluing, setRevaluing] = React.useState<AccountDto | null>(null);
+  /** The asset being sold. `null` closes the sheet. */
+  const [selling, setSelling] = React.useState<AccountDto | null>(null);
   const [editing, setEditing] = React.useState<AccountDto | null>(null);
   const [archiving, setArchiving] = React.useState<AccountDto | null>(null);
   const [showArchived, setShowArchived] = React.useState(false);
@@ -532,6 +536,21 @@ export default function AccountsPage() {
                   two icons. Cash and bank accounts get "মেলান" — the ledger may
                   be wrong about money that already exists. Land, gold and a car
                   get "মূল্যায়ন" — the ledger is right and the world moved. */}
+                {/* Selling is only ever offered on an asset, and only while it
+                    is still owned. Revaluing says the world moved; selling says
+                    it is somebody else's now — the third question on this row,
+                    and the only one that turns a paper gain into a real one. */}
+                {account.type === 'ASSET' && !account.isArchived ? (
+                  <button
+                    type="button"
+                    aria-label={`${account.name} — ${t('account.sell', 'বিক্রি')}`}
+                    title={t('account.sell', 'বিক্রি')}
+                    onClick={() => setSelling(account)}
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                  >
+                    <HandCoins className="h-4 w-4" aria-hidden />
+                  </button>
+                ) : null}
                 {REVALUABLE.has(account.type) ? (
                   <button
                     type="button"
@@ -680,6 +699,11 @@ export default function AccountsPage() {
         onClose={() => setRevaluing(null)}
         onSaved={() => invalidateAccountData(queryClient)}
       />
+      <SellSheet
+        account={selling}
+        onClose={() => setSelling(null)}
+        onSaved={() => invalidateAccountData(queryClient)}
+      />
     </div>
   );
 }
@@ -758,6 +782,9 @@ interface AccountForm {
   opening: string;
   institution: string;
   note: string;
+  assetKind: string;
+  purchaseCost: string;
+  purchaseDate: string;
   masked: string;
   hints: string;
   icon: string;
@@ -782,6 +809,9 @@ const toForm = (a: AccountDto | null): AccountForm => ({
   openingDate: a?.openingBalanceDate ?? toLocalDateString(new Date()),
   institution: a?.institution ?? '',
   note: a?.note ?? '',
+  assetKind: a?.assetKind ?? 'OTHER',
+  purchaseCost: a?.purchaseCostMinor ? formatMinor(a.purchaseCostMinor, { symbol: false }) : '',
+  purchaseDate: a?.purchaseDate ?? '',
   masked: a?.accountNumberMasked ?? '',
   hints: (a?.matchHints ?? []).join(', '),
   icon: a?.icon ?? '',
@@ -804,6 +834,7 @@ function accountPatch(
   openingBalance: number,
 ): Record<string, unknown> {
   const isCard = form.type === 'CREDIT_CARD';
+  const isAsset = form.type === 'ASSET';
   const next = {
     name: form.name.trim(),
     type: form.type,
@@ -816,6 +847,13 @@ function accountPatch(
     openingBalanceDate: openingBalance === 0 ? undefined : form.openingDate,
     institution: form.institution.trim(),
     note: form.note.trim(),
+    /* Only sent for an asset. On anything else the server clears it anyway, and
+       sending a stale "গাড়ি" from a form that no longer shows the box would be
+       the screen asserting something the reader never saw. */
+    assetKind: isAsset ? form.assetKind : null,
+    purchaseCostMinor:
+      isAsset && form.purchaseCost.trim() ? parseMoneyToMinor(form.purchaseCost) : null,
+    purchaseDate: isAsset && form.purchaseDate ? form.purchaseDate : null,
     accountNumberMasked: form.masked.trim(),
     matchHints: form.hints
       .split(',')
@@ -842,6 +880,9 @@ function accountPatch(
       account.openingBalance === 0 ? undefined : (account.openingBalanceDate ?? undefined),
     institution: account.institution ?? '',
     note: account.note ?? '',
+    assetKind: account.type === 'ASSET' ? (account.assetKind ?? 'OTHER') : null,
+    purchaseCostMinor: account.purchaseCostMinor,
+    purchaseDate: account.purchaseDate,
     accountNumberMasked: account.accountNumberMasked ?? '',
     matchHints: account.matchHints,
     icon: account.icon ?? '',
@@ -1088,6 +1129,57 @@ function EditAccountSheet({
           হিসেবে খাতায় বসে, তাই তার আগের তারিখের হিসাবে এটি ধরা হবে না।
         </p>
 
+        {/* Assets only. Chosen when the asset is added, which is the moment
+            somebody actually knows whether it is a flat or a motorcycle. */}
+        {form.type === 'ASSET' ? (
+          <>
+            <Field label={t('account.assetKind', 'কী ধরনের সম্পদ')} htmlFor="edit-acc-kind">
+              <Select id="edit-acc-kind" value={form.assetKind} onChange={set('assetKind')}>
+                <option value="PROPERTY">স্থাবর সম্পত্তি — জমি, ফ্ল্যাট, দোকান</option>
+                <option value="VEHICLE">যানবাহন — গাড়ি, মোটরসাইকেল</option>
+                <option value="GOLD">স্বর্ণ ও গয়না</option>
+                <option value="INVESTMENT">বিনিয়োগ — শেয়ার, বন্ড, বিও হিসাব</option>
+                <option value="OTHER">অন্যান্য</option>
+              </Select>
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'account.assetKindHint',
+                  'স্থাবর সম্পদ পাতায় এই ভাগ ধরেই আলাদা করে দেখানো হবে।',
+                )}
+              </p>
+            </Field>
+
+            <Field label={t('account.purchaseCost', 'কেনা দাম (৳)')} htmlFor="edit-acc-cost">
+              <Input
+                id="edit-acc-cost"
+                value={form.purchaseCost}
+                onChange={set('purchaseCost')}
+                inputMode="decimal"
+                className="money"
+                placeholder="০.০০"
+              />
+              {/* The balance is the carrying amount — cost plus every
+                  revaluation since — so the original has to be kept separately
+                  or the two can never be compared. IAS 16.77(e). */}
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'account.purchaseCostHint',
+                  'যত টাকায় কিনেছিলেন। এখনকার মূল্য বদলাতে “মূল্যায়ন” ব্যবহার করুন — কেনা দাম একই থাকবে।',
+                )}
+              </p>
+            </Field>
+
+            <Field label={t('account.purchaseDate', 'কেনার তারিখ')} htmlFor="edit-acc-bought">
+              <Input
+                id="edit-acc-bought"
+                type="date"
+                value={form.purchaseDate}
+                onChange={set('purchaseDate')}
+              />
+            </Field>
+          </>
+        ) : null}
+
         <Field label={t('account.institution', 'প্রতিষ্ঠান')} htmlFor="edit-acc-inst">
           <Input
             id="edit-acc-inst"
@@ -1266,6 +1358,11 @@ function AddAccountSheet({
   const [creditLimit, setCreditLimit] = React.useState('');
   /** Branch, nominee, cheque book — the field that catches everything else. */
   const [note, setNote] = React.useState('');
+  /* Asked at creation, because that is the moment somebody knows whether the
+     thing they are adding is a flat or a motorcycle. */
+  const [assetKind, setAssetKind] = React.useState('PROPERTY');
+  const [purchaseCost, setPurchaseCost] = React.useState('');
+  const [purchaseDate, setPurchaseDate] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   const save = useMutation({
@@ -1285,6 +1382,15 @@ function AddAccountSheet({
               ? parseMoneyToMinor(creditLimit, currency)
               : undefined,
           note: note.trim() || undefined,
+          ...(type === 'ASSET'
+            ? {
+                assetKind,
+                purchaseCostMinor: purchaseCost.trim()
+                  ? parseMoneyToMinor(purchaseCost, currency)
+                  : null,
+                purchaseDate: purchaseDate || null,
+              }
+            : {}),
         },
       }),
     onSuccess: () => {
@@ -1293,6 +1399,8 @@ function AddAccountSheet({
       setOpeningDate(toLocalDateString(new Date()));
       setDueDay('');
       setNote('');
+      setPurchaseCost('');
+      setPurchaseDate('');
       onSaved();
       onOpenChange(false);
     },
@@ -1417,6 +1525,53 @@ function AddAccountSheet({
             {error}
           </p>
         ) : null}
+
+        {/* Assets only, and asked here rather than later: "what kind" is
+            obvious at the moment of adding and becomes a chore afterwards. */}
+        {type === 'ASSET' ? (
+          <>
+            <Field label={t('account.assetKind', 'কী ধরনের সম্পদ')} htmlFor="acc-kind">
+              <Select
+                id="acc-kind"
+                value={assetKind}
+                onChange={(e) => setAssetKind(e.target.value)}
+              >
+                <option value="PROPERTY">স্থাবর সম্পত্তি — জমি, ফ্ল্যাট, দোকান</option>
+                <option value="VEHICLE">যানবাহন — গাড়ি, মোটরসাইকেল</option>
+                <option value="GOLD">স্বর্ণ ও গয়না</option>
+                <option value="INVESTMENT">বিনিয়োগ — শেয়ার, বন্ড, বিও হিসাব</option>
+                <option value="OTHER">অন্যান্য</option>
+              </Select>
+            </Field>
+
+            <Field label={t('account.purchaseCost', 'কেনা দাম (৳)')} htmlFor="acc-cost">
+              <Input
+                id="acc-cost"
+                value={purchaseCost}
+                onChange={(e) => setPurchaseCost(e.target.value)}
+                inputMode="decimal"
+                className="money"
+                placeholder="০.০০"
+              />
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'account.purchaseCostHintShort',
+                  'যত টাকায় কিনেছিলেন। পরে দাম বাড়লে “মূল্যায়ন” দিয়ে বদলাবেন — এই ঘরটি একই থাকবে।',
+                )}
+              </p>
+            </Field>
+
+            <Field label={t('account.purchaseDate', 'কেনার তারিখ')} htmlFor="acc-bought">
+              <Input
+                id="acc-bought"
+                type="date"
+                value={purchaseDate}
+                onChange={(e) => setPurchaseDate(e.target.value)}
+              />
+            </Field>
+          </>
+        ) : null}
+
         {/* Last, and deliberately so: it is the field somebody reaches for once
             the structured ones have failed to hold what they needed to keep.
             Without it the branch and the nominee end up in the account's name. */}
@@ -1664,6 +1819,242 @@ function RevalueSheet({
             </ul>
           </div>
         ) : null}
+      </form>
+    </Sheet>
+  );
+}
+
+/**
+ * Sold it — the moment a paper gain becomes a real one.
+ *
+ * ## Why this is not the revaluation sheet with a different title
+ *
+ * Revaluing says the world moved and no money did: it posts against equity and
+ * nothing reaches the income statement (IAS 16.39). Selling is where that stops
+ * being true — the asset leaves, cash arrives, and the difference is a
+ * **realised** gain that belongs in profit or loss (IAS 16.68).
+ *
+ * The sheet computes that difference live and shows it, because it is the one
+ * number somebody will be surprised by. Land bought at ৳8,00,000 and revalued
+ * to ৳9,00,000 shows a ৳2,00,000 gain when sold at ৳11,00,000 — not ৳3,00,000.
+ * The first lakh was already recognised and is not earned twice.
+ *
+ * ## Why the খাত picker switches
+ *
+ * A gain is income and a loss is an expense, and they are filed on opposite
+ * sides of the ledger. The server refuses a mismatch, so the picker follows the
+ * arithmetic rather than letting somebody choose a head that will be rejected.
+ */
+function SellSheet({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: AccountDto | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { currency } = useWorkspaceSettings();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
+
+  const [proceeds, setProceeds] = React.useState('');
+  const [destinationId, setDestinationId] = React.useState('');
+  const [categoryId, setCategoryId] = React.useState('');
+  const [date, setDate] = React.useState(() => toLocalDateString(new Date()));
+  const [note, setNote] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setProceeds('');
+    setCategoryId('');
+    setNote('');
+    setDate(toLocalDateString(new Date()));
+    setError(null);
+  }, [account]);
+
+  /* Anywhere the money could actually land — never the asset being sold. */
+  const destinations = React.useMemo(
+    () => (accounts.data ?? []).filter((a) => !a.isArchived && a.id !== account?.id),
+    [accounts.data, account],
+  );
+
+  React.useEffect(() => {
+    if (destinations.length > 0) setDestinationId((current) => current || destinations[0]!.id);
+  }, [destinations]);
+
+  const carrying = account?.balanceMinor ?? 0;
+  const proceedsMinor = proceeds.trim() ? parseMoneyToMinor(proceeds, currency) : 0;
+  const gain = proceedsMinor - carrying;
+  /* The picker follows the arithmetic: the server refuses an income head on a
+     loss, so offering one would be offering a choice that always fails. */
+  const gainKind: CategoryScope = gain < 0 ? 'EXPENSE' : 'INCOME';
+
+  React.useEffect(() => setCategoryId(''), [gainKind]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/accounts/${account!.id}/sell`, {
+        method: 'POST',
+        body: {
+          proceedsMinor,
+          destinationAccountId: destinationId,
+          categoryId,
+          date,
+          note: note.trim() || undefined,
+        },
+      }),
+    onSuccess: () => {
+      haptic('success');
+      onSaved();
+      onClose();
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError ? err.message : t('common.saveFailed2', 'সংরক্ষণ করা যায়নি'),
+      ),
+  });
+
+  if (!account) return null;
+
+  return (
+    <Sheet
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t('account.sellTitle', 'সম্পদ বিক্রি')}
+      description={account.name}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          if (proceedsMinor <= 0) {
+            setError(t('account.sellNeedsPrice', 'কত টাকায় বিক্রি করলেন লিখুন'));
+            return;
+          }
+          if (gain !== 0 && !categoryId) {
+            setError(t('account.sellNeedsCategory', 'লাভ বা লোকসান কোন খাতে বসবে বেছে নিন'));
+            return;
+          }
+          save.mutate();
+        }}
+      >
+        <Field label={t('account.sellPrice', 'কত টাকায় বিক্রি করলেন (৳)')} htmlFor="sell-price">
+          <Input
+            id="sell-price"
+            value={proceeds}
+            onChange={(e) => setProceeds(e.target.value)}
+            inputMode="decimal"
+            required
+            autoFocus
+            className="money text-xl"
+            placeholder="০.০০"
+          />
+        </Field>
+
+        {/* The arithmetic, shown rather than left for somebody to do. The
+            carrying amount is cost plus every revaluation since, which is why
+            the gain here is smaller than the gain over what was paid. */}
+        <div className="rounded-card border-rule bg-greenbar border p-3 text-sm">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-ink-muted">{t('account.sellCarrying', 'খাতায় এখন আছে')}</span>
+            <Money minor={carrying} className="text-ink-muted" />
+          </div>
+          {proceedsMinor > 0 ? (
+            <div className="border-rule mt-2 flex items-baseline justify-between gap-3 border-t pt-2">
+              <span className="text-ink font-medium">
+                {gain >= 0
+                  ? t('account.sellGain', 'বিক্রির লাভ')
+                  : t('account.sellLoss', 'বিক্রির লোকসান')}
+              </span>
+              <Money
+                minor={Math.abs(gain)}
+                className={gain >= 0 ? 'text-income font-semibold' : 'text-expense font-semibold'}
+              />
+            </div>
+          ) : null}
+          <p className="text-ink-muted mt-2 text-xs">
+            {t(
+              'account.sellHint',
+              'বিক্রির লাভ আয় বিবরণীতে যাবে। আগে মূল্যায়নে যতটা বেড়েছিল সেটা এখানে আবার ধরা হবে না — ওটা আগেই হিসাবে এসেছে।',
+            )}
+          </p>
+        </div>
+
+        <Field label={t('account.sellInto', 'টাকাটা কোথায় ঢুকল')} htmlFor="sell-into">
+          <Select
+            id="sell-into"
+            value={destinationId}
+            onChange={(e) => setDestinationId(e.target.value)}
+            required
+          >
+            {destinations.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        {gain !== 0 ? (
+          <Field
+            label={
+              gain > 0
+                ? t('account.sellGainCategory', 'লাভ কোন খাতে')
+                : t('account.sellLossCategory', 'লোকসান কোন খাতে')
+            }
+            htmlFor="sell-category"
+          >
+            <Select
+              id="sell-category"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              required
+            >
+              <option value="">{t('common.choose', 'বেছে নিন')}</option>
+              <CategoryOptions categories={categories.data} kind={gainKind} />
+            </Select>
+          </Field>
+        ) : null}
+
+        <Field label={t('account.sellDate', 'কোন তারিখে')} htmlFor="sell-date">
+          <Input
+            id="sell-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </Field>
+
+        <Field label={t('account.note', 'নোট')} htmlFor="sell-note">
+          <Input
+            id="sell-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            placeholder={t('account.sellNotePlaceholder', 'যেমন: রেজিস্ট্রি হয়ে গেছে')}
+          />
+        </Field>
+
+        {/* Said before the button, because archiving is the part somebody does
+            not expect and would otherwise discover by the asset vanishing. */}
+        <p className="text-ink-muted text-xs">
+          {t(
+            'account.sellArchiveNote',
+            'বিক্রির পর সম্পদটি “বিক্রি করা সম্পদ”-এ চলে যাবে — মুছে যাবে না, শুধু মোটের বাইরে থাকবে।',
+          )}
+        </p>
+
+        {error ? (
+          <p role="alert" className="text-expense text-sm">
+            {error}
+          </p>
+        ) : null}
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {t('common.save', 'সংরক্ষণ করুন')}
+        </Button>
       </form>
     </Sheet>
   );

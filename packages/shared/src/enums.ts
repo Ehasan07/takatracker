@@ -14,6 +14,17 @@ export const ACCOUNT_TYPES = [
 ] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
+/**
+ * What kind of long-term thing an `ASSET` account holds.
+ *
+ * Land, a car and a BO share account are all assets and are three different
+ * lines on a balance sheet — IAS 1.54 separates property, plant and equipment
+ * from financial investments. Short on purpose: every extra option is one more
+ * chance to file the same flat under two headings in two different years.
+ */
+export const ASSET_KINDS = ['PROPERTY', 'VEHICLE', 'GOLD', 'INVESTMENT', 'OTHER'] as const;
+export type AssetKind = (typeof ASSET_KINDS)[number];
+
 export const TRANSACTION_TYPES = [
   'INCOME',
   'EXPENSE',
@@ -30,6 +41,11 @@ export const TRANSACTION_TYPES = [
      different meaning: a correction says the ledger was wrong, a revaluation
      says the world moved. */
   'REVALUATION',
+  /* Selling the asset. The opposite of a revaluation in the one way that
+     matters: revaluing moves net worth with no money changing hands and posts
+     to equity (IAS 16.39), while selling turns the asset into cash and the gain
+     or loss goes to profit or loss (IAS 16.68). */
+  'DISPOSAL',
   'OPENING_BALANCE',
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];

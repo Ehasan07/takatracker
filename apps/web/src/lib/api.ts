@@ -188,6 +188,11 @@ export interface AccountDto {
   institution: string | null;
   /** Branch, nominee, cheque-book series — whatever belongs in no other field. */
   note: string | null;
+  /** `ASSET` accounts only: land, a car, gold, a share account. */
+  assetKind: 'PROPERTY' | 'VEHICLE' | 'GOLD' | 'INVESTMENT' | 'OTHER' | null;
+  /** What it cost. `balanceMinor` is the carrying amount; this is the original. */
+  purchaseCostMinor: number | null;
+  purchaseDate: string | null;
   accountNumberMasked: string | null;
   matchHints: string[];
   isArchived: boolean;
