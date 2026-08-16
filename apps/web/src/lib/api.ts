@@ -180,6 +180,10 @@ export interface AccountDto {
   type: AccountType;
   currency: string;
   openingBalance: number;
+  /* The day the opening balance was true, or null when there is none. It is a
+     dated OPENING_BALANCE transaction against equity now, not a column without
+     a date, so a balance sheet can tell whether it had happened yet. */
+  openingBalanceDate: string | null;
   balanceMinor: number;
   institution: string | null;
   accountNumberMasked: string | null;

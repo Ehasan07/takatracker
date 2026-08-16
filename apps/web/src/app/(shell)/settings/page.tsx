@@ -132,6 +132,32 @@ export default function SettingsPage() {
         </Link>
       </section>
 
+      {/* Its own screen rather than a section here, because it is the only thing
+          in settings that produces a figure somebody might act on — and a figure
+          needs the room to show its working and carry its disclaimer beside it,
+          which a card between the theme picker and the language picker does
+          not have. */}
+      <section className="rounded-card border-rule bg-surface border p-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-ink-muted text-sm font-medium">{t('settings.tax', 'আয়কর')}</h2>
+          <span className="border-brass text-brass rounded-md border px-2 py-0.5 text-xs font-semibold">
+            {t('settings.tax.beta', 'বেটা')}
+          </span>
+        </div>
+        <p className="text-ink-muted mt-1 text-sm">
+          {t(
+            'settings.tax.blurb',
+            'জুলাই–জুন অর্থবছরের আয়, বিনিয়োগ ও সম্পদের একটি খসড়া হিসাব। রিটার্ন নয়।',
+          )}
+        </p>
+        <Link
+          href="/settings/tax"
+          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+        >
+          {t('settings.tax.open', 'আয়কর হিসাব দেখুন')}
+        </Link>
+      </section>
+
       <LanguageSettings />
 
       <UnitSettings />

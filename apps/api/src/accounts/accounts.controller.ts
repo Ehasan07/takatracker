@@ -46,14 +46,18 @@ export class AccountsController {
     private readonly statements: AccountStatementService,
   ) {}
 
+  /* The timezone is threaded through because `openingBalanceDate` is a local
+     day, not an instant: the transaction is stored as a UTC moment and has to
+     be read back in the workspace's own calendar, or a Dhaka user's 1 June
+     opening balance comes back as 31 May. */
   @Get()
   list(@CurrentUser() user: AuthUser, @Query('includeArchived') includeArchived?: string) {
-    return this.accounts.list(user.workspaceId, includeArchived === 'true');
+    return this.accounts.list(user.workspaceId, includeArchived === 'true', user.timezone);
   }
 
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.accounts.findOne(user.workspaceId, id);
+    return this.accounts.findOne(user.workspaceId, id, user.timezone);
   }
 
   @Post()

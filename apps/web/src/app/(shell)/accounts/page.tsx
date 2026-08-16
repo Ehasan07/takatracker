@@ -762,6 +762,8 @@ interface AccountForm {
   icon: string;
   color: string;
   sortOrder: string;
+  /** The day the opening balance was true, `YYYY-MM-DD`. */
+  openingDate: string;
   /** Credit cards only, in major units as typed. */
   creditLimit: string;
   statementDay: string;
@@ -774,6 +776,9 @@ const toForm = (a: AccountDto | null): AccountForm => ({
   type: a?.type ?? 'CASH',
   // Major units, so the field reads the way it was typed in the first place.
   opening: formatMinor(a?.openingBalance ?? 0, { symbol: false }),
+  /* Today when the account has no opening balance yet, so typing an amount into
+     an empty field does not also demand a date before it can be saved. */
+  openingDate: a?.openingBalanceDate ?? toLocalDateString(new Date()),
   institution: a?.institution ?? '',
   masked: a?.accountNumberMasked ?? '',
   hints: (a?.matchHints ?? []).join(', '),
@@ -801,6 +806,12 @@ function accountPatch(
     name: form.name.trim(),
     type: form.type,
     openingBalance,
+    /* Sent only when there is a balance for it to date. An account whose
+       opening balance is zero has no OPENING_BALANCE transaction to move, and
+       the server would have nothing to attach the day to — `undefined` drops
+       out of the JSON body rather than being sent as a null the schema
+       refuses. */
+    openingBalanceDate: openingBalance === 0 ? undefined : form.openingDate,
     institution: form.institution.trim(),
     accountNumberMasked: form.masked.trim(),
     matchHints: form.hints
@@ -824,6 +835,8 @@ function accountPatch(
     name: account.name,
     type: account.type,
     openingBalance: account.openingBalance,
+    openingBalanceDate:
+      account.openingBalance === 0 ? undefined : (account.openingBalanceDate ?? undefined),
     institution: account.institution ?? '',
     accountNumberMasked: account.accountNumberMasked ?? '',
     matchHints: account.matchHints,
@@ -896,6 +909,17 @@ function EditAccountSheet({
   });
 
   const isCard = form.type === 'CREDIT_CARD';
+
+  /* Only to decide whether to show the date field. Half-typed text is not an
+     error yet — the submit handler is where a bad amount is refused — so an
+     unparseable field simply reads as nothing to date. */
+  const parsedOpening = React.useMemo(() => {
+    try {
+      return parseMoneyToMinor(form.opening || '0', currency);
+    } catch {
+      return 0;
+    }
+  }, [form.opening, currency]);
 
   return (
     <Sheet
@@ -1037,9 +1061,27 @@ function EditAccountSheet({
             className="money"
           />
         </Field>
+
+        {/* The date the figure belongs to. Hidden when there is no figure —
+            there is nothing to date, and the server books nothing. */}
+        {parsedOpening !== 0 ? (
+          <Field
+            label={t('account.openingDate', 'জেরটি কোন তারিখের')}
+            htmlFor="edit-acc-opening-date"
+          >
+            <Input
+              id="edit-acc-opening-date"
+              type="date"
+              value={form.openingDate}
+              onChange={set('openingDate')}
+            />
+          </Field>
+        ) : null}
+
         <p className="text-ink-muted -mt-2 text-xs">
           খাতা অনুযায়ী এখন <Money minor={account?.balanceMinor ?? 0} className="inline" />।
-          প্রারম্ভিক জের বদলালে আজকের ব্যালেন্সও ঠিক ততটাই বদলাবে।
+          প্রারম্ভিক জের বদলালে আজকের ব্যালেন্সও ঠিক ততটাই বদলাবে। জেরটি ওই তারিখের একটি লেনদেন
+          হিসেবে খাতায় বসে, তাই তার আগের তারিখের হিসাবে এটি ধরা হবে না।
         </p>
 
         <Field label={t('account.institution', 'প্রতিষ্ঠান')} htmlFor="edit-acc-inst">
@@ -1192,6 +1234,10 @@ function AddAccountSheet({
   const [name, setName] = React.useState('');
   const [type, setType] = React.useState('CASH');
   const [openingBalance, setOpeningBalance] = React.useState('');
+  /* Today, because that is the day somebody filling this form in is describing.
+     Somebody entering an account they have had for years changes it, and the
+     figure then belongs to that day rather than to every day ever. */
+  const [openingDate, setOpeningDate] = React.useState(() => toLocalDateString(new Date()));
   const [dueDay, setDueDay] = React.useState('');
   const [creditLimit, setCreditLimit] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
@@ -1204,6 +1250,8 @@ function AddAccountSheet({
           name,
           type,
           openingBalance: openingBalance ? parseMoneyToMinor(openingBalance, currency) : 0,
+          // Nothing to date when there is no balance, so the field is omitted.
+          openingBalanceDate: openingBalance ? openingDate : undefined,
           // Only a card has a payment due day; sending it for cash would be noise.
           dueDayOfMonth: type === 'CREDIT_CARD' && dueDay ? Number(dueDay) : undefined,
           creditLimitMinor:
@@ -1215,6 +1263,7 @@ function AddAccountSheet({
     onSuccess: () => {
       setName('');
       setOpeningBalance('');
+      setOpeningDate(toLocalDateString(new Date()));
       setDueDay('');
       onSaved();
       onOpenChange(false);
@@ -1313,6 +1362,28 @@ function AddAccountSheet({
             className="money"
           />
         </Field>
+
+        {/* Asked for only once there is a figure to date. The whole reason it
+            is asked at all: the balance is written into the ledger as a
+            transaction on this day, so a report covering an earlier period
+            correctly leaves it out. */}
+        {openingBalance.trim() ? (
+          <Field label={t('account.openingDate', 'জেরটি কোন তারিখের')} htmlFor="acc-opening-date">
+            <Input
+              id="acc-opening-date"
+              type="date"
+              value={openingDate}
+              onChange={(e) => setOpeningDate(e.target.value)}
+            />
+            <p className="text-ink-muted text-xs">
+              {t(
+                'account.openingDateHint',
+                'এই তারিখে জেরটি খাতায় একটি লেনদেন হিসেবে বসবে। আগের তারিখের প্রতিবেদনে এটি থাকবে না।',
+              )}
+            </p>
+          </Field>
+        ) : null}
+
         {error ? (
           <p role="alert" className="text-expense text-sm">
             {error}

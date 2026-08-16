@@ -41,6 +41,7 @@ import type {
 } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
+import { LoanInterestAccrualService } from './loan-interest-accrual.service';
 import { nextPersonCode } from '../people/person-code';
 import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
@@ -79,14 +80,22 @@ import type {
  * balance cannot drift from the control account it rolls up into, and the
  * wallet screen never has to show ten accounts because somebody made ten loans.
  *
- * **Principal and interest part company on the way back.** §12 draws its line
- * around the loan, not around the interest, and every serious ledger —
- * QuickBooks, Zoho, Xero — puts the two on opposite sides of it: principal is a
- * balance-sheet movement, interest is a profit-and-loss one. Interest collected
- * on money we lent is income; interest we hand over on money we borrowed is an
- * expense. So a repayment is up to three legs, allocated **interest first, then
- * principal**, and the interest leg carries a category exactly like any other
- * income or expense line. See `repaymentEntries`.
+ * **Principal and interest part company, but not inside a repayment.** §12
+ * draws its line around the loan, not around the interest, and every serious
+ * ledger — QuickBooks, Zoho, Xero — puts the two on opposite sides of it:
+ * principal is a balance-sheet movement, interest is a profit-and-loss one.
+ * Interest collected on money we lent is income; interest we hand over on money
+ * we borrowed is an expense.
+ *
+ * Where it is recognised is the part worth knowing. Interest used to reach the
+ * books only when somebody paid, so the control account understated the debt for
+ * as long as nobody did. It is now posted **as it accrues**, monthly, by
+ * `LoanInterestAccrualService`, and only for a loan whose `interestType` is not
+ * NONE — for interest-free family lending, which is most of what this records,
+ * the difference is exactly zero and nothing is written at all. A repayment is
+ * therefore two legs again, cash against the control account: by the time it
+ * runs, the interest it is settling is already in that account. See
+ * `repaymentEntries` and `addPayment`.
  *
  * The loan row and its ledger side are written in one `$transaction`, so a loan
  * can never exist without the entries that explain where the money went.
@@ -304,15 +313,6 @@ function taka(minor: number): string {
   return formatMinor(minor, { bengaliNumerals: true });
 }
 
-/** Income when they pay us interest, expense when we are the ones paying it. */
-const INTEREST_CATEGORY = {
-  LENT: { kind: 'INCOME', name: 'ঋণের সুদ' },
-  BORROWED: { kind: 'EXPENSE', name: 'সুদ ব্যয়' },
-} as const;
-
-/** Interest categories sort below the ones the user set up for themselves. */
-const INTEREST_CATEGORY_SORT_ORDER = 950;
-
 interface LedgerPair {
   type: TransactionType;
   debitAccountId: string;
@@ -358,51 +358,50 @@ function entriesFor(pair: LedgerPair, amountMinor: number): EntryDraft[] {
   return entries;
 }
 
-/** How one repayment divides. Interest first, then whatever is left. */
+/**
+ * How one repayment divides. Interest first, then whatever is left.
+ *
+ * Recorded on the audit event, not used to route the money: both parts land on
+ * the same control account now that interest reaches it as it accrues. See
+ * `repaymentEntries` and `addPayment`.
+ */
 interface RepaymentSplit {
   interestMinor: number;
   principalMinor: number;
 }
 
-interface RepaymentAccounts {
-  cashAccountId: string;
-  controlAccountId: string;
-  /** SYSTEM_INCOME when they repay us, SYSTEM_EXPENSE when we repay them. */
-  nominalAccountId: string;
-  interestCategoryId: string | null;
-}
-
 /**
- * A repayment, in up to three legs.
+ * A repayment, in two legs: cash one way, the control account the other, both
+ * for the whole amount the user typed.
  *
- * They repay us: DR cash for the whole amount, CR the receivable for the
- * principal part, CR income for the interest part. We repay them: the mirror —
- * CR cash for the whole amount, DR the payable, DR expense.
+ * **It posts nothing to income or expense, and that is the point.** Interest is
+ * recognised by `LoanInterestAccrualService` as it is earned, which puts it into
+ * the ঋণ পাওনা / ঋণ দেনা control account. By the time this runs, `addPayment`
+ * has already brought that accrual up to the payment's own date, so every poisha
+ * of interest this instalment could be settling is *already in the control
+ * account* — crediting income again here would count the same earnings twice
+ * and leave the receivable overstated by the same amount.
  *
- * Cash always moves by the full amount, which is the leg the user typed. Only
- * the split behind it decides how much of that was the debt coming back and how
- * much was the cost of the loan. A leg worth nothing is left out entirely: an
- * interest-free loan is two legs, exactly as it was before interest existed
- * here, and a payment that is pure interest has no principal leg at all.
+ * So the interest/principal split above still describes how the payment was
+ * applied, and is recorded as such, but it no longer decides where the money
+ * goes: the debt came back, and the debt is one balance.
+ *
+ * This is also §12 read plainly. A repayment is a balance-sheet movement;
+ * interest is a profit-and-loss one; they were only ever tangled together here
+ * because there was nowhere else for the interest to be recognised.
  */
 function repaymentEntries(
   direction: LoanDirection,
-  accounts: RepaymentAccounts,
-  split: RepaymentSplit,
+  accounts: { cashAccountId: string; controlAccountId: string },
+  amountMinor: number,
 ): { type: TransactionType; entries: EntryDraft[] } {
-  const totalMinor = split.principalMinor + split.interestMinor;
   const cashSide: EntryDirection = direction === 'LENT' ? 'DEBIT' : 'CREDIT';
   const otherSide: EntryDirection = direction === 'LENT' ? 'CREDIT' : 'DEBIT';
 
-  const entries: EntryDraft[] = [draft(accounts.cashAccountId, cashSide, totalMinor)];
-  if (split.principalMinor > 0) {
-    entries.push(draft(accounts.controlAccountId, otherSide, split.principalMinor));
-  }
-  if (split.interestMinor > 0) {
-    entries.push(
-      draft(accounts.nominalAccountId, otherSide, split.interestMinor, accounts.interestCategoryId),
-    );
-  }
+  const entries: EntryDraft[] = [
+    draft(accounts.cashAccountId, cashSide, amountMinor),
+    draft(accounts.controlAccountId, otherSide, amountMinor),
+  ];
 
   assertBalanced(entries);
   return {
@@ -483,6 +482,10 @@ export class LoansService {
     private readonly prisma: PrismaService,
     private readonly accounts: AccountsService,
     private readonly audit: AuditService,
+    /* Interest reaches the books through this and nowhere else. `addPayment`
+       calls it so a repayment can never be the first thing to recognise the
+       interest it is settling. */
+    private readonly accruals: LoanInterestAccrualService,
   ) {}
 
   // --- reads -----------------------------------------------------------------
@@ -1235,9 +1238,9 @@ export class LoansService {
       );
     }
 
-    /* Interest first, then principal — the ordinary allocation, and the one
-     * that decides how much of this payment is a debt coming back (balance
-     * sheet) and how much is the cost of the loan (profit and loss). */
+    /* Interest first, then principal — the ordinary allocation, and the one the
+     * audit log records so the P&L side stays reconstructable. It no longer
+     * decides where the money lands: see below, and `repaymentEntries`. */
     const accruedInterestMinor = progress.totalPayableMinor - minorToNumber(loan.principalMinor);
     const interestOwedMinor = Math.max(0, accruedInterestMinor - progress.paidMinor);
     const interestMinor = Math.min(input.amountMinor, interestOwedMinor);
@@ -1246,29 +1249,33 @@ export class LoansService {
       principalMinor: input.amountMinor - interestMinor,
     };
 
-    const system = await this.accounts.systemAccounts(ctx.workspaceId);
-    const nominalAccountId =
-      loan.direction === 'LENT' ? system.incomeAccountId : system.expenseAccountId;
+    /* Recognise the interest before the money that settles it, and the two can
+     * never post it twice.
+     *
+     * `accruedInterestMinor` above is `loanInterestMinor` as of `paidOn`, which
+     * is exactly what this brings the ledger up to — the sweep only ever reaches
+     * the end of the last complete month, so without this a payment made on the
+     * 12th would be settling eleven days of interest that no entry had yet
+     * recognised, and the control account would be credited below what it holds.
+     *
+     * Afterwards the control account holds principal + every poisha of interest
+     * earned to `paidOn`, which by the outstanding-balance cap a few lines up is
+     * an upper bound on what this payment can be. So the repayment credits the
+     * control account for the whole amount and books no income at all: there is
+     * nothing left for it to recognise.
+     *
+     * Outside the payment's own transaction, deliberately. The interest was
+     * earned whether or not this instalment goes on to save, and a lost race on
+     * the accrual's unique index must not turn into a failed payment. */
+    await this.accruals.catchUp(ctx.workspaceId, loan.id, ctx.timezone, input.date, ctx.id);
 
     const date = fromLocalDateString(input.date, ctx.timezone);
 
     const payment = await this.prisma.$transaction(async (tx) => {
-      /* Created on the first interest posting and reused ever after, so a
-       * workspace that never charges interest never grows the category. */
-      const interestCategoryId =
-        split.interestMinor > 0
-          ? await LoansService.resolveInterestCategory(tx, ctx.workspaceId, loan.direction)
-          : null;
-
       const { type, entries } = repaymentEntries(
         loan.direction,
-        {
-          cashAccountId: cashAccount.id,
-          controlAccountId: loan.loanAccountId,
-          nominalAccountId,
-          interestCategoryId,
-        },
-        split,
+        { cashAccountId: cashAccount.id, controlAccountId: loan.loanAccountId },
+        input.amountMinor,
       );
 
       const transaction = await tx.transaction.create({
@@ -1399,13 +1406,18 @@ export class LoansService {
       );
     }
 
+    const cancelledAt = new Date();
     await this.prisma.$transaction(async (tx) => {
       if (loan.transactionId) {
         await tx.transaction.updateMany({
           where: { id: loan.transactionId, workspaceId: ctx.workspaceId },
-          data: { deletedAt: new Date() },
+          data: { deletedAt: cancelledAt },
         });
       }
+      /* And the interest that had accrued on it. A loan that never really
+         happened earned nothing, so leaving those postings would keep both an
+         uncollectable receivable and the income that grew it on the books. */
+      await LoansService.reverseAccruals(tx, ctx.workspaceId, loan.id, cancelledAt);
       await tx.loan.update({ where: { id: loan.id }, data: { status: 'CANCELLED' } });
     });
 
@@ -1449,6 +1461,7 @@ export class LoansService {
           data: { deletedAt },
         });
       }
+      await LoansService.reverseAccruals(tx, ctx.workspaceId, loan.id, deletedAt);
       await tx.loan.update({ where: { id: loan.id }, data: { deletedAt } });
     });
 
@@ -1470,6 +1483,41 @@ export class LoansService {
     return { id: loan.id };
   }
 
+  /**
+   * Soft-delete every interest posting this loan produced.
+   *
+   * Same reversal the disbursement gets, and for the same reason: the accrual
+   * grew the control account, so undoing the loan without undoing the accrual
+   * would leave a receivable nobody will ever collect — and the income that
+   * created it — sitting on the balance sheet for good.
+   *
+   * The `LoanInterestAccrual` rows themselves stay, exactly as the `Loan` row
+   * stays after a cancel. They are the record of what was accrued and reversed,
+   * and the sweep will not reach them again: it skips cancelled and deleted
+   * loans outright.
+   */
+  private static async reverseAccruals(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    loanId: string,
+    deletedAt: Date,
+  ): Promise<void> {
+    const rows = await tx.loanInterestAccrual.findMany({
+      where: { loanId, workspaceId, transactionId: { not: null } },
+      select: { transactionId: true },
+    });
+    if (rows.length === 0) return;
+
+    await tx.transaction.updateMany({
+      where: {
+        id: { in: rows.map((row) => row.transactionId as string) },
+        workspaceId,
+        deletedAt: null,
+      },
+      data: { deletedAt },
+    });
+  }
+
   // --- guards ----------------------------------------------------------------
 
   private async requireLoan(workspaceId: string, id: string): Promise<LoanRow> {
@@ -1479,31 +1527,6 @@ export class LoansService {
     });
     if (!loan) throw new NotFoundException('ঋণ পাওয়া যায়নি');
     return loan;
-  }
-
-  /**
-   * The category the interest leg is filed under, found or created on first
-   * use. Matched on the exact name so a workspace that already has one — from
-   * the seed, from an import, from the user typing it — gets that one rather
-   * than a near-duplicate sitting next to it in every picker.
-   */
-  private static async resolveInterestCategory(
-    tx: Prisma.TransactionClient,
-    workspaceId: string,
-    direction: LoanDirection,
-  ): Promise<string> {
-    const { kind, name } = INTEREST_CATEGORY[direction];
-
-    const existing = await tx.category.findFirst({
-      where: { workspaceId, kind, deletedAt: null, OR: [{ name }, { nameBn: name }] },
-      select: { id: true },
-    });
-    if (existing) return existing.id;
-
-    const created = await tx.category.create({
-      data: { workspaceId, name, nameBn: name, kind, sortOrder: INTEREST_CATEGORY_SORT_ORDER },
-    });
-    return created.id;
   }
 
   private async requirePerson(workspaceId: string, personId: string): Promise<Person> {

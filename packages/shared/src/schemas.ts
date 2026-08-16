@@ -104,7 +104,27 @@ export const createAccountSchema = z.object({
   name: z.string().min(1).max(120),
   type: z.enum(ACCOUNT_TYPES),
   currency: z.string().length(3).default('BDT'),
+  /**
+   * What was already in the account before this ledger starts.
+   *
+   * Still `openingBalance`, still poisha, still signed the way every balance in
+   * this system is signed — a ৳15,000 debt is −1,500,000. What changed is what
+   * happens to it: the server books a dated `OPENING_BALANCE` transaction
+   * against the workspace's equity account instead of writing a column nothing
+   * else can see. The field is kept so the web app, the onboarding wizard and
+   * the CSV importer did not all have to change on the same day.
+   */
   openingBalance: minorAmount.default(0),
+  /**
+   * The day the opening balance was true. Defaults to today.
+   *
+   * The whole reason this field exists: the old column carried no date, so a
+   * balance sheet dated last January showed an opening balance for an account
+   * opened in June, and two periods were not comparable (IAS 1.38). A balance
+   * has to belong to a day before a dated report can decide whether to count
+   * it. Ignored when `openingBalance` is zero — there is nothing to date.
+   */
+  openingBalanceDate: isoDate.optional(),
   institution: z.string().max(120).optional(),
   accountNumberMasked: z.string().max(60).optional(),
   matchHints: z.array(z.string().max(60)).max(20).default([]),

@@ -419,8 +419,16 @@ describe('ingestion', () => {
     const twice = await accept();
     expect(twice.status).toBe(400);
 
+    /* The account's own opening balance is a transaction now, and it is not
+       what this test is counting. Excluded by type rather than by subtracting
+       one, so the assertion still fails if the second accept writes anything at
+       all. */
     const txns = await ctx.prisma.transaction.count({
-      where: { workspaceId: ws.user.workspaceId, deletedAt: null },
+      where: {
+        workspaceId: ws.user.workspaceId,
+        deletedAt: null,
+        type: { not: 'OPENING_BALANCE' },
+      },
     });
     expect(txns).toBe(1);
   });
@@ -461,8 +469,12 @@ describe('ingestion', () => {
       .expect(200);
     expect(rejected.body.status).toBe('REJECTED');
 
+    // Everything except the opening balance the fixture's নগদ account was
+    // created with, which is a ledger transaction of its own now.
     expect(
-      await ctx.prisma.transaction.count({ where: { workspaceId: ws.user.workspaceId } }),
+      await ctx.prisma.transaction.count({
+        where: { workspaceId: ws.user.workspaceId, type: { not: 'OPENING_BALANCE' } },
+      }),
     ).toBe(0);
   });
 

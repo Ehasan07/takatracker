@@ -369,6 +369,7 @@ model Workspace {
   translations WorkspaceTranslation[]
   migrations   MigrationBatch[]
   obligations  AssetObligation[]
+  taxProfile   TaxProfile?
   /// Defines the ledger day. All date arithmetic resolves against this.
   timezone     String          @default("Asia/Dhaka")
   trialEndsAt  DateTime?
@@ -403,6 +404,7 @@ model Workspace {
   auditEvents  AuditEvent[]
   loans        Loan[]
   loanPayments LoanPayment[]
+  loanAccruals LoanInterestAccrual[]
   usageMeters  UsageMeter[]
   mailAccounts MailAccount[]
   smsGateways  SmsGateway[]
@@ -621,13 +623,26 @@ enum AccountType {
   EQUITY
 }
 
+/// There is deliberately no `openingBalance` column here.
+///
+/// There was one until 20260816230000_opening_balance_to_ledger. It was added
+/// straight into every balance and posted no ledger entry, so a figure inside
+/// every total was invisible to the transaction list, the account statement and
+/// the audit trail — and it carried no date, so a balance sheet dated last
+/// January showed the opening balance of an account opened in June. Two periods
+/// were therefore not comparable, which is what IAS 1.38 is about.
+///
+/// An opening balance is now an `OPENING_BALANCE` transaction against the
+/// workspace's SYSTEM_EQUITY account, dated the day the person says it was
+/// true. `AccountsService` still accepts and returns `openingBalance` on the
+/// API, derived from that transaction; nothing reads a column, because there is
+/// no column left to read.
 model Account {
   id                  String      @id @default(cuid())
   workspaceId         String
   name                String
   type                AccountType
   currency            String      @default("BDT")
-  openingBalance      BigInt      @default(0)
   institution         String?
   accountNumberMasked String?
   matchHints          String[]    @default([])
@@ -994,6 +1009,7 @@ model Loan {
   account     Account       @relation("LoanCashAccount", fields: [accountId], references: [id], onDelete: Restrict)
   loanAccount Account       @relation("LoanControlAccount", fields: [loanAccountId], references: [id], onDelete: Restrict)
   payments    LoanPayment[]
+  accruals    LoanInterestAccrual[]
 
   @@unique([workspaceId, loanNumber])
   @@index([workspaceId, loanAccountId])
@@ -1030,6 +1046,44 @@ model LoanPayment {
 
   @@index([workspaceId, loanId, date])
   @@index([workspaceId, referenceNumber])
+}
+
+/// One period of loan interest, recognised in the ledger instead of only being
+/// derived for display.
+///
+/// Only ever written for a loan whose `interestType` is not NONE. Interest-free
+/// family lending — most of what this product records — has nothing to accrue,
+/// and this table stays empty for it.
+///
+/// `throughDate` is the local calendar day the period runs to, `YYYY-MM-DD`,
+/// stored as text for the same reason `AssetObligation.lastRemindedOn` is: a
+/// timestamp would need a timezone to be compared and would let a restart, an
+/// overlapping sweep or a second instance post the same month twice. The unique
+/// index on it is the hard guarantee behind the arithmetic — the amount posted
+/// is always "what the terms say less what the books already hold", so a repeat
+/// run computes zero, and the index makes that true even for two sweeps racing.
+model LoanInterestAccrual {
+  id          String @id @default(cuid())
+  workspaceId String
+  loanId      String
+
+  /// Local calendar day this accrual runs to, YYYY-MM-DD.
+  throughDate String
+  /// Poisha recognised for this period. Zero is a real answer: the period was
+  /// considered and earned nothing, and the row is what stops it being
+  /// reconsidered every hour for the rest of the loan's life.
+  amountMinor BigInt @default(0)
+  /// The posting. Null when the period was worth nothing — a zero-value
+  /// transaction would be noise on every statement it appeared in.
+  transactionId String?
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  loan      Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@unique([loanId, throughDate])
+  @@index([workspaceId, loanId])
 }
 
 // ---------------------------------------------------------------------------
@@ -2031,4 +2085,118 @@ model AssetObligation {
 
   @@index([workspaceId, status, dueDate])
   @@index([workspaceId, accountId])
+}
+
+// ---------------------------------------------------------------------------
+// Income tax
+// ---------------------------------------------------------------------------
+
+/// One country's tax rules for one fiscal year, as a person transcribed them
+/// from the Finance Act.
+///
+/// Global rather than workspace-scoped: the slabs are the same for everybody in
+/// the country, and a copy per workspace would be an opportunity per workspace
+/// to be wrong.
+///
+/// **Every rate column is nullable, and that is the design, not an oversight.**
+/// A row exists for a fiscal year as soon as the year does, so the app can name
+/// the year and say what it does not know. The figures arrive later, when
+/// somebody has read the gazette and ticked `verified`. Until then
+/// `estimateTax` in packages/core/src/tax.ts refuses to produce a number.
+///
+/// Falling back to the previous year was considered and rejected. A tax figure
+/// computed on last year's slabs looks exactly like one computed on this year's,
+/// and the person carrying it to their practitioner has no way to tell them
+/// apart. The refusal is the feature — see docs/RENEWALS-AND-TAX.md §3.5.
+model TaxRegime {
+  id      String @id @default(cuid())
+  /// ISO 3166-1 alpha-2. `BD` today; this column is what makes a second country
+  /// a data exercise rather than a release.
+  country String
+
+  /// `2025-26`, named exactly as `fiscalYearOf` in @hishab/core names it.
+  fiscalYear      String
+  /// Inclusive `YYYY-MM-DD` bounds, stored as text rather than as timestamps.
+  /// A fiscal year boundary is a date in law, not an instant: 30 June is 30 June
+  /// in Dhaka, in UTC, and on a server in Frankfurt. A TIMESTAMP would invite
+  /// precisely the off-by-one that buckets a 1 July salary into the wrong year.
+  fiscalYearStart String
+  fiscalYearEnd   String
+
+  /// A correction writes a new row; it never edits an old one. A worksheet
+  /// printed last week was computed from some particular set of figures, and
+  /// overwriting them in place would make that sheet unexplainable. The service
+  /// reads the highest version for a country and year.
+  version Int @default(1)
+
+  /// `TaxSlab[]` — `[{ fromMinor, rateBps }]`, ascending. Null until transcribed.
+  slabs               Json?
+  /// `Record<string, number>` — the tax-free threshold per taxpayer category.
+  /// General, women, 65+, disabled, gazetted freedom fighter, third gender.
+  thresholdByCategory Json?
+  /// `RebateRule` — `{ rateOfInvestmentBps, capShareOfIncomeBps, capAbsoluteMinor }`.
+  rebate              Json?
+  /// `Record<string, number>` — the minimum tax by where the taxpayer lives.
+  minimumTaxByArea    Json?
+  /// `SurchargeBand[]` — `[{ fromMinor, rateBps }]` on net wealth.
+  surchargeBands      Json?
+
+  /// "Finance Act 2025, s.—", printed beside every figure this row produces.
+  /// Never empty: a row that cannot say where it came from cannot be checked.
+  sourceCitation   String
+  /// False until a person has checked every figure above against the gazette.
+  /// Nothing computes without it.
+  verified         Boolean   @default(false)
+  verifiedAt       DateTime?
+  /// Deliberately not a foreign key to `User`. The provenance of a verified tax
+  /// year has to outlive the account of whoever verified it — somebody closing
+  /// their account must not blank the answer to "who checked these numbers?" —
+  /// and either a cascade or a SET NULL would do exactly that.
+  verifiedByUserId String?
+  /// The verifier's name as it stood at the time, for the same reason.
+  verifiedByName   String?
+  /// Anything the verifier wants the next person reading this row to know.
+  verificationNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([country, fiscalYear, version])
+  @@index([country, fiscalYear, verified])
+}
+
+/// What the tax computation needs to know about the taxpayer and the ledger
+/// cannot tell it.
+///
+/// One per workspace, and it holds no money: the slab a person starts on depends
+/// on whether they are a woman, over 65, disabled, a gazetted freedom fighter or
+/// third gender, and the minimum tax depends on which city they live in. Neither
+/// fact is derivable from a transaction.
+///
+/// `category` and `area` are free text rather than enums on purpose. Which
+/// categories and areas exist is a fact about the Finance Act, not about this
+/// schema, and an enum here would need a migration every year the Act adds one.
+/// They are validated at computation time against the year's own regime — the
+/// only place that knows.
+model TaxProfile {
+  id          String @id @default(cuid())
+  workspaceId String @unique
+  country     String @default("BD")
+
+  /// A key of the regime's `thresholdByCategory`. Defaults to the general
+  /// taxpayer, which is the only category that is safe to assume.
+  category         String  @default("general")
+  /// A key of the regime's `minimumTaxByArea`.
+  area             String  @default("elsewhere")
+  /// Whether this person has to file at all. Shown on the worksheet, because a
+  /// practitioner reading it needs to know; not yet an input to the arithmetic.
+  isRequiredToFile Boolean @default(true)
+  /// The last digits at most, masked like `accountNumberMasked`. A TIN is a
+  /// national identifier and this product has no use for the whole of one.
+  tinMasked        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }

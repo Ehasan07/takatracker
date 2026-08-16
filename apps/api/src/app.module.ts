@@ -26,6 +26,7 @@ import { WorkspaceModule } from './workspace/workspace.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
 import { TagsModule } from './tags/tags.module';
+import { TaxModule } from './tax/tax.module';
 import { ThrottleModule } from './throttle/throttle.module';
 import { TransactionsModule } from './transactions/transactions.module';
 
@@ -60,6 +61,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     IngestionModule,
     TransactionsModule,
     ReportsModule,
+    TaxModule,
     NotificationsModule,
   ],
   controllers: [HealthController],

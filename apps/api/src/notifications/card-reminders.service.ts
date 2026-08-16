@@ -343,10 +343,13 @@ export class CardRemindersService {
       where: { workspaceId, accountId: account.id, transaction: { deletedAt: null } },
       _sum: { amountMinor: true },
     });
+    /* Seeded at zero, not at an opening balance column: a card's opening
+       balance is an OPENING_BALANCE transaction now, so it is already one of
+       the entries this aggregate sums. */
     return grouped.reduce((sum, row) => {
       const magnitude = minorToNumber(row._sum.amountMinor ?? 0n);
       return sum + (row.direction === 'DEBIT' ? magnitude : -magnitude);
-    }, minorToNumber(account.openingBalance));
+    }, 0);
   }
 
   // --- sending -------------------------------------------------------------

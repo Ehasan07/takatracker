@@ -93,10 +93,11 @@ export function assertBalanced(entries: readonly EntryDraft[]): void {
  *
  * The tempting alternative is to sign by what is "normal" for the type, so a
  * credit card's balance climbs as you spend on it. Two things break when you do.
- * `openingBalance` already uses this convention — a ৳15,000 debt is entered as
- * −15,000 — so the two halves of the same balance would disagree the moment an
- * entry was posted. And `buildBalanceSheet` negates liability balances to print
- * them, which only yields a positive figure if a debt is stored negative.
+ * An opening balance is entered the same way — a ৳15,000 debt is −15,000 — and
+ * it is now an ordinary entry like any other, so the two halves of the same
+ * balance would disagree the moment one was posted. And `buildBalanceSheet`
+ * negates liability balances to print them, which only yields a positive figure
+ * if a debt is stored negative.
  *
  * The user-facing consequence is the one that settles it: a card you owe ৳5,000
  * on reads −৳5,000 in the account list, and the dashboard's total balance
@@ -107,16 +108,20 @@ export function signedEffect(entry: EntryDraft, _accountType: AccountType): numb
   return entry.direction === 'DEBIT' ? magnitude : -magnitude;
 }
 
-/** Running balance for one account: opening balance plus every entry's effect. */
-export function accountBalance(
-  openingBalanceMinor: number,
-  entries: readonly EntryDraft[],
-  accountType: AccountType,
-): number {
-  return entries.reduce(
-    (acc, entry) => acc + signedEffect(entry, accountType),
-    openingBalanceMinor,
-  );
+/**
+ * Running balance for one account: every entry's effect, and nothing else.
+ *
+ * There is no opening-balance argument, and that absence is the point. It used
+ * to take one, because `Account.openingBalance` was a column added on top of
+ * the ledger rather than posted into it — a figure inside every balance that no
+ * transaction, no audit entry and no statement could account for, and that
+ * carried no date, so a balance sheet dated last January showed the opening
+ * balance of an account opened in June. An opening balance is now an
+ * `OPENING_BALANCE` transaction against equity, on a day somebody named, and it
+ * arrives here as an ordinary entry. One sum, one source.
+ */
+export function accountBalance(entries: readonly EntryDraft[], accountType: AccountType): number {
+  return entries.reduce((acc, entry) => acc + signedEffect(entry, accountType), 0);
 }
 
 // --- Expansion: simple UI input → balanced double-entry lines ---------------
@@ -204,7 +209,12 @@ export function expandSimpleTransaction(
     /* All three move an account's value against equity and none of them is
        income or spending. They are separate types so a reader can tell a
        correction from a market movement from an opening figure — the ledger
-       shape is identical, the meaning is not. */
+       shape is identical, the meaning is not.
+
+       OPENING_BALANCE is now the *only* way an opening figure enters the books.
+       It used to compete with an `Account.openingBalance` column that posted
+       nothing and carried no date; the column is gone and its values were moved
+       through here by a data migration. */
     case 'ADJUSTMENT':
     case 'REVALUATION':
     case 'OPENING_BALANCE': {

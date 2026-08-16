@@ -136,8 +136,9 @@ describe('balances', () => {
 
   it('drives a credit-normal account negative as the debt grows', () => {
     /* Spending on a card credits it, and what you owe reads as a negative
-     * balance — the same convention `openingBalance` uses, and the one that
-     * lets the dashboard subtract debts instead of counting them as wealth. */
+     * balance — the same convention an opening balance is entered in, and the
+     * one that lets the dashboard subtract debts instead of counting them as
+     * wealth. */
     expect(signedEffect(e('card', 'CREDIT', 500), 'CREDIT_CARD')).toBe(-500);
     // Paying the card off debits it, moving the balance back towards zero.
     expect(signedEffect(e('card', 'DEBIT', 500), 'CREDIT_CARD')).toBe(500);
@@ -149,7 +150,22 @@ describe('balances', () => {
       e('cash', 'CREDIT', 250000), // groceries
       e('cash', 'CREDIT', 1200000), // rent
     ];
-    expect(accountBalance(0, entries, 'CASH')).toBe(3550000);
+    expect(accountBalance(entries, 'CASH')).toBe(3550000);
+  });
+
+  it('counts an opening balance as an entry and nothing else', () => {
+    /* The regression this whole change exists to prevent: an opening balance
+       that lives beside the ledger instead of in it. It arrives here as the
+       debit leg of an OPENING_BALANCE transaction, is summed by the same rule
+       as a salary, and there is no second place for it to be added from. */
+    const entries = expandSimpleTransaction(
+      { type: 'OPENING_BALANCE', amountMinor: 1_000_000, accountId: 'cash' },
+      system,
+    );
+    const own = entries.filter((entry) => entry.accountId === 'cash');
+    expect(accountBalance(own, 'CASH')).toBe(1_000_000);
+    // And the other leg is equity's, so net worth does not move by itself.
+    expect(accountBalance(entries, 'CASH')).toBe(0);
   });
 });
 

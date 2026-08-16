@@ -136,12 +136,7 @@ export class AccountStatementService {
     const startsAt = from ? fromLocalDateString(from, ctx.timezone) : null;
     const endsBefore = to ? fromLocalDateString(nextDateKey(to), ctx.timezone) : null;
 
-    const openingMinor = await this.openingBalance(
-      ctx.workspaceId,
-      account.id,
-      minorToNumber(account.openingBalance),
-      startsAt,
-    );
+    const openingMinor = await this.openingBalance(ctx.workspaceId, account.id, startsAt);
 
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {
@@ -233,14 +228,20 @@ export class AccountStatementService {
    * March must not have to read January and February to know where it starts,
    * and on an account with years of history that difference is the whole
    * response time.
+   *
+   * With no window it is zero, and that is not a loss of information. It used
+   * to seed from `Account.openingBalance`, a dateless column outside the
+   * ledger; the account's opening balance is an `OPENING_BALANCE` transaction
+   * now, so on a whole-life statement it is the first *row* — visible, dated
+   * and reconcilable — and on a windowed one it is folded into this figure by
+   * the same query that folds in every other entry before the window.
    */
   private async openingBalance(
     workspaceId: string,
     accountId: string,
-    accountOpeningMinor: number,
     startsAt: Date | null,
   ): Promise<number> {
-    if (!startsAt) return accountOpeningMinor;
+    if (!startsAt) return 0;
 
     const grouped = await this.prisma.ledgerEntry.groupBy({
       by: ['direction'],
@@ -252,7 +253,7 @@ export class AccountStatementService {
       _sum: { amountMinor: true },
     });
 
-    let balance = accountOpeningMinor;
+    let balance = 0;
     for (const row of grouped) {
       const magnitude = minorToNumber(row._sum.amountMinor ?? 0n);
       balance = sumMinor([balance, row.direction === 'DEBIT' ? magnitude : -magnitude]);

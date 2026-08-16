@@ -9,7 +9,10 @@ import { sumMinor } from '@hishab/shared';
  * holds no balances of its own — it answers the questions the ledger cannot:
  *
  *  1. **What is actually owed?** Interest is an agreement between two people,
- *     not a posted entry, so it has to be derived from the terms.
+ *     so the *terms* are the only place it can be derived from. Where a rate was
+ *     agreed it is also posted, month by month, by `interestAccrualSchedule`
+ *     below — the derivation stays the single source of the figure and the
+ *     ledger is brought up to it, never the other way round.
  *  2. **How far along is this loan?** A progress ring and a status badge, from
  *     the payments and the calendar.
  *  3. **What does the statement read like?** Opening balance, dated rows with a
@@ -61,6 +64,19 @@ function toMinor(value: number): number {
 /** Local midnight of the calendar day `date` falls on. */
 function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+/** Local midnight of the last calendar day of the month `date` falls in. */
+function endOfLocalMonth(date: Date): Date {
+  // Day 0 of the next month is the last day of this one, whatever its length.
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 0, 0, 0, 0);
+}
+
+/** `days` calendar days after local midnight of `date`. */
+function addLocalDays(date: Date, days: number): Date {
+  const moved = startOfLocalDay(date);
+  moved.setDate(moved.getDate() + days);
+  return moved;
 }
 
 /**
@@ -121,6 +137,119 @@ export function loanInterestMinor(terms: LoanTerms, asOf: Date): number {
 /** Principal + interest, poisha. */
 export function totalPayableMinor(terms: LoanTerms, asOf: Date): number {
   return sumMinor([toMinor(terms.principalMinor), loanInterestMinor(terms, asOf)]);
+}
+
+// --- accrual -------------------------------------------------------------------
+
+/** One period of interest to post: what it runs to, and what it is worth. */
+export interface InterestAccrual {
+  /**
+   * The local calendar day this period runs to. It is also the idempotence key
+   * — one accrual per loan per through-date, and never a second one for a day
+   * already covered.
+   */
+  throughDate: Date;
+  /** Poisha to post for this period. Never negative. */
+  amountMinor: number;
+}
+
+export interface AccrualState {
+  /** Interest for this loan already recognised in the books, poisha. */
+  postedMinor: number;
+  /** The latest day already accrued, or null when nothing has been. */
+  accruedThrough: Date | null;
+  /**
+   * Do not accrue past this day. The monthly sweep passes the end of the last
+   * *complete* month; a repayment passes its own date, so the interest it is
+   * about to settle is in the books before the money moves.
+   */
+  upTo: Date;
+}
+
+/**
+ * Guards against a loan dated 1926 by a slipped finger spinning out a thousand
+ * periods. The last cut is always the ceiling, so hitting the cap folds the
+ * remainder into one entry rather than losing any of it.
+ */
+const MAX_ACCRUAL_PERIODS = 600;
+
+/**
+ * The interest periods still to be posted, oldest first.
+ *
+ * **The arithmetic does not change here — only where the result lands.** Every
+ * amount below is `loanInterestMinor` at the end of the period less what the
+ * books already hold, so the ledger is pulled up to the derived figure and can
+ * never disagree with the loan card printed beside it.
+ *
+ * Three things make it safe to run this repeatedly, which is the whole problem
+ * an accrual has to solve:
+ *
+ *  1. **The amount is a difference, not an addition.** Post a period, feed the
+ *     new total back in as `postedMinor`, and the same period computes zero.
+ *     A sweep that runs twice in a month posts once because the second run has
+ *     nothing left to post, before any database constraint is consulted.
+ *  2. **`accruedThrough` is a watermark**, the local-date equivalent of the
+ *     `YYYY-MM-DD` stamp the card and renewal reminders use. A period already
+ *     covered is never offered again.
+ *  3. **Each period is named by the day it runs to**, so the caller has a
+ *     natural unique key to enforce (2) in the database as well.
+ *
+ * Month ends are the cuts, so a balance sheet dated any month end in the past
+ * shows the interest that had actually been earned by then. Catching up eleven
+ * months posts eleven dated entries rather than one lump dated today, because
+ * one lump would make every historical balance sheet wrong in order to make
+ * today's right.
+ *
+ * Two clocks stop it, both borrowed from `loanInterestMinor` rather than
+ * reinvented: nothing is earned before the money changed hands, and nothing is
+ * earned past the due date. `interestType === 'NONE'` — most household lending
+ * here — produces no periods at all, and so touches the books never.
+ */
+export function interestAccrualSchedule(terms: LoanTerms, state: AccrualState): InterestAccrual[] {
+  // The interest-free case is the common one, and it is exactly zero.
+  if (terms.interestType === 'NONE') return [];
+
+  const loanDay = startOfLocalDay(terms.loanDate);
+  const dueDay = terms.dueDate ? startOfLocalDay(terms.dueDate) : null;
+  const requested = startOfLocalDay(state.upTo);
+
+  /* Past the due date the debt is a fixed sum being chased, not a balance that
+   * keeps growing — the same freeze `loanInterestMinor` applies, applied here
+   * too so the schedule simply ends instead of emitting empty months forever. */
+  const ceiling = dueDay && requested.getTime() > dueDay.getTime() ? dueDay : requested;
+  if (ceiling.getTime() < loanDay.getTime()) return [];
+
+  const after = state.accruedThrough ? addLocalDays(state.accruedThrough, 1) : loanDay;
+  const start = after.getTime() > loanDay.getTime() ? after : loanDay;
+  if (start.getTime() > ceiling.getTime()) return [];
+
+  /* Every month end from where we left off, then the ceiling itself. When the
+   * ceiling *is* a month end the loop stops one short of it and the push below
+   * supplies it, so no day is ever cut twice. */
+  const cuts: Date[] = [];
+  let cursor = endOfLocalMonth(start);
+  while (cursor.getTime() < ceiling.getTime() && cuts.length < MAX_ACCRUAL_PERIODS) {
+    cuts.push(cursor);
+    cursor = endOfLocalMonth(addLocalDays(cursor, 1));
+  }
+  cuts.push(ceiling);
+
+  let posted = state.postedMinor;
+  const schedule: InterestAccrual[] = [];
+
+  for (const throughDate of cuts) {
+    const earned = loanInterestMinor(terms, throughDate);
+    /* Clamped at zero. Editing a loan's rate downwards can leave the books
+     * holding more interest than the terms now justify, and quietly reversing
+     * somebody's income on a schedule is a bigger decision than a sweep should
+     * make on its own. The period is still reported so the watermark advances
+     * and the sweep does not reconsider it every hour. */
+    const amountMinor = Math.max(0, earned - posted);
+    posted += amountMinor;
+    schedule.push({ throughDate, amountMinor });
+  }
+
+  return schedule;
 }
 
 export interface LoanProgress {

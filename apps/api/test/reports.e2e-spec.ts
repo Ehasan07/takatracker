@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { toLocalDateString } from '@hishab/shared';
+import { fromLocalDateString, toLocalDateString } from '@hishab/shared';
 import {
   auth,
   createTestApp,
@@ -13,6 +13,22 @@ import {
 const TZ = 'Asia/Dhaka';
 const month = toLocalDateString(new Date(), TZ).slice(0, 7);
 const day = (d: string) => `${month}-${d}`;
+
+/**
+ * The last day of the month before this one, in Dhaka.
+ *
+ * Every fixture below that says "opening" dates its opening balance here. An
+ * opening balance is a dated `OPENING_BALANCE` transaction against equity now,
+ * not a column that counted on every date ever, so "৳1,000 was already in the
+ * wallet when the month started" has to be said as a day — and it is a
+ * different statement from "৳1,000 arrived this month", which is what an
+ * undated one would have become. Reached through the calendar rather than by
+ * subtracting a day's worth of milliseconds from a string.
+ */
+const beforeMonth = toLocalDateString(
+  new Date(fromLocalDateString(day('01'), TZ).getTime() - 86_400_000),
+  TZ,
+);
 
 /**
  * A month worked out by hand, then asserted end to end through the API.
@@ -49,16 +65,33 @@ describe('reports', () => {
     const post = (path: string, body: Record<string, unknown>) =>
       ctx.http().post(path).set(auth(user)).send(body).expect(201);
 
-    cashId = (await post('/v1/accounts', { name: 'নগদ', type: 'CASH', openingBalance: 100_000 }))
-      .body.id;
-    bankId = (
-      await post('/v1/accounts', { name: 'ব্যাংক', type: 'BANK', openingBalance: 5_000_000 })
+    cashId = (
+      await post('/v1/accounts', {
+        name: 'নগদ',
+        type: 'CASH',
+        openingBalance: 100_000,
+        openingBalanceDate: beforeMonth,
+      })
     ).body.id;
-    await post('/v1/accounts', { name: 'জমি', type: 'ASSET', openingBalance: 50_000_000 });
+    bankId = (
+      await post('/v1/accounts', {
+        name: 'ব্যাংক',
+        type: 'BANK',
+        openingBalance: 5_000_000,
+        openingBalanceDate: beforeMonth,
+      })
+    ).body.id;
+    await post('/v1/accounts', {
+      name: 'জমি',
+      type: 'ASSET',
+      openingBalance: 50_000_000,
+      openingBalanceDate: beforeMonth,
+    });
     await post('/v1/accounts', {
       name: 'গাড়ির ঋণ',
       type: 'LIABILITY',
       openingBalance: -15_000_000,
+      openingBalanceDate: beforeMonth,
     });
 
     const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
@@ -545,7 +578,12 @@ describe('quantity reporting', () => {
       .http()
       .post('/v1/accounts')
       .set(auth(user))
-      .send({ name: 'নগদ', type: 'CASH', openingBalance: 1_000_000 })
+      .send({
+        name: 'নগদ',
+        type: 'CASH',
+        openingBalance: 1_000_000,
+        openingBalanceDate: beforeMonth,
+      })
       .expect(201);
     cashId = cash.body.id;
 
@@ -638,7 +676,12 @@ describe('a cash flow that has to add up', () => {
       .http()
       .post('/v1/accounts')
       .set(auth(user))
-      .send({ name: 'নগদ', type: 'CASH', openingBalance: 1_000_000 })
+      .send({
+        name: 'নগদ',
+        type: 'CASH',
+        openingBalance: 1_000_000,
+        openingBalanceDate: beforeMonth,
+      })
       .expect(201);
     cashId = cash.body.id;
   });

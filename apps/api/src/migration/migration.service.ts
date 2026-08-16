@@ -1081,7 +1081,11 @@ export class MigrationService {
           name: name,
           type: (item.targetType ?? 'BANK') as AccountType,
           currency: typeof payload.currency === 'string' ? payload.currency : 'BDT',
-          openingBalance: BigInt(0),
+          /* No opening balance is booked, as with every account brought over:
+             Wallet's figure is today's, not the opening one, and importing it
+             would double-count the history that follows it. There is no column
+             to set to zero any more — an opening balance is a transaction, and
+             this simply does not write one. */
           accountNumberMasked:
             typeof payload.accountNumber === 'string' ? payload.accountNumber : null,
           isArchived: payload.archived === true,
@@ -1187,9 +1191,9 @@ export class MigrationService {
           name: name,
           type: 'LIABILITY',
           currency: 'BDT',
-          /* No balance, as with every account: Wallet's figure is today's, not
-             the opening one, and importing it would double-count the history. */
-          openingBalance: BigInt(0),
+          /* No opening balance transaction, as with every account: Wallet's
+             figure is today's, not the opening one, and importing it would
+             double-count the history. */
         },
       });
       await done({

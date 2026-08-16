@@ -32,6 +32,12 @@ export const AUDIT_ACTIONS = [
   /* Marking land, gold or a vehicle to what it is worth now. Worth recording:
      it moves net worth without any income, and somebody will ask why. */
   'account.revalued',
+  /* An opening balance is a real posting against equity, so setting, moving or
+     clearing one moves net worth. It used to be a column change nobody could
+     see afterwards; these three are its trail. */
+  'account.openingBalanceSet',
+  'account.openingBalanceChanged',
+  'account.openingBalanceCleared',
   'transaction.created',
   'transaction.updated',
   'transaction.deleted',

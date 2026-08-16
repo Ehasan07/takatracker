@@ -1,6 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { SYSTEM_ACCOUNT_KEYS, buildBalanceSheet, type SystemAccounts } from '@hishab/core';
-import { type CreateAccountInput, type UpdateAccountInput } from '@hishab/shared';
+import {
+  SYSTEM_ACCOUNT_KEYS,
+  assertBalanced,
+  buildBalanceSheet,
+  expandSimpleTransaction,
+  type EntryDraft,
+  type SystemAccounts,
+} from '@hishab/core';
+import {
+  fromLocalDateString,
+  toLocalDateString,
+  type CreateAccountInput,
+  type UpdateAccountInput,
+} from '@hishab/shared';
 import { Prisma } from '@prisma/client';
 import type { Account, AccountType, LoanDirection } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -41,12 +53,45 @@ const LOAN_CONTROL_ACCOUNT_SEED: Record<
 /** Control accounts sort below the accounts a user actually picks from. */
 const CONTROL_ACCOUNT_SORT_ORDER = 900;
 
+/**
+ * The `externalRef` that marks an account's own opening balance transaction.
+ *
+ * One deterministic string per account, so "the account's opening balance" is a
+ * lookup rather than a guess. Three things need to agree on it and now do: this
+ * service when it writes one, this service when it edits one, and the data
+ * migration that moved the old `Account.openingBalance` column into the ledger
+ * (`20260816230000_opening_balance_to_ledger`), which uses the same value as
+ * its idempotency guard.
+ *
+ * It is deliberately not "any OPENING_BALANCE transaction on this account". A
+ * user may post those by hand from the transaction screen, and those are theirs
+ * — this API field must not silently rewrite one.
+ */
+const openingBalanceRef = (accountId: string): string => `opening-balance:${accountId}`;
+
+/** What the user sees in their transaction list for the row this service books. */
+const OPENING_BALANCE_DESCRIPTION = 'প্রারম্ভিক জের';
+
 export interface AccountWithBalance {
   id: string;
   name: string;
   type: AccountType;
   currency: string;
+  /**
+   * What was in the account before this ledger begins, in poisha.
+   *
+   * Read back off the ledger, not out of a column — there is no column. It is
+   * the signed sum of this account's `OPENING_BALANCE` entries, which for an
+   * account managed through this API is the one transaction
+   * `openingBalanceRef` names. Kept on the response so the wallet screen, the
+   * onboarding wizard and the CSV importer did not all have to change at once.
+   */
   openingBalance: number;
+  /**
+   * The day that opening balance was true, `YYYY-MM-DD`, or null when there is
+   * none. New: the old column had no date, which is the defect this replaces.
+   */
+  openingBalanceDate: string | null;
   balanceMinor: number;
   institution: string | null;
   accountNumberMasked: string | null;
@@ -155,14 +200,22 @@ export class AccountsService {
   }
 
   /**
-   * Signed balance per account: opening balance plus every live ledger entry.
+   * Signed balance per account: every live ledger entry, and nothing else.
+   *
+   * "And nothing else" is load-bearing. An `Account.openingBalance` column used
+   * to be added on top of this sum, which meant a figure inside every balance
+   * had no transaction behind it and — because the column carried no date —
+   * counted on every dated report ever run, including ones covering days before
+   * the account existed. It is an `OPENING_BALANCE` transaction now, so it
+   * arrives through `grouped` below like a salary does, and the sum has one
+   * source.
    *
    * ## `before` — the same sum, stopped at a date
    *
    * Pass the instant the day *after* the as-of day begins in the workspace's
    * timezone (`fromLocalDateString(nextDateKey(asOf), tz)`) and every entry
-   * dated strictly before it counts. That is the whole difference: opening
-   * balance plus history up to that moment, summed forwards.
+   * dated strictly before it counts. That is the whole difference: history up
+   * to that moment, summed forwards.
    *
    * It is deliberately not "current balance minus everything since". The two
    * agree only in a workspace where nothing was ever soft-deleted and nothing
@@ -200,7 +253,7 @@ export class AccountsService {
 
     const accounts = await this.prisma.account.findMany({
       where: { workspaceId },
-      select: { id: true, type: true, openingBalance: true, createdAt: true },
+      select: { id: true, type: true, createdAt: true },
     });
 
     /* Which accounts a dated sheet lists.
@@ -220,37 +273,93 @@ export class AccountsService {
      * unable to move a number — an account is dropped only when it is
      * *certainly* zero on the day:
      *
-     *   created after it, and no live entry by then, and no opening balance.
+     *   created after it, and no live entry by then.
      *
      * That keeps a ৳0 ডিপিএস line off June's breakdown, which is what "should
      * not appear" is really asking for, while a back-filled নগদ with June
-     * transactions and a গাড়ির ঋণ carrying an opening balance both stay where
-     * the reader expects them. The residue is an account genuinely opened in
-     * July with an opening balance: it shows that balance in June too. An
-     * `openingBalance` carries no date — it means "before this ledger begins" —
-     * so any date attached to it is invented, and the alternative invents a
-     * jump in net worth with no transaction behind it.
+     * transactions stays where the reader expects it.
+     *
+     * There used to be a third arm — *and no opening balance* — because the
+     * opening balance was a dateless column, so the only way to avoid inventing
+     * a jump in net worth was to show it on every date, including dates before
+     * the account existed. It is a dated transaction now, so it is simply one
+     * of the live entries `grouped` already counts: an account opened in July
+     * with a July opening balance is correctly absent from June, and the same
+     * account with a June opening balance correctly appears in June.
      *
      * Costs nothing: `grouped` is already the set of accounts with a live entry
      * on or before the day. */
     const usedByThen = new Set(grouped.map((row) => row.accountId));
     const asOfThen = accounts.filter(
-      (a) =>
-        !before || a.createdAt < before || usedByThen.has(a.id) || a.openingBalance !== BigInt(0),
+      (a) => !before || a.createdAt < before || usedByThen.has(a.id),
     );
 
     const out = new Map<string, number>();
-    for (const acc of asOfThen) out.set(acc.id, minorToNumber(acc.openingBalance));
+    for (const acc of asOfThen) out.set(acc.id, 0);
 
     const typeById = new Map(asOfThen.map((a) => [a.id, a.type]));
     for (const row of grouped) {
       const type = typeById.get(row.accountId);
       if (!type) continue;
       const magnitude = minorToNumber(row._sum.amountMinor ?? 0n);
-      // Debits add, credits subtract, whatever the type — so a debt is negative,
-      // matching `openingBalance`. See `signedEffect` in @hishab/core.
+      // Debits add, credits subtract, whatever the type — so a debt is
+      // negative. See `signedEffect` in @hishab/core.
       const signed = row.direction === 'DEBIT' ? magnitude : -magnitude;
       out.set(row.accountId, (out.get(row.accountId) ?? 0) + signed);
+    }
+    return out;
+  }
+
+  /**
+   * The opening balance and its date, per account, read back off the ledger.
+   *
+   * The API still carries `openingBalance` in and out — the wallet screen, the
+   * onboarding wizard and the CSV importer all speak it — so somebody has to
+   * turn the transaction back into the field. This is that somebody, and it is
+   * the only place it happens.
+   *
+   * Restricted to the transaction `openingBalanceRef` names, not to every
+   * `OPENING_BALANCE` transaction on the account. An account can carry several:
+   * this API writes one, and a user may post more by hand from the transaction
+   * screen for money that turned up from an older book. Summing all of them
+   * into an editable field would mean a later PATCH silently rewrote entries
+   * the user made deliberately — see `update`, which refuses instead.
+   */
+  private async openingBalanceEntries(
+    workspaceId: string,
+    accountIds?: readonly string[],
+  ): Promise<Map<string, { amountMinor: number; date: Date }>> {
+    const rows = await this.prisma.ledgerEntry.findMany({
+      where: {
+        workspaceId,
+        ...(accountIds ? { accountId: { in: [...accountIds] } } : {}),
+        transaction: {
+          deletedAt: null,
+          type: 'OPENING_BALANCE',
+          // `startsWith` rather than an exact match, because one query answers
+          // for every account on the wallet screen at once.
+          externalRef: { startsWith: 'opening-balance:' },
+        },
+      },
+      select: {
+        accountId: true,
+        direction: true,
+        amountMinor: true,
+        transaction: { select: { date: true, externalRef: true } },
+      },
+    });
+
+    const out = new Map<string, { amountMinor: number; date: Date }>();
+    for (const row of rows) {
+      // Both legs come back; only the account's own leg is its opening balance.
+      // The equity leg carries the same marker and must not be reported as
+      // SYSTEM_EQUITY's own opening figure.
+      if (row.transaction.externalRef !== openingBalanceRef(row.accountId)) continue;
+      const magnitude = minorToNumber(row.amountMinor);
+      out.set(row.accountId, {
+        amountMinor: row.direction === 'DEBIT' ? magnitude : -magnitude,
+        date: row.transaction.date,
+      });
     }
     return out;
   }
@@ -265,7 +374,11 @@ export class AccountsService {
    * on `GET /reports/balance-sheet`, where an asset and a liability are told
    * apart.
    */
-  async list(workspaceId: string, includeArchived = false): Promise<AccountWithBalance[]> {
+  async list(
+    workspaceId: string,
+    includeArchived = false,
+    timezone = 'Asia/Dhaka',
+  ): Promise<AccountWithBalance[]> {
     const accounts = await this.prisma.account.findMany({
       where: {
         workspaceId,
@@ -275,8 +388,13 @@ export class AccountsService {
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
-    const balances = await this.balances(workspaceId);
-    return accounts.map((a) => AccountsService.present(a, balances.get(a.id) ?? 0));
+    const [balances, openings] = await Promise.all([
+      this.balances(workspaceId),
+      this.openingBalanceEntries(workspaceId),
+    ]);
+    return accounts.map((a) =>
+      AccountsService.present(a, balances.get(a.id) ?? 0, openings.get(a.id), timezone),
+    );
   }
 
   /**
@@ -369,7 +487,13 @@ export class AccountsService {
     };
   }
 
-  private static present(a: Account, balanceMinor: number): AccountWithBalance {
+  private static present(
+    a: Account,
+    balanceMinor: number,
+    /** The account's opening balance transaction, when it has one. */
+    opening: { amountMinor: number; date: Date } | undefined,
+    timezone: string,
+  ): AccountWithBalance {
     /* Only a card has a limit. Anything else reports zero rather than an
        absence, so a caller never has to ask which kind it is holding. */
     const limit = a.type === 'CREDIT_CARD' ? minorToNumber(a.creditLimitMinor) : 0;
@@ -380,7 +504,12 @@ export class AccountsService {
       name: a.name,
       type: a.type,
       currency: a.currency,
-      openingBalance: minorToNumber(a.openingBalance),
+      /* Zero rather than null when there is no opening balance transaction, so
+         a client never has to branch on the difference between "nothing was
+         carried in" and "nobody said". The date is null in that case, because
+         there genuinely is no day to name. */
+      openingBalance: opening?.amountMinor ?? 0,
+      openingBalanceDate: opening ? toLocalDateString(opening.date, timezone) : null,
       balanceMinor,
       institution: a.institution,
       accountNumberMasked: a.accountNumberMasked,
@@ -403,13 +532,178 @@ export class AccountsService {
     };
   }
 
-  async findOne(workspaceId: string, id: string): Promise<AccountWithBalance> {
+  async findOne(
+    workspaceId: string,
+    id: string,
+    timezone = 'Asia/Dhaka',
+  ): Promise<AccountWithBalance> {
     const account = await this.prisma.account.findFirst({
       where: { id, workspaceId, deletedAt: null },
     });
     if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
-    const balances = await this.balances(workspaceId);
-    return AccountsService.present(account, balances.get(account.id) ?? 0);
+    const [balances, openings] = await Promise.all([
+      this.balances(workspaceId),
+      this.openingBalanceEntries(workspaceId, [id]),
+    ]);
+    return AccountsService.present(
+      account,
+      balances.get(account.id) ?? 0,
+      openings.get(account.id),
+      timezone,
+    );
+  }
+
+  /**
+   * Book, move or retire an account's opening balance transaction.
+   *
+   * ## Why it writes Prisma directly instead of calling `TransactionsService`
+   *
+   * `TransactionsService` already injects this service, for `systemAccounts`
+   * and `balances`. Injecting it back would close a cycle Nest refuses to
+   * build. The parts that matter are shared anyway: `expandSimpleTransaction`
+   * decides the legs, `assertBalanced` checks them, and the deferred database
+   * trigger checks them again at COMMIT — so this cannot write a shape the
+   * transaction screen could not.
+   *
+   * It also, deliberately, does not meter against `transactions.monthly.max`.
+   * Opening an account already costs an account slot; charging a second slot
+   * for the balance that came with it would make the plan mean something
+   * different depending on whether a user started at zero.
+   *
+   * Returns the amount actually on the books afterwards.
+   */
+  private async writeOpeningBalance(
+    workspaceId: string,
+    accountId: string,
+    amountMinor: number,
+    /** `YYYY-MM-DD`. */
+    dateKey: string,
+    timezone: string,
+    actorUserId?: string,
+  ): Promise<void> {
+    const externalRef = openingBalanceRef(accountId);
+    const date = fromLocalDateString(dateKey, timezone);
+
+    const existing = await this.prisma.transaction.findFirst({
+      where: { workspaceId, externalRef, deletedAt: null },
+      select: {
+        id: true,
+        date: true,
+        entries: { select: { accountId: true, direction: true, amountMinor: true } },
+      },
+    });
+
+    /* Zero means "there was nothing in it". Nothing is not a transaction, so
+       the row goes rather than being kept at zero — a ledger entry of zero is
+       refused by `assertBalanced` and by the database CHECK anyway. Soft
+       deleted, like every other retirement in this system, so the audit trail
+       keeps it. */
+    if (amountMinor === 0) {
+      if (existing) {
+        await this.prisma.transaction.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date() },
+        });
+        this.audit.emit({
+          workspaceId,
+          actorUserId,
+          action: 'account.openingBalanceCleared',
+          entity: 'Account',
+          entityId: accountId,
+          before: { transactionId: existing.id },
+        });
+      }
+      return;
+    }
+
+    const system = await this.systemAccounts(workspaceId);
+    const account = await this.prisma.account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: { currency: true },
+    });
+    const entries = expandSimpleTransaction(
+      {
+        type: 'OPENING_BALANCE',
+        amountMinor,
+        accountId,
+        currency: account.currency,
+      },
+      system,
+    );
+    assertBalanced(entries);
+
+    if (!existing) {
+      await this.prisma.transaction.create({
+        data: {
+          workspaceId,
+          createdByUserId: actorUserId || null,
+          date,
+          type: 'OPENING_BALANCE',
+          description: OPENING_BALANCE_DESCRIPTION,
+          source: 'MANUAL',
+          externalRef,
+          entries: { create: entries.map((e) => this.toEntryData(e, workspaceId)) },
+        },
+      });
+      this.audit.emit({
+        workspaceId,
+        actorUserId,
+        action: 'account.openingBalanceSet',
+        entity: 'Account',
+        entityId: accountId,
+        after: { amountMinor, date: dateKey },
+      });
+      return;
+    }
+
+    /* An edit replaces the legs of the transaction that is already there rather
+       than adding a second one. Two OPENING_BALANCE transactions on one account
+       would both be counted — the balance would be right only by accident, and
+       the statement would show the opening figure twice.
+     *
+     * The legs are deleted and rewritten rather than updated in place because
+     * changing the sign flips which account is debited, and there is no update
+     * that expresses "these two rows swap roles". Both happen inside one
+     * database transaction, so the balance trigger — deferred to COMMIT — sees
+     * only the finished state. */
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ledgerEntry.deleteMany({ where: { transactionId: existing.id } });
+      await tx.transaction.update({
+        where: { id: existing.id },
+        data: {
+          date,
+          entries: { create: entries.map((e) => this.toEntryData(e, workspaceId)) },
+        },
+      });
+    });
+
+    const previous = existing.entries.find((e) => e.accountId === accountId);
+    const previousMinor = previous
+      ? (previous.direction === 'DEBIT' ? 1 : -1) * minorToNumber(previous.amountMinor)
+      : 0;
+    this.audit.emit({
+      workspaceId,
+      actorUserId,
+      action: 'account.openingBalanceChanged',
+      entity: 'Account',
+      entityId: accountId,
+      before: { amountMinor: previousMinor, date: toLocalDateString(existing.date, timezone) },
+      after: { amountMinor, date: dateKey },
+    });
+  }
+
+  private toEntryData(
+    e: EntryDraft,
+    workspaceId: string,
+  ): Prisma.LedgerEntryCreateWithoutTransactionInput {
+    return {
+      workspace: { connect: { id: workspaceId } },
+      account: { connect: { id: e.accountId } },
+      amountMinor: BigInt(e.amountMinor),
+      direction: e.direction,
+      currency: e.currency,
+      fxRate: e.fxRate,
+    };
   }
 
   async create(
@@ -446,7 +740,6 @@ export class AccountsService {
         name: input.name,
         type: input.type,
         currency: input.currency,
-        openingBalance: BigInt(input.openingBalance),
         institution: input.institution,
         accountNumberMasked: input.accountNumberMasked,
         matchHints: input.matchHints,
@@ -467,7 +760,34 @@ export class AccountsService {
       entityId: account.id,
       after: { name: account.name, type: account.type },
     });
-    return AccountsService.present(account, input.openingBalance);
+
+    /* The opening balance, if there is one, as a dated transaction against
+     * equity — not as a column on the row above.
+     *
+     * Today by default, because that is the day somebody sitting in front of
+     * the form is describing when they type what is in their wallet. A
+     * back-filler who means an earlier day says so, and `openingBalanceDate` is
+     * the field that lets them. Either way the figure now has a date, which is
+     * the only reason two balance sheets can be compared (IAS 1.38).
+     *
+     * Deliberately after the account row is committed rather than inside one
+     * `$transaction` with it: the ledger entries reference the account, and the
+     * workspace-match trigger on `LedgerEntry` reads the transaction row back,
+     * so the two writes are ordered anyway. If the second fails the account
+     * exists with no opening balance, which the user can correct from the edit
+     * sheet — the opposite order would lose the account entirely. */
+    if (input.openingBalance !== 0) {
+      await this.writeOpeningBalance(
+        workspaceId,
+        account.id,
+        input.openingBalance,
+        input.openingBalanceDate ?? toLocalDateString(new Date(), timezone),
+        timezone,
+        actorUserId,
+      );
+    }
+
+    return this.findOne(workspaceId, account.id, timezone);
   }
 
   async update(
@@ -500,14 +820,41 @@ export class AccountsService {
       );
     }
 
+    const tz = timezone ?? 'Asia/Dhaka';
+
+    /* Changing the opening balance edits the transaction that is already there.
+     *
+     * `openingBalanceDate` on its own moves that transaction to another day
+     * without changing the amount — which is the correction somebody makes
+     * after realising the figure was true in June, not today. Both are refused
+     * outright when the account carries opening balances this API did not
+     * write; see `assertOneOpeningBalance`. */
+    const wantsAmount = input.openingBalance !== undefined;
+    const wantsDate = input.openingBalanceDate !== undefined;
+    if (wantsAmount || wantsDate) {
+      const current = (await this.openingBalanceEntries(workspaceId, [id])).get(id);
+      await this.assertSoleOpeningBalance(workspaceId, id);
+      const amountMinor = input.openingBalance ?? current?.amountMinor ?? 0;
+      const dateKey =
+        input.openingBalanceDate ??
+        (current ? toLocalDateString(current.date, tz) : toLocalDateString(new Date(), tz));
+
+      const unchanged =
+        amountMinor === (current?.amountMinor ?? 0) &&
+        (current ? toLocalDateString(current.date, tz) === dateKey : amountMinor === 0);
+      // A PATCH that says the same thing must not rewrite the ledger row: it
+      // would move `updatedAt` and add an audit line for nothing.
+      if (!unchanged) {
+        await this.writeOpeningBalance(workspaceId, id, amountMinor, dateKey, tz, actorUserId);
+      }
+    }
+
     await this.prisma.account.update({
       where: { id },
       data: {
         name: input.name,
         type: input.type,
         currency: input.currency,
-        openingBalance:
-          input.openingBalance === undefined ? undefined : BigInt(input.openingBalance),
         institution: input.institution,
         accountNumberMasked: input.accountNumberMasked,
         matchHints: input.matchHints,
@@ -534,7 +881,42 @@ export class AccountsService {
         isArchived: input.isArchived ?? existing.isArchived,
       },
     });
-    return this.findOne(workspaceId, id);
+    return this.findOne(workspaceId, id, tz);
+  }
+
+  /**
+   * Refuse to edit an opening balance through this field when the account
+   * carries more than one.
+   *
+   * A user can post `OPENING_BALANCE` transactions from the transaction screen
+   * — money surfacing from an older book, a second tranche remembered later —
+   * and those are theirs. `openingBalance` on this endpoint addresses exactly
+   * one row, the one `openingBalanceRef` names. If there are others, any answer
+   * this method could give is wrong: rewriting the marked one leaves the field
+   * disagreeing with the account's real opening figure, and rewriting all of
+   * them destroys entries somebody entered on purpose. So it says so, and sends
+   * the user to the screen where the rows are individually visible — which they
+   * now are, which is the point of the change.
+   */
+  private async assertSoleOpeningBalance(workspaceId: string, accountId: string): Promise<void> {
+    const others = await this.prisma.transaction.count({
+      where: {
+        workspaceId,
+        deletedAt: null,
+        type: 'OPENING_BALANCE',
+        entries: { some: { accountId } },
+        /* `NOT (externalRef = ref)` is NULL for a null `externalRef`, and a
+           NULL predicate excludes the row — so a hand-entered transaction,
+           which carries no reference at all, is exactly the one a bare `not`
+           would miss. Spelled out as a two-armed OR so it cannot. */
+        OR: [{ externalRef: null }, { externalRef: { not: openingBalanceRef(accountId) } }],
+      },
+    });
+    if (others > 0) {
+      throw new BadRequestException(
+        'এই অ্যাকাউন্টে একাধিক প্রারম্ভিক জেরের লেনদেন আছে — লেনদেন তালিকা থেকে সেগুলো সম্পাদনা করুন',
+      );
+    }
   }
 
   /** Archive rather than delete — history must stay intact. */

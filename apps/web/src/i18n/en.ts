@@ -746,6 +746,10 @@ export const EN: Record<string, string> = {
   'account.limit': 'Limit',
   'account.drawn': 'Used',
   'account.undrawn': 'Left',
+  'account.openingDate': 'The balance is as of',
+  /* IAS 1.38: a dated opening balance is what makes two periods comparable. */
+  'account.openingDateHint':
+    'On this date the balance is written into the books as a transaction. Reports dated before it will not include it.',
   'account.total': 'Total',
   /* Four figures rather than one: IAS 7.6 keeps "cash and cash equivalents"
      narrow, and IAS 1.32 does not let assets and liabilities be offset into a
@@ -872,6 +876,58 @@ export const EN: Record<string, string> = {
   'settings.next.sms': 'Drafts read from bank SMS — once we have samples of your real messages',
   'settings.next.email': 'Verification and password-reset links by email',
   'settings.next.mobile': 'A mobile app',
+
+  // --- income tax ------------------------------------------------------------
+  //
+  // The disclaimer itself is deliberately absent from this catalogue. It is five
+  // sentences in `settings/tax/page.tsx` that say the figure is an estimate, that
+  // the real amount may differ, that a tax professional must check it, that Taka
+  // Tracker accepts no liability, and that the calculator is in beta. Translating
+  // it here would let a workspace override shorten it — and a disclaimer a
+  // workspace can edit is not a disclaimer. Same for the refusal text, which
+  // comes from the server naming the exact year whose rates are unverified.
+  'settings.tax': 'Income tax',
+  'settings.tax.beta': 'Beta',
+  'settings.tax.blurb':
+    'A draft worksheet of the July–June year — income, investments and wealth. Not a return.',
+  'settings.tax.open': 'Open the tax worksheet',
+  'settings.tax.year': 'Fiscal year',
+  'settings.tax.window': 'Period covered',
+  'settings.tax.refused': 'No figure can be shown for this year',
+  'settings.tax.refused.why':
+    'The Finance Act changes the rates every year. A figure worked out on last year’s slabs would be wrong and would look right, so nothing is shown until the year’s rates have been checked against the gazette.',
+  'settings.tax.taxpayer': 'About the taxpayer',
+  'settings.tax.taxpayer.why':
+    'The tax-free threshold and the minimum tax depend on these two, and the books cannot tell us either.',
+  'settings.tax.category': 'Taxpayer category',
+  'settings.tax.area': 'Where you live',
+  'settings.tax.tin': 'TIN (last digits)',
+  'settings.tax.income': 'Income by head',
+  'settings.tax.income.none': 'No income was recorded in this fiscal year.',
+  'settings.tax.unmapped': 'head not matched',
+  'settings.tax.investment': 'Rebate-eligible investment',
+  'settings.tax.investment.basis':
+    'DPS instalments, savings certificates and insurance premiums actually paid inside this year — not what fell due.',
+  'settings.tax.investment.none': 'No instalment or premium was paid in this fiscal year.',
+  'settings.tax.investment.payments': 'payments',
+  'settings.tax.netWealth': 'Net wealth at the year end',
+  'settings.tax.netWealth.why': 'Whether the surcharge applies depends on this.',
+  'settings.tax.calculate': 'Calculate',
+  'settings.tax.calculating': 'Working it out…',
+  'settings.tax.payable': 'Estimated income tax payable',
+  'settings.tax.taxableIncome': 'Taxable income',
+  'settings.tax.slab': 'Slab',
+  'settings.tax.grossTax': 'Tax before rebate',
+  'settings.tax.rebate': 'Investment rebate',
+  'settings.tax.rebate.boundBy': 'Capped by',
+  'settings.tax.minimumTax': 'Minimum tax',
+  'settings.tax.minimumTax.why': 'Higher than the computed tax, so this is what applies',
+  'settings.tax.surcharge': 'Surcharge',
+  'settings.tax.surcharge.why': 'Charged on net wealth',
+  'settings.tax.refund': 'Refundable',
+  'settings.tax.citation': 'Source of the rates',
+  'settings.tax.verifiedBy': 'checked by',
+  'settings.tax.limits': 'What this worksheet does not include',
 
   // --- reports ---------------------------------------------------------------
   'reports.asOf': 'As things stand',

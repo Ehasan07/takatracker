@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   buildStatement,
   deriveLoanStatus,
+  interestAccrualSchedule,
   loanInterestMinor,
   nextLoanNumber,
   presetRange,
   summariseLoan,
   totalPayableMinor,
+  type AccrualState,
   type DatePreset,
+  type InterestAccrual,
   type LoanProgress,
   type LoanTerms,
 } from './loans.js';
@@ -588,5 +591,201 @@ describe('a repaid loan stays repaid', () => {
     );
     expect(progress.totalPayableMinor).toBe(10_000_000);
     expect(progress.outstandingMinor).toBe(0);
+  });
+});
+
+describe('interestAccrualSchedule', () => {
+  /**
+   * ৳100,000 lent on new year's day at 12% a year, repayable at the end of it.
+   *
+   * The figures below are the ones `loanInterestMinor` already produces — the
+   * accrual moves where the result lands, never what it is — and every one is
+   * checkable on paper: ৳100,000 × 12% ÷ 365 is ৳32.8767 a day, so thirty days
+   * is ৳986.30 and the truncation drops the last two hundredths of a poisha.
+   */
+  const atTwelvePercent: LoanTerms = {
+    principalMinor: 10_000_000,
+    interestType: 'PERCENT',
+    interestMinor: 0,
+    interestRateBps: 1200,
+    loanDate: on(2026, 1, 1),
+    dueDate: on(2026, 12, 31),
+  };
+
+  const fresh = (upTo: Date): AccrualState => ({
+    postedMinor: 0,
+    accruedThrough: null,
+    upTo,
+  });
+
+  /** The state a caller would hold after posting everything in `schedule`. */
+  const after = (state: AccrualState, schedule: InterestAccrual[], upTo: Date): AccrualState => ({
+    postedMinor: state.postedMinor + schedule.reduce((sum, p) => sum + p.amountMinor, 0),
+    accruedThrough: schedule.at(-1)?.throughDate ?? state.accruedThrough,
+    upTo,
+  });
+
+  const days = (schedule: InterestAccrual[]): string[] =>
+    schedule.map((p) => stamp(p.throughDate).slice(0, 10));
+  const amounts = (schedule: InterestAccrual[]): number[] => schedule.map((p) => p.amountMinor);
+
+  describe('an interest-free loan', () => {
+    it('accrues nothing at all — no periods, not even empty ones', () => {
+      /* The case this whole feature has to stay out of. Most household lending
+       * in Bangladesh carries no interest, the derived figure is already exactly
+       * right, and posting anything would invent a debt nobody agreed. */
+      expect(interestAccrualSchedule(interestFree, fresh(on(2026, 12, 31)))).toEqual([]);
+    });
+
+    it('accrues nothing even when a rate was left behind in the record', () => {
+      const leftover: LoanTerms = { ...interestFree, interestRateBps: 1200 };
+      expect(interestAccrualSchedule(leftover, fresh(on(2026, 12, 31)))).toEqual([]);
+    });
+  });
+
+  describe('one month of a 12% loan', () => {
+    it('is ৳986.30 to the poisha, dated the last day of the month', () => {
+      const schedule = interestAccrualSchedule(atTwelvePercent, fresh(on(2026, 1, 31)));
+      expect(schedule).toHaveLength(1);
+      expect(amounts(schedule)).toEqual([98_630]);
+      expect(days(schedule)).toEqual(['2026-01-31']);
+    });
+
+    it('is exactly what the calculator says, which is the whole point', () => {
+      const schedule = interestAccrualSchedule(atTwelvePercent, fresh(on(2026, 1, 31)));
+      expect(schedule[0]?.amountMinor).toBe(loanInterestMinor(atTwelvePercent, on(2026, 1, 31)));
+    });
+  });
+
+  describe('running it twice', () => {
+    it('posts once: the second run has nothing left to post', () => {
+      const first = fresh(on(2026, 1, 31));
+      const one = interestAccrualSchedule(atTwelvePercent, first);
+      const two = interestAccrualSchedule(atTwelvePercent, after(first, one, on(2026, 1, 31)));
+      expect(amounts(one)).toEqual([98_630]);
+      expect(two).toEqual([]);
+    });
+
+    it('is zero even if the watermark is lost and only the money is remembered', () => {
+      /* Belt to the watermark's braces. The amount is always "the derived figure
+       * less what the books already hold", so a caller that somehow re-offers a
+       * period still computes nothing to post. */
+      const replayed = interestAccrualSchedule(atTwelvePercent, {
+        postedMinor: 98_630,
+        accruedThrough: null,
+        upTo: on(2026, 1, 31),
+      });
+      expect(amounts(replayed)).toEqual([0]);
+    });
+  });
+
+  describe('catching up several months at once', () => {
+    const schedule = interestAccrualSchedule(atTwelvePercent, fresh(on(2026, 3, 31)));
+
+    it('cuts one period per month end rather than one lump dated today', () => {
+      /* A single lump would make today's balance sheet right by making every
+       * earlier one wrong. */
+      expect(days(schedule)).toEqual(['2026-01-31', '2026-02-28', '2026-03-31']);
+    });
+
+    it('adds up to exactly the interest earned over the whole stretch', () => {
+      expect(amounts(schedule)).toEqual([98_630, 92_054, 101_918]);
+      expect(amounts(schedule).reduce((a, b) => a + b, 0)).toBe(
+        loanInterestMinor(atTwelvePercent, on(2026, 3, 31)),
+      );
+    });
+  });
+
+  describe('a repayment accruing to its own date', () => {
+    it('cuts a final period at the payment day, so nothing it settles is unposted', () => {
+      const state: AccrualState = {
+        postedMinor: 292_602,
+        accruedThrough: on(2026, 3, 31),
+        upTo: on(2026, 4, 5),
+      };
+      const schedule = interestAccrualSchedule(atTwelvePercent, state);
+      expect(days(schedule)).toEqual(['2026-04-05']);
+      // ৳3,090.41 earned by the 5th, less the ৳2,926.02 already in the books.
+      expect(amounts(schedule)).toEqual([309_041 - 292_602]);
+    });
+
+    it('leaves the rest of that month for the month-end sweep, under its own key', () => {
+      const schedule = interestAccrualSchedule(atTwelvePercent, {
+        postedMinor: 309_041,
+        accruedThrough: on(2026, 4, 5),
+        upTo: on(2026, 4, 30),
+      });
+      expect(days(schedule)).toEqual(['2026-04-30']);
+      expect(amounts(schedule)).toEqual([391_232 - 309_041]);
+    });
+
+    it('posts nothing for a back-dated payment the books have already passed', () => {
+      const schedule = interestAccrualSchedule(atTwelvePercent, {
+        postedMinor: 292_602,
+        accruedThrough: on(2026, 3, 31),
+        upTo: on(2026, 2, 10),
+      });
+      expect(schedule).toEqual([]);
+    });
+  });
+
+  describe('a flat fee', () => {
+    it('is recognised once, in full, because it is owed in full from day one', () => {
+      const schedule = interestAccrualSchedule(flatFee, fresh(on(2026, 5, 31)));
+      expect(amounts(schedule)).toEqual([200_000, 0, 0]);
+      expect(days(schedule)).toEqual(['2026-03-31', '2026-04-30', '2026-05-31']);
+    });
+
+    it('never charges it a second time', () => {
+      const first = fresh(on(2026, 5, 31));
+      const one = interestAccrualSchedule(flatFee, first);
+      const two = interestAccrualSchedule(flatFee, after(first, one, on(2026, 6, 30)));
+      expect(amounts(two)).toEqual([0]);
+    });
+  });
+
+  describe('the clocks that stop it', () => {
+    it('stops at the due date instead of accruing forever', () => {
+      const schedule = interestAccrualSchedule(atTwelvePercent, fresh(on(2027, 6, 30)));
+      expect(days(schedule).at(-1)).toBe('2026-12-31');
+      expect(amounts(schedule).reduce((a, b) => a + b, 0)).toBe(
+        loanInterestMinor(atTwelvePercent, on(2026, 12, 31)),
+      );
+    });
+
+    it('has nothing more to offer once the due date is in the books', () => {
+      const first = fresh(on(2027, 6, 30));
+      const one = interestAccrualSchedule(atTwelvePercent, first);
+      expect(interestAccrualSchedule(atTwelvePercent, after(first, one, on(2028, 1, 31)))).toEqual(
+        [],
+      );
+    });
+
+    it('accrues nothing before the money changed hands', () => {
+      expect(interestAccrualSchedule(atTwelvePercent, fresh(on(2025, 12, 31)))).toEqual([]);
+    });
+
+    it('is empty on the loan date itself, not a period worth zero', () => {
+      /* The first cut is the month end, and a month end before the loan date
+       * cannot exist — so a loan opened today produces nothing until its month
+       * is over. */
+      expect(interestAccrualSchedule(atTwelvePercent, fresh(on(2026, 1, 1)))).toEqual([
+        { throughDate: on(2026, 1, 1), amountMinor: 0 },
+      ]);
+    });
+  });
+
+  it('never asks for a negative posting when the terms are softened', () => {
+    /* Someone correcting 12% down to 6% after two months has left the books
+     * holding more interest than the terms now justify. Reversing somebody's
+     * income on a schedule is a bigger decision than a sweep should make alone,
+     * so the period reports zero and the watermark still moves on. */
+    const softened: LoanTerms = { ...atTwelvePercent, interestRateBps: 600 };
+    const schedule = interestAccrualSchedule(softened, {
+      postedMinor: 292_602,
+      accruedThrough: on(2026, 3, 31),
+      upTo: on(2026, 4, 30),
+    });
+    expect(amounts(schedule)).toEqual([0]);
   });
 });

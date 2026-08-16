@@ -7,7 +7,13 @@ accounting principles are not being followed, and what remains to build.
 It is a personal-finance product, so the bar is not a listed company's annual
 report. The bar is: **no figure on any screen should be false, and every
 deliberate simplification should be visible to the person relying on it.** By
-that bar there are four real defects and a set of honest omissions.
+that bar there were four real defects and a set of honest omissions.
+
+**Revised the same evening: all four defects are now closed.** Section 2 keeps
+each one on the record — the fault as found, then the fix as it shipped —
+because a defect that is quietly deleted from an audit teaches nobody anything,
+and the next person to touch these files needs to know why the code looks the
+way it does.
 
 ---
 
@@ -29,7 +35,7 @@ narrow by comparison.
 
 ---
 
-## 2. The four defects
+## 2. The four defects — all four closed
 
 ### 2.1 A USD account is added to a BDT total — silently
 
@@ -62,6 +68,14 @@ better than the current silence.
 
 `schema.prisma:1611`, `apps/api/src/fx/fx.service.ts:30`, `packages/shared/src/schemas.ts:213`
 
+**Fixed — (2), the fence.** `AccountsService.position` sums only accounts held
+in the workspace's own currency; system accounts stay in regardless, because
+they are denominated in the home currency by construction
+(`accounts.service.ts:473`). The three foreign accounts survive, keep their own
+balances, and are shown apart rather than added in. Option (3) — a rate table, a
+decimal `fxRate`, retranslation at the closing rate — remains unbuilt, and
+should stay unbuilt until somebody actually needs a translated statement.
+
 ### 2.2 The cash flow is never checked against itself
 
 `assertReconciles` and `buildSectionedCashFlow` exist in
@@ -76,6 +90,17 @@ There is no test file for the module either.
 
 This is the cheapest fix on the list: call the function, and write the test that
 catches a deliberately broken classification.
+
+**Fixed.** `assertReconciles` now runs on every cash-flow build
+(`reports.service.ts:781`), and the response carries `reconciled` and
+`discrepancyMinor` so a caller can see the proof rather than trust it.
+`cash-flow-sections.test.ts` covers it with 16 cases, including a deliberately
+misclassified counter account.
+
+Wiring it up immediately earned its keep: it failed on real data, and the cause
+was a genuine misclassification — equity movements were bucketed `INTERNAL`
+when **IAS 7.17** puts them in financing. The check found a bug on its first
+run, which is the entire argument for having it.
 
 ### 2.3 Opening balances exist twice, and one of them has no date
 
@@ -94,6 +119,24 @@ The fix is to keep one: turn the column into a dated `OPENING_BALANCE`
 transaction when an account is created, and let the ledger be the only source of
 a balance.
 
+**Fixed.** The column is gone
+(`migrations/20260816230000_opening_balance_to_ledger`, and `schema.prisma:626`
+now carries a comment saying why it must not come back). Creating an account
+with a balance writes a dated `OPENING_BALANCE` transaction against
+`SYSTEM_EQUITY`, stamped `externalRef = 'opening-balance:<accountId>'` so the
+one entry that represents the opening jer can always be found and edited rather
+than duplicated. The API still accepts and returns `openingBalance` on the
+account payload — the screens did not have to change — but it is now a view over
+that transaction, not a second store of the same fact.
+
+The migration converts the existing rows, dating each at the account's own
+opening date or its first transaction, whichever is earlier, so no balance is
+stranded after an entry that depends on it.
+
+A balance sheet dated last January no longer shows a June account's opening
+balance. That is **IAS 1.38** satisfied, and it is also the difference between
+comparatives that mean something and comparatives that merely exist.
+
 ### 2.4 Loan interest never enters the books
 
 Interest is _derived_ for display (`packages/core/src/loans.ts:95`) and only
@@ -109,6 +152,24 @@ bank loans it is not.
 is to accrue only where `interestType ≠ NONE`, monthly, through the existing
 reminder sweep.
 
+**Fixed — the pragmatic middle.** `LoanInterestAccrualService` posts monthly
+interest for loans that charge it and leaves interest-free family loans exactly
+as they were, which is the common case and was never wrong. The receivable now
+states what is owed on the day it is read, not what was owed at the last
+payment.
+
+Accrual is the kind of job that must never double-post, so it is guarded three
+times over: the amount is computed as a difference against what has already been
+accrued, not as a fresh period calculation; `LoanInterestAccrual.throughDate` is
+a local-date watermark; and a unique index on `(loanId, throughDate)` stops two
+sweeps that race past the first two guards. Running it twice in one day changes
+nothing — which is what makes it safe to run hourly.
+
+Not done, and deliberately: the **effective-interest method** itself. Interest
+is accrued on the outstanding principal at the stated rate. For a household
+loan at a flat rate that is the same number; for anything with fees rolled into
+the yield it is not, and this product has no such instrument.
+
 ---
 
 ## 3. Deliberate omissions — correct for personal books, but say so
@@ -116,13 +177,13 @@ reminder sweep.
 These are not defects. Each is a legitimate simplification, and the standard's
 own answer is usually "disclose the choice", which is mostly already done.
 
-| Omitted                                 | Standard               | Verdict                                                                                                                                                                                                         |
-| --------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Depreciation**                        | IAS 16.43              | Right call. A household does not depreciate its car; revaluation carries the same information with less invention. Already documented in `PLAN-v3.md:130`. **Add one line to the statements footer saying so.** |
-| **Accruals and prepayments**            | IAS 1.27 accrual basis | The books are **cash basis**, which is stated on two of the four statements and in the screen footer. **Put `basis` on the balance sheet and cash-flow responses too**, so an API consumer cannot miss it.      |
-| **Period close / retained earnings**    | —                      | No statutory year-end for a person. Back-dating is a feature here, not a hole. Nothing to do.                                                                                                                   |
-| **Equity section on the balance sheet** | IAS 1.54(r)            | Net worth is presented as assets − liabilities, which is the same number by definition. Fine for a person.                                                                                                      |
-| **Budgets**                             | not a standard         | A product decision, not an accounting one.                                                                                                                                                                      |
+| Omitted                                 | Standard               | Verdict                                                                                                                                                                                             |
+| --------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Depreciation**                        | IAS 16.43              | Right call. A household does not depreciate its car; revaluation carries the same information with less invention. Documented in `PLAN-v3.md:130`, and now said on the statements footer too.       |
+| **Accruals and prepayments**            | IAS 1.27 accrual basis | The books are **cash basis**. All four statement responses now carry `basis`, from one shared constant, so an API consumer cannot miss it and a second basis could only ever be added in one place. |
+| **Period close / retained earnings**    | —                      | No statutory year-end for a person. Back-dating is a feature here, not a hole. Nothing to do.                                                                                                       |
+| **Equity section on the balance sheet** | IAS 1.54(r)            | Net worth is presented as assets − liabilities, which is the same number by definition. Fine for a person.                                                                                          |
+| **Budgets**                             | not a standard         | A product decision, not an accounting one.                                                                                                                                                          |
 
 ---
 
@@ -130,22 +191,39 @@ own answer is usually "disclose the choice", which is mostly already done.
 
 Beyond the defects, ordered by how much a real user would feel it.
 
-1. **Transaction history from the old app** — 9,625 records sit in
-   `~/Desktop/taka-tracker-migration/`, none of them imported. Everything else
-   about the migration is done. **This is the biggest single gap.**
-2. **Income tax** — `packages/core/src/tax.ts` computes; there is no settings
-   tab, no rate table for the year, and `estimateTax` refuses to run until a
-   verified regime is supplied. Deliberate: the first release should not compute
-   a number somebody files.
-3. **Recording the renewal fee** — marking khajna done rolls the date forward
-   but offers no way to book the payment. One button, prefilled.
+1. ~~**Transaction history from the old app**~~ — **the door is built.**
+   `POST /migration/batches/:id/records` takes the history a page at a time,
+   after two paging traps that would between them have lost 94% of it: the
+   Wallet API silently applies a three-month filter unless asked for everything,
+   and it can return a short page that is not the last page. Both are handled and
+   both are documented in `WALLET-MIGRATION.md`. Running it against the owner's
+   9,625 records is a decision, not a build.
+2. **Income tax** — **the tab exists**; the rates do not. `TaxRegime` is global,
+   versioned, and carries a `verified` flag, with every rate column nullable and
+   seeded `NULL`. `GET /tax/worksheet` works, and `POST /tax/estimate` still
+   refuses to produce a number.
+
+   There is deliberately **no screen for entering rates**, which is the one place
+   in this product where a missing feature is the feature. A rate box invites a
+   guess, a guess produces a figure that looks computed, and somebody files it.
+   The slabs get transcribed from the Finance Act by hand, into a version-2 row
+   marked verified, and only then does the estimate appear. Until that happens
+   the worksheet shows the inputs and declines the answer.
+
+3. ~~**Recording the renewal fee**~~ — done. Completing an obligation offers the
+   payment, prefilled from the estimate but booked at whatever figure is typed,
+   because an estimate is not a receipt. Amount, account and category arrive
+   together or not at all — a half-filled instruction is not something this
+   endpoint should be guessing the rest of. Omitting it keeps the original
+   behaviour: roll the date, touch no money, which is what somebody clearing five
+   years of back khajna in one sitting actually wants.
 4. **Prepaid annual expenses** — insurance premiums and licence fees paid once
    for twelve months. Cash basis says expense it on payment; a _spread_ view
    would tell somebody what a month really costs. Presentation, not posting.
 5. **Attachments on renewals** — the scan of the paper. The `Attachment` model
    already exists; `AssetObligation.attachmentIds` does not.
 6. **Push notifications (OneSignal)** and **the Play Store build** — planned,
-   not started.
+   not started, and **deferred by the owner** on 16 August 2026.
 
 ---
 
@@ -163,22 +241,39 @@ fail because a third party is unreachable is a deploy that will fail at the
 worst moment. Self-hosting the font with `next/font/local` removes the
 dependency and makes the build reproducible offline.
 
+**Fixed.** Five woff2 files, 234KB, in `apps/web/src/app/fonts/`, loaded through
+`next/font/local` with `adjustFontFallback: false`. The build no longer reaches
+the network for a typeface.
+
 ---
 
-## 6. The order I would work in
+## 6. The work order, and where it ended
 
-| #   | Work                                                     | Why first                                           |
-| --- | -------------------------------------------------------- | --------------------------------------------------- |
-| 1   | Self-host the font                                       | Half an hour, and every later deploy depends on it  |
-| 2   | Call `assertReconciles`, and test it                     | The safety net that was documented but absent       |
-| 3   | Fence off non-BDT accounts                               | The owner's own net worth is wrong until this lands |
-| 4   | Opening balance → one dated mechanism                    | Makes every dated balance sheet honest              |
-| 5   | Import the 9,625 records                                 | The migration's last mile                           |
-| 6   | Basis on all four statement responses; depreciation note | An hour, and closes the disclosure gaps             |
-| 7   | Renewal fee → offer to book it                           | Small, and completes a feature shipped today        |
-| 8   | Accrue loan interest where the rate is not zero          | Correctness, but only for a few rows                |
-| 9   | Income tax tab                                           | Weeks, and the riskiest thing here                  |
-| 10  | OneSignal, Play Store                                    | Product, not accounting                             |
+| #   | Work                                                     | Status                                           |
+| --- | -------------------------------------------------------- | ------------------------------------------------ |
+| 1   | Self-host the font                                       | **Done** — 5 woff2, no network in the build      |
+| 2   | Call `assertReconciles`, and test it                     | **Done** — and it found a real misclassification |
+| 3   | Fence off non-BDT accounts                               | **Done** — totals sum the home currency only     |
+| 4   | Opening balance → one dated mechanism                    | **Done** — the column is dropped                 |
+| 5   | Import the 9,625 records                                 | **Door built**; the run is the owner's call      |
+| 6   | Basis on all four statement responses; depreciation note | **Done**                                         |
+| 7   | Renewal fee → offer to book it                           | **Done**                                         |
+| 8   | Accrue loan interest where the rate is not zero          | **Done** — monthly, guarded three ways           |
+| 9   | Income tax tab                                           | **Tab done, rates not transcribed** — see §4.2   |
+| 10  | OneSignal, Play Store                                    | **Deferred by the owner**                        |
+
+### What is actually left
+
+1. **Transcribe the Finance Act slabs** into a verified `TaxRegime` version-2
+   row. Hand work, checked against the gazette, and the only thing standing
+   between the worksheet and a usable estimate.
+2. **Run the history import** for the owner's 9,625 records.
+3. **Prepaid annual expenses**, **renewal attachments** — §4.4 and §4.5, neither
+   urgent.
+4. **Foreign currency, properly** — §2.1 option (3). Do not start this until
+   somebody needs it.
 
 Still owed by the owner and not a code change: **rotate the Wallet, OpenAI,
-Gemini, ZeptoMail and mram credentials** that were pasted into chat.
+Gemini, ZeptoMail and mram credentials** that were pasted into chat. This has
+been outstanding since they were pasted, and every day it stays open is a day
+those keys are live in a chat log.

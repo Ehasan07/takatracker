@@ -258,7 +258,11 @@ describe('people', () => {
     // The claim the message makes, measured rather than trusted.
     expect(await netWorth(user)).toBe(before);
     const remaining = await ctx.http().get('/v1/transactions').set(auth(user)).expect(200);
-    expect(remaining.body.items).toHaveLength(1);
+    /* The নগদ account's own opening balance is a transaction too; the one this
+       test is about is the expense the person was attached to. */
+    expect(
+      remaining.body.items.filter((item: { type: string }) => item.type !== 'OPENING_BALANCE'),
+    ).toHaveLength(1);
   });
 
   it('refuses another workspace’s person on a transaction', async () => {

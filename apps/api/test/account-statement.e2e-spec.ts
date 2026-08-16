@@ -34,19 +34,31 @@ describe('a statement of account', () => {
        statement, not about the plan ceiling — that has its own. */
     await unlimit(ctx, user.workspaceId);
 
-    const account = async (name: string, type: string, openingBalance = 0) => {
+    const account = async (
+      name: string,
+      type: string,
+      openingBalance = 0,
+      openingBalanceDate?: string,
+    ) => {
       const made = await ctx
         .http()
         .post('/v1/accounts')
         .set(auth(user))
-        .send({ name, type, openingBalance })
+        .send({ name, type, openingBalance, openingBalanceDate })
         .expect(201);
       return made.body.id as string;
     };
 
-    /* ৳10,000 opening. Every figure below is derived from it, so a statement
-       that forgets the opening balance fails on its first assertion. */
-    bankId = await account('ব্যাংক', 'BANK', 1_000_000);
+    /* ৳10,000 opening, dated the day before this account's history starts.
+       Every figure below is derived from it, so a statement that forgets the
+       opening balance fails on its first assertion.
+
+       The date is now required to make sense of the figure: an opening balance
+       is an OPENING_BALANCE transaction against equity, so it belongs to a day
+       like everything else on the page. Dated 28 February, it is inherited by
+       every window from March onwards — which is what "opening balance" meant
+       all along, said in a way a dated report can act on. */
+    bankId = await account('ব্যাংক', 'BANK', 1_000_000, '2026-02-28');
     cashId = await account('নগদ', 'CASH');
     cardId = await account('ক্রেডিট কার্ড', 'CREDIT_CARD');
 
@@ -92,27 +104,39 @@ describe('a statement of account', () => {
 
     const res = await statement(bankId).expect(200);
 
-    // No window asked for, so the statement starts where the account did.
-    expect(res.body.openingMinor).toBe(1_000_000);
-    expect(res.body.rows).toHaveLength(3);
+    /* No window asked for, so the statement covers the whole life of the
+       account — and the opening balance is inside that life rather than before
+       it. It opens at nothing and its first row *is* the opening balance,
+       dated, described and reconcilable, which is precisely what the old
+       dateless column could never be: it was a number on the opening line with
+       no entry anywhere to account for it. */
+    expect(res.body.openingMinor).toBe(0);
+    expect(res.body.rows).toHaveLength(4);
+    expect(res.body.rows[0]).toMatchObject({
+      date: '2026-02-28',
+      description: 'প্রারম্ভিক জের',
+      debitMinor: 1_000_000,
+      creditMinor: 0,
+      balanceMinor: 1_000_000,
+    });
 
     /* A bank account is debit-normal: money in is a debit, money out a credit.
        Getting this backwards is the single most common way to build this
        screen, and it makes every balance on it wrong. */
     expect(res.body.debitNormal).toBe(true);
-    expect(res.body.rows[0]).toMatchObject({
+    expect(res.body.rows[1]).toMatchObject({
       date: '2026-03-05',
       debitMinor: 5_000_000,
       creditMinor: 0,
       balanceMinor: 6_000_000,
     });
-    expect(res.body.rows[1]).toMatchObject({
+    expect(res.body.rows[2]).toMatchObject({
       debitMinor: 0,
       creditMinor: 1_200_000,
       balanceMinor: 4_800_000,
     });
 
-    expect(res.body.totalDebitMinor).toBe(5_000_000);
+    expect(res.body.totalDebitMinor).toBe(6_000_000);
     expect(res.body.totalCreditMinor).toBe(1_500_000);
     expect(res.body.closingMinor).toBe(4_500_000);
 

@@ -692,7 +692,7 @@ export class ReportsService {
         deletedAt: null,
         type: { in: [...LIQUID_TYPES] },
       },
-      select: { id: true, name: true, type: true, openingBalance: true },
+      select: { id: true, name: true, type: true },
     });
     const ids = liquid.map((a) => a.id);
     if (ids.length === 0) {
@@ -750,9 +750,11 @@ export class ReportsService {
       return row.direction === 'DEBIT' ? magnitude : -magnitude;
     };
 
-    const openingMinor =
-      liquid.reduce((sum, a) => sum + minorToNumber(a.openingBalance), 0) +
-      before.reduce((sum, row) => sum + signed(row), 0);
+    /* Entries dated before the window, and nothing else. An opening balance is
+       an OPENING_BALANCE transaction now rather than a dateless column added on
+       top here, so it is in `before` when it predates the window and an inflow
+       when it does not — which is the honest reading either way. */
+    const openingMinor = before.reduce((sum, row) => sum + signed(row), 0);
 
     let inflowMinor = 0;
     let outflowMinor = 0;

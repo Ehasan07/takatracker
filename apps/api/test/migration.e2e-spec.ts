@@ -1172,7 +1172,20 @@ describe('migration', () => {
       where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
     });
     expect(account?.type).toBe('LIABILITY');
-    expect(Number(account?.openingBalance)).toBe(0);
+    /* No balance came across, and this is now the only way to say so: there is
+       no `openingBalance` column to read back as zero. An opening balance is an
+       OPENING_BALANCE transaction, and the import writes none — Wallet's figure
+       is today's, not the opening one, so importing it would double-count the
+       history that follows. */
+    expect(
+      await ctx.prisma.transaction.count({
+        where: {
+          workspaceId: user.workspaceId,
+          type: 'OPENING_BALANCE',
+          entries: { some: { accountId: account?.id } },
+        },
+      }),
+    ).toBe(0);
 
     /* And it is not also a category. */
     expect(

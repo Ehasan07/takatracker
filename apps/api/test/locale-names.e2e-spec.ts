@@ -88,8 +88,16 @@ describe('names follow the workspace language', () => {
   it("names a transaction's category in the reader's language", async () => {
     const bnList = await ctx.http().get('/v1/transactions').set(auth(bn)).expect(200);
     const enList = await ctx.http().get('/v1/transactions').set(auth(en)).expect(200);
-    expect(bnList.body.items[0].categoryName).toBe('যাতায়াত');
-    expect(enList.body.items[0].categoryName).toBe('Transport');
+    /* By description, not by position: the account's opening balance is a
+       transaction of its own now and it is dated today, so it sorts above an
+       expense dated the 13th. Naming the row this test is about is what it
+       meant all along. */
+    const bus = (list: { body: { items: { description: string }[] } }) =>
+      list.body.items.find((item) => item.description === 'bus') as unknown as {
+        categoryName: string;
+      };
+    expect(bus(bnList).categoryName).toBe('যাতায়াত');
+    expect(bus(enList).categoryName).toBe('Transport');
   });
 
   it('names a report row in the reader’s language', async () => {
