@@ -160,6 +160,16 @@ export const EN: Record<string, string> = {
   'dashboard.undrawnHint':
     'The card part is borrowing, not yours — spending it adds a liability and starts interest. It is not in net worth.',
   'dashboard.netWorthHint': 'Land, savings and money owed to you, less what you owe',
+  /* Foreign currency, fenced off rather than converted. IAS 21.21 wants a spot
+     rate per transaction date and IAS 21.23(a) a closing rate for monetary
+     balances; the app stores neither, so these balances stay in their own
+     money and out of every total. Nothing here renders when every account is
+     in the workspace's own currency. */
+  'dashboard.foreign': 'Accounts in another currency',
+  'dashboard.foreignCount': '{n}',
+  'dashboard.foreignHint':
+    'Not included in any total above — the app does not convert between currencies yet. Each balance is shown in its own currency.',
+  'dashboard.noHomeAccounts': "No accounts in the books' own currency.",
   'dashboard.isAsset': '· asset',
   'dashboard.isLiability': '· liability',
   'dashboard.topCategories': 'Top 5 spending categories',
@@ -736,6 +746,12 @@ export const EN: Record<string, string> = {
   'account.total.asset': 'Assets (land, gold, receivable)',
   'account.total.liability': 'Liabilities (cards, loans, payable)',
   'account.total.net': 'Net worth',
+  /* The four figures above cover only accounts kept in the workspace's own
+     currency — see `dashboard.foreign` for why nothing is converted. */
+  'account.foreignExcluded':
+    '{n} accounts sit outside the four figures above — they are kept in another currency, and the app does not convert. They are listed below in their own money.',
+  'account.group.foreign': 'Accounts in another currency',
+  'account.foreignCount': '{n} — not in any total',
   'account.empty': 'No accounts yet.',
   'account.new': 'New account',
   'account.edit': 'Edit account',

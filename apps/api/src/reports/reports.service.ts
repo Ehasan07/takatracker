@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   type AccountBalanceRow,
+  assertReconciles,
   type BalanceSheet,
   type BalanceSheetComparison,
   buildBalanceSheet,
   buildCashFlow,
+  buildSectionedCashFlow,
   buildTrend,
   type CashFlow,
   cashFlowSection,
@@ -42,14 +44,85 @@ export interface BalanceSheetQuery {
 }
 
 /**
+ * The basis every statement is prepared on, in the one place it is decided.
+ *
+ * All four statements carry the same literal from here rather than four copies
+ * of `'CASH'`, so the day this product ever offers a second basis there is one
+ * thing to change and no statement can be left behind on the old one.
+ */
+const BASIS = 'CASH' as const;
+
+/**
+ * Disclosures that belong to the position rather than to a period.
+ *
+ * ## Why on the response and not only on the screen
+ *
+ * The reports page already prints a basis-of-preparation block, and this does
+ * not duplicate it: that block is prose for whoever is holding the printout,
+ * this is for whoever is holding the JSON. A balance sheet reaching a bank's
+ * spreadsheet, an export, or somebody else's app arrives with no page attached,
+ * and a statement that does not say what basis it is on cannot be checked.
+ *
+ * ## Why depreciation is named
+ *
+ * Because its absence is otherwise invisible. A reader who knows business
+ * accounting sees a car at what it cost three years ago and reasonably assumes
+ * somebody forgot to depreciate it. They did not: depreciating a household car
+ * is an artefact of business accounting, and revaluing it to market is simpler,
+ * more honest and how personal financial statements are prepared everywhere
+ * (docs/PLAN-v3.md, M44). Saying so turns a suspected omission into a stated
+ * policy, which is the whole job of a note.
+ */
+const BALANCE_SHEET_NOTES: readonly string[] = [
+  'সম্পদ ক্রয়মূল্যে দেখানো হয়েছে। অবচয় (depreciation) হিসাব করা হয় না — বাজারমূল্য বদলালে পুনর্মূল্যায়নের মাধ্যমে সংশোধন করা হয়।',
+];
+
+/**
+ * A balance sheet that says what it is prepared on, as well as what it says.
+ *
+ * The bare `BalanceSheet` from @hishab/core is arithmetic over account
+ * balances; this is that arithmetic presented as a statement, which means it
+ * has to declare its basis the way the other three do.
+ */
+export interface PreparedBalanceSheet extends BalanceSheet {
+  /**
+   * Cash basis, always, and said out loud. The same literal and the same shape
+   * as `IncomeStatement.basis` and `ChangesInNetWorth.basis`, so a consumer
+   * reads one field name across all four statements.
+   */
+  basis: typeof BASIS;
+  /** Disclosures a reader needs to interpret the figures. See `BALANCE_SHEET_NOTES`. */
+  notes: string[];
+}
+
+/**
  * A balance sheet that says which day it is true for.
  *
  * `asOf` and `comparison` are absent from the response when nothing was asked
  * for, so the undated call returns exactly the object it always did.
  */
-export interface DatedBalanceSheet extends BalanceSheet {
+export interface DatedBalanceSheet extends PreparedBalanceSheet {
   asOf: string;
   comparison?: BalanceSheetComparison & { asOf: string };
+}
+
+/**
+ * The cash flow as it leaves the API: the statement, its sections, its basis,
+ * and its own verdict on whether it adds up.
+ */
+export interface CashFlowStatement extends CashFlow, CashFlowSectionTotals {
+  basis: typeof BASIS;
+  /**
+   * `opening + operating + investing + financing === closing`.
+   *
+   * Normally true and worth sending anyway: a consumer that has to derive it
+   * will one day derive it differently from the server, and the point of the
+   * check is that there is exactly one answer.
+   */
+  reconciled: boolean;
+  /** `closing − (opening + the three sections)`, in poisha. Zero when reconciled. */
+  discrepancyMinor: number;
+  accounts: string[];
 }
 
 /** One line of the by-tag report. `tagId: null` is the untagged bucket. */
@@ -148,7 +221,7 @@ export interface IncomeStatement extends IncomeStatementFigures {
    * books: an unpaid bill is not a liability here, and money is recognised when
    * it moves rather than when it is earned or incurred.
    */
-  basis: 'CASH';
+  basis: typeof BASIS;
   comparison?: IncomeStatementFigures & { from: string; to: string };
 }
 
@@ -161,7 +234,7 @@ export interface IncomeStatement extends IncomeStatementFigures {
 export interface ChangesInNetWorth {
   from: string;
   to: string;
-  basis: 'CASH';
+  basis: typeof BASIS;
   openingMinor: number;
   incomeMinor: number;
   expenseMinor: number;
@@ -181,8 +254,39 @@ export interface ChangesInNetWorth {
   movementMinor: number;
 }
 
+/**
+ * What a cash flow that does not add up should do to the request.
+ *
+ * ## Both obvious answers are wrong
+ *
+ * Throwing turns a report screen into a 500 for somebody who only wanted to see
+ * last month, over a defect they cannot act on and probably a discrepancy of a
+ * few poisha — and it hides the data they *could* still read. Not throwing, and
+ * serving a statement with nothing on it saying the arithmetic failed, is how a
+ * wrong number ends up in front of a bank. Between "the app is broken" and "the
+ * app is confidently wrong", the second is the one that costs somebody money.
+ *
+ * ## So: throw where somebody will fix it, disclose where somebody will read it
+ *
+ * In test and development a mismatch is a bug being written right now, and the
+ * loudest possible failure is the cheapest one — the stack trace lands on the
+ * machine of the person who caused it, and the e2e suite goes red before the
+ * commit. In production nobody is watching the console, so the failure has to
+ * travel: an error in the log with the workspace and the gap in it, and
+ * `reconciled: false` plus the signed `discrepancyMinor` on the response, so
+ * the screen can say হিসাব মিলছে না instead of quietly presenting a total that
+ * is not the sum of its parts.
+ *
+ * The response carries `reconciled` on every build either way, including the
+ * successful ones. A field that only appears when things are broken is a field
+ * no client remembers to check.
+ */
+const THROW_ON_UNRECONCILED = process.env.NODE_ENV !== 'production';
+
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounts: AccountsService,
@@ -487,7 +591,7 @@ export class ReportsService {
   async balanceSheet(
     ctx: TenantContext,
     query: BalanceSheetQuery = {},
-  ): Promise<BalanceSheet | DatedBalanceSheet> {
+  ): Promise<PreparedBalanceSheet | DatedBalanceSheet> {
     /* Fetched once and reused by both sides of a comparison: the rows carry
      * only id, name and type, all of which are properties of the account today
      * rather than of the date. Which of them existed on each date is decided
@@ -504,7 +608,17 @@ export class ReportsService {
         : Promise.resolve(null),
     ]);
 
-    const sheet = buildBalanceSheet(current);
+    /* The basis and the notes are attached once, here, so every shape this
+       method can return carries them — undated, dated, and compared alike. An
+       API consumer who has to know which of the three calls gets the basis will
+       pick the wrong call. `notes` is a fresh array each time rather than the
+       module constant, so a caller mutating what it was handed cannot change
+       what the next request says. */
+    const sheet: PreparedBalanceSheet = {
+      ...buildBalanceSheet(current),
+      basis: BASIS,
+      notes: [...BALANCE_SHEET_NOTES],
+    };
     if (!query.asOf && !query.compareTo) return sheet;
 
     // A response that carries a comparison has to say what date it is a
@@ -558,11 +672,19 @@ export class ReportsService {
    * Cash in and out over a period, across the liquid accounts. The closing
    * figure must equal those accounts' balance at the end of the period — if it
    * does not, a query missed an entry.
+   *
+   * ## The two independent computations, and why they are checked against each
+   * other
+   *
+   * `openingMinor`, `inflowMinor` and `outflowMinor` come from an aggregate over
+   * ledger entries on the liquid accounts, which knows nothing about sections.
+   * `cashFlowSections` walks the same window transaction by transaction and
+   * files each movement by the account on the other side of it. Two routes to
+   * the same money, and `buildSectionedCashFlow` puts them side by side: if the
+   * three sections do not add up to the movement the balances show, one of them
+   * is wrong. That is the check, and it is now run rather than described.
    */
-  async cashFlow(
-    ctx: TenantContext,
-    period: PeriodQuery,
-  ): Promise<CashFlow & { accounts: string[] }> {
+  async cashFlow(ctx: TenantContext, period: PeriodQuery): Promise<CashFlowStatement> {
     const liquid = await this.prisma.account.findMany({
       where: {
         workspaceId: ctx.workspaceId,
@@ -574,12 +696,21 @@ export class ReportsService {
     });
     const ids = liquid.map((a) => a.id);
     if (ids.length === 0) {
+      /* No liquid accounts: nothing moved, and nothing can fail to reconcile.
+         Still says so in the same fields, so a client never has to branch on
+         whether the workspace has a wallet yet. */
       return {
+        basis: BASIS,
         openingMinor: 0,
         inflowMinor: 0,
         outflowMinor: 0,
         netMinor: 0,
         closingMinor: 0,
+        operatingMinor: 0,
+        investingMinor: 0,
+        financingMinor: 0,
+        reconciled: true,
+        discrepancyMinor: 0,
         accounts: [],
       };
     }
@@ -632,10 +763,41 @@ export class ReportsService {
     }
 
     const sections = await this.cashFlowSections(ctx, ids, date);
+    const balances = buildCashFlow({ openingMinor, inflowMinor, outflowMinor });
 
-    return {
-      ...buildCashFlow({ openingMinor, inflowMinor, outflowMinor }),
+    const proved = buildSectionedCashFlow({
+      openingMinor,
+      closingMinor: balances.closingMinor,
+      inflowMinor,
+      outflowMinor,
       ...sections,
+    });
+
+    if (!proved.reconciled) {
+      /* Development and test: fail loudly, at the point of the defect. See
+         THROW_ON_UNRECONCILED for why production does not. */
+      if (THROW_ON_UNRECONCILED) assertReconciles(proved);
+
+      this.logger.error(
+        `Cash flow does not reconcile for workspace ${ctx.workspaceId} ` +
+          `(${period.from}..${period.to}): opening ${proved.openingMinor} + sections ` +
+          `${proved.netMinor} = ${proved.openingMinor + proved.netMinor}, closing ` +
+          `${proved.closingMinor}, off by ${proved.discrepancyMinor} poisha`,
+      );
+    }
+
+    /* `netMinor` stays the balance-derived movement (`inflow − outflow`) rather
+       than the sum of the sections. The two are the same number whenever the
+       statement reconciles, and when it does not, the one a reader wants at the
+       bottom of the page is the one the accounts actually moved by — the
+       sections are the side that is wrong. `discrepancyMinor` is the difference
+       between them, so nothing is hidden by the choice. */
+    return {
+      ...balances,
+      ...sections,
+      basis: BASIS,
+      reconciled: proved.reconciled,
+      discrepancyMinor: proved.discrepancyMinor,
       accounts: liquid.map((a) => a.name),
     };
   }
@@ -659,9 +821,17 @@ export class ReportsService {
    *
    * ## Proved, not asserted
    *
-   * The three sections must sum to the movement the balances actually show.
-   * `assertReconciles` throws if they do not, because a cash flow statement that
-   * does not reconcile is arithmetic wearing a report's clothes.
+   * The three sections must sum to the movement the balances actually show. The
+   * caller hands what comes back here to `buildSectionedCashFlow`, which checks
+   * exactly that and refuses to produce a statement without a verdict on
+   * itself, because a cash flow statement that does not reconcile is arithmetic
+   * wearing a report's clothes.
+   *
+   * A movement filed as `INTERNAL` is dropped here, which is correct only for
+   * money that never left the household — a transfer between two of your own
+   * pockets. Anything else classified into `INTERNAL` disappears from the
+   * sections while staying in the closing balance, and is precisely the defect
+   * the reconciliation catches.
    */
   private async cashFlowSections(
     ctx: TenantContext,
@@ -787,7 +957,7 @@ export class ReportsService {
     return {
       from: period.from,
       to: period.to,
-      basis: 'CASH',
+      basis: BASIS,
       ...current,
       comparison: previous
         ? { from: compareTo?.from ?? '', to: compareTo?.to ?? '', ...previous }
@@ -869,7 +1039,7 @@ export class ReportsService {
     return {
       from: period.from,
       to: period.to,
-      basis: 'CASH',
+      basis: BASIS,
       openingMinor,
       incomeMinor: statement.incomeMinor,
       expenseMinor: statement.expenseMinor,

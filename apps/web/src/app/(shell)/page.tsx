@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { fmtDate, fmtDateObject } from '@/lib/format';
+import { fmtDate, fmtDateObject, fmtNumber } from '@/lib/format';
 import { t } from '@/lib/t';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
@@ -14,7 +14,8 @@ import { VerifyEmailCard } from '@/components/verify-email-card';
 import { Money } from '@/components/money';
 import { SkeletonCard } from '@/components/skeleton';
 import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
-import { endpoints } from '@/lib/api';
+import { endpoints, type AccountDto } from '@/lib/api';
+import { useWorkspaceSettings } from '@/lib/workspace-settings';
 
 /**
  * The breakdown, in the three parts a balance sheet reads in.
@@ -54,6 +55,40 @@ const groupOfAccount = (type: AccountType): BreakdownGroup => {
   return ACCOUNT_CLASS[type] === 'LIABILITY' ? 'liability' : 'asset';
 };
 
+/**
+ * Accounts split into the ones the totals cover and the ones they cannot.
+ *
+ * The app does not convert currency. `LedgerEntry.fxRate` is an `Int` that
+ * every writer sets to 1 and nothing anywhere reads a rate, so adding a USD
+ * account's $500 into a taka figure would assert a rate of 1.00 that nobody
+ * chose — the balances are integers in *each account's* minor unit. Doing it
+ * properly means a spot rate per transaction date (IAS 21.21) and a closing
+ * rate to retranslate monetary balances by (IAS 21.23(a)); until that exists
+ * the honest total is one that says what it covers.
+ *
+ * The same split, by the same rule, is applied on the server in
+ * `AccountsService.position` — which is where `liquidMinor` and
+ * `netWorthMinor` come from — and again on the accounts screen. All three
+ * compare the account's currency with the workspace's, case-insensitively,
+ * because `Account.currency` is a free three-character string that nothing
+ * upper-cases on the way in.
+ *
+ * Before `/auth/me` answers, `homeCurrency` is only a guess, so nothing is
+ * called foreign yet: the first paint is exactly what it was.
+ */
+function splitByCurrency(
+  accounts: readonly AccountDto[],
+  homeCurrency: string,
+  ready: boolean,
+): { home: AccountDto[]; foreign: AccountDto[] } {
+  if (!ready) return { home: [...accounts], foreign: [] };
+  const home = homeCurrency.toUpperCase();
+  return {
+    home: accounts.filter((a) => a.currency.toUpperCase() === home),
+    foreign: accounts.filter((a) => a.currency.toUpperCase() !== home),
+  };
+}
+
 export default function DashboardPage() {
   /* An operator has no books, so this screen has nothing to tell them. They are
    * sent to the platform overview instead — `replace`, not `push`, so the back
@@ -76,11 +111,17 @@ export default function DashboardPage() {
   const topCategories = (summary.data?.expenseByCategory ?? []).slice(0, 5);
   const largest = topCategories[0]?.totalMinor ?? 0;
 
-  /* Reported beside net worth, never added into it. */
-  const undrawn = (accounts.data ?? []).reduce(
-    (sum, account) => sum + (account.undrawnMinor ?? 0),
-    0,
+  const { currency, ready: currencyReady } = useWorkspaceSettings();
+  const { home: homeAccounts, foreign: foreignAccounts } = React.useMemo(
+    () => splitByCurrency(accounts.data ?? [], currency, currencyReady),
+    [accounts.data, currency, currencyReady],
   );
+
+  /* Reported beside net worth, never added into it — and only the cards kept in
+     the books' own currency, because the figure it is added to (`liquidMinor`)
+     covers only those. A dollar card's headroom added to a taka total would be
+     the same unconverted lie one level down. */
+  const undrawn = homeAccounts.reduce((sum, account) => sum + (account.undrawnMinor ?? 0), 0);
 
   if (isOperator) return null;
 
@@ -248,7 +289,11 @@ export default function DashboardPage() {
            * them out of the total would be a different and worse lie. */}
           <ul className="divide-rule mt-3 divide-y border-t pt-1">
             {BREAKDOWN_GROUPS.flatMap(({ key, label }) => {
-              const rows = (accounts.data ?? []).filter(
+              /* `homeAccounts`, not every account: these subtotals have to add
+                 up to the liquid and net worth figures above, and those come
+                 from the server with foreign-currency accounts left out. The
+                 excluded ones are listed below in their own money. */
+              const rows = homeAccounts.filter(
                 (account) => groupOfAccount(account.type as AccountType) === key,
               );
               if (rows.length === 0) return [];
@@ -324,8 +369,64 @@ export default function DashboardPage() {
                   {t('dashboard.addOne', 'একটি যোগ করুন')}
                 </Link>
               </li>
+            ) : homeAccounts.length === 0 ? (
+              /* Everything they have is in another currency. Saying "no
+                 accounts" here would be false, and an empty list with no
+                 sentence would read as a bug. */
+              <li className="text-ink-muted py-2 text-sm">
+                {t('dashboard.noHomeAccounts', 'খাতার মুদ্রায় রাখা কোনো অ্যাকাউন্ট নেই।')}
+              </li>
             ) : null}
           </ul>
+
+          {/* Named, not hidden.
+           *
+           * These balances are real and the app can show them; what it cannot
+           * do is add them to anything, because it has no rate. IAS 21.23(a)
+           * would retranslate a monetary balance at the closing rate and IAS
+           * 21.28 would book the difference that falls out — neither is
+           * implemented, and `LedgerEntry.fxRate` is an integer column that
+           * could not hold 121.50 if it were. So the account keeps its own
+           * money, in its own money, and the screen says plainly that it is
+           * outside the totals above.
+           *
+           * Nothing about currency appears at all when every account is in the
+           * books' own — which is nearly every workspace. */}
+          {foreignAccounts.length > 0 ? (
+            <div className="border-rule mt-3 border-t pt-2">
+              <p className="text-ink-muted flex items-baseline justify-between gap-3 text-sm">
+                <span>{t('dashboard.foreign', 'অন্য মুদ্রার অ্যাকাউন্ট')}</span>
+                <span className="text-ink-muted shrink-0 text-xs">
+                  {t('dashboard.foreignCount', '{n}টি').replace(
+                    '{n}',
+                    fmtNumber(String(foreignAccounts.length)),
+                  )}
+                </span>
+              </p>
+              <ul className="divide-rule mt-1 divide-y">
+                {foreignAccounts.map((account) => (
+                  <li key={account.id} className="flex items-center justify-between gap-3 py-1.5">
+                    <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
+                    <span className="text-ink-muted shrink-0 text-sm">
+                      <Money
+                        minor={account.balanceMinor}
+                        currency={account.currency}
+                        signed
+                        className="text-ink"
+                      />{' '}
+                      {account.currency.toUpperCase()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'dashboard.foreignHint',
+                  'উপরের কোনো যোগফলে এগুলো ধরা হয়নি — অ্যাপ এখনও এক মুদ্রা থেকে আরেক মুদ্রায় রূপান্তর করে না। প্রতিটির জের তার নিজের মুদ্রাতেই দেখানো হলো।',
+                )}
+              </p>
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-card border-rule bg-surface border p-4">

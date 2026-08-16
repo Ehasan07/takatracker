@@ -159,4 +159,32 @@ export class WalletClient {
   records(token: string): Promise<WalletRecord[]> {
     return this.all<WalletRecord>(token, 'records', SINCE_EVERYTHING);
   }
+
+  /**
+   * One page of records, and where the next one starts.
+   *
+   * Records are paged by the caller rather than read whole like accounts and
+   * categories, and the reason is the size: 9,625 rows written inside one HTTP
+   * request is a request that can time out half way through a ledger. A page at
+   * a time makes the worst case one page asked for twice, which deduplication
+   * already answers for.
+   *
+   * `nextOffset` is passed back untouched and treated as opaque — it is the
+   * server's own bookmark, not a row count — and its absence, never a short
+   * page, is what means the end.
+   */
+  async recordsPage(
+    token: string,
+    offset: number,
+  ): Promise<{ rows: WalletRecord[]; nextOffset: number | null }> {
+    const from = Math.max(0, Math.trunc(offset));
+    const page = await this.page<WalletRecord>(token, 'records', from, SINCE_EVERYTHING);
+    return {
+      rows: page.rows,
+      /* Only ever forwards, for the same reason `all()` refuses to go back: an
+         offset that repeats itself would import one page over and over until
+         the caller's own page cap stopped it. */
+      nextOffset: page.nextOffset !== null && page.nextOffset > from ? page.nextOffset : null,
+    };
+  }
 }

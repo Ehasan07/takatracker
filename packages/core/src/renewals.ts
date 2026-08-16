@@ -129,6 +129,11 @@ export function daysUntil(today: string, dueDate: string): number {
     Number(dueDate.slice(5, 7)) - 1,
     Number(dueDate.slice(8, 10)),
   );
+  /* Milliseconds to days, not money — but the money rule cannot tell the
+     difference, and a day is the one unit here that has no minor part. The
+     division is exact except across a daylight-saving boundary, which Dhaka
+     does not observe and which `Math.round` absorbs anyway. */
+  // eslint-disable-next-line no-restricted-syntax -- days, not poisha
   return Math.round((to - from) / 86_400_000);
 }
 

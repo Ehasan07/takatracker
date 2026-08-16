@@ -63,6 +63,109 @@ const WALLET_CATEGORIES = [
   { id: 'w-cat-4', name: 'Salary', group: { name: 'Income' }, customCategory: false },
 ];
 
+/**
+ * The history, in pages, arranged so the page order cannot be relied on.
+ *
+ * The two sides of the one transfer are deliberately split across pages with
+ * the **positive** side first: if the code ever paired them by remembering what
+ * it saw, or wrote from whichever side came first, this fixture writes the
+ * transfer twice or not at all.
+ *
+ * Page 1 holds a single row and is *not* the last page — the trap §5a of the
+ * plan describes, and the reason paging follows `nextOffset` rather than
+ * counting rows.
+ */
+const WALLET_RECORD_PAGES = [
+  [
+    /* The float that must not go through `* 100`: 601.66 × 100 is 60165.999… */
+    {
+      id: 'w-rec-1',
+      accountId: 'w-acc-1',
+      amount: { value: -601.66, currencyCode: 'BDT' },
+      recordDate: '2026-03-04T06:12:00.000Z',
+      category: { id: 'w-cat-1', name: 'Groceries' },
+      recordType: 'expense',
+      recordState: 'cleared',
+      note: 'বাজার',
+      payee: 'স্বপ্ন',
+      transfer: null,
+    },
+    /* The receiving side of the transfer, read two pages before the side that
+       writes it. */
+    {
+      id: 'w-rec-4',
+      accountId: 'w-acc-3',
+      amount: { value: 4500, currencyCode: 'BDT' },
+      recordDate: '2026-03-06T04:00:00.000Z',
+      recordType: 'income',
+      transfer: {
+        type: 'paired',
+        transferId: 'T-1',
+        mirrorRecord: { id: 'w-rec-3', accountId: 'w-acc-1', amount: { value: -4500 } },
+      },
+    },
+  ],
+  [
+    {
+      id: 'w-rec-2',
+      accountId: 'w-acc-1',
+      amount: { value: 45000, currencyCode: 'BDT' },
+      recordDate: '2026-03-01T03:00:00.000Z',
+      category: { id: 'w-cat-4', name: 'Salary' },
+      recordType: 'income',
+      note: 'বেতন',
+      transfer: null,
+    },
+  ],
+  [
+    /* The side the money left, and the only one that writes the pair. */
+    {
+      id: 'w-rec-3',
+      accountId: 'w-acc-1',
+      amount: { value: -4500, currencyCode: 'BDT' },
+      recordDate: '2026-03-06T04:00:00.000Z',
+      recordType: 'expense',
+      transfer: {
+        type: 'paired',
+        transferId: 'T-1',
+        mirrorRecord: { id: 'w-rec-4', accountId: 'w-acc-3', amount: { value: 4500 } },
+      },
+    },
+    /* On the account that never got created — the plan's ceiling stopped it. */
+    {
+      id: 'w-rec-5',
+      accountId: 'w-acc-2',
+      amount: { value: -100, currencyCode: 'BDT' },
+      recordDate: '2026-03-07T05:00:00.000Z',
+      category: { id: 'w-cat-1', name: 'Groceries' },
+      recordType: 'expense',
+      transfer: null,
+    },
+  ],
+  [
+    /* Two of 9,625 look like this: a transfer with no id and no mirror. */
+    {
+      id: 'w-rec-6',
+      accountId: 'w-acc-1',
+      amount: { value: -225000, currencyCode: 'BDT' },
+      recordDate: '2026-03-08T05:00:00.000Z',
+      recordType: 'expense',
+      transfer: { type: 'unpaired' },
+    },
+    /* Its category became a savings plan, so there is no category here for it
+       to carry — but the money still moved. */
+    {
+      id: 'w-rec-7',
+      accountId: 'w-acc-1',
+      amount: { value: -1000, currencyCode: 'BDT' },
+      recordDate: '2026-03-09T05:00:00.000Z',
+      category: { id: 'w-cat-2', name: 'DPS Sonali' },
+      recordType: 'expense',
+      transfer: null,
+    },
+  ],
+];
+
 interface Item {
   id: string;
   targetName: string | null;
@@ -80,6 +183,15 @@ interface Item {
   createdEntityId: string | null;
   createdEntityKind: string | null;
   skippedReason: string | null;
+}
+
+interface RecordPage {
+  imported: number;
+  skipped: number;
+  transfersWritten: number;
+  nextOffset: number | null;
+  problems: string[];
+  importBatchId: string | null;
 }
 
 interface Batch {
@@ -106,6 +218,13 @@ describe('migration', () => {
     const wallet = ctx.app.get(WalletClient);
     wallet.accounts = async () => WALLET_ACCOUNTS as never;
     wallet.categories = async () => WALLET_CATEGORIES as never;
+    /* The offset is the server's own bookmark and the client must treat it as
+       opaque — so here it is a page index rather than a row count, which is
+       also how a page of one row can be followed by another page. */
+    wallet.recordsPage = async (_token: string, offset: number) => ({
+      rows: (WALLET_RECORD_PAGES[offset] ?? []) as never,
+      nextOffset: offset + 1 < WALLET_RECORD_PAGES.length ? offset + 1 : null,
+    });
   });
 
   beforeEach(async () => {
@@ -1151,5 +1270,304 @@ describe('migration', () => {
     expect(
       (await ctx.http().delete(`/v1/migration/batches/${second.id}`).set(auth(user))).status,
     ).toBe(400);
+  });
+
+  /**
+   * Phase C — the 9,625 records.
+   *
+   * Four things could go wrong here and only one of them would be noticed by
+   * the person it happened to. A transfer written from both sides inflates
+   * income and spending for four years and still balances; a re-run doubles the
+   * books; a record whose account was never created lands somewhere it does not
+   * belong; and `-601.66` becomes 60165.999… These are those four.
+   */
+  describe('records', () => {
+    /** Signed up, pulled and approved: the state phase C starts from. */
+    async function migrated(): Promise<User> {
+      const user = await allowedUser();
+      const batch = (await pull(user)).body as Batch;
+      await apply(user, batch.id);
+      return user;
+    }
+
+    /** The one draft in the workspace, whichever id it got. */
+    async function batchIdOf(user: User): Promise<string> {
+      const batch = await ctx.prisma.migrationBatch.findFirstOrThrow({
+        where: { workspaceId: user.workspaceId },
+      });
+      return batch.id;
+    }
+
+    const importPage = (user: User, id: string, offset?: number) =>
+      ctx
+        .http()
+        .post(`/v1/migration/batches/${id}/records`)
+        .set(auth(user))
+        .send({ token: 'a-token-long-enough-to-pass-validation', ...(offset ? { offset } : {}) });
+
+    /** Loop `nextOffset` to the end, exactly as the screen does. */
+    async function importAll(user: User, id: string) {
+      const total = {
+        imported: 0,
+        skipped: 0,
+        transfersWritten: 0,
+        pages: 0,
+        problems: [] as string[],
+        importBatchId: null as string | null,
+      };
+      let offset: number | undefined;
+
+      for (let guard = 0; guard < 20; guard += 1) {
+        const res = await importPage(user, id, offset);
+        expect(res.status).toBe(200);
+        const page = res.body as RecordPage;
+
+        total.imported += page.imported;
+        total.skipped += page.skipped;
+        total.transfersWritten += page.transfersWritten;
+        total.problems.push(...page.problems);
+        total.importBatchId = page.importBatchId ?? total.importBatchId;
+        total.pages += 1;
+
+        if (page.nextOffset === null) break;
+        offset = page.nextOffset;
+      }
+      return total;
+    }
+
+    const liveTransactions = (user: User) =>
+      ctx.prisma.transaction.findMany({
+        where: { workspaceId: user.workspaceId, deletedAt: null },
+        include: { entries: true },
+      });
+
+    it('follows nextOffset to the end, and a short page is not the end', async () => {
+      /* 436 rows came back where the history held 9,625, because a short page
+         was read as the last one. Page 1 of the fixture holds a single row and
+         is followed by two more. */
+      const user = await migrated();
+      const id = await batchIdOf(user);
+
+      const run = await importAll(user, id);
+
+      expect(run.pages).toBe(4);
+      /* Seven records: four written, three not — the mirror side of the
+         transfer, the row on the account that was never created, and the
+         transfer that pairs with nothing. */
+      expect(run.imported).toBe(4);
+      expect(run.skipped).toBe(3);
+      expect(await ctx.prisma.transaction.count({ where: { workspaceId: user.workspaceId } })).toBe(
+        4,
+      );
+    });
+
+    it('writes a paired transfer once, from the side the money left', async () => {
+      /* The single worst thing this feature could do is write both sides — an
+         expense and an income for one movement, which inflates both totals for
+         four years and balances perfectly while doing it. */
+      const user = await migrated();
+      await importAll(user, await batchIdOf(user));
+
+      const transfers = (await liveTransactions(user)).filter((t) => t.type === 'TRANSFER');
+      expect(transfers).toHaveLength(1);
+      expect(transfers[0]?.externalRef).toBe('wallet-transfer:T-1');
+
+      /* And neither side is also an ordinary record. */
+      const refs = (await liveTransactions(user)).map((t) => t.externalRef);
+      expect(refs).not.toContain('wallet:w-rec-3');
+      expect(refs).not.toContain('wallet:w-rec-4');
+
+      const [bkash, card] = await Promise.all([
+        ctx.prisma.account.findFirstOrThrow({
+          where: { workspaceId: user.workspaceId, name: 'বিকাশ' },
+        }),
+        ctx.prisma.account.findFirstOrThrow({
+          where: { workspaceId: user.workspaceId, name: 'ব্র্যাক কার্ড' },
+        }),
+      ]);
+
+      /* Two entries, both real accounts: money out of the source, into the
+         destination the mirror named. No income or expense head is touched. */
+      const entries = transfers[0]?.entries ?? [];
+      expect(entries).toHaveLength(2);
+      expect(entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            accountId: bkash.id,
+            direction: 'CREDIT',
+            amountMinor: BigInt(450_000),
+          }),
+          expect.objectContaining({
+            accountId: card.id,
+            direction: 'DEBIT',
+            amountMinor: BigInt(450_000),
+          }),
+        ]),
+      );
+
+      /* The totals the mistake would have inflated. */
+      const live = await liveTransactions(user);
+      expect(live.filter((t) => t.type === 'INCOME')).toHaveLength(1);
+      expect(live.filter((t) => t.type === 'EXPENSE')).toHaveLength(2);
+    });
+
+    it('turns -601.66 into exactly -60166 poisha', async () => {
+      /* `601.66 * 100` is 60165.999999999993. Across 9,625 rows that is the
+         single most likely place for this import to be quietly wrong. */
+      const user = await migrated();
+      await importAll(user, await batchIdOf(user));
+
+      const bkash = await ctx.prisma.account.findFirstOrThrow({
+        where: { workspaceId: user.workspaceId, name: 'বিকাশ' },
+      });
+      const spend = await ctx.prisma.transaction.findFirstOrThrow({
+        where: { workspaceId: user.workspaceId, externalRef: 'wallet:w-rec-1' },
+        include: { entries: true },
+      });
+
+      const fromAccount = spend.entries.find((e) => e.accountId === bkash.id);
+      expect(fromAccount?.direction).toBe('CREDIT');
+      expect(fromAccount?.amountMinor).toBe(BigInt(60_166));
+
+      /* And the other side is the spending head, carrying the category the
+         source filed it under. */
+      const groceries = await ctx.prisma.category.findFirstOrThrow({
+        where: { workspaceId: user.workspaceId, name: 'Groceries', deletedAt: null },
+      });
+      const nominal = spend.entries.find((e) => e.accountId !== bkash.id);
+      expect(nominal?.direction).toBe('DEBIT');
+      expect(nominal?.amountMinor).toBe(BigInt(60_166));
+      expect(nominal?.categoryId).toBe(groceries.id);
+
+      /* The note and the payee come across too — they are what makes a row
+         recognisable four years later. */
+      expect(spend.description).toBe('বাজার');
+      expect(spend.payee).toBe('স্বপ্ন');
+    });
+
+    it('brings nothing in the second time', async () => {
+      /* `externalRef` is the whole defence. A person who loses the connection
+         half way through and presses it again must not double their books. */
+      const user = await migrated();
+      const id = await batchIdOf(user);
+
+      await importAll(user, id);
+      const again = await importAll(user, id);
+
+      expect(again.imported).toBe(0);
+      /* Every row read, every row accounted for. */
+      expect(again.skipped).toBe(7);
+      expect(await ctx.prisma.transaction.count({ where: { workspaceId: user.workspaceId } })).toBe(
+        4,
+      );
+    });
+
+    it('skips a record whose account was never created, and says which', async () => {
+      /* Never guessed at. Putting somebody's records into whichever account
+         happened to be first is worse than not importing them, because nothing
+         on the screen would ever say so. */
+      const user = await migrated();
+
+      /* DBBL Savings did not fit the plan's account ceiling, so its records
+         have nowhere to go. */
+      expect(
+        await ctx.prisma.account.count({
+          where: { workspaceId: user.workspaceId, name: 'DBBL Savings', deletedAt: null },
+        }),
+      ).toBe(0);
+
+      const run = await importAll(user, await batchIdOf(user));
+
+      expect(run.problems.some((p) => p.includes('DBBL Savings'))).toBe(true);
+      expect(
+        await ctx.prisma.transaction.count({
+          where: { workspaceId: user.workspaceId, externalRef: 'wallet:w-rec-5' },
+        }),
+      ).toBe(0);
+    });
+
+    it('lists a transfer that pairs with nothing rather than writing it as spending', async () => {
+      /* Three records out of 9,625 resolve to neither an id nor a mirror, and
+         one of them is a ৳225,000 salary transfer. A silence there is worse
+         than a refusal. */
+      const user = await migrated();
+      const run = await importAll(user, await batchIdOf(user));
+
+      expect(run.problems.some((p) => p.includes('ট্রান্সফার'))).toBe(true);
+      expect(
+        await ctx.prisma.transaction.count({
+          where: { workspaceId: user.workspaceId, externalRef: 'wallet:w-rec-6' },
+        }),
+      ).toBe(0);
+    });
+
+    it('still brings a record whose category turned into a savings plan', async () => {
+      /* The category became a DPS, so there is no category here for the record
+         to carry — but the money moved, and dropping the row over a filing
+         decision would lose real spending. Uncategorised, exactly as the
+         spreadsheet importer leaves a name it cannot match. */
+      const user = await migrated();
+      await importAll(user, await batchIdOf(user));
+
+      const orphan = await ctx.prisma.transaction.findFirstOrThrow({
+        where: { workspaceId: user.workspaceId, externalRef: 'wallet:w-rec-7' },
+        include: { entries: true },
+      });
+      expect(orphan.type).toBe('EXPENSE');
+      expect(orphan.entries.every((e) => e.categoryId === null)).toBe(true);
+    });
+
+    it('lands the whole history in one import batch, which undoes it', async () => {
+      /* The entire reason for reusing `ImportBatch`: 9,625 rows are one press
+         away from being taken back, softly, by code that already exists. */
+      const user = await migrated();
+      const run = await importAll(user, await batchIdOf(user));
+
+      const batches = await ctx.prisma.importBatch.findMany({
+        where: { workspaceId: user.workspaceId },
+      });
+      expect(batches).toHaveLength(1);
+      expect(batches[0]?.filename).toBe('wallet-history');
+      /* Counted across all four pages, not just the last one. */
+      expect(batches[0]?.rowCount).toBe(7);
+      expect(batches[0]?.importedCount).toBe(4);
+      expect(run.importBatchId).toBe(batches[0]?.id);
+
+      const undone = await ctx
+        .http()
+        .post(`/v1/import/batches/${run.importBatchId}/revert`)
+        .set(auth(user))
+        .send({});
+      expect(undone.status).toBe(200);
+      expect(undone.body.revertedCount).toBe(4);
+      expect(await liveTransactions(user)).toEqual([]);
+    });
+
+    it('refuses until the accounts and categories have been approved', async () => {
+      /* Every record needs an account that exists here now. Reading 9,625 rows
+         in order to skip every one of them is a long way to say so. */
+      const user = await allowedUser();
+      const batch = (await pull(user)).body as Batch;
+
+      const res = await importPage(user, batch.id);
+      expect(res.status).toBe(400);
+      expect(await ctx.prisma.transaction.count({ where: { workspaceId: user.workspaceId } })).toBe(
+        0,
+      );
+    });
+
+    it('is closed to another workspace, and to anybody not on the allowlist', async () => {
+      const mine = await migrated();
+      const id = await batchIdOf(mine);
+
+      const theirs = await signup(ctx);
+      process.env.MIGRATION_ALLOWED_EMAILS = `${mine.email},${theirs.email}`;
+      expect((await importPage(theirs, id)).status).toBe(404);
+
+      /* And the door itself: this route hands a live credential to another
+         finance app, exactly like the pull it follows. */
+      process.env.MIGRATION_ALLOWED_EMAILS = '';
+      expect((await importPage(mine, id)).status).toBe(403);
+    });
   });
 });

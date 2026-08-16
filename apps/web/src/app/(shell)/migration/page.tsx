@@ -8,7 +8,16 @@ import {
   type MigrationRow,
 } from '@hishab/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Download, FileDown, RotateCcw, Search, Trash2, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  Download,
+  FileDown,
+  History,
+  RotateCcw,
+  Search,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
@@ -24,6 +33,8 @@ import type {
   MigrationBatch,
   MigrationBatchDetail,
   MigrationItem,
+  RecordPageResult,
+  RecordProgress,
   RollbackResult,
 } from './types';
 
@@ -47,6 +58,14 @@ import type {
  */
 
 const BATCHES_KEY = ['migration', 'batches'];
+
+/**
+ * A stop against a server that always says there is more.
+ *
+ * 9,625 records at 200 a page is 49 requests; 200 is far past any real account
+ * and short of a loop that never ends.
+ */
+const MAX_RECORD_PAGES = 200;
 
 export default function MigrationPage() {
   const queryClient = useQueryClient();
@@ -447,6 +466,13 @@ export default function MigrationPage() {
         </section>
       ) : null}
 
+      {/* Phase C. Only once something has actually been created, because every
+          record needs an account that exists here now — and behind the same
+          allowlist as the pull, since it asks for the same credential. */}
+      {current && current.appliedAt && current.status !== 'ROLLED_BACK' && allowed ? (
+        <RecordsPanel batchId={current.id} disabled={busy} onDone={refresh} />
+      ) : null}
+
       {current && current.status !== 'DRAFT' ? (
         <AppliedPanel
           batch={current}
@@ -751,6 +777,175 @@ function ItemList({
           </React.Fragment>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * Phase C: the records, page by page, with the count moving.
+ *
+ * ## Why the screen does the looping
+ *
+ * Nine thousand records in one request is a request that can time out half way
+ * through writing somebody's ledger. The server writes one page and says where
+ * the next one starts; this asks again until there is no next one. What that
+ * buys is a number on screen that moves — and a run that can be stopped, or
+ * interrupted by a dropped connection, without losing what already landed.
+ *
+ * ## Why the token stays in state here and not on the pull
+ *
+ * Every page needs it, so it lives for the length of the run rather than the
+ * length of one request. It is cleared the moment the run ends, either way, and
+ * it is never stored anywhere on the server.
+ */
+function RecordsPanel({
+  batchId,
+  disabled,
+  onDone,
+}: {
+  batchId: string;
+  disabled: boolean;
+  onDone: () => Promise<void>;
+}) {
+  const [token, setToken] = React.useState('');
+  const [progress, setProgress] = React.useState<RecordProgress | null>(null);
+  const [running, setRunning] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  /* A ref, not state: the loop reads it between pages and a re-render must not
+     be what decides whether it stops. */
+  const stopped = React.useRef(false);
+
+  async function run(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    const value = token.trim();
+    if (running || value.length < 20) return;
+
+    setRunning(true);
+    setError(null);
+    stopped.current = false;
+
+    const total: RecordProgress = {
+      pages: 0,
+      imported: 0,
+      skipped: 0,
+      transfers: 0,
+      problems: [],
+      done: false,
+    };
+    let offset: number | undefined;
+
+    try {
+      for (let guard = 0; guard < MAX_RECORD_PAGES; guard += 1) {
+        const page = await api<RecordPageResult>(`/migration/batches/${batchId}/records`, {
+          method: 'POST',
+          body: { token: value, ...(offset ? { offset } : {}) },
+        });
+
+        total.pages += 1;
+        total.imported += page.imported;
+        total.skipped += page.skipped;
+        total.transfers += page.transfersWritten;
+        /* The same complaint on every page is one complaint. */
+        for (const problem of page.problems) {
+          if (!total.problems.includes(problem)) total.problems.push(problem);
+        }
+        total.done = page.nextOffset === null;
+        setProgress({ ...total, problems: [...total.problems] });
+
+        if (total.done || stopped.current) break;
+        offset = page.nextOffset ?? undefined;
+      }
+      haptic('success');
+      await onDone();
+    } catch (caught) {
+      /* What landed, landed. The message says so, because the alternative
+         reading — "it failed, so nothing happened" — would send somebody
+         looking for records that are already in their books. */
+      setError(caught instanceof ApiError ? caught.message : 'লেনদেন আনা গেল না');
+    } finally {
+      setRunning(false);
+      setToken('');
+    }
+  }
+
+  return (
+    <section className="rounded-card border-rule bg-surface border p-4">
+      <h2 className="text-ink text-sm font-medium">পুরোনো লেনদেনগুলো আনুন</h2>
+      <p className="text-ink-muted mt-1 text-sm">
+        অ্যাকাউন্ট আর খাত তৈরি হয়ে গেছে — এবার আগের অ্যাপের লেনদেনগুলো আনা যাবে। অল্প অল্প করে
+        আসবে, তাই মাঝপথে থেমে গেলেও যতটুকু এসেছে ততটুকু থাকবে, আর আবার চালালে একই লেনদেন দুবার বসবে
+        না।
+      </p>
+
+      <form className="mt-3 flex flex-col gap-3" onSubmit={(e) => void run(e)}>
+        {/* Not the same label as the pull's box. Once a batch has been applied
+            both sections are on screen at once, and two fields called the same
+            thing is a person pasting a credential into whichever one they hit
+            first. */}
+        <Field label="লেনদেন আনার Wallet টোকেন" htmlFor="wallet-records-token">
+          <Input
+            id="wallet-records-token"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="eyJhbGciOi…"
+          />
+        </Field>
+        <p className="text-ink-muted text-xs">
+          টোকেনটি শুধু এই আনার সময়টুকুতেই লাগে — সার্ভারে কোথাও জমা থাকে না।
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={disabled || running || token.trim().length < 20}>
+            <History className="h-4 w-4" aria-hidden />
+            {running ? 'আনা হচ্ছে…' : 'লেনদেন আনুন'}
+          </Button>
+          {running ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                stopped.current = true;
+              }}
+            >
+              থামান
+            </Button>
+          ) : null}
+        </div>
+      </form>
+
+      {progress ? (
+        <div className="mt-3 text-sm" aria-live="polite">
+          <p className="text-ink">
+            {progress.imported}টি লেনদেন এসেছে ({progress.transfers}টি ট্রান্সফার),{' '}
+            {progress.skipped}টি বাদ পড়েছে।{' '}
+            {progress.done ? 'সব আনা শেষ।' : `${progress.pages} পাতা পর্যন্ত হয়েছে…`}
+          </p>
+          {progress.problems.length > 0 ? (
+            <>
+              {/* Listed, never summarised away: one of these in the migration
+                  this was built for is a ৳2,25,000 transfer. */}
+              <p className="text-ink-muted mt-2 flex items-center gap-1.5 text-xs">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                যেগুলো আনা যায়নি:
+              </p>
+              <ul className="text-ink-muted mt-1 list-inside list-disc text-xs">
+                {progress.problems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className="text-expense mt-2 text-sm">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }

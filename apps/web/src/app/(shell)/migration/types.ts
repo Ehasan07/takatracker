@@ -58,6 +58,28 @@ export interface CsvResult {
   errors: string[];
 }
 
+/** One page of the record import. `imported + skipped` is what the page held. */
+export interface RecordPageResult {
+  imported: number;
+  skipped: number;
+  transfersWritten: number;
+  /** Where the next page starts. `null` is the end — a short page is not. */
+  nextOffset: number | null;
+  problems: string[];
+  /** The one import batch it all lands in, so it can be undone in one press. */
+  importBatchId: string | null;
+}
+
+/** What the screen has counted so far, across every page of one run. */
+export interface RecordProgress {
+  pages: number;
+  imported: number;
+  skipped: number;
+  transfers: number;
+  problems: string[];
+  done: boolean;
+}
+
 /** The five choices, in the order they appear in the row's menu. */
 export const DECISION_LABELS: Record<MigrationDecision, string> = {
   CREATE: 'নতুন করে বানাও',

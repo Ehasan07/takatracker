@@ -1,25 +1,34 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   accountTypeFromWallet,
+  assertBalanced,
   detailIsComplete,
   detailKindOf,
+  expandSimpleTransaction,
   migrationFromCsv,
   migrationStartFromCsv,
   migrationToCsv,
   splitNameAndPhone,
   suggestNonCategory,
   type DetailKind,
+  type EntryDraft,
   type MigrationDecision,
   type MigrationDetail,
   type MigrationRow,
 } from '@hishab/core';
-import { fromLocalDateString } from '@hishab/shared';
+import {
+  formatMinor,
+  fromLocalDateString,
+  parseMoneyToMinor,
+  toLocalDateString,
+} from '@hishab/shared';
 import { Prisma, type AccountType } from '@prisma/client';
+import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { PeopleService } from '../people/people.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { WalletClient } from './wallet.client';
+import { WalletClient, type WalletRecord } from './wallet.client';
 
 /**
  * Moving a chart of accounts in from another product, reversibly.
@@ -102,6 +111,79 @@ export interface BatchDetail extends BatchView {
   items: MigrationItemView[];
 }
 
+/**
+ * What one page of the record import did.
+ *
+ * The arithmetic is meant to be checkable: `imported + skipped` is exactly how
+ * many records the page held. A transfer is two records and one transaction, so
+ * its second side counts as a skip rather than disappearing from the count —
+ * an import that cannot account for every row it read should not run.
+ */
+export interface RecordPageResult {
+  /** Transactions written by this page. */
+  imported: number;
+  /** Records read and not written: already here, a mirror, or a problem. */
+  skipped: number;
+  /** Of `imported`, how many were a TRANSFER rather than income or spending. */
+  transfersWritten: number;
+  /** Where the next page starts. `null` is the end — a short page is not. */
+  nextOffset: number | null;
+  /** What somebody should look at, in their own language, each said once. */
+  problems: string[];
+  /** The one `ImportBatch` every page writes into, so it can all be undone. */
+  importBatchId: string | null;
+}
+
+/** The one import batch a whole migration's records land in. */
+const RECORD_BATCH_FILENAME = 'wallet-history';
+
+/* Long enough for 200 inserts, short enough that a stuck write releases its
+   locks the same minute. Both figures are the CSV importer's, for a write of
+   the same shape and size. */
+const RECORD_WRITE_TIMEOUT_MS = 120_000;
+const RECORD_WRITE_MAX_WAIT_MS = 15_000;
+
+/** Problems listed individually. Past this the last line carries the count. */
+const MAX_RECORD_PROBLEMS = 50;
+
+/** One record, read and turned into ledger lines, not yet written. */
+interface RecordWrite {
+  externalRef: string;
+  date: Date;
+  type: 'INCOME' | 'EXPENSE' | 'TRANSFER';
+  description: string | null;
+  payee: string | null;
+  entries: EntryDraft[];
+}
+
+/**
+ * What a record will be called in the books, and what makes a re-run harmless.
+ *
+ * A transfer is keyed by the transfer rather than by either record, because it
+ * is one movement written once: whichever of its two sides is read first, both
+ * ask about the same reference and only one of them can find it missing.
+ */
+function walletRefOf(record: WalletRecord): string {
+  const transferId = record.transfer?.transferId?.trim();
+  return transferId ? `wallet-transfer:${transferId}` : `wallet:${record.id}`;
+}
+
+/** One ledger line, in the shape a nested create wants. */
+function ledgerEntryData(
+  entry: EntryDraft,
+  workspaceId: string,
+): Prisma.LedgerEntryCreateWithoutTransactionInput {
+  return {
+    workspace: { connect: { id: workspaceId } },
+    account: { connect: { id: entry.accountId } },
+    category: entry.categoryId ? { connect: { id: entry.categoryId } } : undefined,
+    amountMinor: BigInt(entry.amountMinor),
+    direction: entry.direction,
+    currency: entry.currency,
+    fxRate: entry.fxRate,
+  };
+}
+
 /** Wallet's "Income" group is the only one that is not spending. */
 function categoryKindOf(groupName: string | undefined): 'INCOME' | 'EXPENSE' {
   return (groupName ?? '').toLowerCase() === 'income' ? 'INCOME' : 'EXPENSE';
@@ -120,6 +202,10 @@ export class MigrationService {
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
     private readonly people: PeopleService,
+    /* For `systemAccounts()`. A migrated record posts against the same hidden
+       nominal accounts a hand-typed one does — there is no second ledger for
+       imported money. */
+    private readonly accounts: AccountsService,
   ) {}
 
   // ---------------------------------------------------------------- reading
@@ -1195,6 +1281,489 @@ export class MigrationService {
       },
     });
     await done({ createdEntityId: created.id, createdEntityKind: 'Category', skippedReason: null });
+  }
+
+  // ---------------------------------------------------------------- records
+
+  /**
+   * Phase C: the history itself, one page at a time.
+   *
+   * ## Why a page per request
+   *
+   * 9,625 records. Written in one request, a timeout half way through leaves a
+   * ledger nobody can describe — some of it in, no answer about which. A page
+   * is 200 rows, a second or two of writing, and the screen loops. The worst
+   * case is one page asked for twice, which `externalRef` already answers for.
+   *
+   * ## Why it is an ImportBatch and not something new
+   *
+   * `POST /import/batches/:id/revert` already undoes a whole batch in one
+   * press, softly. Every page of this writes into the *same* batch, so the
+   * migration's entire history is one button away from being taken back — which
+   * is the only reason importing 9,625 rows is a decision somebody can make.
+   *
+   * ## The two ways this could be quietly, expensively wrong
+   *
+   * **Transfers.** Each side of one is a record. Written as they read, one
+   * movement becomes an expense *and* an income and both totals are inflated
+   * for four years. So a transfer is written once, as a TRANSFER, and only from
+   * the side whose amount is negative — the side the money left. The other side
+   * is skipped wherever it lands, which is what makes this independent of the
+   * order the pages arrive in.
+   *
+   * **Floats.** `amount.value` is `-601.66` and `601.66 * 100` is 60165.999…
+   * The conversion goes through the string form, which is exact.
+   */
+  async importRecords(
+    ctx: { workspaceId: string; userId: string; timezone: string; currency: string },
+    batchId: string,
+    token: string,
+    offset: number,
+  ): Promise<RecordPageResult> {
+    const { workspaceId, timezone } = ctx;
+
+    const batch = await this.prisma.migrationBatch.findFirst({
+      where: { id: batchId, workspaceId },
+      select: { id: true, status: true, appliedAt: true },
+    });
+    if (!batch) throw new NotFoundException('মাইগ্রেশন খসড়া পাওয়া যায়নি');
+    if (batch.status === 'ROLLED_BACK') {
+      throw new BadRequestException('এটি ফিরিয়ে নেওয়া হয়েছে — আবার শুরু করুন');
+    }
+    /* Every record needs an account and a category that exist here *now*.
+       Reading 9,625 rows in order to skip every one of them is a long way to
+       say "approve the accounts first". */
+    if (!batch.appliedAt) {
+      throw new BadRequestException(
+        'আগে অ্যাকাউন্ট আর খাতগুলো অনুমোদন করুন — নইলে লেনদেনগুলো কোথায় বসবে সেটি জানা যাবে না',
+      );
+    }
+
+    const mapping = await this.recordMapping(workspaceId, batch.id);
+    if (mapping.accountBySource.size === 0) {
+      throw new BadRequestException(
+        'এই খসড়ার কোনো অ্যাকাউন্ট এখানে তৈরি হয়নি — আগে সেগুলো অনুমোদন করুন',
+      );
+    }
+
+    const page = await this.wallet.recordsPage(token, offset);
+    const system = await this.accounts.systemAccounts(workspaceId);
+
+    /* Asked once for the whole page rather than once per row; the index is
+       `[workspaceId, externalRef]`.
+     *
+     * Deleted rows are deliberately *not* counted as present. A reverted batch
+     * is soft-deleted, and a person who reverted in order to try again would
+     * otherwise get a run that imports nothing and says nothing is wrong. */
+    const refs = [...new Set(page.rows.map(walletRefOf))];
+    const known = new Set(
+      (
+        await this.prisma.transaction.findMany({
+          where: { workspaceId, deletedAt: null, externalRef: { in: refs } },
+          select: { externalRef: true },
+        })
+      ).map((row) => row.externalRef ?? ''),
+    );
+
+    const problems: string[] = [];
+    const writes: RecordWrite[] = [];
+    let skipped = 0;
+
+    /* A row a person can find again: the day and the amount, in their own
+       numerals. One of the three unpairable transfers in the real account is a
+       ৳225,000 salary — not a line to bury behind a record id. */
+    const label = (date: Date, minor: number): string =>
+      `${toLocalDateString(date, timezone)} তারিখের ${formatMinor(Math.abs(minor), {
+        bengaliNumerals: true,
+        decimals: false,
+        currency: ctx.currency,
+      })}`;
+
+    for (const record of page.rows) {
+      const ref = walletRefOf(record);
+
+      /* The whole purpose of `externalRef`. A page asked for twice — a lost
+         connection, a refresh, a second run months later — writes nothing the
+         second time. `known` grows as this page writes, so the same reference
+         appearing twice inside one page is caught too. */
+      if (known.has(ref)) {
+        skipped += 1;
+        continue;
+      }
+
+      const accountId = mapping.accountBySource.get(record.accountId ?? '');
+      if (!accountId) {
+        /* Never guessed at. Putting somebody's records into whichever account
+           happened to be first is worse than not importing them, because
+           nothing on the screen would ever say so. Said once per account
+           rather than once per record: 400 rows on one account is one
+           complaint. */
+        skipped += 1;
+        problems.push(
+          `"${mapping.nameOf(record.accountId)}" অ্যাকাউন্টটি এখানে তৈরি হয়নি — এর লেনদেনগুলো আনা হয়নি`,
+        );
+        continue;
+      }
+
+      const account = mapping.accountsById.get(accountId);
+      /* Two USD accounts and one CNY, against books kept in taka. Nothing here
+         converts, and writing 500 USD as ৳500 would be wrong in a way that adds
+         up perfectly and so is never noticed. */
+      if (account && account.currency !== ctx.currency) {
+        skipped += 1;
+        problems.push(
+          `"${account.name}" অ্যাকাউন্টটি ${account.currency}-এ রাখা — এই অ্যাপ টাকায় রূপান্তর করে না, তাই এর লেনদেনগুলো আনা হয়নি`,
+        );
+        continue;
+      }
+
+      const instant = record.recordDate ? new Date(record.recordDate) : null;
+      if (!instant || Number.isNaN(instant.getTime())) {
+        skipped += 1;
+        problems.push(`একটি সারির তারিখ পড়া গেল না (${record.id}) — সেটি আনা হয়নি`);
+        continue;
+      }
+      /* The ledger day is the workspace's day: a record stamped 19:30 UTC is
+         the next morning in Dhaka, and filing it under the wrong day moves it
+         between two months of somebody's reports. */
+      const date = fromLocalDateString(toLocalDateString(instant, timezone), timezone);
+
+      let minor: number;
+      try {
+        /* Float in, integer poisha out, through the string form — which is
+           exact, because JavaScript prints the shortest round-trip
+           representation of a double. `* 100` is not. */
+        minor = parseMoneyToMinor(String(record.amount?.value ?? ''));
+      } catch {
+        skipped += 1;
+        problems.push(`একটি সারির টাকার অঙ্ক পড়া গেল না (${record.id}) — সেটি আনা হয়নি`);
+        continue;
+      }
+      if (minor === 0) {
+        skipped += 1;
+        problems.push(
+          `${toLocalDateString(date, timezone)} তারিখের একটি শূন্য টাকার সারি বাদ পড়েছে`,
+        );
+        continue;
+      }
+
+      const note = (record.note ?? '').trim().slice(0, 500);
+      const payee = (record.payee ?? '').trim().slice(0, 200);
+      const transfer = record.transfer ?? null;
+
+      if (transfer) {
+        /* The mirror. Whichever page it lands in, it is the negative side that
+           writes the pair — so this needs no memory of other pages and no
+           second pass, and writing both sides as an expense and an income (the
+           single worst thing this feature could do) is impossible by shape
+           rather than by care. */
+        if (minor > 0) {
+          skipped += 1;
+          continue;
+        }
+
+        const transferId = transfer.transferId?.trim();
+        const mirrorAccount = transfer.mirrorRecord?.accountId ?? '';
+        const counterAccountId = mapping.accountBySource.get(mirrorAccount);
+        /* Three records out of 9,625 resolve to neither an id nor a usable
+           mirror. They belong in a list somebody can look at, not in a
+           silence — and certainly not written as an expense, which is what
+           "just import it" would mean here. */
+        if (!transferId || !counterAccountId) {
+          skipped += 1;
+          problems.push(`${label(date, minor)} ট্রান্সফারটির অন্য দিকটি পাওয়া যায়নি — আনা হয়নি`);
+          continue;
+        }
+
+        const entries = this.entriesFor(
+          {
+            type: 'TRANSFER',
+            amountMinor: Math.abs(minor),
+            /* The money left this side, so it is the source; `mirrorRecord`
+               names the destination. */
+            accountId,
+            counterAccountId,
+            currency: ctx.currency,
+          },
+          system,
+        );
+        if (typeof entries === 'string') {
+          skipped += 1;
+          problems.push(`${label(date, minor)} ট্রান্সফারটি আনা গেল না — ${entries}`);
+          continue;
+        }
+
+        writes.push({
+          externalRef: ref,
+          date,
+          type: 'TRANSFER',
+          description: note || null,
+          payee: payee || null,
+          entries,
+        });
+        known.add(ref);
+        continue;
+      }
+
+      /* A category that became a savings plan, a policy, a person or a
+         liability is not a category here, and neither is one somebody skipped.
+         The record still lands — the money moved — with no category, exactly
+         as the spreadsheet importer leaves a name it cannot match. Dropping
+         the record instead would lose real spending over a filing decision. */
+      const categoryId = mapping.categoryBySource.get(record.category?.id ?? '') ?? null;
+
+      /* The sign decides, not `recordType`. They agree in every row measured,
+         and where they ever disagree the sign is the one the ledger has to
+         obey: an "income" of −৳500 written as income moves the money the wrong
+         way. */
+      const type = minor < 0 ? 'EXPENSE' : 'INCOME';
+      const entries = this.entriesFor(
+        { type, amountMinor: Math.abs(minor), accountId, categoryId, currency: ctx.currency },
+        system,
+      );
+      if (typeof entries === 'string') {
+        skipped += 1;
+        problems.push(`${label(date, minor)} সারিটি আনা গেল না — ${entries}`);
+        continue;
+      }
+
+      writes.push({
+        externalRef: ref,
+        date,
+        type,
+        description: note || null,
+        payee: payee || null,
+        entries,
+      });
+      known.add(ref);
+    }
+
+    /* One batch for the whole migration, found by the id of the draft it came
+       from. `fileHash` is what the `[workspaceId, fileHash]` index is for and
+       what it already means — "have I seen this before" — so it holds the
+       migration batch's id rather than a hash of bytes that never existed.
+     *
+     * A reverted batch is deliberately not reused: adding rows to it would
+     * leave them outside the revert that already happened, and its status would
+     * be a lie. A run after a revert starts a fresh batch. */
+    const existing = await this.prisma.importBatch.findFirst({
+      where: {
+        workspaceId,
+        filename: RECORD_BATCH_FILENAME,
+        fileHash: `wallet:${batch.id}`,
+        status: 'APPLIED',
+      },
+      select: { id: true },
+    });
+
+    let importBatchId = existing?.id ?? null;
+
+    if (writes.length > 0 || importBatchId) {
+      importBatchId = await this.prisma.$transaction(
+        async (tx) => {
+          const target =
+            existing ??
+            (await tx.importBatch.create({
+              data: {
+                workspaceId,
+                createdByUserId: ctx.userId || null,
+                filename: RECORD_BATCH_FILENAME,
+                fileHash: `wallet:${batch.id}`,
+                mapping: {
+                  source: 'WALLET',
+                  migrationBatchId: batch.id,
+                } as unknown as Prisma.InputJsonValue,
+                /* Already APPLIED, like the CSV importer's: a row in this table
+                   can only mean the write succeeded, because the write and the
+                   row are the same transaction. */
+                status: 'APPLIED',
+                appliedAt: new Date(),
+              },
+            }));
+
+          for (const write of writes) {
+            // Belt and braces: the engine says it balances, the DB trigger will too.
+            assertBalanced(write.entries);
+            await tx.transaction.create({
+              data: {
+                workspaceId,
+                createdByUserId: ctx.userId || null,
+                date: write.date,
+                type: write.type,
+                description: write.description,
+                payee: write.payee,
+                externalRef: write.externalRef,
+                source: 'IMPORT',
+                importBatchId: target.id,
+                entries: { create: write.entries.map((e) => ledgerEntryData(e, workspaceId)) },
+              },
+            });
+          }
+
+          /* Counted across every page, so the batch's own figures describe the
+             whole migration rather than whichever page went last. */
+          await tx.importBatch.update({
+            where: { id: target.id },
+            data: {
+              rowCount: { increment: page.rows.length },
+              importedCount: { increment: writes.length },
+              skippedCount: { increment: skipped },
+            },
+          });
+
+          return target.id;
+        },
+        { timeout: RECORD_WRITE_TIMEOUT_MS, maxWait: RECORD_WRITE_MAX_WAIT_MS },
+      );
+    }
+
+    const transfersWritten = writes.filter((w) => w.type === 'TRANSFER').length;
+
+    if (writes.length > 0) {
+      this.audit.emit({
+        workspaceId,
+        actorUserId: ctx.userId,
+        action: 'migration.applied',
+        entity: 'MigrationBatch',
+        entityId: batch.id,
+        after: {
+          records: writes.length,
+          transfers: transfersWritten,
+          skipped,
+          offset,
+          importBatchId,
+        },
+      });
+    }
+
+    /* The same complaint forty times is one complaint, and a page of 200 must
+       not answer with 200 lines nobody reads. */
+    const unique = [...new Set(problems)];
+    const listed = unique.slice(0, MAX_RECORD_PROBLEMS);
+    if (unique.length > listed.length) {
+      listed.push(`…আরও ${unique.length - listed.length}টি সমস্যা`);
+    }
+
+    return {
+      imported: writes.length,
+      skipped,
+      transfersWritten,
+      nextOffset: page.nextOffset,
+      problems: listed,
+      importBatchId,
+    };
+  }
+
+  /**
+   * Which source id became what, from the batch's own rows.
+   *
+   * `createdEntityId` where this batch made something, `targetId` where the
+   * decision was MERGE — both are "the thing that source id means here", and
+   * leaving the second out would skip every record on an account somebody
+   * folded into one of their own.
+   */
+  private async recordMapping(
+    workspaceId: string,
+    batchId: string,
+  ): Promise<{
+    accountBySource: Map<string, string>;
+    categoryBySource: Map<string, string>;
+    accountsById: Map<string, { id: string; name: string; currency: string }>;
+    nameOf: (sourceId: string | undefined) => string;
+  }> {
+    const items = await this.prisma.migrationItem.findMany({
+      where: { batchId, workspaceId },
+      select: {
+        kind: true,
+        sourceId: true,
+        sourceName: true,
+        decision: true,
+        targetId: true,
+        createdEntityId: true,
+        createdEntityKind: true,
+      },
+    });
+
+    const accountBySource = new Map<string, string>();
+    const categoryBySource = new Map<string, string>();
+    const sourceNames = new Map<string, string>();
+
+    for (const item of items) {
+      sourceNames.set(item.sourceId, item.sourceName);
+      const mapped = item.createdEntityId ?? (item.decision === 'MERGE' ? item.targetId : null);
+      if (!mapped) continue;
+
+      /* What the row *became* decides which map it belongs in, never what it
+         started as. A category that turned out to be a DPS created a
+         SavingsPlan and a category that turned out to be a debt created an
+         account; filing either as a category would tag records with a row that
+         is not one. */
+      const became = item.createdEntityId
+        ? item.createdEntityKind
+        : item.kind === 'ACCOUNT'
+          ? 'Account'
+          : 'Category';
+
+      if (item.kind === 'ACCOUNT' && became === 'Account') {
+        accountBySource.set(item.sourceId, mapped);
+      } else if (item.kind === 'CATEGORY' && became === 'Category') {
+        categoryBySource.set(item.sourceId, mapped);
+      }
+    }
+
+    /* Re-read rather than trusted. A batch applied in March and its records
+       imported in August is normal, and an account deleted in between maps to
+       nothing again — better a row in `problems` than a foreign key error that
+       takes the whole page down. */
+    const [accounts, categories] = await Promise.all([
+      this.prisma.account.findMany({
+        where: { workspaceId, id: { in: [...new Set(accountBySource.values())] }, deletedAt: null },
+        select: { id: true, name: true, currency: true },
+      }),
+      this.prisma.category.findMany({
+        where: {
+          workspaceId,
+          id: { in: [...new Set(categoryBySource.values())] },
+          deletedAt: null,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const accountsById = new Map(accounts.map((a) => [a.id, a]));
+    const liveCategories = new Set(categories.map((c) => c.id));
+    for (const [sourceId, id] of [...accountBySource]) {
+      if (!accountsById.has(id)) accountBySource.delete(sourceId);
+    }
+    for (const [sourceId, id] of [...categoryBySource]) {
+      if (!liveCategories.has(id)) categoryBySource.delete(sourceId);
+    }
+
+    return {
+      accountBySource,
+      categoryBySource,
+      accountsById,
+      nameOf: (sourceId) =>
+        (sourceId ? sourceNames.get(sourceId) : null) ?? sourceId ?? 'অজানা অ্যাকাউন্ট',
+    };
+  }
+
+  /**
+   * The ledger lines for one record, or why there are none.
+   *
+   * A refusal from the engine — a transfer to the account it came from, an
+   * amount of zero — is one row's problem and not the page's, so it comes back
+   * as a string rather than as a throw that would take the other 199 with it.
+   */
+  private entriesFor(
+    input: Parameters<typeof expandSimpleTransaction>[0],
+    system: Parameters<typeof expandSimpleTransaction>[1],
+  ): EntryDraft[] | string {
+    try {
+      return expandSimpleTransaction(input, system);
+    } catch (error) {
+      return error instanceof Error ? error.message : 'কারণ জানা যায়নি';
+    }
   }
 
   // --------------------------------------------------------------- rollback

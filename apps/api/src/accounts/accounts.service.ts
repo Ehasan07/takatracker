@@ -297,6 +297,43 @@ export class AccountsService {
    * Unlike `list`, this reads every account including the hidden control
    * accounts — money lent out is part of what somebody is worth, and leaving it
    * out was half of what made the old dashboard figure wrong.
+   *
+   * ## Foreign currency is left out, and that is the honest answer today
+   *
+   * Only accounts kept in the workspace's own currency are summed. A USD
+   * account holding $500 was being added to a taka net worth as ৳500 — the
+   * balances are integers in *each account's* minor unit and nothing here ever
+   * read `Account.currency`, so the figure was wrong by roughly the exchange
+   * rate and gave no sign of it.
+   *
+   * Converting properly is not a filter, it is a feature: IAS 21.21 records a
+   * transaction at the spot rate on its own date, and IAS 21.23(a) retranslates
+   * monetary balances at the closing rate — which needs a rate per transaction
+   * date and a rate per reporting date, both stored, plus somewhere to put the
+   * difference the retranslation throws off (IAS 21.28, into profit or loss).
+   * None of that exists: `LedgerEntry.fxRate` is an `Int` that every writer
+   * sets to 1, and `FxService` is an unpersisted cache in front of a public
+   * feed. Until it does, adding the number in is a made-up rate of 1.00 quietly
+   * asserted, and the only defensible alternative to a wrong total is a total
+   * that says what it covers.
+   *
+   * So the foreign account keeps its own balance in its own currency, stays on
+   * every list, and is named on screen as excluded. The screens work out
+   * *which* accounts those are from `GET /accounts`, which already carries
+   * `currency` on every row — one rule, applied here to the totals and there to
+   * the rows, and no third place for it to drift.
+   *
+   * The comparison is case-insensitive because `currency` is a free
+   * `String(3)`: nothing upper-cases it on the way in, and `usd` is the same
+   * money as `USD`.
+   *
+   * A `systemKey` account is never treated as foreign. The three nominal
+   * accounts and the two loan control accounts are created without a currency,
+   * so they carry the column's `BDT` default whatever the workspace was opened
+   * in — that default is an unset field, not a statement about the money. Their
+   * balances come from entries booked in the workspace's own currency, so a
+   * USD-keeping workspace must not lose its ঋণ পাওনা out of net worth over a
+   * column nobody ever filled in.
    */
   async position(workspaceId: string): Promise<{
     liquidMinor: number;
@@ -304,13 +341,25 @@ export class AccountsService {
     assetsMinor: number;
     liabilitiesMinor: number;
   }> {
-    const accounts = await this.prisma.account.findMany({
-      where: { workspaceId, deletedAt: null },
-      select: { id: true, name: true, type: true },
-    });
+    const [workspace, accounts] = await Promise.all([
+      this.prisma.workspace.findUniqueOrThrow({
+        where: { id: workspaceId },
+        select: { currency: true },
+      }),
+      this.prisma.account.findMany({
+        where: { workspaceId, deletedAt: null },
+        select: { id: true, name: true, type: true, currency: true, systemKey: true },
+      }),
+    ]);
+
+    const home = workspace.currency.toUpperCase();
+    const inBooks = accounts.filter(
+      (a) => a.systemKey !== null || a.currency.toUpperCase() === home,
+    );
+
     const balances = await this.balances(workspaceId);
     const sheet = buildBalanceSheet(
-      accounts.map((a) => ({ ...a, balanceMinor: balances.get(a.id) ?? 0 })),
+      inBooks.map((a) => ({ ...a, balanceMinor: balances.get(a.id) ?? 0 })),
     );
     return {
       liquidMinor: sheet.liquidMinor,

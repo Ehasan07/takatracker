@@ -1607,7 +1607,32 @@ model LedgerEntry {
   amountMinor   BigInt
   direction     EntryDirection
   currency      String         @default("BDT")
-  /// 1 for BDT-only v1. Kept so multi-currency is a data change, not a migration.
+  /// Always 1. A placeholder, and not a usable exchange rate — read this before
+  /// trusting it.
+  ///
+  /// The old comment here said "kept so multi-currency is a data change, not a
+  /// migration". That is not true of an `Int`: a rate is 121.50, and the column
+  /// cannot hold it. `ledgerEntrySchema` even validates `fxRate` as
+  /// `z.number().positive()`, so a real rate passes the zod check and is then
+  /// rejected or truncated at the database. Every writer in the codebase passes
+  /// 1 — `packages/core/src/ledger.ts`, `split.service.ts`, `loans.service.ts` —
+  /// and `baseMinor` short-circuits on `fxRate === 1`, so nothing has ever
+  /// exercised the other branch.
+  ///
+  /// It is deliberately left as-is rather than widened. Widening buys nothing
+  /// today: conversion is not implemented anywhere, so a `Decimal` here would be
+  /// an empty box that *looks* like the feature exists — the same mistake this
+  /// comment is correcting. The real work is a per-date spot rate on the
+  /// transaction (IAS 21.21) and a closing rate to retranslate monetary balances
+  /// by (IAS 21.23(a)), with the difference that falls out recognised in profit
+  /// or loss (IAS 21.28): a schema for rates and a place to book the exchange
+  /// difference, not one wider column.
+  ///
+  /// Until that exists the app does not convert. Accounts kept in another
+  /// currency are excluded from every taka total — see
+  /// `AccountsService.position` — and the receipt of money originally spent in
+  /// another currency lives on `Transaction.fxCurrency` / `fxAmountMinor`,
+  /// converted by the user at entry time.
   fxRate        Int            @default(1)
 
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

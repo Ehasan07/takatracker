@@ -33,11 +33,17 @@
    * A Bengali face is asked for the whole string and simply has no glyphs for
    * Latin letters, so the browser falls through to the next family for them —
    * which is exactly the behaviour wanted here, and is why the order is this
-   * way round rather than the other. `next/font` sets both variables; the
-   * literal names after them are the fallback for a build where it has not. */
+   * way round rather than the other. `next/font` sets these variables; the
+   * literal names after them are the fallback for a build where it has not.
+   *
+   * There are three variables for two typefaces because the Bengali face is
+   * self-hosted a subset at a time — `next/font/local` takes no per-file
+   * unicode-range, so each subset is its own call — and Latin set in the
+   * Bengali family has to be reached before the Latin family, or an English
+   * word inside a Bengali sentence changes typeface mid-line. */
   --hishab-font-sans:
-    var(--font-bengali), var(--font-latin), 'Anek Bangla', 'Bai Jamjuree', 'Noto Sans Bengali',
-    'Hind Siliguri', ui-sans-serif, system-ui, sans-serif;
+    var(--font-bengali), var(--font-bengali-latin), var(--font-latin), 'Anek Bangla',
+    'Bai Jamjuree', 'Noto Sans Bengali', 'Hind Siliguri', ui-sans-serif, system-ui, sans-serif;
   --hishab-font-mono: ui-monospace, 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
 
   --hishab-touch-min: 44px;

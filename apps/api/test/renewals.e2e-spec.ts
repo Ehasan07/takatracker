@@ -10,6 +10,11 @@ import { auth, createTestApp, resetDatabase, signup, type TestContext } from './
  * around it: that marking one done counts from the day it was done, that a
  * one-off closes rather than repeating for ever, that an overdue obligation
  * keeps asking, and that nobody is told the same thing twice in one day.
+ *
+ * The last three are about the optional fee: that it lands on the day it was
+ * paid rather than today, that leaving it out still leaves the ledger empty,
+ * and — the one that matters most — that a fee the ledger refuses cannot take
+ * the completion down with it.
  */
 
 describe('renewals', () => {
@@ -189,6 +194,121 @@ describe('renewals', () => {
     const rows = (await list(user).expect(200)).body;
     expect(rows[0].urgency).toBe('OVERDUE');
     expect(rows[0].daysLeft).toBeLessThan(0);
+  });
+
+  /* A wallet to pay out of and a category to file it under — the two things a
+     fee needs before it can be booked at all. */
+  const payFrom = async (user: User): Promise<{ accountId: string; categoryId: string }> => {
+    const wallet = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নগদ', type: 'CASH', openingBalance: 0 })
+      .expect(201);
+
+    const categories = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const expense = categories.body.find((c: { kind: string }) => c.kind === 'EXPENSE');
+
+    return { accountId: wallet.body.id, categoryId: expense.id };
+  };
+
+  const ledgerEntries = (user: User): Promise<number> =>
+    ctx.prisma.ledgerEntry.count({ where: { workspaceId: user.workspaceId } });
+
+  it('books the fee on the day it was paid, for the amount that was typed', async () => {
+    /* Both halves of the offer at once: the expense is dated `completedOn` and
+       not today, and the amount is the one that was sent — not the estimate the
+       screen prefilled the box with. An estimate is not a receipt. */
+    const user = await signup(ctx);
+    const { accountId, categoryId } = await payFrom(user);
+    const created = await create(user, {
+      dueDate: '2026-04-01',
+      estimatedCostMinor: 250_000,
+    }).expect(201);
+
+    const done = await ctx
+      .http()
+      .post(`/v1/renewals/${created.body.id}/complete`)
+      .set(auth(user))
+      .send({
+        completedOn: '2026-04-21',
+        // The office wanted ৳3,120, not the ৳2,500 that was guessed a year ago.
+        payment: { amountMinor: 312_000, accountId, categoryId },
+      })
+      .expect(200);
+
+    expect(done.body.dueDate).toBe('2027-04-21');
+    expect(done.body.fee.booked).toBe(true);
+    expect(done.body.fee.message).toBeNull();
+
+    const tx = await ctx
+      .http()
+      .get(`/v1/transactions/${done.body.fee.transactionId}`)
+      .set(auth(user))
+      .expect(200);
+
+    expect(tx.body.date).toBe('2026-04-21');
+    expect(tx.body.type).toBe('EXPENSE');
+    // Signed from the user's point of view: money left.
+    expect(tx.body.amountMinor).toBe(-312_000);
+    expect(tx.body.accountId).toBe(accountId);
+    expect(tx.body.categoryId).toBe(categoryId);
+    // The paper's own name, so the row is recognisable in the khata a year on.
+    expect(tx.body.description).toBe('বসিলার জমির খাজনা');
+  });
+
+  it('touches nothing in the ledger when no fee is offered', async () => {
+    /* The behaviour renewals shipped with, and still the default. Somebody
+       clearing five years of back khajna in one sitting does not want five
+       transactions dated today. */
+    const user = await signup(ctx);
+    await payFrom(user);
+    const created = await create(user, {
+      dueDate: '2026-04-01',
+      estimatedCostMinor: 250_000,
+    }).expect(201);
+
+    const done = await ctx
+      .http()
+      .post(`/v1/renewals/${created.body.id}/complete`)
+      .set(auth(user))
+      .send({ completedOn: '2026-04-21' })
+      .expect(200);
+
+    expect(done.body.dueDate).toBe('2027-04-21');
+    // Null, not a `booked: false` — nothing was attempted, so nothing failed.
+    expect(done.body.fee).toBeNull();
+    expect(await ledgerEntries(user)).toBe(0);
+  });
+
+  it('still rolls the date forward when the fee cannot be booked', async () => {
+    /* The half that must never take the other half down with it. A category
+       deleted between the screen loading and the button being pressed, a plan
+       ceiling, a wallet that is somebody else's — the khajna was still paid,
+       and losing that fact to a bookkeeping refusal would be the worst outcome
+       this endpoint has. */
+    const user = await signup(ctx);
+    const { accountId } = await payFrom(user);
+    const created = await create(user, { dueDate: '2026-04-01' }).expect(201);
+
+    const done = await ctx
+      .http()
+      .post(`/v1/renewals/${created.body.id}/complete`)
+      .set(auth(user))
+      .send({
+        completedOn: '2026-04-21',
+        payment: { amountMinor: 250_000, accountId, categoryId: 'cat_gone_missing' },
+      })
+      .expect(200);
+
+    expect(done.body.dueDate).toBe('2027-04-21');
+    expect(done.body.lastCompletedOn).toBe('2026-04-21');
+    expect(done.body.fee.booked).toBe(false);
+    expect(done.body.fee.transactionId).toBeNull();
+    // Says so in Bengali, rather than leaving the screen to guess from a 200.
+    expect(done.body.fee.message).toContain('ক্যাটাগরি');
+    // And no half-written entry left behind.
+    expect(await ledgerEntries(user)).toBe(0);
   });
 
   it('will not show one workspace another one’s papers', async () => {

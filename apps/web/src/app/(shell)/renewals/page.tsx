@@ -7,6 +7,7 @@ import {
   type RenewalKind,
   type RenewalRecurrence,
 } from '@hishab/core';
+import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Plus, Trash2 } from 'lucide-react';
 import * as React from 'react';
@@ -15,8 +16,10 @@ import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
-import { api, endpoints } from '@/lib/api';
+import { ApiError, api, endpoints } from '@/lib/api';
+import { useDisplayName } from '@/lib/display-name';
 import { haptic } from '@/lib/haptics';
+import { invalidateAfterWrite } from '@/lib/invalidate';
 
 /**
  * Papers that expire.
@@ -34,6 +37,15 @@ import { haptic } from '@/lib/haptics';
  *
  * Sorted by how soon, overdue first, with the days spelled out. A screen that
  * shows dates and expects somebody to subtract is a screen that gets read once.
+ *
+ * ## "হয়ে গেছে" asks about the money, it does not decide
+ *
+ * The two halves stay apart, but the moment they most often coincide is the
+ * moment somebody presses done — they have just paid the fee. So the button
+ * opens a sheet that offers to write the expense, prefilled with the estimate
+ * and dated the day it was actually paid, with a way out of it that is a button
+ * and not a cleared field. Skipping is one tap and leaves the ledger untouched,
+ * which is what five years of back khajna in one sitting needs.
  */
 
 interface Obligation {
@@ -75,6 +87,11 @@ export default function RenewalsPage() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Obligation | null>(null);
+  const [completing, setCompleting] = React.useState<Obligation | null>(null);
+  /* Shown when the date rolled forward but the expense did not get written.
+     Silence there would be the one unacceptable outcome: the person would go on
+     believing they had recorded money that is not in the books. */
+  const [feeNotice, setFeeNotice] = React.useState<string | null>(null);
 
   const rows = useQuery({
     queryKey: ['renewals'],
@@ -85,15 +102,6 @@ export default function RenewalsPage() {
   const refresh = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['renewals'] });
   };
-
-  const complete = useMutation({
-    mutationFn: (id: string) =>
-      api<Obligation>(`/renewals/${id}/complete`, { method: 'POST', body: {} }),
-    onSuccess: () => {
-      haptic('success');
-      refresh();
-    },
-  });
 
   const remove = useMutation({
     mutationFn: (id: string) => api<{ id: string }>(`/renewals/${id}`, { method: 'DELETE' }),
@@ -136,6 +144,21 @@ export default function RenewalsPage() {
             <AlertTriangle className="h-4 w-4" aria-hidden />
             {needAttention.length}টি কাগজ এখনই দেখা দরকার
           </p>
+        </section>
+      ) : null}
+
+      {feeNotice ? (
+        <section className="rounded-card border-brass/50 bg-surface border p-4" role="alert">
+          <p className="text-ink text-sm font-medium">
+            তারিখ এগিয়ে গেছে, কিন্তু খরচটি খাতায় লেখা যায়নি
+          </p>
+          <p className="text-ink-muted mt-1 text-sm">{feeNotice}</p>
+          <p className="text-ink-muted mt-1 text-xs">
+            নবায়নটি হয়ে গেছে হিসেবেই থাকল — খরচটা খাতায় গিয়ে হাতে লিখে নিন।
+          </p>
+          <Button className="mt-2" variant="ghost" size="sm" onClick={() => setFeeNotice(null)}>
+            বুঝেছি
+          </Button>
         </section>
       ) : null}
 
@@ -198,12 +221,7 @@ export default function RenewalsPage() {
 
               {row.status === 'DONE' ? null : (
                 <div className="flex shrink-0 gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={complete.isPending}
-                    onClick={() => complete.mutate(row.id)}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setCompleting(row)}>
                     <Check className="h-4 w-4" aria-hidden />
                     হয়ে গেছে
                   </Button>
@@ -222,12 +240,41 @@ export default function RenewalsPage() {
         </ul>
       )}
 
-      {/* Marking one done rolls the date forward; it does not book the fee. A
-          person clearing five years of back khajna does not want five
-          transactions dated today. */}
+      {/* Marking one done always rolls the date forward. Booking the fee is
+          offered in the sheet and never assumed — a person clearing five years
+          of back khajna does not want five transactions dated today. */}
       <p className="text-ink-muted text-xs">
-        "হয়ে গেছে" চাপলে পরের তারিখ বসে যাবে — টাকার খরচটা আলাদা করে খাতায় লিখবেন।
+        "হয়ে গেছে" চাপলে পরের তারিখ বসে যাবে। চাইলে একই সঙ্গে খরচটাও খাতায় লিখে দিতে পারেন — না
+        লিখলেও তারিখ এগিয়ে যাবে।
       </p>
+
+      {/* Mounted only while a row is being completed, unlike the edit sheet
+          below. The prefilled amount and date come from that row, and a sheet
+          that stayed mounted would keep the first row's figures for the second.
+          Unmounting is the cheapest possible reset. */}
+      {completing ? (
+        <CompleteSheet
+          obligation={completing}
+          /* Archived accounts are left out: money cannot have come out of one
+             today, and a picker full of closed wallets is a picker somebody
+             files a fee into by accident. */
+          accounts={(accounts.data ?? [])
+            .filter((a) => !a.isArchived)
+            .map((a) => ({ id: a.id, name: a.name }))}
+          onClose={() => setCompleting(null)}
+          onDone={(result) => {
+            setCompleting(null);
+            haptic('success');
+            refresh();
+            /* Only when money actually moved. Balances, the month's totals and
+               the khata are all untouched by a completion that booked nothing,
+               and refetching them would be a request that can only return the
+               same answer. */
+            if (result.fee?.booked) invalidateAfterWrite(queryClient);
+            setFeeNotice(result.fee && !result.fee.booked ? result.fee.message : null);
+          }}
+        />
+      ) : null}
 
       <ObligationSheet
         open={addOpen || editing !== null}
@@ -244,6 +291,230 @@ export default function RenewalsPage() {
         }}
       />
     </div>
+  );
+}
+
+/** What became of the optional fee. Reported on every completion. */
+interface FeeOutcome {
+  booked: boolean;
+  transactionId: string | null;
+  /** Bengali, ready to show. Why it did not get written. */
+  message: string | null;
+}
+
+/** The obligation as it now stands, plus the fee's fate — `null` if none was offered. */
+interface CompletedObligation extends Obligation {
+  fee: FeeOutcome | null;
+}
+
+/**
+ * The estimate, as something somebody can type over.
+ *
+ * `formatMinor` does the division in integer arithmetic. Writing
+ * `estimatedCostMinor / 100` here would be float maths on money, which this
+ * codebase bans everywhere for the reason 33.33 × 100 is 3332.9999999999995.
+ * An estimate of nothing prefills nothing: a zero somebody has to delete before
+ * they can type is worse than an empty box.
+ */
+function prefillAmount(estimatedCostMinor: number): string {
+  if (estimatedCostMinor <= 0) return '';
+  return formatMinor(estimatedCostMinor, { symbol: false, lakhGrouping: false });
+}
+
+/**
+ * "হয়ে গেছে" — and the question about the money that goes with it.
+ *
+ * ## The amount is a prefill, not a figure
+ *
+ * It starts at the person's own estimate, because that is nearly always right
+ * and typing it again is work. It is an ordinary editable box because an
+ * estimate is not a receipt: the fitness fee went up, the office wanted a
+ * photocopy, the mohurer charged extra. What gets booked is what they typed.
+ *
+ * ## The date is the day it was paid
+ *
+ * Not today. Somebody clearing a five-year khajna backlog is telling the app
+ * when each payment happened, and the expense carries the same date as the
+ * completion — otherwise five years of fees land in this month and every report
+ * about this month is wrong.
+ *
+ * ## Skipping is a button
+ *
+ * Not an emptied field, not an unticked box below the fold. "টাকা লিখব না" is
+ * one tap, it completes the renewal, and it leaves the ledger untouched.
+ */
+function CompleteSheet({
+  obligation,
+  accounts,
+  onClose,
+  onDone,
+}: {
+  obligation: Obligation;
+  accounts: { id: string; name: string }[];
+  onClose: () => void;
+  onDone: (result: CompletedObligation) => void;
+}) {
+  const { name: display, compare } = useDisplayName();
+  const [date, setDate] = React.useState(() => toLocalDateString(new Date()));
+  const [amount, setAmount] = React.useState(() => prefillAmount(obligation.estimatedCostMinor));
+  const [accountId, setAccountId] = React.useState(accounts[0]?.id ?? '');
+  const [categoryId, setCategoryId] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  const categories = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => endpoints.categories(),
+    staleTime: 5 * 60_000,
+  });
+
+  /* Expense categories only, named in the workspace's own language and sorted
+     in it. Filing a fee under an income category would be a hole in the books
+     that no report could explain. */
+  const expenseCategories = React.useMemo(
+    () =>
+      (categories.data ?? [])
+        .filter((c) => c.kind === 'EXPENSE')
+        .sort(compare)
+        .map((c) => ({ id: c.id, label: display(c) })),
+    [categories.data, compare, display],
+  );
+
+  const complete = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api<CompletedObligation>(`/renewals/${obligation.id}/complete`, { method: 'POST', body }),
+    onSuccess: onDone,
+    onError: (err) => {
+      haptic('warn');
+      setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি');
+    },
+  });
+
+  /* Nothing to spend from. Saying so is better than a select with no options
+     and a submit button that answers 400. */
+  const canBook = accounts.length > 0;
+
+  const bookFee = (): void => {
+    setError(null);
+    let amountMinor: number;
+    try {
+      amountMinor = parseMoneyToMinor(amount);
+    } catch {
+      return setError('টাকার অঙ্কটা বুঝতে পারিনি');
+    }
+    if (amountMinor <= 0) return setError('কত টাকা দিলেন লিখুন');
+    if (!accountId) return setError('কোন অ্যাকাউন্ট থেকে গেল বেছে নিন');
+    if (!categoryId) return setError('কোন খাতে যাবে বেছে নিন');
+    complete.mutate({ completedOn: date, payment: { amountMinor, accountId, categoryId } });
+  };
+
+  /* The date and nothing else — exactly what this endpoint did before the fee
+     was ever offered. */
+  const skipFee = (): void => {
+    setError(null);
+    complete.mutate({ completedOn: date });
+  };
+
+  return (
+    <Sheet
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title="হয়ে গেছে"
+      description={obligation.title}
+    >
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          bookFee();
+        }}
+      >
+        <Field label="কবে হয়েছে" htmlFor="rc-date">
+          <Input
+            id="rc-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </Field>
+
+        <p className="text-ink-muted text-sm">
+          টাকাটা এখনই খাতায় লিখে দিতে পারেন। না চাইলে নিচের "টাকা লিখব না" চাপুন — তারিখ ঠিকই
+          এগিয়ে যাবে।
+        </p>
+
+        <Field label="কত টাকা" htmlFor="rc-amount">
+          <Input
+            id="rc-amount"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            disabled={!canBook}
+            autoFocus
+          />
+        </Field>
+        {obligation.estimatedCostMinor > 0 ? (
+          <p className="text-ink-muted -mt-2 text-xs">
+            আপনার আনুমানিক হিসাবটি বসানো আছে — আসল অঙ্ক আলাদা হলে বদলে নিন।
+          </p>
+        ) : null}
+
+        <Field label="কোন অ্যাকাউন্ট থেকে" htmlFor="rc-account">
+          <Select
+            id="rc-account"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            disabled={!canBook}
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="কোন খাতে" htmlFor="rc-category">
+          <Select
+            id="rc-category"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            disabled={!canBook}
+          >
+            <option value="">বেছে নিন</option>
+            {expenseCategories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        {canBook ? null : (
+          <p className="text-ink-muted text-sm">
+            খরচ লেখার মতো কোনো অ্যাকাউন্ট নেই। আগে একটি অ্যাকাউন্ট যোগ করুন, নয়তো শুধু তারিখটাই
+            এগিয়ে নিন।
+          </p>
+        )}
+
+        {error ? (
+          <p role="alert" className="text-expense text-sm">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+          <Button type="submit" disabled={complete.isPending || !canBook}>
+            {complete.isPending ? 'রাখা হচ্ছে…' : 'হয়ে গেছে, খরচও লিখুন'}
+          </Button>
+          <Button type="button" variant="outline" disabled={complete.isPending} onClick={skipFee}>
+            টাকা লিখব না
+          </Button>
+        </div>
+      </form>
+    </Sheet>
   );
 }
 

@@ -102,6 +102,27 @@ const GROUP_TINT: Record<(typeof TYPE_GROUPS)[number], string> = {
 const groupLabel = (group: (typeof TYPE_GROUPS)[number]): string =>
   t(`account.group.${group}`, GROUP_LABELS[group]);
 
+/**
+ * The three balance-sheet groups, plus the accounts no total can speak for.
+ *
+ * `foreign` is not a fourth kind of account — it cuts across all three. It is a
+ * section on this list because the other three headers each carry a subtotal,
+ * and a subtotal is precisely what cannot be written across two currencies
+ * without a rate this app does not have.
+ */
+type ListSection = (typeof TYPE_GROUPS)[number] | 'foreign';
+
+/** Neutral, deliberately: excluded is not the same as owed. */
+const SECTION_TINT: Record<ListSection, string> = {
+  ...GROUP_TINT,
+  foreign: 'bg-greenbar text-ink-muted',
+};
+
+const sectionLabel = (section: ListSection): string =>
+  section === 'foreign'
+    ? t('account.group.foreign', 'অন্য মুদ্রার অ্যাকাউন্ট')
+    : groupLabel(section);
+
 /** Which of the three an account type belongs to. `liquid` when unknown. */
 const groupOfType = (type: string): (typeof TYPE_GROUPS)[number] =>
   (ACCOUNT_TYPES.find((entry) => entry.value === type)?.group as
@@ -207,17 +228,49 @@ export default function AccountsPage() {
    * worth wearing the word "total". It keeps its place at the bottom, under the
    * name of the thing it actually is.
    */
+  /**
+   * The accounts the four figures can speak for, and the ones they cannot.
+   *
+   * A balance is an integer in *its own* account's minor unit, and this app
+   * converts nothing: `LedgerEntry.fxRate` is an `Int` column that every writer
+   * sets to 1 and no query anywhere reads a rate. So adding a USD account's
+   * $500 into the taka subtotal below would be a rate of 1.00 asserted by
+   * accident — which is what these figures used to do.
+   *
+   * Converting honestly is IAS 21: the spot rate on each transaction's own date
+   * (21.21), monetary balances retranslated at the closing rate (21.23(a)), and
+   * the difference that falls out recognised in profit or loss (21.28). None of
+   * that exists yet. Until it does the totals state their scope and the foreign
+   * accounts are shown separately, in their own money.
+   *
+   * The same split by the same rule runs on the server in
+   * `AccountsService.position` and on the dashboard. Case-insensitive because
+   * `Account.currency` is a free three-character string nothing upper-cases on
+   * the way in; deferred until `/auth/me` lands so the first paint never
+   * mislabels an account while the workspace's currency is still a guess.
+   */
+  const { currency: homeCurrency, ready: currencyReady } = useWorkspaceSettings();
+  const [homeAccounts, foreignAccounts] = React.useMemo(() => {
+    const rows = accounts.data ?? [];
+    if (!currencyReady) return [rows, [] as AccountDto[]] as const;
+    const home = homeCurrency.toUpperCase();
+    return [
+      rows.filter((a) => a.currency.toUpperCase() === home),
+      rows.filter((a) => a.currency.toUpperCase() !== home),
+    ] as const;
+  }, [accounts.data, homeCurrency, currencyReady]);
+
   const subtotals = React.useMemo(() => {
     const sums: Record<(typeof TYPE_GROUPS)[number], number> = {
       liquid: 0,
       asset: 0,
       liability: 0,
     };
-    for (const account of accounts.data ?? []) {
+    for (const account of homeAccounts) {
       sums[groupOfType(account.type)] += account.balanceMinor;
     }
     return sums;
-  }, [accounts.data]);
+  }, [homeAccounts]);
 
   const netWorth = subtotals.liquid + subtotals.asset + subtotals.liability;
 
@@ -227,10 +280,23 @@ export default function AccountsPage() {
   const grouped = React.useMemo(
     () =>
       TYPE_GROUPS.map(
-        (group) =>
-          [group, (accounts.data ?? []).filter((a) => groupOfType(a.type) === group)] as const,
+        (group) => [group, homeAccounts.filter((a) => groupOfType(a.type) === group)] as const,
       ).filter(([, rows]) => rows.length > 0),
-    [accounts.data],
+    [homeAccounts],
+  );
+
+  /* A fourth section, and only when there is something to put in it.
+   *
+   * The foreign accounts are not hidden and not moved off this screen — they
+   * are still edited, still reconciled, still have a statement. They are simply
+   * kept out of the three sections whose headers carry a subtotal, because a
+   * subtotal that mixed currencies would be the exact number this change
+   * exists to stop printing. A workspace with no foreign account never sees the
+   * word currency anywhere on this page. */
+  const sections: readonly (readonly [ListSection, AccountDto[]])[] = React.useMemo(
+    () =>
+      foreignAccounts.length > 0 ? [...grouped, ['foreign', foreignAccounts] as const] : grouped,
+    [grouped, foreignAccounts],
   );
 
   const accountLimit = entitlements.data?.entitlements['accounts.max'] ?? null;
@@ -305,6 +371,17 @@ export default function AccountsPage() {
             </dd>
           </div>
         </dl>
+
+        {/* What the four figures above do *not* cover, said where they are read
+            rather than in a footnote further down. Only when it applies. */}
+        {foreignAccounts.length > 0 ? (
+          <p className="text-brass mt-2 text-xs">
+            {t(
+              'account.foreignExcluded',
+              'উপরের চারটি হিসাবের বাইরে {n}টি অ্যাকাউন্ট রয়েছে — সেগুলো অন্য মুদ্রায় রাখা, আর অ্যাপ এখনও মুদ্রা রূপান্তর করে না। নিচে নিজের মুদ্রাতেই দেখানো হলো।',
+            ).replace('{n}', fmtNumber(String(foreignAccounts.length)))}
+          </p>
+        ) : null}
         <UsageMeter
           className="mt-3"
           label={t('nav.accounts', 'অ্যাকাউন্ট')}
@@ -334,17 +411,30 @@ export default function AccountsPage() {
         </div>
       ) : (
         <ul className="rounded-card border-rule bg-surface overflow-hidden border">
-          {grouped.flatMap(([group, rows]) => [
+          {sections.flatMap(([group, rows]) => [
             <li
               key={`head-${group}`}
-              className={`border-rule flex items-center justify-between gap-2 border-b px-3 py-2 text-xs font-medium ${GROUP_TINT[group]}`}
+              className={`border-rule flex items-center justify-between gap-2 border-b px-3 py-2 text-xs font-medium ${SECTION_TINT[group]}`}
             >
-              <span>{groupLabel(group)}</span>
-              <Money
-                minor={rows.reduce((sum, a) => sum + a.balanceMinor, 0)}
-                signed
-                className="shrink-0"
-              />
+              <span>{sectionLabel(group)}</span>
+              {/* No subtotal for the foreign section, and that absence is the
+                  point: adding dollars to yuan needs a rate, and IAS 21.23(a)
+                  would want the closing one — the app has neither stored. A
+                  count is the most this header can honestly say. */}
+              {group === 'foreign' ? (
+                <span className="shrink-0">
+                  {t('account.foreignCount', '{n}টি — কোনো যোগফলে ধরা হয়নি').replace(
+                    '{n}',
+                    fmtNumber(String(rows.length)),
+                  )}
+                </span>
+              ) : (
+                <Money
+                  minor={rows.reduce((sum, a) => sum + a.balanceMinor, 0)}
+                  signed
+                  className="shrink-0"
+                />
+              )}
             </li>,
             ...rows.map((account) => (
               <li
@@ -380,18 +470,42 @@ export default function AccountsPage() {
                         never added to anything: it is the bank's money until it
                         is spent, and spending it starts interest. */}
                     {account.creditLimitMinor > 0 ? (
+                      /* The card's own currency, not the default.
+                         `formatMinor` falls back to taka when it is not told,
+                         which printed ৳ on a dollar card's limit — and on every
+                         card in a workspace that does not keep its books in
+                         taka at all. */
                       <span className="text-ink-muted block truncate text-xs">
-                        {t('account.limit', 'লিমিট')} {formatMinor(account.creditLimitMinor)} ·{' '}
-                        {t('account.drawn', 'খরচ')} {formatMinor(account.drawnMinor)} ·{' '}
+                        {t('account.limit', 'লিমিট')}{' '}
+                        {formatMinor(account.creditLimitMinor, { currency: account.currency })} ·{' '}
+                        {t('account.drawn', 'খরচ')}{' '}
+                        {formatMinor(account.drawnMinor, { currency: account.currency })} ·{' '}
                         <span className="text-income">
-                          {t('account.undrawn', 'বাকি')} {formatMinor(account.undrawnMinor)}
+                          {t('account.undrawn', 'বাকি')}{' '}
+                          {formatMinor(account.undrawnMinor, { currency: account.currency })}
                         </span>
                       </span>
                     ) : null}
                   </span>
                   <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
                 </button>
-                <Money minor={account.balanceMinor} className="amount-col shrink-0 pl-2 text-sm" />
+                {/* In its own money, with the ISO code spelled out beside it.
+                    The symbol alone is not enough: `$` is a dozen currencies
+                    and `¥` is two, so a bare `$500.00` on a screen whose totals
+                    are in taka is exactly the ambiguity that has to go. */}
+                {group === 'foreign' ? (
+                  <span className="amount-col shrink-0 pl-2 text-sm">
+                    <Money minor={account.balanceMinor} currency={account.currency} />
+                    <span className="text-ink-muted ml-1 text-xs">
+                      {account.currency.toUpperCase()}
+                    </span>
+                  </span>
+                ) : (
+                  <Money
+                    minor={account.balanceMinor}
+                    className="amount-col shrink-0 pl-2 text-sm"
+                  />
+                )}
                 {account.dueDayOfMonth ? (
                   <button
                     type="button"
@@ -482,7 +596,15 @@ export default function AccountsPage() {
                       <span className="text-ink min-w-0 flex-1 truncate text-sm">
                         {account.name}
                       </span>
-                      <Money minor={account.balanceMinor} className="shrink-0 text-sm" />
+                      {/* Its own money here too. An archived account is out of
+                          every total by definition, so there is nothing to
+                          exclude it from — but printing a dollar balance with a
+                          ৳ in front of it would still be a lie. */}
+                      <Money
+                        minor={account.balanceMinor}
+                        currency={account.currency}
+                        className="shrink-0 text-sm"
+                      />
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-ink-muted min-w-0 truncate text-xs">

@@ -19,7 +19,11 @@ import type { AccountType } from '@hishab/shared';
  * - **Investing** — turning money into something that is still yours. Buying
  *   land or gold, paying into a DPS, and the reverse when either is sold.
  * - **Financing** — money that is somebody else's, or owed to you. Borrowing,
- *   repaying, lending, being repaid, and settling a shared bill.
+ *   repaying, lending, being repaid, and settling a shared bill. Also cash that
+ *   appears against the household's own equity — an opening figure entered as a
+ *   dated transaction, or the difference a bank reconciliation books — which is
+ *   where IAS 7.17 puts cash arising from equity, and which has to be in a
+ *   section somewhere because the closing balance already contains it.
  *
  * ## Why it is decided by the *other* account, not by the transaction type
  *
@@ -59,10 +63,26 @@ export function cashFlowSection(
   if (LIQUID.has(counterType)) return 'INTERNAL';
 
   if (systemRole === 'INCOME' || systemRole === 'EXPENSE') return 'OPERATING';
-  /* Opening balances and reconciliation differences. The money was already
-     there; saying it "flowed in" would make the first month of every workspace
-     look like a windfall. */
-  if (systemRole === 'EQUITY') return 'INTERNAL';
+  /* Opening balances and reconciliation differences, booked against the
+     workspace's equity account.
+
+     These used to be INTERNAL, on the reading that the money "was already
+     there" and calling it an inflow would make month one look like a windfall.
+     That reading is right about what the money *is* and wrong about where the
+     statement can put it: the closing balance already contains it, because
+     closing is what the accounts actually hold. Filing it under nothing does
+     not make it disappear — it makes `opening + the three sections` miss
+     `closing` by exactly that amount, which is the failure `assertReconciles`
+     now catches, and it was reachable from the reconcile button on any cash or
+     bank account.
+
+     So it has to go somewhere, and financing is where IAS 7.17 puts cash
+     arising from equity. It is also the least misleading of the three for a
+     reader: operating is the line a lender reads as "does this household live
+     within its means", and an opening balance or a found difference is not
+     earning. Financing says the money came from outside the household's
+     income, which is the honest summary of both. */
+  if (systemRole === 'EQUITY') return 'FINANCING';
 
   switch (counterType) {
     /* Money owed in either direction — lending, borrowing, repaying, and
@@ -82,9 +102,10 @@ export function cashFlowSection(
       return 'INVESTING';
 
     /* An equity account reached without a system role — a workspace's own
-       capital line. Not a flow. */
+       capital line. Same substance as the system equity account above, and it
+       moves real cash, so it is financing for the same reason. */
     case 'EQUITY':
-      return 'INTERNAL';
+      return 'FINANCING';
 
     default:
       /* Anything unclassified goes to operating rather than being dropped. A
@@ -104,10 +125,21 @@ export interface CashFlowSectionTotals {
 export interface SectionedCashFlow extends CashFlowSectionTotals {
   openingMinor: number;
   closingMinor: number;
-  /** Operating + investing + financing. Equals closing − opening, always. */
+  /** Operating + investing + financing. Equals closing − opening when it holds. */
   netMinor: number;
   inflowMinor: number;
   outflowMinor: number;
+  /** `opening + netMinor === closing`. The statement's own verdict on itself. */
+  reconciled: boolean;
+  /**
+   * `closing − (opening + netMinor)`: the movement the sections fail to explain,
+   * in poisha, signed. Zero exactly when `reconciled`.
+   *
+   * Published rather than only asserted, because the number is the diagnosis. A
+   * discrepancy equal to one transaction's amount is a movement filed into no
+   * section; one equal to twice an amount is one counted on both sides.
+   */
+  discrepancyMinor: number;
 }
 
 /**
@@ -116,8 +148,13 @@ export interface SectionedCashFlow extends CashFlowSectionTotals {
  * The check is the point of the whole thing: opening plus the three sections has
  * to equal the closing balance of every liquid account. If it does not, a
  * movement was classified into nothing or counted twice, and the statement is
- * arithmetic rather than a report. `assertReconciles` throws in that case rather
- * than shipping a plausible-looking page.
+ * arithmetic rather than a report.
+ *
+ * The verdict travels on the object rather than being left to a caller to
+ * remember, because that is precisely what the caller did not do: both this
+ * function and `assertReconciles` sat unreferenced while the service assembled
+ * the same three sections by hand and a comment claimed the check was running.
+ * A field cannot be forgotten the way a function call can.
  */
 export function buildSectionedCashFlow(input: {
   openingMinor: number;
@@ -129,6 +166,7 @@ export function buildSectionedCashFlow(input: {
   outflowMinor: number;
 }): SectionedCashFlow {
   const netMinor = input.operatingMinor + input.investingMinor + input.financingMinor;
+  const discrepancyMinor = input.closingMinor - (input.openingMinor + netMinor);
   return {
     openingMinor: input.openingMinor,
     closingMinor: input.closingMinor,
@@ -138,10 +176,18 @@ export function buildSectionedCashFlow(input: {
     netMinor,
     inflowMinor: input.inflowMinor,
     outflowMinor: input.outflowMinor,
+    /* Integer poisha on both sides, so exact equality is the right test — there
+       is no tolerance to argue about, and a one-poisha drift is a real defect
+       rather than floating-point noise. */
+    reconciled: discrepancyMinor === 0,
+    discrepancyMinor,
   };
 }
 
 export class CashFlowReconciliationError extends Error {
+  /** `expected − actual`, the same signed figure as `SectionedCashFlow`. */
+  readonly discrepancyMinor: number;
+
   constructor(
     readonly expectedMinor: number,
     readonly actualMinor: number,
@@ -150,12 +196,20 @@ export class CashFlowReconciliationError extends Error {
       `Cash flow does not reconcile: opening + sections = ${actualMinor}, closing = ${expectedMinor}`,
     );
     this.name = 'CashFlowReconciliationError';
+    this.discrepancyMinor = expectedMinor - actualMinor;
   }
 }
 
+/**
+ * Throw unless the statement adds up.
+ *
+ * Callers that would rather not throw read `flow.reconciled` instead; the two
+ * agree by construction, because both read the same field. See the failure
+ * policy in `ReportsService.cashFlow` for why the API does one in development
+ * and the other in production.
+ */
 export function assertReconciles(flow: SectionedCashFlow): void {
-  const reached = flow.openingMinor + flow.netMinor;
-  if (reached !== flow.closingMinor) {
-    throw new CashFlowReconciliationError(flow.closingMinor, reached);
+  if (!flow.reconciled) {
+    throw new CashFlowReconciliationError(flow.closingMinor, flow.openingMinor + flow.netMinor);
   }
 }

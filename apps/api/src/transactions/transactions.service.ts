@@ -910,7 +910,34 @@ export class TransactionsService {
     return { delta, transaction: this.present(created, ctx) };
   }
 
-  /** Month totals for the dashboard. */
+  /**
+   * Month totals for the dashboard.
+   *
+   * ## Where the foreign-currency fence stops
+   *
+   * `AccountsService.position` leaves accounts in another currency out of the
+   * *balance* figures, because adding $500 to a taka net worth as ৳500 is a
+   * silent invention of a 1.00 rate. This month total is not fenced, and the
+   * distinction is worth stating rather than leaving as an oversight.
+   *
+   * It sums entries on the two nominal accounts, not account balances, and the
+   * design those entries were written under is a single-currency ledger:
+   * `expandSimpleTransaction` books every leg in the workspace's currency, and
+   * a transaction whose money was originally something else records the
+   * original as `Transaction.fxCurrency` / `fxAmountMinor` beside an
+   * `amountMinor` the user already converted — the spot-rate-on-the-day
+   * treatment IAS 21.21 asks for, done at entry time by the person who knows
+   * the rate they got.
+   *
+   * A foreign-currency *account* sits outside that design: its entries
+   * accumulate in its own money, so a $50 grocery bill lands in this month's
+   * খরচ as 5,000 minor units beside taka ones. Fixing that is not a `where`
+   * clause — it needs an answer to what "this month's expense" even means when
+   * part of it is in dollars, which is the retranslation work (IAS 21.23(a),
+   * IAS 21.28) this change deliberately is not. Until then the balance figures
+   * are honest about their scope and this one is not, and a reader of either
+   * should know which they are holding.
+   */
   async summary(
     ctx: TenantContext,
     from: Date,

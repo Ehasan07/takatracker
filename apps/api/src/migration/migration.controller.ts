@@ -82,6 +82,19 @@ const applySchema = z.object({
 });
 export type ApplyInput = z.infer<typeof applySchema>;
 
+/**
+ * One page of history.
+ *
+ * `offset` is the other product's own bookmark handed straight back, never a
+ * row count of ours — the client sends what the last page returned and nothing
+ * else. Absent means start at the beginning.
+ */
+const recordsSchema = z.object({
+  token: z.string().min(20).max(4000),
+  offset: z.number().int().min(0).max(10_000_000).optional(),
+});
+export type RecordsInput = z.infer<typeof recordsSchema>;
+
 const csvSchema = z.object({
   /* Two hundred rows of Bengali names with a BOM. A megabyte is far more than
      that and far less than something worth streaming. */
@@ -193,6 +206,38 @@ export class MigrationController {
     @Body(zodPipe(applySchema)) body: ApplyInput,
   ) {
     return this.migration.apply(user.workspaceId, user.id, id, user.timezone, body.itemIds);
+  }
+
+  /**
+   * The records, one page per request.
+   *
+   * Behind the allowlist for the same reason the pull is: it takes a live
+   * credential to somebody's other finance app.
+   *
+   * One page, never the lot. 9,625 rows in one request is a request that can
+   * time out mid-write, and a half-written ledger nobody can describe is the
+   * worst thing this feature could produce. The screen loops on `nextOffset`
+   * and shows the count as it goes.
+   */
+  @Post('batches/:id/records')
+  @UseGuards(MigrationAccessGuard)
+  @HttpCode(200)
+  records(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(recordsSchema)) body: RecordsInput,
+  ) {
+    return this.migration.importRecords(
+      {
+        workspaceId: user.workspaceId,
+        userId: user.id,
+        timezone: user.timezone,
+        currency: user.currency,
+      },
+      id,
+      body.token,
+      body.offset ?? 0,
+    );
   }
 
   @Post('batches/:id/rollback')

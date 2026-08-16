@@ -169,6 +169,44 @@ describe('reports', () => {
     expect(JSON.stringify(res.body)).not.toContain('SYSTEM_');
   });
 
+  it('says what basis it is prepared on, and that depreciation is not tracked', async () => {
+    /* The screen prints a basis-of-preparation block; this is the same fact for
+       whoever has the JSON and no screen. A statement that does not say what
+       basis it is on cannot be checked, and a reader who knows business
+       accounting sees a car at what it cost and assumes somebody forgot to
+       depreciate it — so the policy is stated rather than left to be guessed. */
+    const res = await get('/v1/reports/balance-sheet').expect(200);
+    expect(res.body.basis).toBe('CASH');
+    expect(res.body.notes.some((n: string) => n.includes('অবচয়'))).toBe(true);
+
+    // Every shape this endpoint returns, not only the undated one.
+    const dated = await get(`/v1/reports/balance-sheet?asOf=${day('28')}`).expect(200);
+    expect(dated.body.basis).toBe('CASH');
+    expect(dated.body.notes).toHaveLength(res.body.notes.length);
+
+    const compared = await get(
+      `/v1/reports/balance-sheet?asOf=${day('28')}&compareTo=${day('01')}`,
+    ).expect(200);
+    expect(compared.body.basis).toBe('CASH');
+    expect(compared.body.comparison).toBeDefined();
+  });
+
+  it('states the same basis on all four statements', async () => {
+    /* One literal, four statements. Two of them used to carry it and two did
+       not, which is the version of "stated" that lets a consumer read a balance
+       sheet and never learn what it is. */
+    const [sheet, cash, income, netWorth] = await Promise.all([
+      get('/v1/reports/balance-sheet').expect(200),
+      get('/v1/reports/cash-flow').expect(200),
+      get('/v1/reports/income-statement').expect(200),
+      get('/v1/reports/net-worth-changes').expect(200),
+    ]);
+
+    for (const res of [sheet, cash, income, netWorth]) {
+      expect(res.body.basis).toBe('CASH');
+    }
+  });
+
   it('gives the dashboard the same two figures the balance sheet does', async () => {
     /* The dashboard used to add up `GET /accounts` and call it "মোট ব্যালেন্স".
        That summed a ৳500,000 plot of land with ৳3,600 of cash — telling
@@ -228,6 +266,17 @@ describe('reports', () => {
         res.body.investingMinor +
         res.body.financingMinor,
     ).toBe(res.body.closingMinor);
+  });
+
+  it('publishes its own verdict on whether it reconciles', async () => {
+    /* The server does the check and says so, rather than leaving every client
+       to redo the arithmetic — and one day to redo it differently. Present on
+       a healthy statement too: a field that only appears when things are broken
+       is a field no client remembers to read. */
+    const res = await get('/v1/reports/cash-flow').expect(200);
+    expect(res.body.reconciled).toBe(true);
+    expect(res.body.discrepancyMinor).toBe(0);
+    expect(res.body.basis).toBe('CASH');
   });
 
   it('files buying land as investing, not as spending', async () => {
@@ -565,5 +614,151 @@ describe('quantity reporting', () => {
       .set(auth(user))
       .send({ ...base, quantityUnit: 'কেজি' })
       .expect(400);
+  });
+});
+
+/**
+ * The reconciliation guard, against the movement that used to defeat it.
+ *
+ * Its own workspace, for the same reason quantities have one: this suite books
+ * an adjustment and an opening-balance entry, and either would move every total
+ * the fixture above asserts.
+ */
+describe('a cash flow that has to add up', () => {
+  let ctx: TestContext;
+  let user: SignedUpUser;
+  let cashId: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+    user = await signup(ctx);
+
+    const cash = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'নগদ', type: 'CASH', openingBalance: 1_000_000 })
+      .expect(201);
+    cashId = cash.body.id;
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  const flow = async () =>
+    (await ctx.http().get('/v1/reports/cash-flow').set(auth(user)).expect(200)).body;
+
+  const reconciles = (body: {
+    openingMinor: number;
+    operatingMinor: number;
+    investingMinor: number;
+    financingMinor: number;
+    closingMinor: number;
+  }) =>
+    body.openingMinor + body.operatingMinor + body.investingMinor + body.financingMinor ===
+    body.closingMinor;
+
+  it('keeps a reconciliation adjustment in the statement instead of losing it', async () => {
+    /* The defect the guard was written for, reached from a button any user can
+       press. `POST /accounts/:id/reconcile` books the difference against the
+       workspace's equity account; equity movements used to be filed as
+       INTERNAL, so ৳500 landed in the closing balance and in no section, and
+       every line of the statement still looked plausible.
+
+       Financing rather than operating: IAS 7.17 puts cash arising from equity
+       there, and operating is the line a lender reads as "does this household
+       live within its means" — a found difference is not earning. */
+    await ctx
+      .http()
+      .post(`/v1/accounts/${cashId}/reconcile`)
+      .set(auth(user))
+      .send({ date: day('10'), actualBalanceMinor: 1_050_000 })
+      .expect(201);
+
+    const body = await flow();
+    expect(body.financingMinor).toBe(50_000);
+    expect(body.closingMinor).toBe(1_050_000);
+    expect(body.reconciled).toBe(true);
+    expect(body.discrepancyMinor).toBe(0);
+    expect(reconciles(body)).toBe(true);
+  });
+
+  it('keeps an opening-balance entry dated inside the period in the statement', async () => {
+    /* The other equity movement a real workspace produces: an opening figure
+       entered as a dated transaction rather than as the account's opening
+       balance. The money was arguably always there, but the *period* did not
+       start with it — `openingMinor` is the liquid position the day before the
+       window — so the statement has to explain where it came from or fail to
+       add up. */
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: day('11'),
+        type: 'OPENING_BALANCE',
+        amountMinor: 200_000,
+        accountId: cashId,
+        description: 'প্রারম্ভিক জের',
+      })
+      .expect(201);
+
+    const body = await flow();
+    expect(body.financingMinor).toBe(250_000);
+    expect(body.closingMinor).toBe(1_250_000);
+    expect(body.reconciled).toBe(true);
+    expect(reconciles(body)).toBe(true);
+  });
+
+  it('still reconciles with all three sections in play', async () => {
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const salary = cats.body.find((c: { nameBn: string }) => c.nameBn === 'বেতন').id;
+
+    const gold = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name: 'স্বর্ণ', type: 'ASSET', openingBalance: 0 })
+      .expect(201);
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: day('12'),
+        type: 'INCOME',
+        amountMinor: 3_000_000,
+        accountId: cashId,
+        categoryId: salary,
+      })
+      .expect(201);
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: day('13'),
+        type: 'TRANSFER',
+        amountMinor: 800_000,
+        accountId: cashId,
+        counterAccountId: gold.body.id,
+      })
+      .expect(201);
+
+    const body = await flow();
+    expect(body.operatingMinor).toBe(3_000_000);
+    expect(body.investingMinor).toBe(-800_000);
+    expect(body.financingMinor).toBe(250_000);
+    expect(body.closingMinor).toBe(3_450_000);
+    expect(body.reconciled).toBe(true);
+    expect(reconciles(body)).toBe(true);
+
+    // And the closing figure is still the liquid balance the accounts hold.
+    const sheet = await ctx.http().get('/v1/reports/balance-sheet').set(auth(user)).expect(200);
+    expect(sheet.body.liquidMinor).toBe(body.closingMinor);
   });
 });
