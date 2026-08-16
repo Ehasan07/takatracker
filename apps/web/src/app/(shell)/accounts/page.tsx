@@ -18,7 +18,7 @@ import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Select } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SkeletonRows } from '@/components/skeleton';
 import { api, ApiError, endpoints, FeatureLimitError, type AccountDto } from '@/lib/api';
@@ -757,6 +757,7 @@ interface AccountForm {
   type: string;
   opening: string;
   institution: string;
+  note: string;
   masked: string;
   hints: string;
   icon: string;
@@ -780,6 +781,7 @@ const toForm = (a: AccountDto | null): AccountForm => ({
      an empty field does not also demand a date before it can be saved. */
   openingDate: a?.openingBalanceDate ?? toLocalDateString(new Date()),
   institution: a?.institution ?? '',
+  note: a?.note ?? '',
   masked: a?.accountNumberMasked ?? '',
   hints: (a?.matchHints ?? []).join(', '),
   icon: a?.icon ?? '',
@@ -813,6 +815,7 @@ function accountPatch(
        refuses. */
     openingBalanceDate: openingBalance === 0 ? undefined : form.openingDate,
     institution: form.institution.trim(),
+    note: form.note.trim(),
     accountNumberMasked: form.masked.trim(),
     matchHints: form.hints
       .split(',')
@@ -838,6 +841,7 @@ function accountPatch(
     openingBalanceDate:
       account.openingBalance === 0 ? undefined : (account.openingBalanceDate ?? undefined),
     institution: account.institution ?? '',
+    note: account.note ?? '',
     accountNumberMasked: account.accountNumberMasked ?? '',
     matchHints: account.matchHints,
     icon: account.icon ?? '',
@@ -1173,6 +1177,26 @@ function EditAccountSheet({
           />
         </Field>
 
+        {/* Last, and deliberately so: it is the field somebody reaches for once
+            the structured ones have failed to hold what they needed to keep.
+            Without it the branch and the nominee end up in the account's name. */}
+        <Field label={t('account.note', 'নোট')} htmlFor="edit-acc-note">
+          <Textarea
+            id="edit-acc-note"
+            value={form.note}
+            onChange={set('note')}
+            rows={3}
+            maxLength={2000}
+            placeholder={t(
+              'account.notePlaceholder',
+              'যেমন: গুলশান শাখা, নমিনি — আম্মু, চেকবই ৪৫০১–৪৫৫০',
+            )}
+          />
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('account.noteHint', 'শাখা, নমিনি, চেকবই — যা মনে রাখা দরকার।')}
+          </p>
+        </Field>
+
         {refusal ? (
           <div
             role="alert"
@@ -1240,6 +1264,8 @@ function AddAccountSheet({
   const [openingDate, setOpeningDate] = React.useState(() => toLocalDateString(new Date()));
   const [dueDay, setDueDay] = React.useState('');
   const [creditLimit, setCreditLimit] = React.useState('');
+  /** Branch, nominee, cheque book — the field that catches everything else. */
+  const [note, setNote] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   const save = useMutation({
@@ -1258,6 +1284,7 @@ function AddAccountSheet({
             type === 'CREDIT_CARD' && creditLimit.trim()
               ? parseMoneyToMinor(creditLimit, currency)
               : undefined,
+          note: note.trim() || undefined,
         },
       }),
     onSuccess: () => {
@@ -1265,6 +1292,7 @@ function AddAccountSheet({
       setOpeningBalance('');
       setOpeningDate(toLocalDateString(new Date()));
       setDueDay('');
+      setNote('');
       onSaved();
       onOpenChange(false);
     },
@@ -1389,6 +1417,26 @@ function AddAccountSheet({
             {error}
           </p>
         ) : null}
+        {/* Last, and deliberately so: it is the field somebody reaches for once
+            the structured ones have failed to hold what they needed to keep.
+            Without it the branch and the nominee end up in the account's name. */}
+        <Field label={t('account.note', 'নোট')} htmlFor="acc-note">
+          <Textarea
+            id="acc-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            placeholder={t(
+              'account.notePlaceholder',
+              'যেমন: গুলশান শাখা, নমিনি — আম্মু, চেকবই ৪৫০১–৪৫৫০',
+            )}
+          />
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('account.noteHint', 'শাখা, নমিনি, চেকবই — যা মনে রাখা দরকার।')}
+          </p>
+        </Field>
+
         <Button type="submit" size="block" disabled={save.isPending}>
           সংরক্ষণ করুন
         </Button>

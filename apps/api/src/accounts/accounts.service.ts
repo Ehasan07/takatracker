@@ -94,6 +94,8 @@ export interface AccountWithBalance {
   openingBalanceDate: string | null;
   balanceMinor: number;
   institution: string | null;
+  /** Free text: branch, nominee, whoever else can sign. */
+  note: string | null;
   accountNumberMasked: string | null;
   matchHints: string[];
   isArchived: boolean;
@@ -512,6 +514,7 @@ export class AccountsService {
       openingBalanceDate: opening ? toLocalDateString(opening.date, timezone) : null,
       balanceMinor,
       institution: a.institution,
+      note: a.note,
       accountNumberMasked: a.accountNumberMasked,
       matchHints: a.matchHints,
       isArchived: a.isArchived,
@@ -741,6 +744,7 @@ export class AccountsService {
         type: input.type,
         currency: input.currency,
         institution: input.institution,
+        note: input.note,
         accountNumberMasked: input.accountNumberMasked,
         matchHints: input.matchHints,
         icon: input.icon,
@@ -856,6 +860,7 @@ export class AccountsService {
         type: input.type,
         currency: input.currency,
         institution: input.institution,
+        note: input.note,
         accountNumberMasked: input.accountNumberMasked,
         matchHints: input.matchHints,
         icon: input.icon,

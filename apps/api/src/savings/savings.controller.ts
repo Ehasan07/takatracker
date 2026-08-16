@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { cuid, isoDate, minorAmount } from '@hishab/shared';
+import { cuid, isoDate, minorAmount, positiveMinorAmount } from '@hishab/shared';
 import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -71,6 +71,43 @@ const payInstallmentSchema = z.object({
 });
 export type PayInstallmentInput = z.infer<typeof payInstallmentSchema>;
 
+/**
+ * Profit arrived — the monthly or quarterly payout on a Sanchayapatra, or the
+ * excess a DPS pays at maturity.
+ *
+ * Only what the bank actually credited. The projection on the plan is what it
+ * *should* yield; source tax and excise duty come off before the money lands,
+ * so booking the projection would file a figure that never existed. Same rule
+ * as the renewal fee.
+ */
+const recordProfitSchema = z.object({
+  amountMinor: positiveMinorAmount,
+  /** Where the profit landed — the bank account, the savings account, cash. */
+  accountId: cuid,
+  /** Required: income filed under nothing is invisible on every report. */
+  categoryId: cuid,
+  /** Defaults to today. Backdating is how a year of quarterly payouts is caught up. */
+  date: isoDate.optional(),
+});
+export type RecordProfitInput = z.infer<typeof recordProfitSchema>;
+
+/**
+ * Maturity: the money leaves the savings account and comes home.
+ *
+ * A transfer, deliberately — see `SavingsService.mature`. The profit is booked
+ * separately and before this, through `POST :id/profit`.
+ */
+const matureSchema = z.object({
+  /** The account the savings money has been sitting in. */
+  fromAccountId: cuid,
+  /** Where it goes — the current account, the wallet, cash. */
+  toAccountId: cuid,
+  /** The whole balance, when the intent is to empty it. Always confirmed. */
+  amountMinor: positiveMinorAmount,
+  date: isoDate.optional(),
+});
+export type MatureInput = z.infer<typeof matureSchema>;
+
 @Controller('savings')
 @UseGuards(JwtAuthGuard)
 export class SavingsController {
@@ -119,6 +156,27 @@ export class SavingsController {
       body,
       user.timezone,
     );
+  }
+
+  /** The whole `user`: `TransactionsService.create` wants a `TenantContext`. */
+  @Post(':id/profit')
+  @HttpCode(201)
+  recordProfit(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(recordProfitSchema)) body: RecordProfitInput,
+  ) {
+    return this.savings.recordProfit(user, id, body);
+  }
+
+  @Post(':id/mature')
+  @HttpCode(200)
+  mature(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(zodPipe(matureSchema)) body: MatureInput,
+  ) {
+    return this.savings.mature(user, id, body);
   }
 
   @Delete(':id')

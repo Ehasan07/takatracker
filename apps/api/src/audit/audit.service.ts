@@ -120,6 +120,10 @@ export const AUDIT_ACTIONS = [
   'savings.plan_updated',
   'savings.plan_deleted',
   'savings.installment_paid',
+  /** Profit arrived on a DPS, FDR or Sanchayapatra and was booked as income. */
+  'savings.profit_recorded',
+  /** A DPS or FDR reached maturity and its balance was moved home. */
+  'savings.matured',
   'insurance.policy_created',
   'insurance.policy_updated',
   'insurance.policy_deleted',

@@ -244,8 +244,50 @@ export class CategoriesService {
   ): Promise<CategoryView> {
     const existing = await this.prisma.category.findFirst({
       where: { id, workspaceId, deletedAt: null },
+      include: { _count: { select: { entries: true, children: true, sharedExpenses: true } } },
     });
     if (!existing) throw new NotFoundException('ক্যাটাগরি পাওয়া যায়নি');
+
+    /**
+     * Flipping income ↔ expense, but only while the খাত is still empty.
+     *
+     * This used to be refused outright, and the reason was sound: a খাত with
+     * history behind it cannot change sides, because every transaction filed
+     * under it was booked with a direction. Calling an expense head "income"
+     * afterwards does not turn money that left the account into money that
+     * arrived — it just makes the ledger disagree with its own labels.
+     *
+     * What the blanket refusal missed is the case that actually happens. An
+     * import puts a few income heads on the expense side, the mistake is
+     * noticed before anything is filed under them, and there is nothing to
+     * invert because there is nothing there. Deleting and recreating was the
+     * only route, which loses the search words and the English name.
+     *
+     * So: empty means free to flip, used means refused with the count. The
+     * count is the same one `remove` refuses on, plus the split rows that point
+     * at the same table, and it deliberately includes soft-deleted
+     * transactions — those can be restored, and restoring one into a খাত that
+     * changed sides underneath it is the very inversion this guards against.
+     */
+    const flipping = input.kind !== undefined && input.kind !== existing.kind;
+    if (flipping) {
+      const used = existing._count.entries + existing._count.sharedExpenses;
+      if (used > 0) {
+        throw new BadRequestException(
+          `এই খাতে ${toBengaliDigits(String(used))}টি লেনদেন আছে, তাই আয় ↔ খরচ বদলানো যাবে না — আগে সেগুলো অন্য খাতে সরান`,
+        );
+      }
+      if (existing._count.children > 0) {
+        throw new BadRequestException(
+          'এই খাতের নিচে উপ-খাত আছে — আগে সেগুলো সরান, নয়তো উপ-খাতগুলো ভুল দিকে থেকে যাবে',
+        );
+      }
+    }
+
+    /* Everything below reads the kind the row will have when this call ends,
+       not the one it arrived with: a flip changes which parents are legal and
+       which names are already taken. */
+    const nextKind = flipping ? input.kind! : existing.kind;
 
     /**
      * Re-parenting: promote a sub-category to the top, or move it under a
@@ -260,9 +302,17 @@ export class CategoriesService {
      * `resolveParent` enforces the two rules that were always true of creation:
      * the parent must be the same kind, and it must not itself be a child.
      */
-    const movingParent = input.parentId !== undefined;
+    /* A flip always resettles the parent, because the old one is on the side
+       the row is leaving. `parentId` in the same request says where it lands;
+       without one it goes to the top, which is the only other place a খাত can
+       legally be. Silently keeping a parent of the wrong kind would put an
+       income head inside an expense head — the exact mess this call exists to
+       undo. */
+    const movingParent = input.parentId !== undefined || flipping;
+    const requestedParentId =
+      input.parentId !== undefined ? input.parentId : flipping ? null : undefined;
     const nextParentId = movingParent
-      ? await this.resolveParent(workspaceId, existing.kind, input.parentId)
+      ? await this.resolveParent(workspaceId, nextKind, requestedParentId)
       : existing.parentId;
 
     if (movingParent && nextParentId !== existing.parentId) {
@@ -287,10 +337,10 @@ export class CategoriesService {
        under `ইউটিলিটি`. */
     const nextName = input.nameBn ?? input.name;
     const renaming = Boolean(nextName) && nextName !== (existing.nameBn ?? existing.name);
-    if (renaming || (movingParent && nextParentId !== existing.parentId)) {
+    if (renaming || flipping || (movingParent && nextParentId !== existing.parentId)) {
       await this.assertNameFree(
         workspaceId,
-        existing.kind,
+        nextKind,
         nextName ?? existing.nameBn ?? existing.name,
         id,
         nextParentId,
@@ -312,8 +362,7 @@ export class CategoriesService {
         sortOrder: input.sortOrder,
         ...(aliases === undefined ? {} : { searchAliases: aliases }),
         ...(movingParent ? { parentId: nextParentId } : {}),
-        // The kind is deliberately fixed: flipping a category from expense to
-        // income would silently invert every transaction already filed under it.
+        ...(flipping ? { kind: nextKind } : {}),
       },
     });
 
@@ -327,11 +376,15 @@ export class CategoriesService {
         name: existing.nameBn ?? existing.name,
         ...(aliases === undefined ? {} : { searchAliases: existing.searchAliases }),
         ...(movingParent ? { parentId: existing.parentId } : {}),
+        /* Always on the record when it happens. Which side of the ledger a খাত
+           sits on is the one property here that changes what a report says. */
+        ...(flipping ? { kind: existing.kind } : {}),
       },
       after: {
         name: nextName ?? existing.nameBn ?? existing.name,
         ...(aliases === undefined ? {} : { searchAliases: aliases }),
         ...(movingParent ? { parentId: nextParentId } : {}),
+        ...(flipping ? { kind: nextKind } : {}),
       },
     });
 
@@ -355,7 +408,7 @@ export class CategoriesService {
 
     if (existing._count.entries > 0) {
       throw new BadRequestException(
-        `এই ক্যাটাগরিতে ${existing._count.entries}টি লেনদেন আছে — আগে সেগুলো অন্য ক্যাটাগরিতে সরান`,
+        `এই ক্যাটাগরিতে ${toBengaliDigits(String(existing._count.entries))}টি লেনদেন আছে — আগে সেগুলো অন্য ক্যাটাগরিতে সরান`,
       );
     }
     if (existing._count.children > 0) {

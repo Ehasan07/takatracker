@@ -372,3 +372,246 @@ describe('savings', () => {
     expect(events.map((e) => e.action)).toEqual(['savings.plan_created', 'savings.plan_deleted']);
   });
 });
+
+/**
+ * Profit: what the instrument actually paid, and which instrument paid it.
+ *
+ * The question behind all of this is "how much did this Sanchayapatra earn me
+ * this year". Before `Transaction.savingsPlanId` the ledger knew that money
+ * arrived and nothing about where from, so the question had no answer at all.
+ */
+describe('savings profit', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  type User = Awaited<ReturnType<typeof signup>>;
+
+  const plan = (user: User, planName = 'পরিবার সঞ্চয়পত্র') =>
+    ctx
+      .http()
+      .post('/v1/savings')
+      .set(auth(user))
+      .send({
+        planName,
+        planType: 'SANCHAYPATRA',
+        principalMinor: 50_000_000,
+        frequency: 'MONTHLY',
+        termMonths: 60,
+        startDate: '2026-01-15',
+        profitRateBps: 1104,
+        profitCalc: 'SIMPLE',
+      })
+      .expect(201)
+      .then((res) => res.body as { id: string });
+
+  const bank = (user: User, name = 'সিটি ব্যাংক') =>
+    ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name, type: 'BANK' })
+      .expect(201)
+      .then((res) => res.body as { id: string; balanceMinor: number });
+
+  const incomeCategory = async (user: User): Promise<string> => {
+    const res = await ctx.http().get('/v1/categories?kind=INCOME').set(auth(user)).expect(200);
+    const rows = res.body as { id: string }[];
+    if (rows.length === 0) throw new Error('no seeded income categories');
+    return rows[0]!.id;
+  };
+
+  const recordProfit = async (user: User, planId: string, amountMinor: number, date?: string) => {
+    const accounts = (await ctx.http().get('/v1/accounts').set(auth(user)).expect(200)).body as {
+      id: string;
+      systemKey: string | null;
+      type: string;
+    }[];
+    const account = accounts.find((a) => a.type === 'BANK');
+    if (!account) throw new Error('no bank account');
+    return ctx
+      .http()
+      .post(`/v1/savings/${planId}/profit`)
+      .set(auth(user))
+      .send({ amountMinor, accountId: account.id, categoryId: await incomeCategory(user), date });
+  };
+
+  it('puts the profit in the account and remembers which instrument paid it', async () => {
+    const user = await signup(ctx);
+    const account = await bank(user);
+    const saved = await plan(user);
+
+    const res = await recordProfit(user, saved.id, 276_000, '2026-04-15');
+    expect(res.status).toBe(201);
+    expect(res.body.amountMinor).toBe(276_000);
+    expect(res.body.totalProfitMinor).toBe(276_000);
+
+    // The money is really in the account, not merely recorded against the plan.
+    const after = (await ctx.http().get('/v1/accounts').set(auth(user)).expect(200)).body as {
+      id: string;
+      balanceMinor: number;
+    }[];
+    expect(after.find((a) => a.id === account.id)?.balanceMinor).toBe(276_000);
+
+    // And the row names the instrument, which is the whole point.
+    const tx = await ctx.prisma.transaction.findUnique({ where: { id: res.body.transactionId } });
+    expect(tx?.savingsPlanId).toBe(saved.id);
+    expect(tx?.type).toBe('INCOME');
+  });
+
+  it('adds up a year of quarterly payouts against the one certificate', async () => {
+    const user = await signup(ctx);
+    await bank(user);
+    const saved = await plan(user);
+
+    for (const [amount, date] of [
+      [276_000, '2026-04-15'],
+      [276_000, '2026-07-15'],
+      [280_000, '2026-10-15'],
+    ] as const) {
+      await recordProfit(user, saved.id, amount, date);
+    }
+
+    const detail = (await ctx.http().get(`/v1/savings/${saved.id}`).set(auth(user)).expect(200))
+      .body as { profitReceivedMinor: number };
+    expect(detail.profitReceivedMinor).toBe(832_000);
+  });
+
+  it('keeps two certificates apart', async () => {
+    const user = await signup(ctx);
+    await bank(user);
+    const first = await plan(user, 'পরিবার সঞ্চয়পত্র');
+    const second = await plan(user, 'পেনশনার সঞ্চয়পত্র');
+
+    await recordProfit(user, first.id, 100_000, '2026-04-15');
+    await recordProfit(user, second.id, 250_000, '2026-04-15');
+
+    const list = (await ctx.http().get('/v1/savings').set(auth(user)).expect(200)).body as {
+      id: string;
+      profitReceivedMinor: number;
+    }[];
+    expect(list.find((p) => p.id === first.id)?.profitReceivedMinor).toBe(100_000);
+    expect(list.find((p) => p.id === second.id)?.profitReceivedMinor).toBe(250_000);
+  });
+
+  it('does not count a deleted profit row', async () => {
+    const user = await signup(ctx);
+    await bank(user);
+    const saved = await plan(user);
+
+    const res = await recordProfit(user, saved.id, 276_000, '2026-04-15');
+    await ctx
+      .http()
+      .delete(`/v1/transactions/${res.body.transactionId}`)
+      .set(auth(user))
+      .expect(200);
+
+    /* A binned transaction is money that did not arrive. Summing off the ledger
+       rather than off a column on the plan is what makes this true without any
+       extra bookkeeping. */
+    const detail = (await ctx.http().get(`/v1/savings/${saved.id}`).set(auth(user)).expect(200))
+      .body as { profitReceivedMinor: number };
+    expect(detail.profitReceivedMinor).toBe(0);
+  });
+
+  it('refuses a plan belonging to somebody else, and books nothing', async () => {
+    const user = await signup(ctx);
+    const stranger = await signup(ctx);
+    await bank(user);
+    const theirs = await plan(stranger);
+
+    const res = await recordProfit(user, theirs.id, 100_000, '2026-04-15');
+    expect(res.status).toBe(404);
+
+    const count = await ctx.prisma.transaction.count({
+      where: { workspaceId: user.workspaceId, deletedAt: null },
+    });
+    expect(count).toBe(0);
+  });
+
+  it('refuses a profit of zero', async () => {
+    const user = await signup(ctx);
+    await bank(user);
+    const saved = await plan(user);
+
+    const res = await recordProfit(user, saved.id, 0, '2026-04-15');
+    expect(res.status).toBe(400);
+  });
+
+  it('brings a matured plan home as a transfer, not as income', async () => {
+    const user = await signup(ctx);
+    const saved = await plan(user);
+    const savingsAccount = (
+      await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: 'ডিপিএস হিসাব', type: 'SAVINGS', openingBalance: 50_000_000 })
+        .expect(201)
+    ).body as { id: string };
+    const current = await bank(user, 'চলতি হিসাব');
+
+    const res = await ctx
+      .http()
+      .post(`/v1/savings/${saved.id}/mature`)
+      .set(auth(user))
+      .send({
+        fromAccountId: savingsAccount.id,
+        toAccountId: current.id,
+        amountMinor: 50_000_000,
+        date: '2031-01-15',
+      })
+      .expect(200);
+    expect(res.body.status).toBe('MATURED');
+
+    const accounts = (await ctx.http().get('/v1/accounts').set(auth(user)).expect(200)).body as {
+      id: string;
+      balanceMinor: number;
+    }[];
+    // Emptied, and every poisha landed on the other side.
+    expect(accounts.find((a) => a.id === savingsAccount.id)?.balanceMinor).toBe(0);
+    expect(accounts.find((a) => a.id === current.id)?.balanceMinor).toBe(50_000_000);
+
+    /* The whole reason it is a transfer: the depositor's own money coming back
+       is not earnings, and an income statement that said otherwise would be
+       wrong by the size of the deposit. */
+    const detail = (await ctx.http().get(`/v1/savings/${saved.id}`).set(auth(user)).expect(200))
+      .body as { profitReceivedMinor: number; status: string };
+    expect(detail.profitReceivedMinor).toBe(0);
+    expect(detail.status).toBe('MATURED');
+  });
+
+  it('refuses to move a matured plan into the account it came from', async () => {
+    const user = await signup(ctx);
+    const saved = await plan(user);
+    const account = await bank(user);
+
+    await ctx
+      .http()
+      .post(`/v1/savings/${saved.id}/mature`)
+      .set(auth(user))
+      .send({ fromAccountId: account.id, toAccountId: account.id, amountMinor: 100_000 })
+      .expect(400);
+  });
+
+  it('records the payout in the audit trail', async () => {
+    const user = await signup(ctx);
+    await bank(user);
+    const saved = await plan(user);
+    await recordProfit(user, saved.id, 276_000, '2026-04-15');
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const events = await ctx.prisma.auditEvent.findMany({
+      where: { workspaceId: user.workspaceId, action: 'savings.profit_recorded' },
+    });
+    expect(events).toHaveLength(1);
+  });
+});

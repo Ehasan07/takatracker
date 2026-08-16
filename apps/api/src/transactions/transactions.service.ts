@@ -90,6 +90,8 @@ export interface TransactionView {
    * to be able to read it back — the same reason `tags` is here.
    */
   personId: string | null;
+  /** The DPS, FDR or Sanchayapatra this belongs to. Null for ordinary money. */
+  savingsPlanId: string | null;
   personName: string | null;
   /** Thousandths of `quantityUnit`. 500 is half a kilo. */
   quantityMilli: number | null;
@@ -189,6 +191,7 @@ export class TransactionsService {
       categoryId?: string | null;
       tagIds?: readonly string[];
       personId?: string | null;
+      savingsPlanId?: string | null;
     },
   ): Promise<void> {
     const accountIds = [input.accountId, input.counterAccountId].filter(
@@ -228,6 +231,16 @@ export class TransactionsService {
         where: { id: input.personId, workspaceId, deletedAt: null },
       });
       if (person !== 1) throw new NotFoundException('ব্যক্তি পাওয়া যায়নি');
+    }
+    /* The savings instrument, proved the same way and for the same reason: the
+     * column has no composite key back to the workspace, and the yearly profit
+     * report reads it. A matured plan is still a legal target — last year's
+     * profit belongs to it whether or not it is still running. */
+    if (input.savingsPlanId) {
+      const plan = await this.prisma.savingsPlan.count({
+        where: { id: input.savingsPlanId, workspaceId, deletedAt: null },
+      });
+      if (plan !== 1) throw new NotFoundException('সঞ্চয় পাওয়া যায়নি');
     }
   }
 
@@ -276,6 +289,8 @@ export class TransactionsService {
         payee: input.payee,
         // Who the money was with. Until now only the loan module wrote this.
         personId: input.personId ?? null,
+        // Which DPS, FDR or Sanchayapatra this profit came from, if any.
+        savingsPlanId: input.savingsPlanId ?? null,
         /* The original, when the money was not the workspace's own currency.
          * `amountMinor` above is already converted; these two are the receipt. */
         fxCurrency: input.fxCurrency ?? null,
@@ -395,6 +410,8 @@ export class TransactionsService {
            * `personId: input.personId` would look identical and behave the
            * same, but the reader could not tell which of the two was meant. */
           ...(input.personId === undefined ? {} : { personId: input.personId }),
+          // Same three-way rule: absent is untouched, `null` unfiles it.
+          ...(input.savingsPlanId === undefined ? {} : { savingsPlanId: input.savingsPlanId }),
           /* Both move together or neither does — the schema already refuses a
            * half-pair, so writing them as one keeps that true through an edit. */
           ...(input.fxCurrency === undefined && input.fxAmountMinor === undefined
@@ -559,6 +576,7 @@ export class TransactionsService {
       ...(query.type ? { type: query.type } : {}),
       ...(query.source ? { source: query.source } : {}),
       ...(query.personId ? { personId: query.personId } : {}),
+      ...(query.savingsPlanId ? { savingsPlanId: query.savingsPlanId } : {}),
       /* `workspaceId` repeated on the join even though the transaction is
        * already scoped and the tag was just proved. The join table carries its
        * own tenancy column and this is the query that reads it; a redundant
@@ -1054,6 +1072,7 @@ export class TransactionsService {
       categoryId: category?.id ?? null,
       categoryName: category ? displayName(category, ctx.locale) : null,
       personId: tx.personId,
+      savingsPlanId: tx.savingsPlanId,
       personName: tx.person?.name ?? null,
       quantityMilli: tx.quantityMilli == null ? null : minorToNumber(tx.quantityMilli),
       quantityUnit: tx.quantityUnit,

@@ -787,15 +787,24 @@ function CategorySheet({
    * is two levels deep on purpose and the API refuses to bury them a third —
    * better to not offer the move than to offer it and fail.
    */
+  const hasChildren = React.useMemo(
+    () =>
+      Boolean(editing) && (allCategories.data ?? []).some((row) => row.parentId === editing!.id),
+    [allCategories.data, editing],
+  );
+
   const parentOptions = React.useMemo(() => {
     const rows = allCategories.data ?? [];
-    if (!editing) return [];
-    const hasChildren = rows.some((row) => row.parentId === editing.id);
-    if (hasChildren) return [];
+    if (!editing || hasChildren) return [];
     return rows
-      .filter((row) => row.kind === editing.kind && !row.parentId && row.id !== editing.id)
+      .filter((row) => row.kind === kind && !row.parentId && row.id !== editing.id)
       .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'bn'));
-  }, [allCategories.data, editing, nameOf]);
+  }, [allCategories.data, editing, hasChildren, kind, nameOf]);
+
+  /* Empty means free to flip. A খাত with history cannot change sides — every
+     transaction under it was booked with a direction — and one with sub-khat
+     would leave them stranded on the side it left. */
+  const canFlipKind = Boolean(editing) && editing!.usageCount === 0 && !hasChildren;
 
   React.useEffect(() => {
     if (!open) return;
@@ -810,6 +819,14 @@ function CategorySheet({
     setError(null);
   }, [open, editing, parent, defaultKind]);
 
+  /* Switching sides invalidates the chosen parent — the heads listed a moment
+     ago all belong to the side being left. Clearing it here means the picker
+     below never shows a selection that is no longer in its own options, which
+     a `<select>` renders as blank and saves as the top level anyway. */
+  React.useEffect(() => {
+    if (editing && kind !== editing.kind) setParentId('');
+  }, [kind, editing]);
+
   const save = useMutation({
     mutationFn: () =>
       editing
@@ -822,6 +839,10 @@ function CategorySheet({
               name: nameEn.trim() || name,
               nameBn: name,
               searchAliases: aliases,
+              /* Only when the side actually changed. Sending the unchanged kind
+                 on every save would make the API treat a rename as a flip and
+                 resettle the parent for no reason. */
+              ...(kind !== editing.kind ? { kind } : {}),
               /* Sent only when the box was offered, so a খাত with children —
                  which has no picker — cannot have its parent cleared by a
                  blind save. `null` is the top level and is meaningful, so it
@@ -908,12 +929,33 @@ function CategorySheet({
           </p>
         ) : editing ? (
           <>
-            {/* Flipping a category from expense to income would silently invert
-                every transaction already filed under it. */}
-            <p className="text-ink-muted text-xs">
-              ধরন বদলানো যায় না ({editing.kind === 'INCOME' ? 'আয়' : 'খরচ'})। অন্য ধরন লাগলে নতুন
-              খাত বানান।
-            </p>
+            {canFlipKind ? (
+              <Field label={t('cat.kind', 'ধরন')} htmlFor="cat-kind">
+                <Select
+                  id="cat-kind"
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value as Kind)}
+                >
+                  <option value="EXPENSE">খরচ</option>
+                  <option value="INCOME">আয়</option>
+                </Select>
+                <p className="text-ink-muted mt-1 text-xs">
+                  {t(
+                    'cat.kindFlipHint',
+                    'এই খাতে এখনও কোনো লেনদেন নেই, তাই আয় ↔ খরচ বদলানো যাবে। ধরন বদলালে খাতটি উপরে চলে আসবে।',
+                  )}
+                </p>
+              </Field>
+            ) : (
+              /* A খাত with history cannot change sides: every transaction under
+                 it was booked with a direction, and renaming the side does not
+                 turn money that left into money that arrived. */
+              <p className="text-ink-muted text-xs">
+                {editing.kind === 'INCOME' ? 'আয়ের খাত' : 'খরচের খাত'}। এতে{' '}
+                {bn(editing.usageCount)}টি লেনদেন আছে, তাই আয় ↔ খরচ বদলানো যাবে না — আগে লেনদেনগুলো
+                অন্য খাতে সরান।
+              </p>
+            )}
             {parentOptions.length > 0 ? (
               <Field label={t('cat.parent', 'মূল খাত')} htmlFor="cat-parent">
                 <Select

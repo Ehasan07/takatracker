@@ -646,6 +646,13 @@ model Account {
   institution         String?
   accountNumberMasked String?
   matchHints          String[]    @default([])
+  /// Whatever has to be remembered about this account and belongs nowhere else:
+  /// the branch, the nominee, the cheque-book series, who else can sign on it.
+  ///
+  /// Free text on purpose. Every attempt to give these their own columns ends
+  /// with a form nobody fills in, and the one fact that actually mattered was
+  /// never one of the columns anyway.
+  note                String?
   isArchived          Boolean     @default(false)
   sortOrder           Int         @default(0)
   icon                String?
@@ -1152,6 +1159,7 @@ model SavingsPlan {
 
   workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   installments SavingsInstallment[]
+  transactions Transaction[]
 
   @@index([workspaceId, status])
 }
@@ -1597,6 +1605,15 @@ model Transaction {
   /// The amount in `fxCurrency`, integer minor units of *that* currency.
   fxAmountMinor BigInt?
   personId      String?
+  /// Which savings instrument this row belongs to, when it belongs to one.
+  ///
+  /// The point is profit. A Sanchayapatra pays out monthly or quarterly and the
+  /// money lands in an ordinary bank account, so without this the ledger knows
+  /// a profit arrived and not which certificate produced it — and "how much did
+  /// this DPS earn me this year" cannot be answered at all. `personId` above
+  /// solves the same problem for people and is deliberately mirrored here,
+  /// `SetNull` included: deleting a plan must not take its income with it.
+  savingsPlanId String?
   attachmentIds String[]          @default([])
   source        TransactionSource @default(MANUAL)
   sourceDraftId String?
@@ -1611,6 +1628,7 @@ model Transaction {
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   author    User?         @relation("TransactionAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
   person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  savingsPlan SavingsPlan? @relation(fields: [savingsPlanId], references: [id], onDelete: SetNull)
   importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   entries     LedgerEntry[]
   tags        TransactionTag[]
@@ -1624,6 +1642,7 @@ model Transaction {
   @@index([workspaceId, source])
   @@index([workspaceId, externalRef])
   @@index([workspaceId, importBatchId])
+  @@index([workspaceId, savingsPlanId])
 }
 
 enum EntryDirection {

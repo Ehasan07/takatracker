@@ -746,12 +746,41 @@ export const EN: Record<string, string> = {
   'account.limit': 'Limit',
   'account.drawn': 'Used',
   'account.undrawn': 'Left',
+  'savings.moveMoney': 'Move the money',
+  'savings.profitPrefilled':
+    'Filled in with what the rate says is owed. Write what the bank actually handed over \u2014 less if tax was deducted, more if there was a bonus.',
+  'savings.mature': 'Matured',
+  'savings.matureHint':
+    'This moves money from one account to another \u2014 it is not income. Your own deposits are coming back. Book whatever extra the bank paid through \u201cProfit received\u201d first.',
+  'savings.matureFrom': 'Which account holds the money',
+  'savings.matureTo': 'Where it goes',
+  'savings.matureAmount': 'How much (\u09f3)',
+  'savings.matureAmountHint': 'The whole balance is filled in \u2014 the account will be emptied.',
+  'savings.matureDate': 'On what date',
+  'savings.gotProfit': 'Profit received',
+  'savings.profitReceived': 'Profit received so far',
+  'savings.profitHint': 'What the bank actually handed over \u2014 after tax',
+  'savings.profitAmount': 'How much did you receive (\u09f3)',
+  'savings.profitAmountHint': 'Exactly what the bank handed over.',
+  'savings.profitAccount': 'Which account it landed in',
+  'savings.profitCategory': 'Income head',
+  'savings.profitDate': 'On what date',
+  'savings.note': 'Note',
+  'savings.notePlaceholder': 'e.g. City Bank 8621696107003, Gulshan branch, nominee \u2014 Ammu',
+  'savings.noteHint':
+    'Account number, branch, nominee \u2014 whatever you need to remember. It is not linked to any account; it is just written down.',
+  'cat.kind': 'Side of the books',
+  'cat.kindFlipHint':
+    'Nothing has been filed under this head yet, so it can move between income and expense. Changing the side moves it to the top level.',
   'cat.parent': 'Sits under',
   'cat.noParent': 'Not under anything (a main head)',
   'cat.parentHint':
     'You can move this head under another one. Its transactions move with it \u2014 nothing is lost.',
   'cat.parentLocked':
     'This head has sub-heads of its own, so it cannot be moved under another. Move the sub-heads first.',
+  'account.note': 'Note',
+  'account.notePlaceholder': 'e.g. Gulshan branch, nominee \u2014 Ammu, cheque book 4501\u20134550',
+  'account.noteHint': 'Branch, nominee, cheque book \u2014 whatever you need to remember.',
   'account.openingDate': 'The balance is as of',
   /* IAS 1.38: a dated opening balance is what makes two periods comparable. */
   'account.openingDateHint':

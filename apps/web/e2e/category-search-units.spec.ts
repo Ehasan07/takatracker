@@ -313,6 +313,39 @@ test.describe('বাংলা আর ইংরেজি নাম', () => {
     await expect(third.getByLabel('ইংরেজি নাম (ঐচ্ছিক)')).toHaveValue('Fuel');
   });
 
+  test('an unused খাত can be moved from খরচ to আয়, and back', async ({ page }) => {
+    /* The case this exists for: an import files an income head on the expense
+       side. Nothing has been booked under it, so there is nothing to invert and
+       the flip is safe — but only the browser proves the form offers it, sends
+       it, and shows the row on its new tab afterwards. */
+    await signup(page);
+    await page.goto('/categories');
+
+    await pressAdd(page, 'নতুন খাত যোগ করুন');
+    await page.getByRole('dialog').getByLabel('নাম', { exact: true }).fill('কার্ড পয়েন্ট');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await page.getByRole('button', { name: 'কার্ড পয়েন্ট সম্পাদনা' }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('ধরন').selectOption('INCOME');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // Gone from খরচ, present under আয়.
+    await expect(page.getByText('কার্ড পয়েন্ট')).toHaveCount(0);
+    await page.getByRole('tab', { name: 'আয়ের খাত' }).click();
+    await expect(page.getByText('কার্ড পয়েন্ট').first()).toBeVisible();
+
+    // And reversible, so a mis-flip is not a one-way door.
+    await page.getByRole('button', { name: 'কার্ড পয়েন্ট সম্পাদনা' }).click();
+    await page.getByRole('dialog').getByLabel('ধরন').selectOption('EXPENSE');
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await page.getByRole('tab', { name: 'খরচের খাত' }).click();
+    await expect(page.getByText('কার্ড পয়েন্ট').first()).toBeVisible();
+  });
+
   test('leaving the English box empty mirrors the name, as it always did', async ({ page }) => {
     await signup(page);
     await page.goto('/categories');

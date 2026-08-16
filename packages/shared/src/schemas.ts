@@ -126,6 +126,10 @@ export const createAccountSchema = z.object({
    */
   openingBalanceDate: isoDate.optional(),
   institution: z.string().max(120).optional(),
+  /* The branch, the nominee, the cheque-book series — whatever has to be
+     remembered and belongs in no other field. Without it these facts end up in
+     the account's *name*, which is where they were going before. */
+  note: z.string().max(2000).optional(),
   accountNumberMasked: z.string().max(60).optional(),
   matchHints: z.array(z.string().max(60)).max(20).default([]),
   icon: z.string().max(40).optional(),
@@ -237,6 +241,18 @@ export const simpleTransactionSchema = z
      * "nobody" as well as "unchanged": omitted leaves the row's person alone,
      * `null` detaches it. Same rule as `tagIds` and `attachmentIds`. */
     personId: cuid.nullish(),
+    /* Which savings instrument this belongs to — the DPS, the FDR, the
+     * Sanchayapatra.
+     *
+     * Profit is the reason. A Sanchayapatra pays out every month or quarter
+     * into an ordinary bank account, so the ledger sees income arriving and
+     * cannot say which certificate produced it. That makes "how much did this
+     * one earn me this year" unanswerable, which is exactly the question
+     * somebody holding four of them wants answered.
+     *
+     * `nullish` for the same reason as `personId`: an edit must be able to say
+     * "not from a savings instrument after all" as well as "unchanged". */
+    savingsPlanId: cuid.nullish(),
     /* What the money actually was, when it was not the workspace's own.
      *
      * `amountMinor` above stays in the workspace's currency — the ledger, the
@@ -319,6 +335,8 @@ export const transactionQuerySchema = z.object({
   type: z.enum(TRANSACTION_TYPES).optional(),
   source: z.enum(TRANSACTION_SOURCES).optional(),
   personId: cuid.optional(),
+  /** Everything filed against one savings instrument — the profit report. */
+  savingsPlanId: cuid.optional(),
   q: z.string().max(200).optional(),
   /* Coerced, unlike `minorAmount` in a request body. A query string only ever
    * carries text, so `?minAmount=10000` arrives as "10000" and the uncoerced

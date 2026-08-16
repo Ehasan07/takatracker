@@ -1,16 +1,27 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Info, Link2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Info,
+  Landmark,
+  Link2,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  TrendingUp,
+} from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { CategoryOptions } from '@/components/category-options';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Select } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, endpoints } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { ShareStatementSheet } from '@/components/share-statement-sheet';
@@ -50,6 +61,10 @@ interface SavingsPlan {
   profitRateBps: number;
   profitCalc: string;
   status: string;
+  /** Free text. The migration writes its own warnings here, so the sheet must show it. */
+  note: string | null;
+  /** Profit actually paid out, summed off the ledger. Not the projection. */
+  profitReceivedMinor: number;
   projection: Projection;
   progress: Progress;
   installments?: Instalment[];
@@ -162,6 +177,10 @@ export default function SavingsPage() {
   const [editing, setEditing] = React.useState<SavingsPlan | null>(null);
   const [removing, setRemoving] = React.useState<SavingsPlan | null>(null);
   const [sharing, setSharing] = React.useState<SavingsPlan | null>(null);
+  /** The plan whose profit is being recorded. `null` closes the sheet. */
+  const [profitFor, setProfitFor] = React.useState<SavingsPlan | null>(null);
+  /** The plan being brought home at maturity. `null` closes the sheet. */
+  const [maturing, setMaturing] = React.useState<SavingsPlan | null>(null);
 
   const plans = useQuery({
     queryKey: ['savings'],
@@ -322,6 +341,27 @@ export default function SavingsPage() {
               </p>
             </div>
 
+            {/* What this instrument has actually paid, beside what it promised.
+                A Sanchayapatra pays every month or quarter and the bank deducts
+                source tax first, so the two are never the same number — and the
+                one on the left is the one that happened. */}
+            <div className="border-rule flex items-center justify-between gap-2 rounded-md border p-3">
+              <div className="min-w-0">
+                <p className="text-ink text-sm font-medium">
+                  {t('savings.profitReceived', 'এ পর্যন্ত মুনাফা পেয়েছি')}
+                </p>
+                <p className="text-ink-muted text-xs">
+                  {t('savings.profitHint', 'ব্যাংক যা হাতে দিয়েছে — কর কাটার পরে')}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Money
+                  minor={detail.data.profitReceivedMinor}
+                  className="text-income text-base font-semibold"
+                />
+              </div>
+            </div>
+
             <ul className="divide-rule divide-y">
               {(detail.data.installments ?? []).map((row, i) => (
                 <li key={row.id} className="flex items-center gap-2 py-2">
@@ -355,6 +395,36 @@ export default function SavingsPage() {
               {/* The institution asks for a statement every year, and the API
                   has served SAVINGS since statement sharing shipped — only the
                   button was missing. */}
+              {/* First, and the only filled button here: on a Sanchayapatra this
+                  is the thing somebody does every month, and the rest are done
+                  once a year at most. */}
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  setProfitFor(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <TrendingUp className="h-4 w-4" aria-hidden />
+                {t('savings.gotProfit', 'মুনাফা পেয়েছি')}
+              </Button>
+              {/* Offered whatever the status. A plan already marked মেয়াদপূর্ণ or
+                  বন্ধ from the status box is exactly the one whose money is
+                  still sitting in a savings account waiting to be moved — hiding
+                  the button there would strand it. */}
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setMaturing(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <Landmark className="h-4 w-4" aria-hidden />
+                {detail.data.status === 'ACTIVE'
+                  ? t('savings.mature', 'মেয়াদপূর্তি')
+                  : t('savings.moveMoney', 'টাকা সরান')}
+              </Button>
               <Button
                 variant="outline"
                 className="flex-1"
@@ -402,6 +472,14 @@ export default function SavingsPage() {
           subjectId={sharing.id}
           subjectName={sharing.planName}
         />
+      ) : null}
+
+      {profitFor ? (
+        <ProfitSheet plan={profitFor} onOpenChange={(next) => !next && setProfitFor(null)} />
+      ) : null}
+
+      {maturing ? (
+        <MatureSheet plan={maturing} onOpenChange={(next) => !next && setMaturing(null)} />
       ) : null}
 
       <PlanSheet
@@ -504,6 +582,7 @@ interface PlanForm {
   rate: string;
   profitCalc: string;
   status: string;
+  note: string;
 }
 
 const emptyPlanForm = (): PlanForm => ({
@@ -518,6 +597,7 @@ const emptyPlanForm = (): PlanForm => ({
   rate: '',
   profitCalc: 'COMPOUND_MONTHLY',
   status: 'ACTIVE',
+  note: '',
 });
 
 const planToForm = (plan: SavingsPlan): PlanForm => ({
@@ -534,6 +614,7 @@ const planToForm = (plan: SavingsPlan): PlanForm => ({
   rate: formatMinor(plan.profitRateBps, { symbol: false }),
   profitCalc: plan.profitCalc,
   status: plan.status,
+  note: plan.note ?? '',
 });
 
 /** The plan as the form would have produced it, for the changed-fields diff. */
@@ -548,6 +629,7 @@ const planToApi = (plan: SavingsPlan) => ({
   startDate: plan.startDate,
   profitRateBps: plan.profitRateBps,
   profitCalc: plan.profitCalc,
+  note: plan.note ?? '',
 });
 
 /** Add and edit are the same form; `plan` decides which. */
@@ -628,6 +710,7 @@ function PlanSheet({
             startDate: form.startDate,
             profitRateBps,
             profitCalc: form.profitCalc,
+            note: form.note.trim(),
           };
 
           if (!plan) {
@@ -769,6 +852,26 @@ function PlanSheet({
           </Field>
         ) : null}
 
+        <Field label={t('savings.note', 'নোট')} htmlFor="sp-note">
+          <Textarea
+            id="sp-note"
+            value={form.note}
+            onChange={set('note')}
+            rows={3}
+            maxLength={2000}
+            placeholder={t(
+              'savings.notePlaceholder',
+              'যেমন: সিটি ব্যাংক ৮৬২১৬৯৬১০৭০০৩, শাখা গুলশান, নমিনি — আম্মু',
+            )}
+          />
+          <p className="text-ink-muted mt-1 text-xs">
+            {t(
+              'savings.noteHint',
+              'হিসাব নম্বর, শাখা, নমিনি — যা মনে রাখা দরকার। এটি কোনো অ্যাকাউন্টের সঙ্গে যুক্ত হয় না, শুধু লেখা থাকে।',
+            )}
+          </p>
+        </Field>
+
         <p className="text-ink-muted text-xs">
           হার আপনার ব্যাংক যা বলেছে সেটাই লিখুন। কর বা আবগারি শুল্ক হিসাবে ধরা হয় না — প্রক্ষেপণ কর
           কাটার আগের।
@@ -781,6 +884,355 @@ function PlanSheet({
         ) : null}
         <Button type="submit" size="block" disabled={save.isPending}>
           সংরক্ষণ করুন
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/**
+ * "মুনাফা পেয়েছি" — the monthly or quarterly payout on a Sanchayapatra, or the
+ * excess a DPS hands over at maturity.
+ *
+ * ## Why this is its own button
+ *
+ * Somebody holding four Sanchayapatra does this twelve to forty-eight times a
+ * year, and doing it through the ordinary entry sheet means choosing "আয়" and
+ * then remembering to say which certificate it came from — which nobody does,
+ * which is why the ledger could not answer "how much did this one earn me".
+ * Here the instrument is already known, so there is nothing to remember.
+ *
+ * ## What it does not ask
+ *
+ * Whether this is income. It is (IFRS 9), and asking a question whose answer is
+ * always the same teaches nothing and slows down the person who does this every
+ * month. The principal coming home at maturity is a *transfer* between two
+ * accounts and is deliberately not this button.
+ */
+function ProfitSheet({
+  plan,
+  onOpenChange,
+}: {
+  plan: SavingsPlan;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { currency } = useWorkspaceSettings();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+  const categories = useQuery({ queryKey: ['categories'], queryFn: endpoints.categories });
+
+  const [accountId, setAccountId] = React.useState('');
+  const [categoryId, setCategoryId] = React.useState('');
+  const [date, setDate] = React.useState(toLocalDateString(new Date()));
+  const [error, setError] = React.useState<string | null>(null);
+
+  /**
+   * What the plan's own rate says is still owed: the whole projected profit,
+   * less whatever has already been booked.
+   *
+   * Prefilled rather than enforced. Somebody clearing a matured DPS should not
+   * have to work out `principal × rate × years` on paper — the plan already
+   * knows — but the bank deducts source tax and excise duty before it pays, and
+   * sometimes adds a bonus on top, so the box stays a box. What gets booked is
+   * always what somebody read and confirmed.
+   */
+  const outstandingProfit = Math.max(0, plan.projection.profitMinor - plan.profitReceivedMinor);
+  const [amount, setAmount] = React.useState(() =>
+    outstandingProfit > 0 ? formatMinor(outstandingProfit, { symbol: false }) : '',
+  );
+
+  /* Default to the first live account rather than making somebody pick twice.
+     Where profit lands is nearly always the same account month after month. */
+  const firstAccountId = (accounts.data ?? []).find((a) => !a.isArchived)?.id ?? '';
+  React.useEffect(() => {
+    if (firstAccountId) setAccountId((current) => current || firstAccountId);
+  }, [firstAccountId]);
+
+  const save = useMutation({
+    mutationFn: (amountMinor: number) =>
+      api(`/savings/${plan.id}/profit`, {
+        method: 'POST',
+        body: { amountMinor, accountId, categoryId, date },
+      }),
+    onSuccess: () => {
+      haptic('success');
+      /* The money moved, so this is not the savings screen's business alone:
+         an account balance changed, the khata has a new row, and the income
+         statement is different. */
+      for (const key of [['savings'], ['accounts'], ['transactions'], ['summary'], ['reports']]) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
+      onOpenChange(false);
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
+  });
+
+  return (
+    <Sheet
+      open
+      onOpenChange={onOpenChange}
+      title={t('savings.gotProfit', 'মুনাফা পেয়েছি')}
+      description={plan.planName}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          const amountMinor = toMinor(amount, currency);
+          if (amountMinor === null || amountMinor <= 0) {
+            setError('টাকার অঙ্ক লিখুন');
+            return;
+          }
+          if (!categoryId) {
+            setError('কোন খাতে বসবে বেছে নিন');
+            return;
+          }
+          save.mutate(amountMinor);
+        }}
+      >
+        <Field label={t('savings.profitAmount', 'কত টাকা পেলেন (৳)')} htmlFor="pf-amount">
+          <Input
+            id="pf-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            required
+            autoFocus
+            className="money text-xl"
+            placeholder="০.০০"
+          />
+          {/* The bank deducts source tax and excise duty before it pays, and
+              sometimes adds a bonus, so the figure on the passbook is never the
+              one on the projection. The prefill is a starting point, and the
+              hint says which number wins. */}
+          <p className="text-ink-muted mt-1 text-xs">
+            {outstandingProfit > 0
+              ? t(
+                  'savings.profitPrefilled',
+                  'হারের হিসাবে যতটা পাওনা, বসিয়ে দেওয়া হয়েছে। ব্যাংক যা হাতে দিয়েছে সেটাই লিখুন — কর কাটা থাকলে কম, বোনাস থাকলে বেশি।',
+                )
+              : t('savings.profitAmountHint', 'ব্যাংক যত টাকা হাতে দিয়েছে, ঠিক তত।')}
+          </p>
+        </Field>
+
+        <Field label={t('savings.profitAccount', 'কোন অ্যাকাউন্টে ঢুকল')} htmlFor="pf-account">
+          <Select
+            id="pf-account"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            required
+          >
+            {(accounts.data ?? [])
+              .filter((a) => !a.isArchived)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+          </Select>
+        </Field>
+
+        <Field label={t('savings.profitCategory', 'আয়ের খাত')} htmlFor="pf-category">
+          <Select
+            id="pf-category"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            required
+          >
+            <option value="">{t('common.choose', 'বেছে নিন')}</option>
+            <CategoryOptions categories={categories.data} kind="INCOME" />
+          </Select>
+        </Field>
+
+        <Field label={t('savings.profitDate', 'কোন তারিখে')} htmlFor="pf-date">
+          <Input
+            id="pf-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </Field>
+
+        {error ? (
+          <p role="alert" className="text-expense text-sm">
+            {error}
+          </p>
+        ) : null}
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {t('common.save', 'সংরক্ষণ করুন')}
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/**
+ * "মেয়াদপূর্তি" — the DPS is over, bring the money home and close the plan.
+ *
+ * A **transfer**, and the sheet says so out loud, because this is the one place
+ * a person is most likely to get it wrong. What comes out of a matured DPS is
+ * mostly their own instalments coming back; calling that income would inflate
+ * the year by the size of the deposit and carry into the tax worksheet. The
+ * bank's share is booked separately, through "মুনাফা পেয়েছি", and the sheet
+ * points at that button rather than quietly doing something reasonable.
+ *
+ * The amount prefills with the source account's whole balance, so emptying it
+ * is one tap — but it stays a box somebody can see and change, because a figure
+ * nobody read is a figure nobody checked.
+ */
+function MatureSheet({
+  plan,
+  onOpenChange,
+}: {
+  plan: SavingsPlan;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { currency } = useWorkspaceSettings();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+
+  const [fromId, setFromId] = React.useState('');
+  const [toId, setToId] = React.useState('');
+  const [amount, setAmount] = React.useState('');
+  const [date, setDate] = React.useState(toLocalDateString(new Date()));
+  const [error, setError] = React.useState<string | null>(null);
+
+  const live = React.useMemo(
+    () => (accounts.data ?? []).filter((a) => !a.isArchived),
+    [accounts.data],
+  );
+
+  /* Default the source to a savings account if there is one — that is where DPS
+     money sits — and the destination to anything else. */
+  React.useEffect(() => {
+    if (live.length === 0) return;
+    setFromId((current) => current || (live.find((a) => a.type === 'SAVINGS') ?? live[0]!).id);
+  }, [live]);
+
+  React.useEffect(() => {
+    if (!fromId) return;
+    setToId((current) =>
+      current && current !== fromId ? current : (live.find((a) => a.id !== fromId)?.id ?? ''),
+    );
+  }, [fromId, live]);
+
+  /* Prefilled from the balance, and re-prefilled when the source changes.
+     Deliberately not locked to it: the bank may have taken a closing charge. */
+  const sourceBalance = live.find((a) => a.id === fromId)?.balanceMinor ?? 0;
+  React.useEffect(() => {
+    setAmount(sourceBalance > 0 ? formatMinor(sourceBalance, { symbol: false }) : '');
+  }, [sourceBalance]);
+
+  const save = useMutation({
+    mutationFn: (amountMinor: number) =>
+      api(`/savings/${plan.id}/mature`, {
+        method: 'POST',
+        body: { fromAccountId: fromId, toAccountId: toId, amountMinor, date },
+      }),
+    onSuccess: () => {
+      haptic('success');
+      for (const key of [['savings'], ['accounts'], ['transactions'], ['summary'], ['reports']]) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
+      onOpenChange(false);
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
+  });
+
+  return (
+    <Sheet
+      open
+      onOpenChange={onOpenChange}
+      title={t('savings.mature', 'মেয়াদপূর্তি')}
+      description={plan.planName}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          const amountMinor = toMinor(amount, currency);
+          if (amountMinor === null || amountMinor <= 0) {
+            setError('টাকার অঙ্ক লিখুন');
+            return;
+          }
+          if (!fromId || !toId || fromId === toId) {
+            setError('আলাদা দুইটি অ্যাকাউন্ট বেছে নিন');
+            return;
+          }
+          save.mutate(amountMinor);
+        }}
+      >
+        {/* Said before anything is filled in, because this is the sentence that
+            stops somebody booking their own money back as earnings. */}
+        <div className="rounded-card border-rule bg-greenbar border p-3">
+          <p className="text-ink flex items-start gap-2 text-sm">
+            <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              {t(
+                'savings.matureHint',
+                'এটি এক অ্যাকাউন্ট থেকে আরেক অ্যাকাউন্টে টাকা সরানো — আয় নয়। আপনার নিজের জমা ফেরত আসছে। ব্যাংক যে বাড়তি মুনাফা দিয়েছে সেটি আগে “মুনাফা পেয়েছি” দিয়ে বসিয়ে নিন।',
+              )}
+            </span>
+          </p>
+        </div>
+
+        <Field label={t('savings.matureFrom', 'কোন অ্যাকাউন্টে টাকাটা আছে')} htmlFor="mt-from">
+          <Select id="mt-from" value={fromId} onChange={(e) => setFromId(e.target.value)} required>
+            {live.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label={t('savings.matureTo', 'কোথায় নিয়ে যাবেন')} htmlFor="mt-to">
+          <Select id="mt-to" value={toId} onChange={(e) => setToId(e.target.value)} required>
+            {live
+              .filter((a) => a.id !== fromId)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+          </Select>
+        </Field>
+
+        <Field label={t('savings.matureAmount', 'কত টাকা (৳)')} htmlFor="mt-amount">
+          <Input
+            id="mt-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            required
+            className="money text-xl"
+            placeholder="০.০০"
+          />
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('savings.matureAmountHint', 'পুরোটা বসানো আছে — অ্যাকাউন্টটি শূন্য হয়ে যাবে।')}
+          </p>
+        </Field>
+
+        <Field label={t('savings.matureDate', 'কোন তারিখে')} htmlFor="mt-date">
+          <Input
+            id="mt-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </Field>
+
+        {error ? (
+          <p role="alert" className="text-expense text-sm">
+            {error}
+          </p>
+        ) : null}
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {t('common.save', 'সংরক্ষণ করুন')}
         </Button>
       </form>
     </Sheet>

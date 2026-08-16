@@ -186,6 +186,8 @@ export interface AccountDto {
   openingBalanceDate: string | null;
   balanceMinor: number;
   institution: string | null;
+  /** Branch, nominee, cheque-book series — whatever belongs in no other field. */
+  note: string | null;
   accountNumberMasked: string | null;
   matchHints: string[];
   isArchived: boolean;

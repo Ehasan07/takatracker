@@ -935,6 +935,115 @@ describe('changing a category’s parent', () => {
     expect((await one(user, fuel.id)).parentId).toBeNull();
   });
 
+  it('flips an empty khat from expense to income', async () => {
+    const user = await signup(ctx);
+    /* The case this exists for: an import files an income head on the expense
+       side, and the mistake is caught before anything is booked under it. */
+    const wrong = await create(user, { name: 'Card point redemption', nameBn: 'কার্ড পয়েন্ট' });
+    expect(wrong.kind).toBe('EXPENSE');
+
+    await patch(user, wrong.id, { kind: 'INCOME' }).expect(200);
+
+    const after = await one(user, wrong.id);
+    expect(after.kind).toBe('INCOME');
+    expect(after.parentId).toBeNull();
+  });
+
+  it('keeps the name, the English name and the search words through a flip', async () => {
+    const user = await signup(ctx);
+    const wrong = await create(user, {
+      name: 'SMS sales',
+      nameBn: 'এসএমএস বিক্রি',
+      searchAliases: 'sms, বিক্রি',
+    });
+
+    await patch(user, wrong.id, { kind: 'INCOME' }).expect(200);
+
+    /* Deleting and recreating was the only route before this, and it lost all
+       three. Keeping them is most of the point. */
+    const after = (await ctx.http().get('/v1/categories').set(auth(user)).expect(200)).body.find(
+      (r: { id: string }) => r.id === wrong.id,
+    ) as { name: string; nameBn: string; searchAliases: string[]; kind: string };
+    expect(after.kind).toBe('INCOME');
+    expect(after.name).toBe('SMS sales');
+    expect(after.nameBn).toBe('এসএমএস বিক্রি');
+    expect(after.searchAliases).toEqual(expect.arrayContaining(['sms', 'বিক্রি']));
+  });
+
+  it('lands the flipped khat under a head on its new side when asked', async () => {
+    const user = await signup(ctx);
+    const earnings = await create(user, { kind: 'INCOME', name: 'Earnings', nameBn: 'উপার্জন' });
+    const wrong = await create(user, { name: 'Consulting', nameBn: 'পরামর্শ' });
+
+    await patch(user, wrong.id, { kind: 'INCOME', parentId: earnings.id }).expect(200);
+
+    const after = await one(user, wrong.id);
+    expect(after.kind).toBe('INCOME');
+    expect(after.parentId).toBe(earnings.id);
+  });
+
+  it('refuses a flip once a transaction has been filed under it', async () => {
+    const user = await signup(ctx);
+    const cash = (
+      await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: 'নগদ', type: 'CASH' })
+        .expect(201)
+    ).body as { id: string };
+    const used = await create(user, { name: 'Groceries', nameBn: 'বাজার' });
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 30_000,
+        accountId: cash.id,
+        categoryId: used.id,
+      })
+      .expect(201);
+
+    /* Money that left the account does not become money that arrived because
+       the label changed. The refusal names the count so it is actionable. */
+    const res = await patch(user, used.id, { kind: 'INCOME' }).expect(400);
+    expect(String(res.body.message)).toContain('১');
+
+    expect((await one(user, used.id)).kind).toBe('EXPENSE');
+  });
+
+  it('refuses a flip on a head that still has sub-khat', async () => {
+    const user = await signup(ctx);
+    const head = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: head.id });
+
+    /* Flipping the head alone would strand its children on the side it left. */
+    await patch(user, head.id, { kind: 'INCOME' }).expect(400);
+    expect((await one(user, head.id)).kind).toBe('EXPENSE');
+  });
+
+  it('refuses a flip that would collide with a name on the other side', async () => {
+    const user = await signup(ctx);
+    await create(user, { kind: 'INCOME', name: 'Rent received', nameBn: 'ভাড়া' });
+    const expense = await create(user, { name: 'Rent paid', nameBn: 'ভাড়া' });
+
+    /* ভাড়া is free on the expense side and taken on the income side. Only the
+       flip can notice, because the name itself is untouched. */
+    await patch(user, expense.id, { kind: 'INCOME' }).expect(400);
+    expect((await one(user, expense.id)).kind).toBe('EXPENSE');
+  });
+
+  it('leaves the kind alone when the field is absent', async () => {
+    const user = await signup(ctx);
+    const row = await create(user, { name: 'Fuel', nameBn: 'তেল' });
+
+    await patch(user, row.id, { nameBn: 'জ্বালানি' }).expect(200);
+    expect((await one(user, row.id)).kind).toBe('EXPENSE');
+  });
+
   it('refuses a move that would collide with a name already under that head', async () => {
     const user = await signup(ctx);
     const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });

@@ -19,6 +19,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { minorToNumber } from '../common/bigint-json';
 import { PrismaService } from '../prisma/prisma.service';
+import { TransactionsService, type TenantContext } from '../transactions/transactions.service';
 import type {
   CreateSavingsPlanInput,
   PayInstallmentInput,
@@ -56,10 +57,27 @@ export interface SavingsPlanView {
   progress: SavingsProgress;
   /** The next instalment still owed, for a "পরবর্তী কিস্তি" line. */
   nextDueDate: string | null;
+  /**
+   * Every poisha of profit this instrument has actually paid out.
+   *
+   * Not the projection — `projection` above is what the plan *should* yield.
+   * This is what arrived, summed off the ledger, and the two differ by source
+   * tax and excise duty on every real Sanchayapatra.
+   */
+  profitReceivedMinor: number;
 }
 
 export interface SavingsPlanDetail extends SavingsPlanView {
   installments: SavingsInstallmentView[];
+}
+
+/** What one profit payout produced, for the screen's toast. */
+export interface ProfitReceipt {
+  transactionId: string;
+  amountMinor: number;
+  date: string;
+  /** Every profit ever booked against this plan, this one included. */
+  totalProfitMinor: number;
 }
 
 const pad = (value: number, width: number): string => String(value).padStart(width, '0');
@@ -89,6 +107,7 @@ export class SavingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly transactions: TransactionsService,
   ) {}
 
   async list(workspaceId: string, timezone: string): Promise<SavingsPlanView[]> {
@@ -98,14 +117,52 @@ export class SavingsService {
       include: { installments: { orderBy: { dueDate: 'asc' } } },
     });
 
+    /* One grouped query for every plan's profit rather than one per plan: ten
+       DPS rows would otherwise be ten round trips to draw ten numbers. */
+    const profit = await this.profitByPlan(workspaceId);
+
     // The schedule rows are loaded because progress cannot be summarised
     // without them, but they are not shipped: a list of ten DPS plans would
     // otherwise carry a thousand instalments to draw ten progress rings.
-    return plans.map((plan) => SavingsService.summarise(plan, timezone));
+    return plans.map((plan) => ({
+      ...SavingsService.summarise(plan, timezone),
+      profitReceivedMinor: profit.get(plan.id) ?? 0,
+    }));
   }
 
   async findOne(workspaceId: string, id: string, timezone: string): Promise<SavingsPlanDetail> {
-    return SavingsService.detail(await this.requirePlan(workspaceId, id), timezone);
+    const plan = await this.requirePlan(workspaceId, id);
+    return {
+      ...SavingsService.detail(plan, timezone),
+      profitReceivedMinor: await this.profitTotal(workspaceId, plan.id),
+    };
+  }
+
+  /**
+   * Profit per plan, for the whole workspace, in one query.
+   *
+   * The same shape as `profitTotal` and for the same reasons — debit legs on
+   * real accounts, soft-deleted rows excluded — but grouped, because the list
+   * screen needs all of them at once.
+   */
+  private async profitByPlan(workspaceId: string): Promise<Map<string, number>> {
+    const rows = await this.prisma.ledgerEntry.findMany({
+      where: {
+        workspaceId,
+        direction: 'DEBIT',
+        account: { systemKey: null },
+        transaction: { savingsPlanId: { not: null }, type: 'INCOME', deletedAt: null },
+      },
+      select: { amountMinor: true, transaction: { select: { savingsPlanId: true } } },
+    });
+
+    const out = new Map<string, number>();
+    for (const row of rows) {
+      const planId = row.transaction.savingsPlanId;
+      if (!planId) continue;
+      out.set(planId, (out.get(planId) ?? 0) + minorToNumber(row.amountMinor));
+    }
+    return out;
   }
 
   async create(
@@ -319,6 +376,173 @@ export class SavingsService {
   }
 
   /**
+   * Profit arrived. Book it as income and remember which instrument paid it.
+   *
+   * ## Why this is a button and not "just add a transaction"
+   *
+   * A Sanchayapatra pays out every month or quarter into an ordinary bank
+   * account. Recorded by hand that is an income row like any other, and the
+   * ledger ends up knowing that ৳2,400 arrived in June while having no way to
+   * say which of four certificates produced it. "How much did this one earn me
+   * this year" is then unanswerable — which is the question somebody holding
+   * four of them actually has.
+   *
+   * So the row is booked with `savingsPlanId` set, and the yearly total falls
+   * out of a filter rather than out of arithmetic somebody does on paper.
+   *
+   * ## The accounting
+   *
+   * Interest income is income (IFRS 9). It is *not* a transfer, and this is the
+   * distinction the whole feature turns on: money coming back out of a DPS at
+   * maturity is mostly the depositor's own instalments returning — a transfer,
+   * no income — and only the excess the bank added is earnings. Booking the
+   * whole payout as income would inflate a year's income by the size of the
+   * deposit and, worse, would carry into the tax worksheet.
+   *
+   * This method books only what the caller says is profit. The principal coming
+   * home is an ordinary transfer the person makes between two accounts, and
+   * nothing here pretends otherwise.
+   *
+   * ## The amount is theirs
+   *
+   * Never the projection. `projectSavings` says what the plan *should* yield;
+   * the bank deducts source tax and excise duty and pays what it pays. The
+   * figure booked is the one that landed, exactly as the renewal fee books what
+   * was paid rather than what was estimated.
+   */
+  async recordProfit(
+    ctx: TenantContext,
+    id: string,
+    input: { amountMinor: number; accountId: string; categoryId: string; date?: string },
+  ): Promise<ProfitReceipt> {
+    const plan = await this.requirePlan(ctx.workspaceId, id);
+    const date = input.date ?? toLocalDateString(new Date(), ctx.timezone);
+
+    const created = await this.transactions.create(ctx, {
+      date,
+      type: 'INCOME',
+      amountMinor: input.amountMinor,
+      accountId: input.accountId,
+      categoryId: input.categoryId,
+      /* The instrument's own name, so the row is recognisable in the khata a
+         year later without opening anything. */
+      description: `${plan.planName} — মুনাফা`,
+      savingsPlanId: plan.id,
+      source: 'MANUAL',
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'savings.profit_recorded',
+      entity: 'SavingsPlan',
+      entityId: plan.id,
+      after: { amountMinor: input.amountMinor, date, transactionId: created.id },
+    });
+
+    return {
+      transactionId: created.id,
+      amountMinor: input.amountMinor,
+      date,
+      totalProfitMinor: await this.profitTotal(ctx.workspaceId, plan.id),
+    };
+  }
+
+  /**
+   * Every poisha of profit this instrument has paid, ever.
+   *
+   * Summed from the ledger rather than from a running column on the plan: a
+   * profit row can be edited or deleted like any other transaction, and a
+   * denormalised total would drift the first time somebody corrected a typo.
+   * Soft-deleted rows are excluded — a deleted transaction is money that did
+   * not arrive.
+   */
+  async profitTotal(workspaceId: string, planId: string): Promise<number> {
+    /* Summed off the ledger entries, because `Transaction` carries no amount —
+       the money lives on its two legs and the row above them is only the story.
+       An INCOME books DEBIT to the receiving account and CREDIT to the income
+       nominal (`ledger.ts:182`), so the debit leg on a real account is what
+       actually arrived. `systemKey: null` is what separates the two, and
+       leaving it out would double every figure. */
+    const rows = await this.prisma.ledgerEntry.aggregate({
+      where: {
+        workspaceId,
+        direction: 'DEBIT',
+        account: { systemKey: null },
+        transaction: { savingsPlanId: planId, type: 'INCOME', deletedAt: null },
+      },
+      _sum: { amountMinor: true },
+    });
+    return minorToNumber(rows._sum.amountMinor ?? BigInt(0));
+  }
+
+  /**
+   * The DPS matured: move the money home and close the plan.
+   *
+   * ## Why a transfer and not income
+   *
+   * What comes out of a matured DPS is mostly the depositor's own instalments
+   * coming back. That is not earnings, it is the same money in a different
+   * account, and booking it as income would inflate a year's income by the size
+   * of the deposit and carry that error straight into the tax worksheet.
+   *
+   * The bank's share — the profit — is booked separately through
+   * `recordProfit`, which is why that method exists and why this one refuses to
+   * guess. Somebody who books the profit first and then transfers the total is
+   * describing what actually happened; somebody who transfers the total and
+   * calls it income is not.
+   *
+   * ## The amount is confirmed, never computed
+   *
+   * The caller sends the figure. The screen prefills it with the source
+   * account's balance so that "empty it" is one tap, but the server does not
+   * silently move whatever it happens to find: a balance read a moment before a
+   * write is a race, and a transfer nobody typed a number for is a transfer
+   * nobody checked.
+   */
+  async mature(
+    ctx: TenantContext,
+    id: string,
+    input: { fromAccountId: string; toAccountId: string; amountMinor: number; date?: string },
+  ): Promise<{ transactionId: string; status: SavingsStatus }> {
+    const plan = await this.requirePlan(ctx.workspaceId, id);
+    if (input.fromAccountId === input.toAccountId) {
+      throw new BadRequestException('একই অ্যাকাউন্টে সরানো যায় না — অন্য একটি বেছে নিন');
+    }
+
+    const created = await this.transactions.create(ctx, {
+      date: input.date ?? toLocalDateString(new Date(), ctx.timezone),
+      type: 'TRANSFER',
+      amountMinor: input.amountMinor,
+      accountId: input.fromAccountId,
+      counterAccountId: input.toAccountId,
+      description: `${plan.planName} — মেয়াদপূর্তি`,
+      savingsPlanId: plan.id,
+      source: 'MANUAL',
+    });
+
+    /* MATURED, not CLOSED. The plan is finished but it is still the explanation
+       for years of deposits and every profit row filed against it, and the
+       yearly report has to keep finding it. */
+    await this.prisma.savingsPlan.update({
+      where: { id: plan.id },
+      data: { status: 'MATURED' },
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'savings.matured',
+      entity: 'SavingsPlan',
+      entityId: plan.id,
+      before: { status: plan.status },
+      after: { status: 'MATURED', amountMinor: input.amountMinor, transactionId: created.id },
+    });
+
+    return { transactionId: created.id, status: 'MATURED' };
+  }
+
+  /**
    * Soft delete. A closed DPS is still the explanation for years of deposits
    * leaving the bank account, so the rows stay readable behind `deletedAt`.
    */
@@ -402,6 +626,11 @@ export class SavingsService {
     timezone: string,
   ): SavingsPlanView {
     return {
+      /* Zero here, and overwritten by `list` and `findOne` with the real
+         figure. This is a pure function over one plan row and profit is a
+         question for the ledger, so it cannot be answered at this level —
+         but leaving the field off the type would let a caller forget it. */
+      profitReceivedMinor: 0,
       id: plan.id,
       planName: plan.planName,
       institution: plan.institution,
