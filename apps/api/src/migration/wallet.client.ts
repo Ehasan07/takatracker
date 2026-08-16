@@ -35,6 +35,26 @@ const MAX_PAGES = 200;
  */
 const SINCE_EVERYTHING = 'recordDate=gte.2000-01-01T00:00:00.000Z';
 
+/**
+ * The same filter, narrowed to a window.
+ *
+ * Bringing nine thousand rows across in one go is a decision somebody should be
+ * able to make in pieces — a month first, to see whether the accounts and খাত
+ * landed where they expected, then the rest. The alternative is pulling
+ * everything and discarding most of it in our own process, which reads the
+ * whole history over the network to keep four hundred rows.
+ *
+ * Half-open on purpose: `[from, to)`. A month is "the first of August up to,
+ * but not including, the first of September", which is the only phrasing that
+ * cannot drop or duplicate the boundary day whatever the clock did that night.
+ * The caller passes local dates and this turns them into the instants the other
+ * product stores, so a record stamped 19:30 UTC on the 31st is still August in
+ * Dhaka.
+ */
+function windowFilter(fromIso: string, toIso: string): string {
+  return `recordDate=gte.${fromIso}&recordDate=lt.${toIso}`;
+}
+
 export interface WalletAccount {
   id: string;
   name?: string;
@@ -160,6 +180,11 @@ export class WalletClient {
     return this.all<WalletRecord>(token, 'records', SINCE_EVERYTHING);
   }
 
+  /** Just one window of them. Both bounds are ISO instants; see `windowFilter`. */
+  recordsBetween(token: string, fromIso: string, toIso: string): Promise<WalletRecord[]> {
+    return this.all<WalletRecord>(token, 'records', windowFilter(fromIso, toIso));
+  }
+
   /**
    * One page of records, and where the next one starts.
    *
@@ -176,9 +201,11 @@ export class WalletClient {
   async recordsPage(
     token: string,
     offset: number,
+    window?: { fromIso: string; toIso: string },
   ): Promise<{ rows: WalletRecord[]; nextOffset: number | null }> {
     const from = Math.max(0, Math.trunc(offset));
-    const page = await this.page<WalletRecord>(token, 'records', from, SINCE_EVERYTHING);
+    const filter = window ? windowFilter(window.fromIso, window.toIso) : SINCE_EVERYTHING;
+    const page = await this.page<WalletRecord>(token, 'records', from, filter);
     return {
       rows: page.rows,
       /* Only ever forwards, for the same reason `all()` refuses to go back: an

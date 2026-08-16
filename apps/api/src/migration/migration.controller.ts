@@ -89,10 +89,24 @@ export type ApplyInput = z.infer<typeof applySchema>;
  * row count of ours — the client sends what the last page returned and nothing
  * else. Absent means start at the beginning.
  */
-const recordsSchema = z.object({
-  token: z.string().min(20).max(4000),
-  offset: z.number().int().min(0).max(10_000_000).optional(),
-});
+const recordsSchema = z
+  .object({
+    token: z.string().min(20).max(4000),
+    offset: z.number().int().min(0).max(10_000_000).optional(),
+    /* An optional window, both local dates, `to` exclusive. Sent together or not
+     at all: half a range is not an instruction the server can guess the rest
+     of, and guessing would quietly import a different set than was asked for. */
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+  })
+  .refine((v) => (v.from === undefined) === (v.to === undefined), {
+    message: 'শুরু ও শেষ — দুইটি তারিখই দিতে হবে, নয়তো একটিও নয়',
+    path: ['to'],
+  })
+  .refine((v) => !v.from || !v.to || v.from < v.to, {
+    message: 'শেষের তারিখ শুরুর পরে হতে হবে',
+    path: ['to'],
+  });
 export type RecordsInput = z.infer<typeof recordsSchema>;
 
 const csvSchema = z.object({
@@ -237,6 +251,9 @@ export class MigrationController {
       id,
       body.token,
       body.offset ?? 0,
+      /* Both or neither. A half-range would silently mean something other than
+         what was asked for, so it is refused rather than completed. */
+      body.from && body.to ? { from: body.from, to: body.to } : undefined,
     );
   }
 

@@ -1323,6 +1323,11 @@ export class MigrationService {
     batchId: string,
     token: string,
     offset: number,
+    /* An optional window, so nine thousand rows can be brought across a month
+       at a time — the first month to see whether the accounts and খাত landed
+       where they were expected, the rest once that is answered. Absent means
+       everything, which is what every caller before this meant. */
+    window?: { from: string; to: string },
   ): Promise<RecordPageResult> {
     const { workspaceId, timezone } = ctx;
 
@@ -1350,7 +1355,19 @@ export class MigrationService {
       );
     }
 
-    const page = await this.wallet.recordsPage(token, offset);
+    /* Local dates in, instants out. `to` is exclusive: "August" is the first of
+       August up to but not including the first of September, which is the only
+       phrasing that cannot drop or double the boundary day. */
+    const page = await this.wallet.recordsPage(
+      token,
+      offset,
+      window
+        ? {
+            fromIso: fromLocalDateString(window.from, timezone).toISOString(),
+            toIso: fromLocalDateString(window.to, timezone).toISOString(),
+          }
+        : undefined,
+    );
     const system = await this.accounts.systemAccounts(workspaceId);
 
     /* Asked once for the whole page rather than once per row; the index is
