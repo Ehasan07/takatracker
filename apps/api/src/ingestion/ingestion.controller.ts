@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { cuid, isoDate, positiveMinorAmount } from '@hishab/shared';
+import { cuid, isoDate, isSupportedCurrency, positiveMinorAmount } from '@hishab/shared';
 import { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -176,6 +176,26 @@ const acceptDraftSchema = z.object({
   categoryId: cuid.optional(),
   description: z.string().max(500).optional(),
   notes: z.string().max(2000).optional(),
+  /* What the money actually was, when the message said it was not the
+   * workspace's own — the same pair, with the same names and the same units, as
+   * `transactionWriteSchema` uses for the ledger itself. `amountMinor` above
+   * stays in the workspace's currency whatever these say; the reviewer converts
+   * at a rate they declare and these two record the original beside it.
+   *
+   * `nullish`, so an accept can say "not another currency after all" as well as
+   * "unchanged" — a parser that read a code out of a reference number has to be
+   * correctable from the screen rather than only by rejecting the whole draft.
+   *
+   * Deliberately no both-or-neither rule here: the draft supplies whichever half
+   * the request leaves out, so the pairing can only be judged after the merge,
+   * and `IngestionService.accept` is where that happens. */
+  fxCurrency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine(isSupportedCurrency, 'এই কারেন্সিটি সমর্থিত নয়')
+    .nullish(),
+  fxAmountMinor: positiveMinorAmount.nullish(),
 });
 export type AcceptDraftInput = z.infer<typeof acceptDraftSchema>;
 

@@ -22,6 +22,7 @@ import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import { originOf, type FieldOrigin } from './evidence';
+import { convertedAmountText, FxReviewField } from './fx-review';
 import { bnDateTime, bnNum, channelLabel, DIRECTIONS, REJECT_REASONS, statusLabel } from './labels';
 import { Sparkles } from 'lucide-react';
 import { t } from '@/lib/t';
@@ -174,11 +175,31 @@ function ReviewForm({
 
   const pending = draft.status === 'PENDING';
 
+  /* The books' currency decides how many minor units a typed amount is worth,
+     what symbol goes on the label, and whether the message was in "another"
+     currency at all. Read before the form state, which needs it. */
+  const { currency, currencyInfo } = useWorkspaceSettings();
+
+  /* Both halves, or neither — the server sends them that way. Null on the
+     overwhelming majority of drafts, which are in the workspace's own money.
+     Memoised so the rate field's "fill an empty box once" effect is not handed
+     a new object on every keystroke. */
+  const fx = React.useMemo(
+    () =>
+      draft.fxCurrency && draft.fxAmountMinor !== null
+        ? { currency: draft.fxCurrency, amountMinor: draft.fxAmountMinor }
+        : null,
+    [draft.fxCurrency, draft.fxAmountMinor],
+  );
+
   const [form, setForm] = React.useState<FormState>(() => ({
     date: draft.date ?? '',
     /* Empty when the message carried no figure. A zero-confidence draft claims
-       nothing, and a form pre-filled with ০.০০ would be claiming it. */
-    amount: draft.amountMinor === null ? '' : formatMinor(draft.amountMinor, { symbol: false }),
+       nothing, and a form pre-filled with ০.০০ would be claiming it — as would
+       a foreign-currency draft, whose `amountMinor` is null for exactly that
+       reason: 4.6 dollars is not 4.60 taka and the box must not pretend it is. */
+    amount:
+      draft.amountMinor === null ? '' : formatMinor(draft.amountMinor, { symbol: false, currency }),
     direction: draft.direction ?? '',
     payee: draft.payee ?? '',
     accountId: draft.accountId ?? sticky.accountId,
@@ -186,6 +207,11 @@ function ReviewForm({
     description: '',
     notes: '',
   }));
+
+  /* The rate, as typed. Never sent and never stored: what reaches the server is
+     the converted amount, and the rate is recoverable from it and the original
+     as a ratio of two integers. `fx-convert.ts` explains why that matters. */
+  const [rate, setRate] = React.useState('');
   const [stickyApplied] = React.useState(
     () =>
       (!draft.accountId && Boolean(sticky.accountId)) ||
@@ -214,8 +240,29 @@ function ReviewForm({
     (e: { target: { value: string } }): void =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  /* The books' currency decides how many minor units a typed amount is worth. */
-  const { currency } = useWorkspaceSettings();
+  /**
+   * A rate typed above fills the amount box below.
+   *
+   * One direction only, and it is the kinder one. Somebody reading a rate off
+   * their card app types four characters and watches the taka appear; somebody
+   * reading the settled figure off a statement types that instead and this
+   * never runs, because the rate box stays empty. Driving it the other way as
+   * well — amount back to rate — would have two boxes fighting over one truth
+   * while a finger is still on the keyboard.
+   *
+   * It only ever writes when the conversion produces something: a half-typed
+   * `12.` yields null and leaves whatever is in the box alone.
+   */
+  const onRateChange = React.useCallback(
+    (next: string) => {
+      setRate(next);
+      if (!fx) return;
+      const converted = convertedAmountText(fx.amountMinor, fx.currency, next, currency);
+      if (converted !== null) setForm((f) => ({ ...f, amount: converted }));
+    },
+    [fx, currency],
+  );
+
   const accept = useMutation({
     mutationFn: (body: AcceptDraftBody) => acceptDraft(draft.id, body),
     onSuccess: (saved) => {
@@ -251,16 +298,39 @@ function ReviewForm({
       return;
     }
 
+    /* An empty box is a question nobody has answered yet, not a value that
+       failed to parse — and `parseMoneyToMinor('')` throws, so without this it
+       would be reported as "টাকার পরিমাণ বোঝা গেল না", which asks somebody to
+       fix a number they never typed. On a foreign-currency draft it is *the*
+       question, so it gets the sentence that says how to answer it. */
+    if (!form.amount.trim()) {
+      setError(
+        fx
+          ? t('inbox.fxNeedAmount', 'রেট দিন, নয়তো কত টাকা কাটা হয়েছে সেটি লিখুন')
+          : 'টাকার পরিমাণ দিন',
+      );
+      return;
+    }
+
     let amountMinor: number;
     try {
-      // Taka typed by a human becomes poisha here, truncated, never rounded.
+      /* What a human typed becomes minor units here, truncated, never rounded —
+         and in the *workspace's* currency, whatever the message was in. That is
+         the invariant the ledger is built on: `amountMinor` is always the books'
+         own money, and `fxCurrency`/`fxAmountMinor` record what it really was. */
       amountMinor = parseMoneyToMinor(form.amount, currency);
     } catch (err) {
       setError(err instanceof MoneyParseError ? 'টাকার পরিমাণ বোঝা গেল না' : 'টাকার পরিমাণ দিন');
       return;
     }
     if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
-      setError('টাকার পরিমাণ দিন');
+      /* A foreign draft brings no figure of its own, so an empty box here is
+         not a slip — it is the one question this screen was opened to ask. */
+      setError(
+        fx
+          ? t('inbox.fxNeedAmount', 'রেট দিন, নয়তো কত টাকা কাটা হয়েছে সেটি লিখুন')
+          : 'টাকার পরিমাণ দিন',
+      );
       return;
     }
     if (form.direction !== 'IN' && form.direction !== 'OUT') {
@@ -379,8 +449,31 @@ function ReviewForm({
           <Input id="dr-date" type="date" value={form.date} onChange={set('date')} />
         </EvidenceField>
 
+        {/* Above the amount box, because it is what the amount box now depends
+            on. A dollar charge has no taka figure until this is answered. */}
+        {fx ? (
+          <FxReviewField
+            currency={fx.currency}
+            amountMinor={fx.amountMinor}
+            base={currency}
+            rate={rate}
+            onRateChange={onRateChange}
+            quoted={draft.evidence.fxAmountMinor}
+            disabled={!pending || busy}
+          />
+        ) : null}
+
         <EvidenceField
-          label="টাকার পরিমাণ (৳)"
+          /* Never `(৳)` on faith. The symbol is the workspace's own, so a
+             yen-kept ledger says ¥ — and when the message was in another
+             currency the label says out loud that this box is the *converted*
+             figure, because a box marked ৳ holding a dollar amount is the
+             visible half of the bug this screen used to have. */
+          label={
+            fx
+              ? `${t('inbox.amountInBooks', 'খাতায় কত টাকা যাবে')} (${currencyInfo.symbol})`
+              : `${t('inbox.amount', 'টাকার পরিমাণ')} (${currencyInfo.symbol})`
+          }
           htmlFor="dr-amount"
           origin={originOf(draft.amountMinor, 'amountMinor', draft.evidence)}
           quoted={draft.evidence.amountMinor}

@@ -1383,4 +1383,246 @@ export const EN: Record<string, string> = {
   'guide.audit.t': 'The activity log',
   'guide.audit.w': 'More → Activity',
   'guide.audit.b': 'Who changed what, and when. There is no way to erase it — not for us either.',
+
+  /* Feedback, and the standard references behind the ⓘ notes. */
+  'feedback.title': 'Send feedback',
+  'feedback.blurb':
+    'Something looking wrong, or something you wish were here — write either one. The person who built the app is the one who reads it.',
+  'feedback.settingsBlurb': 'What is going wrong, and what would be good to have',
+  'feedback.open': 'Write to us',
+  'feedback.kind': 'What is this about',
+  'feedback.kind.problem': 'Something is going wrong',
+  'feedback.kind.idea': 'I want something that is not here',
+  'feedback.kind.other': 'Something else',
+  'feedback.message': 'What would you like to say',
+  'feedback.placeholder': 'What happened, and what you expected instead — your own words are fine.',
+  'feedback.remaining': '{n} characters left',
+  'feedback.screen': 'The page you came from',
+  'feedback.send': 'Send',
+  'feedback.empty': 'Write something — an empty message cannot be sent.',
+  'feedback.sentTitle': 'It arrived',
+  'feedback.sentBody': 'Thank you. If there is anything to answer, it will come to your email.',
+  'feedback.sendAnother': 'One more thing',
+  'feedback.privacy':
+    'Your name, your email and which page you wrote from travel with the message, so it can be answered. None of your transactions or amounts do.',
+  'note.why': 'why it is shown this way',
+  'note.cashBasis.label': 'Cash basis',
+  'note.cashBasis.body':
+    'Money is counted on the day it changed hands. A bill you have not paid yet is not in here. All four statements are prepared the same way, and every response says so — nobody has to guess.',
+  'note.currentSplit.label': 'Current and non-current',
+  'note.currentSplit.body':
+    'What turns into cash within a year — money in hand, in a bank, in a wallet, what somebody owes you — is shown apart from what does not: land, gold, a car, a savings scheme with a term on it. Add a ten-lakh plot to three thousand in cash and the total is right, but the answer to "what have I actually got" is gone.',
+  'note.cashFlowSections.label': 'Cash flow in three sections',
+  'note.cashFlowSections.body':
+    'Cash flow comes in three sections — operating, investing, financing. Which one a movement lands in is decided by the type of account on the other side of it, not by what the transaction was called. So buying land is investing and paying a card bill is financing, though both are "transfers".',
+  'note.revaluationEquity.label': 'Revaluation',
+  'note.revaluationEquity.body':
+    'Land or gold going up in price is not income — nobody paid you anything. So a revaluation sits directly in net worth, not in the income statement. No cash moves either, so it stays out of the cash flow.',
+  'note.assetsApart.label': 'Kinds of asset',
+  'note.assetsApart.body':
+    'Land, a house and a car are held apart from shares and investments rather than piled into one figure — their prices move for different reasons and answer different questions. The list grouped by kind is on the Assets page.',
+  'note.noDepreciation.label': 'Depreciation',
+  'note.noDepreciation.body':
+    'Depreciation on a household car or furniture is not computed here, and that is deliberate. In personal accounts it is an invented number nobody can check. When the price changes, the asset is revalued to what it is worth instead, which is closer to the truth.',
+  'note.disposalGain.label': 'Gain on a sale',
+  'note.disposalGain.body':
+    'Selling works the other way round. The difference between the price received and the amount on the books is a realised gain or loss, and it goes to the income statement — it does not sit in net worth the way a revaluation does. Whatever was already revalued is not counted as income a second time.',
+
+  /* Reading a statement, and the possible-duplicate warning. */
+  'import.page.blurb':
+    'Pull transactions out of a bank or wallet statement — PDF, Excel or CSV, whichever you have. You look at every row, fix its category, and then add it.',
+  'import.step1.title': 'Choose a file',
+  'import.step1.hint': 'PDF, Excel (.xlsx), CSV or a text file',
+  'import.step3.title': 'Go through it row by row',
+  'import.step3.hint': 'Tick only the rows you want to add',
+  'import.file.rows': 'rows',
+  'import.file.pages': 'pages',
+  'import.file.another': 'Use a different file',
+  'import.file.sheet': 'Which sheet',
+  'import.file.preamble': 'What the file says above the table',
+  'import.file.noTable':
+    'The table of transactions could not be found inside this file. Match the columns yourself below, or download the statement from your bank as CSV or Excel.',
+  'import.file.truncated':
+    'This file has a lot of rows — only as many as can be taken at once are shown. Put the rest in a separate file.',
+  'import.file.tooBig': 'That file is too large.',
+  'import.file.tooBigHint': 'Split it up, or download a shorter period from your bank.',
+  'import.file.alreadyImported': 'Rows that are already in your books will be marked below.',
+  'import.duplicate.badge': 'Possible duplicate',
+  'import.duplicate.badgeHelp': 'See what it matched',
+  'import.duplicate.title': 'Possible duplicate',
+  'import.duplicate.explain':
+    'Your books already hold a transaction for exactly this amount, on the same day, in the same account. This might be that one — or it might not, because the same amount really can be spent twice in a day. Have a look and decide.',
+  'import.duplicate.allAccounts':
+    'No account has been chosen yet, so every account was searched. Choosing one will shorten this list.',
+  'import.duplicate.noDescription': 'No description written',
+  'import.duplicate.recordedOn': 'Entered',
+  'import.duplicate.more': 'There are more like this',
+  'import.duplicate.noAction':
+    'Nothing is done on the strength of this list — the row is not skipped and nothing is merged.',
+  'import.review.approveRow': 'Add this row',
+  'import.review.noDescription': 'No description',
+  'import.review.categoryFor': 'Category for this row',
+  'import.review.noCategory': 'No category',
+  'import.review.countApproved': 'Ticked',
+  'import.review.countFlagged': 'Possible duplicates',
+  'import.review.countBroken': 'Could not be read',
+  'import.review.flaggedNotice':
+    'Some rows match transactions already in your books — same day, same account, same amount. Those are not ticked. Press ⓘ, check, and then tick them if they belong.',
+  'import.review.scopeAll':
+    'Choosing an account above will make the duplicate check more precise — right now every account is being searched.',
+  'import.review.tickClean': 'Tick everything without a warning',
+  'import.review.untickAll': 'Untick all',
+  'import.review.onlyFlagged': 'Show only possible duplicates',
+  'import.review.empty': 'Nothing to show.',
+  'import.review.netLabel': 'Total of the ticked rows',
+  'import.review.downloadBroken': 'Download the rows that could not be read',
+  'import.review.commit': 'Add the ticked transactions',
+
+  /* The charts and the cuts on /reports. */
+  'reports.breakdown.expense': 'Where the money went',
+  'reports.breakdown.income': 'Where the money came from',
+  'reports.breakdown.failed': 'Could not load the breakdown.',
+  'reports.breakdown.kindLabel': 'Income or spending',
+  'reports.breakdown.byLabel': 'How to break it down',
+  'reports.breakdown.by.parent': 'Category',
+  'reports.breakdown.by.detail': 'Sub-category',
+  'reports.breakdown.centreExpense': 'Total spent',
+  'reports.breakdown.centreIncome': 'Total earned',
+  'reports.breakdown.rest': 'Everything else',
+  'reports.breakdown.direct': '{name}, directly',
+  'reports.breakdown.allCategories': 'All categories',
+  'reports.breakdown.allEntries': 'All entries',
+  'reports.breakdown.openSub': '{name} — sub-categories',
+  'reports.breakdown.openEntries': '{name} — entries',
+  'reports.breakdown.parentHint':
+    'A sub-category’s money is counted with its parent. Tap a category to see inside it.',
+  'reports.breakdown.detailHint':
+    'Every category and sub-category on its own line — nothing is rolled up.',
+  'reports.chart.sliceCount': '{n} slices',
+  'reports.chart.asNumbers': 'Show the numbers',
+  'reports.chart.period': 'Period',
+  'reports.savingsRate': '{n}% of income kept',
+  'reports.month.1': 'Jan',
+  'reports.month.2': 'Feb',
+  'reports.month.3': 'Mar',
+  'reports.month.4': 'Apr',
+  'reports.month.5': 'May',
+  'reports.month.6': 'Jun',
+  'reports.month.7': 'Jul',
+  'reports.month.8': 'Aug',
+  'reports.month.9': 'Sep',
+  'reports.month.10': 'Oct',
+  'reports.month.11': 'Nov',
+  'reports.month.12': 'Dec',
+
+  /* Linking a savings plan to an account, and the prepaid spread. */
+  'savings.linkedAccount': 'Where the instalments are deposited',
+  'savings.linkedOn':
+    'When you tick an instalment you will be offered the chance to move the money into this account — as a transfer, not an expense.',
+  'savings.linkedOff':
+    'Not linked — ticking an instalment only marks it; no money moves in the books. Edit the plan to choose a savings account.',
+  'savings.notLinked': 'Not linked',
+  'savings.markedPaid': 'Marked paid',
+  'savings.depositBooked': 'In the books',
+  'savings.linkAccount': 'Which account the instalments are deposited into',
+  'savings.linkNone': 'Do not link',
+  'savings.linkHint':
+    'Link one and each time you tick an instalment you will be asked which account the money left, and it will be recorded as a transfer — not an expense, because putting money into a DPS is not spending it, it is moving it from one account to another. Leave it unlinked and ticking works exactly as before: a mark, and nothing in the books.',
+  'savings.linkNoAccounts':
+    'You have no savings-type account yet. Open one from the Accounts page and it will appear here.',
+  'savings.payInstalment': 'Instalment paid',
+  'savings.depositHint':
+    'Money into a DPS is not an expense — it moves from one account to another. So this is recorded as a transfer, and your net worth does not fall.',
+  'savings.depositFrom': 'Which account did it leave',
+  'savings.depositTo': 'Goes into:',
+  'savings.depositAmount': 'How much (৳)',
+  'savings.depositAmountHint': 'The scheduled instalment is filled in — you can change it.',
+  'savings.depositDate': 'On what date',
+  'savings.depositAndMove': 'Record it and move the money',
+  'savings.markOnly': 'Just mark it, do not move money',
+  'prepaid.link': 'Spread across the months',
+  'prepaid.period': 'How many months it covers',
+  'prepaid.coversN': '{n} months',
+  'prepaid.notMarked': 'Treated as one month.',
+  'prepaid.change': 'Change the period',
+  'prepaid.mark': 'Covers several months',
+  'prepaid.displayOnly':
+    'Nothing in the books changes — the whole payment stays on the day it was made. It is only divided up on the “spread across the months” page.',
+  'prepaid.title': 'Covers several months',
+  'prepaid.sheetHint':
+    'An insurance premium, a trade licence, a school session fee — paid once, for the whole year. Say so here and the spread page will show ৳12,000 as ৳1,000 a month.',
+  'prepaid.sheetWarning':
+    'The ledger does not change. The whole payment stays on the day it was made and this month’s spending does not fall — this only adds a way of looking at it.',
+  'prepaid.startDate': 'Starting from which month',
+  'prepaid.months': 'How many months',
+  'prepaid.monthsHint': '12 for a year, 24 for two years.',
+  'prepaid.badMonths': 'How many months — enter a number between 2 and 120.',
+  'prepaid.save': 'Show it spread',
+  'prepaid.clear': 'Stop spreading it',
+  'prepaid.heading': 'Spread across the months',
+  'prepaid.backToLedger': 'Back to the ledger',
+  'prepaid.pageHint':
+    'Insurance, licences, session fees — paid once but covering the whole year. They are divided across the months here, so you can see what a month really costs.',
+  'prepaid.pageWarning':
+    'This is a way of looking, nothing more. The ledger is unchanged — the whole payment sits on the day it was made, and no monthly transactions have been created.',
+  'prepaid.prevYear': 'Previous year',
+  'prepaid.nextYear': 'Next year',
+  'prepaid.empty': 'No expense has been marked as covering several months yet.',
+  'prepaid.emptyHint':
+    'Open an expense from the ledger — an insurance premium, say — choose “covers several months” and enter how many.',
+  'prepaid.goToLedger': 'Go to the ledger',
+  'prepaid.windowTotal': 'Spread across these twelve months',
+  'prepaid.nothing': 'Nothing',
+  'prepaid.itemsHeading': 'Expenses being spread',
+  'prepaid.perMonth': 'a month',
+  'prepaid.editHint':
+    'To change the period or stop spreading it, open the expense from the ledger.',
+  'savings.profitAccrued': 'Built up so far',
+  'savings.profitAccruedHint':
+    'Not received yet — the principal and the profit arrive together at maturity. This is an estimate from the rate, before tax.',
+  'savings.profitFromLedger':
+    'Income recorded in the ledger with “from which savings” set is counted here too.',
+  'savings.profitReceivedOnly':
+    'Exactly what the bank handed over — read it off the passbook or the SMS. Do not enter what you have not received yet.',
+  'savings.matureProfitWhere':
+    'If you do not see that button, record the profit as income in the ledger and set “from which savings” to this plan — it counts the same.',
+
+  /* Appearance: the palette and the light/dark axis, kept separate. */
+  'theme.title': 'Appearance',
+  'theme.blurb': 'Colours and light — this device only; nothing about the books changes',
+  'theme.default': 'Colourful',
+  'theme.default.note': 'The familiar look — income green, expense red',
+  'theme.mono': 'Black and white',
+  'theme.mono.note': 'No colour at all; money out is ruled underneath',
+  'theme.contrast': 'High contrast',
+  'theme.contrast.note': 'Clearest in bright sun and in low light',
+  'theme.calm': 'Calm',
+  'theme.calm.note': 'Soft, warm colours — easy on the eyes',
+  'theme.mode': 'Light or dark',
+  'theme.mode.system': 'Follow phone',
+  'theme.mode.light': 'Light',
+  'theme.mode.dark': 'Dark',
+  'theme.mode.note': 'Left alone, this follows your phone settings',
+  'theme.preview': 'How it looks',
+  'theme.preview.in': 'Income',
+  'theme.preview.out': 'Expense',
+  'theme.preview.note': 'Every theme tells income and expense apart by sign and label too',
+
+  /* Tagging an income row to the investment that paid it — the picker on the
+     ordinary entry sheet, which is where profit is actually recorded. */
+  'entry.fromInvestment': 'Which investment it came from',
+  'entry.noInvestment': 'None',
+  'entry.fromInvestmentHint':
+    'Optional. Pick it for profit from a Sanchayapatra or a DPS \u2014 then the app can say how much each one has paid you.',
+
+  /* A message that named a foreign currency, and the rate the person confirms. */
+  'inbox.amount': 'Amount',
+  'inbox.amountInBooks': 'What goes into the books',
+  'inbox.fxTitle': 'This message was in another currency',
+  'inbox.fxWhy':
+    'The books are kept in {base}, so you have to say how much {base} was taken. The message states no rate — use whatever your card app or bank statement says.',
+  'inbox.fxStated': 'The message said',
+  'inbox.fxOrType':
+    'Type a rate and the box below fills itself in. If you already know the amount that was taken, skip the rate and type that instead.',
+  'inbox.fxNeedAmount': 'Give a rate, or type how much was taken',
 };

@@ -315,6 +315,8 @@ export class ImportService {
       lineNumber: number;
       description: string;
       categoryName: string | null;
+      categoryId: string | null;
+      acceptDuplicate: boolean;
     })[] = input.rows.map((row, index) => ({
       lineNumber: row.lineNumber ?? index + 2,
       date: row.date,
@@ -323,12 +325,32 @@ export class ImportService {
       reference: row.reference ?? null,
       description: row.description ?? '',
       categoryName: row.categoryName ?? null,
+      categoryId: row.categoryId ?? null,
+      acceptDuplicate: row.acceptDuplicate ?? false,
     }));
 
     const existingKeys = await this.existingKeys(ctx, account.id, rows);
     const marked = markDuplicates(rows, existingKeys);
-    const accepted = marked.filter((row) => !row.isDuplicate);
-    const skipped = marked.filter((row) => row.isDuplicate);
+
+    /**
+     * A row the user was shown as a possible duplicate and approved anyway is
+     * written. That is the whole difference between the two ways into this
+     * endpoint, and it is deliberate.
+     *
+     * The CSV flow sends a whole file at once, nobody has looked at the rows
+     * one by one, and skipping what is already in the books is the only safe
+     * default — a row wrongly skipped is reported and can be added by hand,
+     * whereas a row wrongly doubled is invisible for weeks.
+     *
+     * The statement review flow is the opposite situation: every row on that
+     * screen was flagged, shown beside the entry it matched, and individually
+     * approved by somebody who knows whether they withdrew ৳500 once or twice.
+     * Overriding that decision here would make the approval a lie. So the flag
+     * only ever arrives on a row a person has actually decided about, and when
+     * it does, their answer wins.
+     */
+    const accepted = marked.filter((row) => !row.isDuplicate || row.acceptDuplicate);
+    const skipped = marked.filter((row) => row.isDuplicate && !row.acceptDuplicate);
 
     if (accepted.length === 0) {
       throw new BadRequestException(
@@ -372,7 +394,7 @@ export class ImportService {
 
         for (const row of accepted) {
           const type = row.direction === 'IN' ? 'INCOME' : 'EXPENSE';
-          const categoryId = categoryIds(row.categoryName, row.direction);
+          const categoryId = categoryIds(row.categoryId, row.categoryName, row.direction);
           const entries = expandSimpleTransaction(
             {
               type,
@@ -606,29 +628,42 @@ export class ImportService {
   }
 
   /**
-   * Match an imported category name to one the workspace already has.
+   * Settle which category a row lands in.
    *
-   * Matched, never created: an import that invents twenty categories out of a
-   * bank's free-text column leaves a picker nobody can use, and the names in a
-   * statement are the bank's words, not the user's. An unmatched name simply
-   * leaves the row uncategorised, which the user can fix in bulk afterwards.
+   * Two ways in, and the order between them matters:
    *
-   * The kind has to agree too — money coming in cannot be filed under an
-   * expense head, however well the name matches.
+   *  1. **An id the user chose**, from the review screen's per-row picker. It
+   *     is still checked — the workspace must own it and the kind must agree —
+   *     but a person who was shown a list and pointed at a row in it has said
+   *     something exact, and a name match cannot tell two "অন্যান্য" apart when
+   *     they sit under different parents.
+   *  2. **A name out of the file**, matched against what the workspace already
+   *     has. Matched, never created: an import that invents twenty categories
+   *     out of a bank's free-text column leaves a picker nobody can use, and
+   *     those are the bank's words, not the user's. An unmatched name simply
+   *     leaves the row uncategorised, which is fixable in bulk afterwards.
+   *
+   * The kind has to agree either way — money coming in cannot be filed under an
+   * expense head, however well the name matches or however firmly it was
+   * clicked.
    */
   private async categoryResolver(
     workspaceId: string,
-  ): Promise<(name: string | null, direction: ImportDirection) => string | null> {
+  ): Promise<
+    (id: string | null, name: string | null, direction: ImportDirection) => string | null
+  > {
     const categories = await this.prisma.category.findMany({
       where: { workspaceId, deletedAt: null },
       select: { id: true, name: true, nameBn: true, kind: true },
     });
 
     const byName = new Map<string, string>();
+    const kindById = new Map<string, CategoryKind>();
     const key = (kind: CategoryKind, name: string): string =>
       `${kind}:${name.normalize('NFC').trim().toLowerCase()}`;
 
     for (const category of categories) {
+      kindById.set(category.id, category.kind);
       for (const label of [category.name, category.nameBn]) {
         if (!label) continue;
         const k = key(category.kind, label);
@@ -636,9 +671,10 @@ export class ImportService {
       }
     }
 
-    return (name, direction) => {
-      if (!name) return null;
+    return (id, name, direction) => {
       const kind: CategoryKind = direction === 'IN' ? 'INCOME' : 'EXPENSE';
+      if (id && kindById.get(id) === kind) return id;
+      if (!name) return null;
       return byName.get(key(kind, name)) ?? null;
     };
   }
@@ -660,7 +696,8 @@ export class ImportService {
     if (breach) throw new FeatureLimitException(breach);
   }
 
-  private async limitSnapshot(ctx: TenantContext): Promise<LimitSnapshot> {
+  /** Public because the statement preview reports the same headroom. */
+  async limitSnapshot(ctx: TenantContext): Promise<LimitSnapshot> {
     const [entitlements, usage] = await Promise.all([
       this.entitlements.forWorkspace(ctx.workspaceId),
       this.entitlements.usage(ctx.workspaceId, ctx.timezone),

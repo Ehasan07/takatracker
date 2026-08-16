@@ -76,6 +76,13 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   const [notes, setNotes] = React.useState('');
   const [tagIds, setTagIds] = React.useState<string[]>([]);
   const [personId, setPersonId] = React.useState('');
+  /* Which investment this row belongs to — a Sanchayapatra, a DPS, an FDR.
+     Optional, and the reason it lives here rather than on the savings screen:
+     profit arrives as an ordinary income row in the khata, and the only thing
+     that has to be added is *which certificate paid it*. Asking somebody to go
+     to another screen to record money that landed in their bank account is
+     asking them to remember a place, not a fact. */
+  const [savingsPlanId, setSavingsPlanId] = React.useState('');
   /* Null for the overwhelming majority of entries, which are in the
      workspace's own money and never open the section. */
   const [fx, setFx] = React.useState<FxValue | null>(null);
@@ -133,6 +140,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setTagIds((editing.tags ?? []).map((tag) => tag.id));
       setTagsKnown(editing.tags !== undefined);
       setPersonId(editing.personId ?? '');
+      setSavingsPlanId(editing.savingsPlanId ?? '');
       setFx(
         editing.fxCurrency && editing.fxAmountMinor
           ? { currency: editing.fxCurrency, amountMinor: editing.fxAmountMinor }
@@ -253,6 +261,9 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
            leaves the row's person alone, which would make "কেউ না" impossible
            to save. Sent on a create too, where the two mean the same thing. */
         personId: personId || null,
+        /* Same three-way rule as `personId`: `null` unfiles it, which is how
+           somebody takes a row back off an investment they tagged by mistake. */
+        savingsPlanId: savingsPlanId || null,
         /* Both or neither — the server refuses a half-pair, and an edit that
            cleared the section has to say so rather than leave the old one. */
         fxCurrency: fx ? fx.currency : null,
@@ -488,6 +499,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
 
         <PersonField value={personId} onChange={setPersonId} />
+        <InvestmentField kind={kind} value={savingsPlanId} onChange={setSavingsPlanId} />
 
         <QuantityField value={quantity} onChange={setQuantity} />
 
@@ -542,6 +554,77 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
  * Optional, always. Most entries have no counterparty worth naming, and a field
  * that nags for one teaches people to put something meaningless in it.
  */
+/**
+ * "কোন সঞ্চয় থেকে" — the investment an income row came out of.
+ *
+ * ## Why it is here and not on the savings screen
+ *
+ * A Sanchayapatra pays its profit into an ordinary bank account every month or
+ * quarter. That is an income row like any other, and the person recording it is
+ * already here, in the khata, with the amount in front of them. The only thing
+ * the books were missing was *which certificate paid it* — so that is the only
+ * thing this asks.
+ *
+ * The alternative, a button on the savings screen, makes somebody remember a
+ * place rather than a fact, and it quietly implies that investment income is a
+ * different kind of money. It is not. It is income, and it belongs on the same
+ * form as a salary.
+ *
+ * ## Income only
+ *
+ * Shown on income rows and nowhere else. Money going *into* a DPS is a transfer
+ * between two of your own accounts, not a transaction filed against the plan,
+ * and offering this box on an expense would invite exactly that mistake.
+ *
+ * Hidden when there is nothing to pick, like `PersonField` above: an enabled
+ * dropdown holding one "কোনোটি নয়" is a dead end that asks the reader to work
+ * out why.
+ */
+function InvestmentField({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: Kind;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const plans = useQuery({
+    queryKey: ['savings'],
+    queryFn: () => api<{ id: string; planName: string; planType: string }[]>('/savings'),
+    staleTime: 60_000,
+    enabled: kind === 'INCOME',
+  });
+
+  if (kind !== 'INCOME') return null;
+  const rows = plans.data ?? [];
+  if (rows.length === 0 && !value) return null;
+
+  return (
+    <Field label={t('entry.fromInvestment', 'কোন সঞ্চয় থেকে')} htmlFor="qa-investment">
+      <Select
+        id="qa-investment"
+        name="savingsPlanId"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{t('entry.noInvestment', 'কোনোটি নয়')}</option>
+        {rows.map((plan) => (
+          <option key={plan.id} value={plan.id}>
+            {plan.planName}
+          </option>
+        ))}
+      </Select>
+      <p className="text-ink-muted mt-1 text-xs">
+        {t(
+          'entry.fromInvestmentHint',
+          'ঐচ্ছিক। সঞ্চয়পত্র বা ডিপিএসের মুনাফা হলে বেছে দিন — তাহলে কোনটা থেকে কত মুনাফা পেলেন সেই হিসাব রাখা যাবে।',
+        )}
+      </p>
+    </Field>
+  );
+}
+
 function PersonField({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const people = useQuery({
     queryKey: ['people', 'list', ''],

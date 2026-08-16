@@ -615,3 +615,476 @@ describe('savings profit', () => {
     expect(events).toHaveLength(1);
   });
 });
+
+/**
+ * Instalments reaching the books.
+ *
+ * The whole feature turns on one accounting fact: **putting money into a DPS is
+ * not an expense**. Nothing is consumed and nobody is owed — one asset becomes
+ * another — so the row this writes is a `TRANSFER`, and if it ever stops being
+ * one, net worth is understated by every poisha the household has ever saved
+ * and every one of those months looks like a month they overspent.
+ *
+ * The second thing these tests defend is that it stays optional. Marking an
+ * instalment paid moved no money for as long as the endpoint has existed, and a
+ * plan with no linked account — or a linked plan whose caller did not name a
+ * source — must behave exactly as it did before any of this.
+ */
+describe('savings instalment deposits', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  type User = Awaited<ReturnType<typeof signup>>;
+
+  /** ৳2,000.00 a month, twelve months — an ordinary DPS. */
+  const INSTALMENT = 200_000;
+
+  const account = (user: User, name: string, type: string, openingBalance = 0) =>
+    ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({ name, type, openingBalance })
+      .expect(201)
+      .then((res) => res.body as { id: string; balanceMinor: number });
+
+  const dpsPlan = (user: User, over: Record<string, unknown> = {}) =>
+    ctx
+      .http()
+      .post('/v1/savings')
+      .set(auth(user))
+      .send({
+        planName: 'ব্র্যাক ডিপিএস',
+        planType: 'DPS',
+        installmentMinor: INSTALMENT,
+        frequency: 'MONTHLY',
+        termMonths: 12,
+        startDate: '2026-01-10',
+        profitRateBps: 800,
+        ...over,
+      });
+
+  const balances = async (user: User): Promise<Map<string, number>> => {
+    const res = await ctx.http().get('/v1/accounts').set(auth(user)).expect(200);
+    return new Map(
+      (res.body as { id: string; balanceMinor: number }[]).map((a) => [a.id, a.balanceMinor]),
+    );
+  };
+
+  it('books the instalment as a transfer, not as an expense', async () => {
+    const user = await signup(ctx);
+    const current = await account(user, 'চলতি হিসাব', 'BANK', 5_000_000);
+    const savings = await account(user, 'ডিপিএস হিসাব', 'SAVINGS');
+    const plan = (await dpsPlan(user, { linkedAccountId: savings.id }).expect(201)).body;
+    const first = (plan.installments as Installment[])[0];
+
+    const paid = await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(user))
+      .send({ fromAccountId: current.id, paidDate: '2026-01-10' })
+      .expect(200);
+
+    expect(paid.body.deposit).toMatchObject({ booked: true, amountMinor: INSTALMENT });
+    expect(paid.body.deposit.transactionId).toEqual(expect.any(String));
+
+    /* The money is really in the savings account and really gone from the
+       current one — which is the sentence the whole feature exists to make
+       true. Before this, ten plans and ৳31,000 of savings. */
+    const after = await balances(user);
+    expect(after.get(savings.id)).toBe(INSTALMENT);
+    expect(after.get(current.id)).toBe(5_000_000 - INSTALMENT);
+
+    /* A TRANSFER, and this is the assertion that matters most. An EXPENSE here
+       would understate net worth by the deposit and overstate January's
+       spending by the same figure, both in the direction that flatters
+       nothing. */
+    const tx = await ctx.prisma.transaction.findUniqueOrThrow({
+      where: { id: paid.body.deposit.transactionId },
+    });
+    expect(tx.type).toBe('TRANSFER');
+    expect(tx.savingsPlanId).toBe(plan.id);
+
+    // Nothing touched the income statement, in either direction.
+    const summary = await ctx
+      .http()
+      .get('/v1/transactions/summary?month=2026-01')
+      .set(auth(user))
+      .expect(200);
+    expect(summary.body.expenseMinor).toBe(0);
+    expect(summary.body.incomeMinor).toBe(0);
+
+    // And the tick remembers which row moved the money.
+    const stored = await ctx.prisma.savingsInstallment.findUniqueOrThrow({
+      where: { id: first.id },
+    });
+    expect(stored.status).toBe('PAID');
+    expect(stored.transactionId).toBe(paid.body.deposit.transactionId);
+  });
+
+  it('moves nothing when no account is named, on a plan that has a link', async () => {
+    const user = await signup(ctx);
+    const current = await account(user, 'চলতি হিসাব', 'BANK', 5_000_000);
+    const savings = await account(user, 'ডিপিএস হিসাব', 'SAVINGS');
+    const plan = (await dpsPlan(user, { linkedAccountId: savings.id }).expect(201)).body;
+    const first = (plan.installments as Installment[])[0];
+
+    const paid = await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(user))
+      .send({ paidDate: '2026-01-10' })
+      .expect(200);
+
+    /* `null`, not `{ booked: false }`. Nothing failed — nothing was asked for,
+       which is the behaviour this endpoint has always had and the reason the
+       link alone is never enough to move money. */
+    expect(paid.body.deposit).toBeNull();
+    expect(paid.body.progress.paidCount).toBe(1);
+
+    const after = await balances(user);
+    expect(after.get(savings.id)).toBe(0);
+    expect(after.get(current.id)).toBe(5_000_000);
+    expect(
+      await ctx.prisma.transaction.count({
+        where: { workspaceId: user.workspaceId, type: 'TRANSFER', deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it('keeps an unlinked plan exactly as it was', async () => {
+    const user = await signup(ctx);
+    const current = await account(user, 'চলতি হিসাব', 'BANK', 5_000_000);
+    const plan = (await dpsPlan(user).expect(201)).body;
+    const first = (plan.installments as Installment[])[0];
+
+    const paid = await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(user))
+      .send({})
+      .expect(200);
+    expect(paid.body.deposit).toBeNull();
+    expect((await balances(user)).get(current.id)).toBe(5_000_000);
+
+    /* Asking for a transfer on a plan with nowhere to put it is refused rather
+       than quietly ignored: ignoring it would tick the instalment and leave
+       somebody believing their money had moved. */
+    const second = (plan.installments as Installment[])[1];
+    const refused = await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${second.id}/pay`)
+      .set(auth(user))
+      .send({ fromAccountId: current.id })
+      .expect(400);
+    expect(refused.body.message).toContain('যুক্ত নেই');
+
+    // The refusal wrote nothing at all — not the tick, not a transaction.
+    const stored = await ctx.prisma.savingsInstallment.findUniqueOrThrow({
+      where: { id: second.id },
+    });
+    expect(stored.status).toBe('DUE');
+    expect(
+      await ctx.prisma.transaction.count({
+        where: { workspaceId: user.workspaceId, type: 'TRANSFER', deletedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it('books what was actually paid when that is not the scheduled figure', async () => {
+    const user = await signup(ctx);
+    const current = await account(user, 'চলতি হিসাব', 'BANK', 5_000_000);
+    const savings = await account(user, 'ডিপিএস হিসাব', 'SAVINGS');
+    const plan = (await dpsPlan(user, { linkedAccountId: savings.id }).expect(201)).body;
+    const first = (plan.installments as Installment[])[0];
+
+    // A late instalment with the bank's penalty on the same debit.
+    await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(user))
+      .send({ fromAccountId: current.id, amountMinor: 210_000, paidDate: '2026-01-20' })
+      .expect(200);
+
+    expect((await balances(user)).get(savings.id)).toBe(210_000);
+  });
+
+  it('refuses to move an instalment into the account it came from', async () => {
+    const user = await signup(ctx);
+    const savings = await account(user, 'ডিপিএস হিসাব', 'SAVINGS', 100_000);
+    const plan = (await dpsPlan(user, { linkedAccountId: savings.id }).expect(201)).body;
+    const first = (plan.installments as Installment[])[0];
+
+    await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(user))
+      .send({ fromAccountId: savings.id })
+      .expect(400);
+  });
+
+  it('only links to a savings account, and can be unlinked again', async () => {
+    const user = await signup(ctx);
+    const current = await account(user, 'চলতি হিসাব', 'BANK', 5_000_000);
+    const savings = await account(user, 'ডিপিএস হিসাব', 'SAVINGS');
+
+    /* The current account is not where a DPS is held, and allowing it would let
+       somebody transfer money from an account into itself month after month
+       and wonder why nothing accumulated. */
+    const refused = await dpsPlan(user, { linkedAccountId: current.id }).expect(400);
+    expect(refused.body.message).toContain('সঞ্চয়');
+
+    const plan = (await dpsPlan(user, { linkedAccountId: savings.id }).expect(201)).body;
+    expect(plan.linkedAccountId).toBe(savings.id);
+
+    const unlinked = await ctx
+      .http()
+      .patch(`/v1/savings/${plan.id}`)
+      .set(auth(user))
+      .send({ linkedAccountId: null })
+      .expect(200);
+    expect(unlinked.body.linkedAccountId).toBeNull();
+
+    // And an edit that says nothing about the link leaves it alone.
+    const relinked = await ctx
+      .http()
+      .patch(`/v1/savings/${plan.id}`)
+      .set(auth(user))
+      .send({ linkedAccountId: savings.id })
+      .expect(200);
+    expect(relinked.body.linkedAccountId).toBe(savings.id);
+    const renamed = await ctx
+      .http()
+      .patch(`/v1/savings/${plan.id}`)
+      .set(auth(user))
+      .send({ planName: 'ব্র্যাক ডিপিএস — ২' })
+      .expect(200);
+    expect(renamed.body.linkedAccountId).toBe(savings.id);
+  });
+
+  it('never lets a second workspace pay an instalment out of the first one s account', async () => {
+    const alice = await signup(ctx);
+    const bob = await signup(ctx);
+    const savings = await account(alice, 'ডিপিএস হিসাব', 'SAVINGS');
+    const bobsBank = await account(bob, 'ববের ব্যাংক', 'BANK', 5_000_000);
+    const plan = (await dpsPlan(alice, { linkedAccountId: savings.id }).expect(201)).body;
+    const first = (plan.installments as Installment[])[0];
+
+    await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(bob))
+      .send({ fromAccountId: bobsBank.id })
+      .expect(404);
+
+    /* And Alice cannot reach Bob's wallet either: the ledger's own ownership
+       check refuses the account, and because the tick lands first, the
+       instalment is paid with the failure reported rather than swallowed. */
+    const crossed = await ctx
+      .http()
+      .post(`/v1/savings/${plan.id}/installments/${first.id}/pay`)
+      .set(auth(alice))
+      .send({ fromAccountId: bobsBank.id })
+      .expect(200);
+    expect(crossed.body.deposit).toMatchObject({ booked: false, transactionId: null });
+    expect(crossed.body.deposit.message).toBe('অ্যাকাউন্ট পাওয়া যায়নি');
+    expect((await balances(bob)).get(bobsBank.id)).toBe(5_000_000);
+  });
+});
+
+/**
+ * Profit that has built up against profit that has arrived.
+ *
+ * A **Sanchayapatra** credits a bank account every month or quarter, so
+ * "মুনাফা পেয়েছি" is a real event forty-eight times over its life. A **DPS pays
+ * nothing at all before maturity** — principal and profit come together at the
+ * end — so a screen offering to record profit received on a running DPS is
+ * inviting somebody to file income that has neither been earned nor received.
+ * That overstates the year and carries into the tax worksheet.
+ *
+ * The response therefore says which kind of instrument it is, and how much has
+ * accrued. Both are derived. Neither posts anything, and the accrued figure is
+ * never income and never an asset under this ledger's cash basis.
+ */
+describe('savings accrued profit', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  type User = Awaited<ReturnType<typeof signup>>;
+
+  /** Started two years ago, so a fixed date cannot make this test rot. */
+  const twoYearsAgo = (): string => {
+    const now = new Date();
+    return `${now.getUTCFullYear() - 2}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  };
+
+  const make = (user: User, body: Record<string, unknown>) =>
+    ctx
+      .http()
+      .post('/v1/savings')
+      .set(auth(user))
+      .send(body)
+      .expect(201)
+      .then((res) => res.body);
+
+  it('calls a DPS AT_MATURITY and a Sanchayapatra PERIODIC', async () => {
+    const user = await signup(ctx);
+
+    const dpsPlan = await make(user, {
+      planName: 'ব্র্যাক ডিপিএস',
+      planType: 'DPS',
+      installmentMinor: 200_000,
+      termMonths: 60,
+      startDate: twoYearsAgo(),
+      profitRateBps: 800,
+    });
+    /* The whole correction in one assertion: a DPS must never look like an
+       instrument that has handed anything over. */
+    expect(dpsPlan.profitPayout).toBe('AT_MATURITY');
+
+    const certificate = await make(user, {
+      planName: 'পরিবার সঞ্চয়পত্র',
+      planType: 'SANCHAYPATRA',
+      principalMinor: 50_000_000,
+      termMonths: 60,
+      startDate: twoYearsAgo(),
+      profitRateBps: 1104,
+      profitCalc: 'SIMPLE',
+    });
+    expect(certificate.profitPayout).toBe('PERIODIC');
+
+    /* A monthly DPS is `frequency: MONTHLY` and pays out nothing monthly. The
+       instalment rhythm is not a payout rhythm, and reading it as one is
+       exactly the guess that would put the button back. */
+    const monthly = await make(user, {
+      planName: 'মাসিক এফডিআর',
+      planType: 'FDR',
+      principalMinor: 10_000_000,
+      frequency: 'MONTHLY',
+      termMonths: 12,
+      startDate: twoYearsAgo(),
+      profitRateBps: 900,
+    });
+    expect(monthly.profitPayout).toBe('AT_MATURITY');
+  });
+
+  it('accrues part of the profit as the term runs, and never more than all of it', async () => {
+    const user = await signup(ctx);
+    const plan = await make(user, {
+      planName: 'ব্র্যাক ডিপিএস',
+      planType: 'DPS',
+      installmentMinor: 200_000,
+      termMonths: 60,
+      startDate: twoYearsAgo(),
+      profitRateBps: 800,
+      profitCalc: 'COMPOUND_MONTHLY',
+    });
+
+    // Two years into five: something has built up, and it is not the lot.
+    expect(plan.accruedProfitMinor).toBeGreaterThan(0);
+    expect(plan.accruedProfitMinor).toBeLessThan(plan.projection.profitMinor);
+
+    /* And nothing was posted for it. Accrued profit is a number to look at; the
+       moment it became a ledger row these books would be mixed-basis while
+       every statement they serve still declares `basis: 'CASH'`. */
+    expect(
+      await ctx.prisma.transaction.count({
+        where: { workspaceId: user.workspaceId, deletedAt: null },
+      }),
+    ).toBe(0);
+    expect(plan.profitReceivedMinor).toBe(0);
+  });
+
+  it('accrues nothing on the day a plan is opened', async () => {
+    const user = await signup(ctx);
+    const today = new Date().toISOString().slice(0, 10);
+    const plan = await make(user, {
+      planName: 'আজকের ডিপিএস',
+      planType: 'DPS',
+      installmentMinor: 200_000,
+      termMonths: 60,
+      startDate: today,
+      profitRateBps: 800,
+    });
+    // Not one poisha has been on deposit for a month.
+    expect(plan.accruedProfitMinor).toBe(0);
+  });
+
+  it('stops accruing at the end of the term', async () => {
+    const user = await signup(ctx);
+    const plan = await make(user, {
+      planName: 'পুরনো এফডিআর',
+      planType: 'FDR',
+      principalMinor: 10_000_000,
+      termMonths: 12,
+      startDate: twoYearsAgo(),
+      profitRateBps: 900,
+      profitCalc: 'COMPOUND_QUARTERLY',
+    });
+    /* A one-year FDR two years old has earned one year of profit, not two. A
+       plan somebody forgot to close must not keep growing for ever. */
+    expect(plan.accruedProfitMinor).toBe(plan.projection.profitMinor);
+  });
+
+  it('counts profit recorded from the khata against the certificate', async () => {
+    const user = await signup(ctx);
+    const account = (
+      await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: 'সিটি ব্যাংক', type: 'BANK' })
+        .expect(201)
+    ).body as { id: string };
+    const categories = (
+      await ctx.http().get('/v1/categories?kind=INCOME').set(auth(user)).expect(200)
+    ).body as { id: string }[];
+    const plan = await make(user, {
+      planName: 'পরিবার সঞ্চয়পত্র',
+      planType: 'SANCHAYPATRA',
+      principalMinor: 50_000_000,
+      termMonths: 60,
+      startDate: twoYearsAgo(),
+      profitRateBps: 1104,
+      profitCalc: 'SIMPLE',
+    });
+
+    /* The ordinary income sheet, with "কোন সঞ্চয় থেকে" set — which is the
+       primary way profit gets recorded now. The savings screen's own total must
+       count it, or the two places disagree about the same money. */
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: '2026-04-15',
+        type: 'INCOME',
+        amountMinor: 276_000,
+        accountId: account.id,
+        categoryId: categories[0]!.id,
+        savingsPlanId: plan.id,
+        description: 'সঞ্চয়পত্রের মুনাফা',
+      })
+      .expect(201);
+
+    const detail = (await ctx.http().get(`/v1/savings/${plan.id}`).set(auth(user)).expect(200))
+      .body as { profitReceivedMinor: number };
+    expect(detail.profitReceivedMinor).toBe(276_000);
+  });
+});

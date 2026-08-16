@@ -252,8 +252,43 @@ export function withinWindow<T extends { month: string }>(
    every one of them hardcoded Bengali digits. The old names are re-exported so
    the call sites in this folder stay as they are. */
 import { fmtDate as bnDate, fmtNumber as bnNum } from '@/lib/format';
+import { t } from '@/lib/t';
 
 export { bnDate, bnNum };
+
+/**
+ * Month names short enough for a 44px column on a chart.
+ *
+ * `fmtDate` and friends all spell a month out in full and put a year beside it
+ * — "আগস্ট ২০২৬" — which is right in a ledger row and four times too wide under
+ * a bar. Resolved once at module load rather than per render, the way
+ * `nav-model.ts` and the label tables do: `t()` reads a module variable that is
+ * seeded synchronously before the first component renders, and a language
+ * change reloads the page.
+ */
+const SHORT_MONTHS: readonly string[] = [
+  t('reports.month.1', 'জানু'),
+  t('reports.month.2', 'ফেব্রু'),
+  t('reports.month.3', 'মার্চ'),
+  t('reports.month.4', 'এপ্রি'),
+  t('reports.month.5', 'মে'),
+  t('reports.month.6', 'জুন'),
+  t('reports.month.7', 'জুলা'),
+  t('reports.month.8', 'আগ'),
+  t('reports.month.9', 'সেপ্ট'),
+  t('reports.month.10', 'অক্টো'),
+  t('reports.month.11', 'নভে'),
+  t('reports.month.12', 'ডিসে'),
+];
+
+/**
+ * `2026-08` as "আগ". The year is dropped on purpose: a trend chart's columns
+ * are consecutive, so only the January boundary is ambiguous — and the panel's
+ * own date range, printed above it, resolves that.
+ */
+export function shortMonth(key: string): string {
+  return SHORT_MONTHS[Number(key.slice(5, 7)) - 1] ?? key;
+}
 
 export function rangeLabel(range: ReportRange): string {
   if (range.preset === 'custom') return `${bnDate(range.from)} — ${bnDate(range.to)}`;

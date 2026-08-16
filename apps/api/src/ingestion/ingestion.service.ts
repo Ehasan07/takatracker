@@ -15,7 +15,14 @@ import {
   REVIEW_THRESHOLD,
   type EntryDraft,
 } from '@hishab/core';
-import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
+import { currencyForAmount, type CurrencyAmount } from '@hishab/parsers';
+import {
+  DEFAULT_CURRENCY,
+  displayName,
+  fromLocalDateString,
+  toLocalDateString,
+  type Locale,
+} from '@hishab/shared';
 import { Prisma } from '@prisma/client';
 import type { DraftStatus, IngestionChannel, TransactionSource } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
@@ -124,6 +131,23 @@ const ALREADY_APPLIED = 'এই খসড়াটি আগেই লেনদ�
 const CURRENCY = 'BDT';
 
 /**
+ * How confident a foreign-currency draft is allowed to look.
+ *
+ * `scoreConfidence` measures how much of the message was understood, and by
+ * that measure a message that names its currency was understood *better* than
+ * one that did not. But the number the review screen turns into "ভালোভাবে পড়া
+ * গেছে" versus "যাচাই করে নিন" is answering a different question — may this be
+ * accepted with one tap — and the answer for a dollar charge is no, whatever
+ * else was read. The one field the ledger cannot do without, the amount in the
+ * workspace's own money, is not in the message and cannot be derived from it.
+ *
+ * One below the threshold rather than some rounder number, because that is
+ * precisely what is being said: everything short of the line where a one-tap
+ * accept is offered.
+ */
+const FX_CONFIDENCE_CEILING = REVIEW_THRESHOLD - 1;
+
+/**
  * Where a forwarder app should POST.
  *
  * Its own variable, not `API_PUBLIC_URL`, because the two are deliberately
@@ -192,12 +216,37 @@ export interface DraftMessageView {
   body: string;
 }
 
+/**
+ * What the review inbox needs on top of `TenantContext`: which currency the
+ * books are kept in.
+ *
+ * Every real caller is an `AuthUser`, which has carried `currency` since the
+ * fx field shipped, so nothing has to be threaded anywhere — this is only the
+ * type saying out loud that the inbox cannot do its job without it. It cannot:
+ * "was this message in another currency" has no answer that is not relative to
+ * the workspace's own, and a hardcoded 'BDT' here would tell a workspace on
+ * dollars that every one of its dollar alerts was foreign.
+ */
+export interface InboxContext extends TenantContext {
+  /** ISO 4217 the ledger is kept in. */
+  currency: string;
+}
+
 export interface DraftView {
   id: string;
   status: DraftStatus;
   /** `YYYY-MM-DD` in the workspace's timezone. */
   date: string | null;
+  /**
+   * The workspace's own currency, always — and **null when `fxCurrency` is
+   * set**, because a message reading "USD 4.6" states no taka figure and this
+   * refuses to invent one. That null is what makes the review screen ask.
+   */
   amountMinor: number | null;
+  /** ISO 4217 the message stated, when it stated one that is not the books'. */
+  fxCurrency: string | null;
+  /** The amount in `fxCurrency`, integer minor units of *that* currency. */
+  fxAmountMinor: number | null;
   direction: 'IN' | 'OUT' | null;
   payee: string | null;
   accountId: string | null;
@@ -511,7 +560,10 @@ export class IngestionService {
         deletedAt: null,
         status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
       },
-      select: { id: true, timezone: true },
+      /* `currency` because "was this in another currency" is only ever a
+         question relative to the books' own. A workspace kept in dollars must
+         not have every one of its dollar alerts filed as foreign. */
+      select: { id: true, timezone: true, currency: true },
     });
     if (!workspace) throw new UnauthorizedException(INGEST_UNAUTHORISED);
 
@@ -560,6 +612,14 @@ export class IngestionService {
       receivedOn: toLocalDateString(receivedAt, workspace.timezone),
     });
 
+    /* Which money the figure the parser found was actually in.
+     *
+     * Asked of the message the parser has already read, and tied to the very
+     * figure it read — see `currencyForAmount`. A message that names no code,
+     * or names the workspace's own, comes back null and everything below
+     * behaves exactly as it did before this existed. */
+    const foreign = IngestionService.foreignAmountIn(body, parsed.evidence, workspace.currency);
+
     let created: { messageId: string; draftId: string | null };
     try {
       created = await this.prisma.$transaction(async (tx) => {
@@ -592,14 +652,33 @@ export class IngestionService {
                 date: parsed.fields.date
                   ? fromLocalDateString(parsed.fields.date, workspace.timezone)
                   : null,
+                /* Null the moment the message turns out to be in another
+                 * currency, and this is the whole fix.
+                 *
+                 * The parser read "4.6" out of "USD 4.6" and reported 460
+                 * minor units, which is 460 poisha — ৳4.60 — for a charge of
+                 * about ৳560. Storing that number in a column that means taka
+                 * is how the figure reached a screen labelled ৳ and how it
+                 * would have reached the ledger. There is no taka figure in
+                 * that message to store, so none is stored; `fxAmountMinor`
+                 * below keeps what the message did say, and a person supplies
+                 * the rest. */
                 amountMinor:
-                  parsed.fields.amountMinor === undefined
+                  foreign || parsed.fields.amountMinor === undefined
                     ? null
                     : BigInt(parsed.fields.amountMinor),
+                fxCurrency: foreign?.currency ?? null,
+                fxAmountMinor: foreign ? BigInt(foreign.amountMinor) : null,
                 direction: parsed.fields.direction ?? null,
                 payee: parsed.fields.payee ?? null,
-                confidence: parsed.confidence,
-                evidence: toJson(parsed.evidence),
+                confidence: foreign
+                  ? Math.min(parsed.confidence, FX_CONFIDENCE_CEILING)
+                  : parsed.confidence,
+                evidence: toJson(
+                  foreign
+                    ? IngestionService.fxEvidence(parsed.evidence, foreign.text)
+                    : parsed.evidence,
+                ),
               },
               select: { id: true },
             })
@@ -769,7 +848,7 @@ export class IngestionService {
   // --- the review inbox ------------------------------------------------------
 
   async listDrafts(
-    ctx: TenantContext,
+    ctx: InboxContext,
     query: ListDraftsQuery,
   ): Promise<{ items: DraftView[]; nextCursor: string | null }> {
     const rows = await this.prisma.transactionDraft.findMany({
@@ -787,7 +866,7 @@ export class IngestionService {
     const page = hasMore ? rows.slice(0, query.limit) : rows;
 
     return {
-      items: page.map((row) => IngestionService.present(row, ctx.timezone)),
+      items: page.map((row) => IngestionService.present(row, ctx.timezone, ctx.currency)),
       nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
     };
   }
@@ -878,7 +957,7 @@ export class IngestionService {
    * in the gaps, and a draft the parser was sure about is still refused if the
    * person cleared a field.
    */
-  async accept(ctx: TenantContext, id: string, input: AcceptDraftInput): Promise<DraftView> {
+  async accept(ctx: InboxContext, id: string, input: AcceptDraftInput): Promise<DraftView> {
     const draft = await this.requireDraft(ctx.workspaceId, id);
     if (draft.status === 'ACCEPTED' || draft.transactionId) {
       throw new BadRequestException(ALREADY_APPLIED);
@@ -900,10 +979,47 @@ export class IngestionService {
     const dateIso = input.date ?? (draft.date ? toLocalDateString(draft.date, ctx.timezone) : null);
     if (!dateIso) throw new BadRequestException('তারিখ দিন');
 
-    const amountMinor =
-      input.amountMinor ?? (draft.amountMinor === null ? null : minorToNumber(draft.amountMinor));
+    /* What the message said the money was, before anything the reviewer typed.
+     *
+     * Read through the same helper the review screen was drawn from, so the two
+     * cannot disagree about the same row — including for a draft written before
+     * these columns existed, where both re-read the stored message. */
+    const stored = IngestionService.foreignOf(draft, ctx.currency);
+
+    /* Which of the two the reviewer is correcting, if either. `undefined` means
+     * "leave it as the message read it"; an explicit `null` means "that was not
+     * another currency after all", which somebody has to be able to say when a
+     * code was read out of a reference number. */
+    const fxCurrency =
+      input.fxCurrency === undefined ? (stored?.currency ?? null) : input.fxCurrency;
+    const fxAmountMinor =
+      input.fxAmountMinor === undefined ? (stored?.amountMinor ?? null) : input.fxAmountMinor;
+    if ((fxCurrency === null) !== (fxAmountMinor === null)) {
+      throw new BadRequestException('মূল মুদ্রা আর মূল অঙ্ক — দুটোই দিতে হবে, অথবা কোনোটিই নয়');
+    }
+
+    /**
+     * The amount, and the one place a foreign-currency draft is different.
+     *
+     * `draft.amountMinor` is the fallback for an ordinary draft, and it must not
+     * be the fallback for this one. A draft that says USD has no taka figure of
+     * its own — a new one stores null, an old one stores the dollar figure under
+     * a taka name — and falling back to either would put ৳4.60 in the books for
+     * a $4.60 charge, which is the entire bug. The request has to carry it,
+     * because the only person who knows what the card issuer actually charged is
+     * the one holding the statement: it is not the mid-market rate on the day,
+     * and it is not on any screen here.
+     */
+    const amountMinor = fxCurrency
+      ? (input.amountMinor ?? null)
+      : (input.amountMinor ??
+        (draft.amountMinor === null ? null : minorToNumber(draft.amountMinor)));
     if (amountMinor === null || amountMinor <= 0) {
-      throw new BadRequestException('টাকার পরিমাণ দিন');
+      throw new BadRequestException(
+        fxCurrency
+          ? `বার্তাটি ${fxCurrency}-এ ছিল — কত টাকা কাটা হয়েছে সেটি লিখুন বা রেট দিন`
+          : 'টাকার পরিমাণ দিন',
+      );
     }
 
     const direction = input.direction ?? IngestionService.directionOf(draft.direction);
@@ -958,6 +1074,14 @@ export class IngestionService {
              * their note is about the transaction, this is only evidence. */
             notes: input.notes ?? draft.message?.body ?? undefined,
             payee,
+            /* The original, beside the taka figure above. `amountMinor` on the
+             * transaction is always the workspace's own money; these two say
+             * what was actually spent, and the rate is the ratio of the pair —
+             * derived, never stored, because a rate is the one number here that
+             * could not be an integer. The manual entry sheet writes exactly
+             * these two columns from exactly this shape. */
+            fxCurrency,
+            fxAmountMinor: fxAmountMinor === null ? null : BigInt(fxAmountMinor),
             source,
             // The thread back to the text that proposed this entry.
             sourceDraftId: draft.id,
@@ -989,6 +1113,12 @@ export class IngestionService {
             // draft records the decision rather than the proposal.
             date,
             amountMinor: BigInt(amountMinor),
+            /* Written here too, and this is what settles a draft parsed before
+               these columns existed: after the accept its row says what was
+               decided rather than what an older parser guessed, so `foreignOf`
+               never has to re-read the message for it again. */
+            fxCurrency,
+            fxAmountMinor: fxAmountMinor === null ? null : BigInt(fxAmountMinor),
             direction,
             payee,
             accountId,
@@ -1018,6 +1148,12 @@ export class IngestionService {
       before: {
         date: draft.date ? toLocalDateString(draft.date, ctx.timezone) : null,
         amountMinor: draft.amountMinor === null ? null : minorToNumber(draft.amountMinor),
+        /* What the message itself said the money was. The rate the reviewer
+           worked to is `amountMinor / fxAmountMinor` in the two records
+           together — the audit log can show it without anything having stored
+           a fractional number. */
+        fxCurrency: stored?.currency ?? null,
+        fxAmountMinor: stored?.amountMinor ?? null,
         direction: draft.direction,
         payee: draft.payee,
         confidence: draft.confidence,
@@ -1026,6 +1162,8 @@ export class IngestionService {
         transactionId,
         date: dateIso,
         amountMinor,
+        fxCurrency,
+        fxAmountMinor,
         direction,
         accountId,
         categoryId,
@@ -1043,7 +1181,7 @@ export class IngestionService {
    * Say no. Nothing is written to the ledger and the raw message stays, so the
    * parse that produced the draft can still be looked at.
    */
-  async reject(ctx: TenantContext, id: string, input: RejectDraftInput): Promise<DraftView> {
+  async reject(ctx: InboxContext, id: string, input: RejectDraftInput): Promise<DraftView> {
     const draft = await this.requireDraft(ctx.workspaceId, id);
     if (draft.status === 'ACCEPTED' || draft.transactionId) {
       throw new BadRequestException('এই খসড়াটি ইতিমধ্যে যোগ করা হয়েছে, তাই বাতিল করা যাবে না');
@@ -1131,9 +1269,9 @@ export class IngestionService {
 
   // --- presentation ----------------------------------------------------------
 
-  private async presentOne(ctx: TenantContext, id: string): Promise<DraftView> {
+  private async presentOne(ctx: InboxContext, id: string): Promise<DraftView> {
     const row = await this.requireDraft(ctx.workspaceId, id);
-    return IngestionService.present(row, ctx.timezone);
+    return IngestionService.present(row, ctx.timezone, ctx.currency);
   }
 
   /** The column is a free-text string; only the two values the ledger understands count. */
@@ -1168,20 +1306,119 @@ export class IngestionService {
     return out;
   }
 
-  private static present(row: DraftRow, timezone: string): DraftView {
+  // --- money that was not the workspace's ------------------------------------
+
+  /**
+   * The currency the message wrote its amount in, when that is not the books'.
+   *
+   * Two things it deliberately does not do. It does not go looking for the
+   * first code anywhere in the text — it asks what code stands against the very
+   * figure the parser chose, so a reference number reading `Ref SAR 12345`
+   * cannot rename somebody's taka. And it does not convert, because the rate
+   * that applied is the card issuer's and is not in the message, on any screen
+   * here, or in any feed this product pays for.
+   */
+  private static foreignAmountIn(
+    body: string,
+    evidence: Record<string, string>,
+    baseCurrency: string,
+  ): CurrencyAmount | null {
+    const quoted = evidence.amountMinor;
+    if (!quoted) return null;
+    const found = currencyForAmount(body, quoted);
+    /* The books' own currency, spelled out. `BDT 5,000` in a taka workspace is
+       not a foreign transaction, it is a bank being explicit. */
+    if (!found || found.currency === (baseCurrency || DEFAULT_CURRENCY)) return null;
+    return found;
+  }
+
+  /**
+   * Move the amount's quotation onto the field it actually belongs to.
+   *
+   * `evidence.amountMinor` means "this is the text the taka figure was read
+   * from", and for a dollar charge there is no taka figure — leaving the entry
+   * there would have the review screen print `4.6` beside an empty box under a
+   * quotation mark, which is the parser claiming something it did not read. The
+   * span moves to `fxAmountMinor` and widens to include the code, so what the
+   * screen highlights is `USD 4.6`: the whole fact, not half of it.
+   */
+  private static fxEvidence(
+    evidence: Record<string, string>,
+    quoted: string,
+  ): Record<string, string> {
+    const { amountMinor: _read, ...rest } = evidence;
+    return { ...rest, fxAmountMinor: quoted };
+  }
+
+  /**
+   * What a draft says about foreign money — from its columns, or from its
+   * message when the columns predate them.
+   *
+   * The 47 drafts sitting in the owner's queue when these columns shipped were
+   * parsed by code that could not see a currency, so their `fxCurrency` is null
+   * and their `amountMinor` holds a dollar figure mislabelled as taka. Their raw
+   * message is still stored — it is kept for precisely this, so that a parser
+   * which got something wrong can be fixed against the text that broke it — so
+   * it is read again here rather than left to be accepted wrongly.
+   *
+   * **Pending drafts only.** A draft that has been accepted or rejected is the
+   * record of a decision somebody made, and re-interpreting it after the fact
+   * would change what the audit trail says they were shown. Nothing is written
+   * either: this is a reading, and the accept path uses the same one, so the
+   * screen and the ledger cannot end up disagreeing about the same row.
+   */
+  private static foreignOf(
+    row: DraftRow,
+    baseCurrency: string,
+  ): { currency: string; amountMinor: number; quoted: string | null } | null {
+    if (row.fxCurrency !== null && row.fxAmountMinor !== null) {
+      return {
+        currency: row.fxCurrency,
+        amountMinor: minorToNumber(row.fxAmountMinor),
+        quoted: null,
+      };
+    }
+    if (row.status !== 'PENDING' || !row.message) return null;
+
+    const found = IngestionService.foreignAmountIn(
+      row.message.body,
+      IngestionService.evidenceOf(row.evidence),
+      baseCurrency,
+    );
+    if (!found) return null;
+    return { currency: found.currency, amountMinor: found.amountMinor, quoted: found.text };
+  }
+
+  private static present(row: DraftRow, timezone: string, baseCurrency: string): DraftView {
+    const foreign = IngestionService.foreignOf(row, baseCurrency);
+
+    /* A retro-read draft still carries `evidence.amountMinor` from the parse
+       that could not see a currency. The quotation moves to the field it
+       belongs to, exactly as it does for a draft parsed today, so one screen
+       does not have to know which vintage of row it is looking at. */
+    const evidence = IngestionService.evidenceOf(row.evidence);
+    const quoted = foreign?.quoted;
+    const confidence = foreign ? Math.min(row.confidence, FX_CONFIDENCE_CEILING) : row.confidence;
+
     return {
       id: row.id,
       status: row.status,
       date: row.date ? toLocalDateString(row.date, timezone) : null,
-      amountMinor: row.amountMinor === null ? null : minorToNumber(row.amountMinor),
+      /* Withheld rather than converted when the money was another currency's.
+         For a draft written today the column is already null; for one written
+         before these columns existed it holds a dollar figure under a taka
+         name, and repeating that on a screen is the bug this closes. */
+      amountMinor: foreign || row.amountMinor === null ? null : minorToNumber(row.amountMinor),
+      fxCurrency: foreign?.currency ?? null,
+      fxAmountMinor: foreign?.amountMinor ?? null,
       direction: IngestionService.directionOf(row.direction),
       payee: row.payee,
       accountId: row.accountId,
       categoryId: row.categoryId,
-      confidence: row.confidence,
-      needsReview: row.confidence < REVIEW_THRESHOLD,
+      confidence,
+      needsReview: confidence < REVIEW_THRESHOLD,
       suggestedBy: row.suggestedBy,
-      evidence: IngestionService.evidenceOf(row.evidence),
+      evidence: quoted ? IngestionService.fxEvidence(evidence, quoted) : evidence,
       parserName: row.message?.parserName ?? null,
       transactionId: row.transactionId,
       reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,

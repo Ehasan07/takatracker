@@ -9,6 +9,8 @@ export interface CategoryRow {
   name: string;
   totalMinor: number;
   sharePercent?: number;
+  /** The parent this sits under, when the API knows one. Only sub-categories. */
+  parentName?: string;
 }
 
 export interface CategoryNode extends CategoryRow {
@@ -20,6 +22,21 @@ export interface CategoryNode extends CategoryRow {
 export interface ByCategoryDto {
   total: number;
   nodes: CategoryNode[];
+}
+
+/**
+ * `GET /v1/reports/by-category?flat=1` — the same period with no rolling up:
+ * every category on its own line, parents and sub-categories side by side.
+ *
+ * A different shape from `ByCategoryDto` because it is a different question.
+ * The rolled-up view answers "what do we spend on transport"; this one answers
+ * "what are the ten things we actually spend most on", and the answer is often
+ * three sub-categories of one parent — which the rolled-up view cannot show
+ * and, folded together, actively hides.
+ */
+export interface ByCategoryFlatDto {
+  total: number;
+  rows: CategoryRow[];
 }
 
 /** `GET /v1/reports/trend?months=` — whole calendar months, ending at this one. */

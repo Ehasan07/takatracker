@@ -10,6 +10,7 @@
 
 import { Quote, RotateCw, Sparkles, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
+import { formatMinor } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { haptic } from '@/lib/haptics';
@@ -218,8 +219,38 @@ export function OriginBadge({
  *
  * A message with no figure gets words, not `<Money minor={0} />`: rendering
  * ৳০.০০ would put a number on the screen that nobody ever sent.
+ *
+ * A message in another currency gets that currency, and the code beside it. Its
+ * `amountMinor` is null — there is no taka figure until somebody supplies a rate
+ * — so without this the row would read "অঙ্ক পাওয়া যায়নি" for a message whose
+ * amount was perfectly legible, and the queue would give no hint which of fifty
+ * drafts is the one that needs a statement looked up.
  */
 export function DraftAmount({ draft, className }: { draft: DraftView; className?: string }) {
+  const tone =
+    draft.direction === 'IN'
+      ? 'text-income'
+      : draft.direction === 'OUT'
+        ? 'text-expense'
+        : 'text-ink';
+
+  if (draft.fxCurrency && draft.fxAmountMinor !== null) {
+    /* The code rather than the symbol, and the paisa rather than a round
+       figure. Several countries write `$`, so the symbol alone does not say
+       which money this is; and where a taka row rounds ৳1,250.50 to ৳1,251 and
+       loses nothing worth seeing, rounding $4.60 to $5 loses a twelfth of it.
+       Written out here instead of through `<Money>`, which always prints a
+       symbol, so the row reads the same as the review sheet does. */
+    return (
+      <span className={cn('block', className)}>
+        <span className={cn('money font-semibold', tone)}>
+          {formatMinor(draft.fxAmountMinor, { currency: draft.fxCurrency, symbol: false })}
+        </span>{' '}
+        <span className="text-ink-muted text-xs">{draft.fxCurrency}</span>
+      </span>
+    );
+  }
+
   if (draft.amountMinor === null) {
     return <span className={cn('text-ink-muted text-sm', className)}>অঙ্ক পাওয়া যায়নি</span>;
   }
@@ -227,15 +258,7 @@ export function DraftAmount({ draft, className }: { draft: DraftView; className?
     <Money
       minor={draft.amountMinor}
       decimals={false}
-      className={cn(
-        'block font-semibold',
-        draft.direction === 'IN'
-          ? 'text-income'
-          : draft.direction === 'OUT'
-            ? 'text-expense'
-            : 'text-ink',
-        className,
-      )}
+      className={cn('block font-semibold', tone, className)}
     />
   );
 }

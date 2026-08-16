@@ -51,14 +51,22 @@ async function addAccount(page: Page, name: string, opening?: string): Promise<v
   await expect(sheet).toBeHidden({ timeout: 15_000 });
 }
 
-/* A rate, because the profit box prefills from it. A plan at 0% has nothing to
-   prefill, which is correct and is not what these tests are about. */
-async function addPlan(page: Page, name: string, rate = '8.25'): Promise<void> {
+/**
+ * A plan, of a named type.
+ *
+ * `type` matters now. "মুনাফা পেয়েছি" is offered only where profit can actually
+ * have arrived — a সঞ্চয়পত্র, which credits a bank account every month or
+ * quarter, or any plan that has matured. A running ডিপিএস pays nothing at all
+ * before the end, so it gets no such button and these tests must not ask for
+ * one: that was the bug the button had on every plan.
+ */
+async function addPlan(page: Page, name: string, type = 'ডিপিএস', rate = '8.25'): Promise<void> {
   await page.goto('/savings');
   await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByLabel('নাম', { exact: true })).toBeVisible();
   await sheet.getByLabel('নাম', { exact: true }).fill(name);
+  await sheet.getByLabel('ধরন', { exact: true }).selectOption({ label: type });
   await sheet.getByLabel('প্রতি কিস্তি (৳)').fill('2000');
   await sheet.getByLabel('মুনাফার হার (%)').fill(rate);
   await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
@@ -81,17 +89,20 @@ test.describe('savings profit', () => {
   test('a quarterly payout is recorded against the certificate that paid it', async ({ page }) => {
     await signup(page);
     await addAccount(page, 'সিটি ব্যাংক');
-    await addPlan(page, 'সঞ্চয়পত্র');
+    await addPlan(page, 'পরিবার সঞ্চয়পত্র', 'সঞ্চয়পত্র');
 
-    await openPlan(page, 'সঞ্চয়পত্র');
+    await openPlan(page, 'পরিবার সঞ্চয়পত্র');
     await page.getByRole('dialog').getByRole('button', { name: 'মুনাফা পেয়েছি' }).click();
 
     const sheet = page.getByRole('dialog');
     await expect(sheet.getByLabel('কত টাকা পেলেন (৳)')).toBeVisible();
-    /* Prefilled from the plan's own rate, so a matured DPS needs no arithmetic
-       on paper — and still overwritable, because the bank deducts source tax
-       before it pays and sometimes adds a bonus on top. */
-    await expect(sheet.getByLabel('কত টাকা পেলেন (৳)')).not.toHaveValue('');
+    /* Empty, and this is the assertion, not an omission. The box used to open
+       with the whole projected maturity profit already in it — a figure nobody
+       has been paid — and a number sitting in a box labelled "কত টাকা পেলেন"
+       reads as a claim that it arrived. The bank deducts source tax before it
+       pays and sometimes adds a bonus, so the only true figure is the one on
+       the passbook. */
+    await expect(sheet.getByLabel('কত টাকা পেলেন (৳)')).toHaveValue('');
     await sheet.getByLabel('কত টাকা পেলেন (৳)').fill('2760');
     /* The income head is required — money filed under nothing is invisible on
        every report — and the picker is grouped, so pick by index rather than
@@ -101,7 +112,7 @@ test.describe('savings profit', () => {
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
     // The certificate remembers. This is the number that had no answer before.
-    await openPlan(page, 'সঞ্চয়পত্র');
+    await openPlan(page, 'পরিবার সঞ্চয়পত্র');
     const detail = page.getByRole('dialog');
     await expect(detail.getByText('এ পর্যন্ত মুনাফা পেয়েছি')).toBeVisible();
     /* Either numeral system: which one renders depends on the workspace's

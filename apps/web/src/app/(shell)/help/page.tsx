@@ -62,12 +62,20 @@ export default function GuidePage() {
         </section>
       ))}
 
-      <p className="text-ink-muted pb-4 text-xs">
+      <p className="text-ink-muted text-xs">
         {t(
           'guide.footer',
           'এখানে যা লেখা আছে সেটা যদি পর্দায় খুঁজে না পান, ধরে নিন ভুলটা আমাদের — জানাবেন।',
         )}
       </p>
+      {/* The footer has told people to let us know since the day this page
+          shipped, and gave them nowhere to do it. This is that somewhere. */}
+      <Link
+        href="/feedback?from=/help"
+        className="press border-rule text-ink mb-4 inline-flex min-h-11 w-fit items-center rounded-md border px-4 text-sm font-medium"
+      >
+        {t('feedback.open', 'মতামত লিখুন')}
+      </Link>
     </div>
   );
 }

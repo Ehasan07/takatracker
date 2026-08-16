@@ -92,6 +92,16 @@ export interface TransactionView {
   personId: string | null;
   /** The DPS, FDR or Sanchayapatra this belongs to. Null for ordinary money. */
   savingsPlanId: string | null;
+  /**
+   * The period a one-off payment covers, when it covers more than one month.
+   *
+   * Read by the spread screen and by nothing else. **Neither column generates a
+   * transaction**: the whole expense still posts on `date`, and the division is
+   * done for the eye at the moment it is drawn. See `prepaid.service.ts` for
+   * why this ledger stays strictly cash-basis.
+   */
+  prepaidStartDate: string | null;
+  prepaidMonths: number | null;
   personName: string | null;
   /** Thousandths of `quantityUnit`. 500 is half a kilo. */
   quantityMilli: number | null;
@@ -1257,6 +1267,8 @@ export class TransactionsService {
       categoryName: category ? displayName(category, ctx.locale) : null,
       personId: tx.personId,
       savingsPlanId: tx.savingsPlanId,
+      prepaidStartDate: tx.prepaidStartDate ? toLocalDateString(tx.prepaidStartDate, tz) : null,
+      prepaidMonths: tx.prepaidMonths,
       personName: tx.person?.name ?? null,
       quantityMilli: tx.quantityMilli == null ? null : minorToNumber(tx.quantityMilli),
       quantityUnit: tx.quantityUnit,

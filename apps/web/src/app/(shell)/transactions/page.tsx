@@ -2,6 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CalendarRange,
   ChevronDown,
   Paperclip,
   Pencil,
@@ -12,6 +13,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react';
+import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { addDays, startOfMonth, toLocalDateString } from '@hishab/shared';
@@ -241,6 +243,8 @@ function TransactionsScreen() {
 
   const [editing, setEditing] = React.useState<LedgerTxn | null>(null);
   const [receiptsFor, setReceiptsFor] = React.useState<LedgerTxn | null>(null);
+  /** The expense whose covered period is being set. `null` closes the sheet. */
+  const [prepaidFor, setPrepaidFor] = React.useState<LedgerTxn | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [panelOpen, setPanelOpen] = React.useState(false);
@@ -315,6 +319,9 @@ function TransactionsScreen() {
    * refetch that snapshot is stale, so re-read it from the live list. */
   const liveReceiptsFor = receiptsFor
     ? (items.find((t) => t.id === receiptsFor.id) ?? receiptsFor)
+    : null;
+  const livePrepaidFor = prepaidFor
+    ? (items.find((t) => t.id === prepaidFor.id) ?? prepaidFor)
     : null;
 
   const openRow = (txn: LedgerTxn): void => {
@@ -424,6 +431,18 @@ function TransactionsScreen() {
             : t('txn.countN', '{n} টি লেনদেন').replace('{n}', bn(shown))}
         </p>
       </header>
+
+      {/* The way in to the spread. On the khata rather than in the navigation
+          because it is a way of reading these rows, not a separate place. */}
+      <div className="flex justify-end md:-mt-2">
+        <Link
+          href="/transactions/prepaid"
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 self-end rounded-md border px-3 text-sm md:min-h-9"
+        >
+          <CalendarRange className="h-4 w-4" aria-hidden />
+          {t('prepaid.link', 'মাসে মাসে ভাগ করে দেখুন')}
+        </Link>
+      </div>
 
       <FilterBar
         filters={filters}
@@ -607,6 +626,7 @@ function TransactionsScreen() {
                   activeTagId={filters.tagId}
                   onFilterTag={(id) => setFilters({ tagId: id })}
                   onReceipts={() => setReceiptsFor(detail)}
+                  onPrepaid={() => setPrepaidFor(detail)}
                 />
               ) : (
                 <p className="text-ink-muted text-sm">
@@ -640,6 +660,10 @@ function TransactionsScreen() {
               setDetailOpen(false);
               setReceiptsFor(detail);
             }}
+            onPrepaid={() => {
+              setDetailOpen(false);
+              setPrepaidFor(detail);
+            }}
           />
         ) : null}
       </Sheet>
@@ -660,6 +684,8 @@ function TransactionsScreen() {
         onClose={() => setReceiptsFor(null)}
         onSaved={() => void queryClient.invalidateQueries({ queryKey: ['transactions'] })}
       />
+
+      <PrepaidSheet txn={livePrepaidFor} onClose={() => setPrepaidFor(null)} />
 
       <QuickAddSheet
         open={editing !== null}
@@ -1109,12 +1135,14 @@ function TransactionDetail({
   activeTagId,
   onFilterTag,
   onReceipts,
+  onPrepaid,
 }: {
   txn: LedgerTxn;
   actions: React.ReactNode;
   activeTagId: string;
   onFilterTag: (id: string) => void;
   onReceipts: () => void;
+  onPrepaid: () => void;
 }) {
   const receipts = attachmentsOf(txn);
   const editable = SIMPLE_TYPES.has(txn.type) && txn.accountId !== null;
@@ -1199,6 +1227,43 @@ function TransactionDetail({
         <div>
           <dt className="text-ink-muted text-xs">{t('entry.notes', 'নোট')}</dt>
           <dd className="text-ink break-words">{txn.notes}</dd>
+        </div>
+      ) : null}
+
+      {/* Only on an expense, because only an expense buys months. A year of
+          rent *received* in advance is a liability, not a prepayment, and one
+          control quietly meaning two things is how a screen teaches somebody
+          the wrong accounting. */}
+      {txn.type === 'EXPENSE' ? (
+        <div>
+          <dt className="text-ink-muted text-xs">{t('prepaid.period', 'কত মাসের খরচ')}</dt>
+          <dd className="mt-1">
+            {txn.prepaidMonths ? (
+              <p className="text-ink text-sm">
+                {t('prepaid.coversN', '{n} মাসের').replace('{n}', bn(txn.prepaidMonths))} ·{' '}
+                {txn.prepaidStartDate ? fmtDate(txn.prepaidStartDate) : ''}
+              </p>
+            ) : (
+              <p className="text-ink-muted text-xs">
+                {t('prepaid.notMarked', 'একটি মাসের ধরা হয়েছে।')}
+              </p>
+            )}
+            <Button variant="outline" size="sm" className="mt-2" onClick={onPrepaid}>
+              <CalendarRange className="h-4 w-4" aria-hidden />
+              {txn.prepaidMonths
+                ? t('prepaid.change', 'মেয়াদ বদলান')
+                : t('prepaid.mark', 'কয়েক মাসের খরচ')}
+            </Button>
+            {/* Said on the row itself, not only on the spread screen: this is
+                where somebody decides, and "it will be divided" without "the
+                books do not change" is the half that misleads. */}
+            <p className="text-ink-muted mt-1 text-xs">
+              {t(
+                'prepaid.displayOnly',
+                'খাতায় কিছু বদলাবে না — পুরো টাকাটা যেদিন গেছে সেদিনই বসে থাকবে। শুধু “মাসে মাসে ভাগ” পাতায় ভাগ করে দেখানো হবে।',
+              )}
+            </p>
+          </dd>
         </div>
       ) : null}
 
@@ -1379,6 +1444,148 @@ function ReceiptSheet({
           বাতিল
         </Button>
       </div>
+    </Sheet>
+  );
+}
+
+/**
+ * "কয়েক মাসের খরচ" — say that this payment bought more than one month.
+ *
+ * ## What it changes, and what it deliberately does not
+ *
+ * Two columns on the row. Nothing else. The ৳12,000 insurance premium still
+ * sits on the day it left the bank, this month's total is unchanged, the
+ * balance sheet is unchanged, and no monthly row is generated anywhere. What it
+ * buys is one screen — `/transactions/prepaid` — that can divide it by twelve
+ * and answer "what does a month actually cost me".
+ *
+ * The sheet says so twice: once before the fields and once on the button,
+ * because "spread it over the year" is exactly the phrase somebody would expect
+ * to move money, and being wrong about that is worse than being told twice.
+ *
+ * ## Why it is not the accrual it looks like
+ *
+ * Recognising a prepaid asset and releasing it monthly is what IAS 1.27 asks
+ * for. These books declare `basis: 'CASH'` on every statement they serve, and
+ * an accrual booked behind that declaration makes the declaration false. A
+ * nicer monthly figure is not worth a statement header that lies.
+ */
+function PrepaidSheet({ txn, onClose }: { txn: LedgerTxn | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [months, setMonths] = React.useState('12');
+  const [startDate, setStartDate] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!txn) return;
+    setMonths(txn.prepaidMonths ? String(txn.prepaidMonths) : '12');
+    /* The day the money left, unless a period is already set. A premium paid on
+       the 10th almost always covers from the 10th, and asking somebody to
+       retype a date the row already carries is how the field gets a typo. */
+    setStartDate(txn.prepaidStartDate ?? txn.date);
+    setError(null);
+  }, [txn]);
+
+  const save = useMutation({
+    mutationFn: (body: { startDate: string | null; months: number | null }) =>
+      api(`/transactions/${txn?.id}/prepaid`, { method: 'PATCH', body }),
+    onSuccess: () => {
+      haptic('success');
+      /* The khata, because the row now carries a period, and the spread, which
+         is the only other thing that reads these two columns. No account
+         balance moved and no total changed, so nothing else is stale. */
+      void queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      void queryClient.invalidateQueries({ queryKey: ['prepaid'] });
+      onClose();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
+  });
+
+  return (
+    <Sheet
+      open={txn !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title={t('prepaid.title', 'কয়েক মাসের খরচ')}
+      description={txn ? (txn.description ?? txn.categoryName ?? undefined) : undefined}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          const n = Number(months);
+          if (!Number.isInteger(n) || n < 2 || n > 120) {
+            setError(t('prepaid.badMonths', 'কত মাসের — ২ থেকে ১২০ এর মধ্যে একটি সংখ্যা লিখুন।'));
+            return;
+          }
+          save.mutate({ startDate, months: n });
+        }}
+      >
+        <div className="rounded-card border-rule bg-greenbar border p-3">
+          <p className="text-ink text-sm">
+            {t(
+              'prepaid.sheetHint',
+              'বীমার প্রিমিয়াম, ট্রেড লাইসেন্স, স্কুলের সেশন ফি — একবারে দেওয়া, সারা বছরের। এখানে বললে “মাসে মাসে ভাগ” পাতায় ১২,০০০ টাকা মাসে ১,০০০ করে দেখানো হবে।',
+            )}
+          </p>
+          <p className="text-ink-muted mt-2 text-xs">
+            {t(
+              'prepaid.sheetWarning',
+              'খাতা বদলাবে না। পুরো টাকাটা যেদিন গেছে সেদিনই বসে থাকবে, এই মাসের খরচও কমবে না — শুধু দেখার একটা উপায় যোগ হবে।',
+            )}
+          </p>
+        </div>
+
+        <Field label={t('prepaid.startDate', 'কোন মাস থেকে শুরু')} htmlFor="pp-start">
+          <Input
+            id="pp-start"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            required
+          />
+        </Field>
+
+        <Field label={t('prepaid.months', 'কত মাসের')} htmlFor="pp-months">
+          <Input
+            id="pp-months"
+            type="number"
+            min={2}
+            max={120}
+            inputMode="numeric"
+            value={months}
+            onChange={(e) => setMonths(e.target.value)}
+            required
+          />
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('prepaid.monthsHint', 'এক বছরের হলে ১২, দুই বছরের হলে ২৪।')}
+          </p>
+        </Field>
+
+        {error ? (
+          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {t('prepaid.save', 'ভাগ করে দেখান')}
+        </Button>
+        {txn?.prepaidMonths ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="block"
+            disabled={save.isPending}
+            onClick={() => {
+              setError(null);
+              save.mutate({ startDate: null, months: null });
+            }}
+          >
+            {t('prepaid.clear', 'ভাগ করা বন্ধ করুন')}
+          </Button>
+        ) : null}
+      </form>
     </Sheet>
   );
 }

@@ -238,7 +238,19 @@ export interface TransactionDto {
   categoryName: string | null;
   /** Who the money was with. A `Person` row, unlike the free-text `payee`. */
   personId: string | null;
+  /** The DPS, FDR or Sanchayapatra this row belongs to, when it belongs to one. */
+  savingsPlanId: string | null;
   personName: string | null;
+  /**
+   * The period a one-off payment covers — a year of insurance, a licence.
+   *
+   * Read by the prepaid spread screen and by nothing else. **Neither field
+   * generates a transaction:** the whole expense posts on `date` exactly as it
+   * always did, and the spread divides it for the eye at the moment it is
+   * drawn. These books are cash basis and stay that way.
+   */
+  prepaidStartDate: string | null;
+  prepaidMonths: number | null;
   /** Labels — who for, what project. Several per row, unlike the category. */
   tags: TransactionTagDto[];
   /** Receipt ids, in the order they were attached. */

@@ -1,8 +1,11 @@
 @import 'tailwindcss';
 @import '@hishab/ui/tokens.css';
 
-/* Dark mode follows the OS, and the .dark class wins when the user chooses. */
-@custom-variant dark (&:where(.dark, .dark *));
+/* `data-mode` is resolved before the first paint — the OS preference when the
+   reader has expressed none, their own choice when they have. See lib/theme.ts.
+   Almost nothing needs this variant: the palettes are token swaps, so a
+   component that uses `bg-surface` and `text-ink` is already both themes. */
+@custom-variant dark (&:where([data-mode='dark'], [data-mode='dark'] *));
 
 @theme {
   --color-ink: var(--hishab-ink);
@@ -223,6 +226,47 @@
 .safe-x {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+}
+
+/* --- money, in every theme -------------------------------------------------
+ *
+ * Both rules below are unlayered on purpose. Tailwind's utilities sit in
+ * `@layer utilities`, and an unlayered rule beats every layered one whatever
+ * their specificities — which is the only way to reach a hard-coded
+ * `text-white` sitting on the same element.
+ */
+
+/* The black-and-white theme has no hue to spend, so money out gets a rule under
+ * it and money in does not.
+ *
+ * The direction is not *carried* by this, and it is not carried by colour in
+ * any theme either: `formatMinor` prints a minus on every negative amount
+ * whether or not the caller asked for signs, so the sign is always there and
+ * the row's own label is always beside it. What the rule restores is glance.
+ * A minus is one hairline character at the left of a right-aligned monospace
+ * column of varying widths — findable when you look for it, invisible when you
+ * are scanning twenty rows for the one big outgoing. Hue does that job in the
+ * other three palettes; here a rule does, and unlike hue it survives the
+ * greyscale a screenshot turns into on somebody else's phone and means the same
+ * thing to the roughly one man in twelve who cannot separate red from green.
+ *
+ * Scoped to `.money` and not to `.text-expense` at large: that class also
+ * paints error sentences, and an underlined paragraph reads as a broken link.
+ */
+:root[data-theme='mono'] .money.text-expense {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+/* A filled money-coloured block — a segmented control's active tab, a progress
+ * bar's label — is written as `bg-income text-white`, and on a dark face that
+ * is white on a pale green: about 2:1, which is unreadable. The money colours
+ * have to be light there, because their main job is to be *text* on a dark
+ * ground; it is the label on top of them that has to give way. */
+:root[data-mode='dark'] .bg-income.text-white,
+:root[data-mode='dark'] .bg-expense.text-white {
+  color: var(--hishab-brand-contrast);
 }
 
 /* --- motion ---------------------------------------------------------------- */

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
+import { StandardNote } from '@/components/info-note';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';
 import { Field, Input } from '@/components/ui/field';
@@ -155,15 +156,34 @@ function shiftYear(iso: string, delta: number): string {
 function Card({
   title,
   subtitle,
+  notes = [],
   children,
 }: {
   title: string;
   subtitle?: string;
+  /**
+   * Keys from `ACCOUNTING_NOTES` — the standard each statement is prepared
+   * under, tucked behind a ⓘ beside the heading.
+   *
+   * A list rather than one, because a statement can rest on more than one
+   * choice and each deserves its own control: two notes behind one icon is a
+   * paragraph nobody finishes, and an icon whose accessible name has to cover
+   * both cannot say what either of them is.
+   */
+  notes?: readonly string[];
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-card border-rule bg-surface loan-print-block border p-4">
-      <h2 className="text-ink text-base font-semibold">{title}</h2>
+      {/* `flex flex-wrap items-baseline` is the contract `InfoNote` documents:
+          the trigger flows after the heading, and the opened note — being
+          full-basis — drops to its own line across the card. */}
+      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+        <h2 className="text-ink text-base font-semibold">{title}</h2>
+        {notes.map((key) => (
+          <StandardNote key={key} noteKey={key} />
+        ))}
+      </div>
       {subtitle ? <p className="text-ink-muted text-xs">{subtitle}</p> : null}
       <div className="mt-3">{children}</div>
     </section>
@@ -215,6 +235,9 @@ function IncomeStatement({ data }: { data: import('../types').IncomeStatementDto
   return (
     <Card
       title={t('statements.income', 'আয়-ব্যয় বিবরণী')}
+      /* Where a realised gain lands, and the one place the difference between
+         selling and revaluing is visible as a number. */
+      notes={['note.disposalGain']}
       subtitle={`${fmtDate(data.from)} — ${fmtDate(data.to)}${
         data.comparison
           ? ` · ${t('statements.against', 'তুলনায়')} ${fmtDate(data.comparison.from)} — ${fmtDate(data.comparison.to)}`
@@ -256,6 +279,9 @@ function BalanceSheet({ data, asOf }: { data: import('../types').BalanceSheetDto
   return (
     <Card
       title={t('statements.balanceSheet', 'স্থিতিপত্র')}
+      /* The two choices this sheet is built on: where the one-year line falls,
+         and that a flat and a share portfolio are not one number. */
+      notes={['note.currentSplit', 'note.assetsApart']}
       subtitle={`${t('statements.asOf', 'তারিখ')}: ${fmtDate(asOf)}`}
     >
       <Row
@@ -310,6 +336,9 @@ function CashFlow({ data }: { data: import('../types').CashFlowDto }) {
   return (
     <Card
       title={t('statements.cashFlow', 'নগদ প্রবাহ')}
+      /* The subtitle already names IAS 7; this says which paragraph, and what
+         actually decides the section a movement lands in. */
+      notes={['note.cashFlowSections']}
       subtitle={t('statements.cashFlowHint', 'IAS 7 অনুসারে তিন ভাগে')}
     >
       <Row label={t('statements.opening', 'শুরুর নগদ')} minor={data.openingMinor} strong />
@@ -335,6 +364,9 @@ function NetWorthChanges({ data }: { data: import('../types').NetWorthChangesDto
   return (
     <Card
       title={t('statements.changes', 'নিট সম্পদের পরিবর্তন')}
+      /* The statement that answers "why am I richer without having earned
+         anything", which is the revaluation and nothing else. */
+      notes={['note.revaluationEquity']}
       subtitle={`${fmtDate(data.from)} — ${fmtDate(data.to)}`}
     >
       <Row
@@ -390,16 +422,19 @@ function BasisOfPreparation({
         {t('statements.basis', 'প্রস্তুতির ভিত্তি')}
       </h2>
       <ul className="text-ink-muted mt-2 space-y-1 text-xs">
-        <li>
+        {/* The same flex-wrap contract as `Card`, so the note lands on its own
+            line under the bullet rather than squeezing the sentence. */}
+        <li className="flex flex-wrap items-baseline gap-x-1.5">
           {t(
             'statements.basisCash',
             'নগদ ভিত্তিতে তৈরি — টাকা যেদিন হাতবদল হয়েছে সেদিনই ধরা হয়েছে। বকেয়া বিল, যা এখনো দেওয়া হয়নি, এখানে নেই।',
           )}
+          <StandardNote noteKey="note.cashBasis" />
         </li>
         <li>
           {t('statements.basisPeriod', 'সময়কাল')}: {fmtDate(from)} — {fmtDate(to)}
         </li>
-        <li>
+        <li className="flex flex-wrap items-baseline gap-x-1.5">
           {/* IFRS lets you use either the cost model or the revaluation model
               and requires the statement to say which. Saying "at cost" after a
               revaluation would be a false basis, which makes everything above
@@ -413,6 +448,9 @@ function BasisOfPreparation({
                 'statements.basisCost',
                 'জমি, স্বর্ণ ও অন্যান্য সম্পদ ক্রয়মূল্যে দেখানো — পুনর্মূল্যায়ন করা হয়নি।',
               )}
+          {/* Either way, the thing a reader who knows business accounting will
+              silently assume was forgotten. */}
+          <StandardNote noteKey="note.noDepreciation" />
         </li>
         <li>
           {t('statements.basisPrepared', 'তৈরির তারিখ')}: {fmtDateObject(new Date())}

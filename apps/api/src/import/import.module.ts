@@ -4,6 +4,7 @@ import { ExportController } from './export.controller';
 import { ExportService } from './export.service';
 import { ImportController } from './import.controller';
 import { ImportService } from './import.service';
+import { StatementService } from './statement.service';
 
 /**
  * Spreadsheet import and export.
@@ -21,7 +22,7 @@ import { ImportService } from './import.service';
 @Module({
   imports: [AccountsModule],
   controllers: [ImportController, ExportController],
-  providers: [ImportService, ExportService],
-  exports: [ImportService, ExportService],
+  providers: [ImportService, ExportService, StatementService],
+  exports: [ImportService, ExportService, StatementService],
 })
 export class ImportModule {}

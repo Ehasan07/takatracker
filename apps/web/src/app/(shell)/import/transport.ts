@@ -20,10 +20,18 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { ColumnMapping, DatePreference, ParsedRow } from '@hishab/core';
 import { api, ApiError, API_BASE } from '@/lib/api';
+import type { DuplicateReport, StatementPreview } from './statement-types';
 import type { CommitResult, ImportBatchView, ImportPreview, RevertResult } from './types';
 
 /** `MAX_IMPORT_BYTES` in `apps/api/src/import/import.service.ts`. */
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+/**
+ * `MAX_STATEMENT_BYTES`, the statement door's larger cap.
+ *
+ * A PDF of twenty transactions carries a logo, embedded fonts and a page of
+ * terms, and is routinely bigger than a year of the same data as text.
+ */
+export const MAX_STATEMENT_BYTES = 8 * 1024 * 1024;
 /** `MAX_COMMIT_ROWS`, ditto. Rows beyond this need the file split. */
 export const MAX_COMMIT_ROWS = 2_000;
 
@@ -96,6 +104,22 @@ export function readFileAsText(file: File): Promise<string> {
     reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
     reader.readAsText(file, 'utf-8');
   });
+}
+
+/**
+ * The bytes, untouched.
+ *
+ * A PDF or a workbook decoded as text is rubbish, and the server decides the
+ * format from the first few bytes — so the browser must not interpret them on
+ * the way. `File` is already a `Blob`; this only exists because `fetch` wants
+ * something it can send twice on a retry.
+ */
+export async function readFileAsBytes(file: File): Promise<ArrayBuffer> {
+  try {
+    return await file.arrayBuffer();
+  } catch {
+    throw new ApiError(0, 'ফাইলটি পড়া যায়নি');
+  }
 }
 
 /* -------------------------------------------------------------------------
@@ -226,13 +250,94 @@ export async function postPreview(
   };
 }
 
+/**
+ * `POST /v1/import/statement` — the file's raw bytes as the body.
+ *
+ * `application/octet-stream` on purpose. The server reads the format from the
+ * first bytes rather than from what we claim, which is the only thing that
+ * survives a browser sending `application/octet-stream` for a `.xlsx` (it
+ * often does) or a person renaming a file.
+ *
+ * `accountId` is sent when it is known, because it narrows the duplicate check
+ * to the account the statement is actually for. Without it every account is
+ * compared against and the response says so.
+ */
+export async function postStatement(
+  filename: string,
+  bytes: ArrayBuffer,
+  options: { accountId?: string; datePreference?: DatePreference; sheet?: string } = {},
+): Promise<StatementPreview> {
+  const search = new URLSearchParams({ filename });
+  if (options.accountId) search.set('accountId', options.accountId);
+  if (options.datePreference) search.set('datePreference', options.datePreference);
+  if (options.sheet) search.set('sheet', options.sheet);
+
+  const res = await rawFetch(`/import/statement?${search.toString()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', accept: 'application/json' },
+    body: bytes,
+  });
+  if (!res.ok) throw await failureOf(res, 'ফাইলটি পড়া যায়নি');
+
+  const payload = (await res.json()) as StatementPreview;
+  return {
+    ...payload,
+    grid: payload.grid ?? [],
+    headers: payload.headers ?? [],
+    mapping: payload.mapping ?? {},
+    preamble: payload.preamble ?? [],
+    sheetNames: payload.sheetNames ?? [],
+    errors: payload.errors ?? [],
+    duplicates: payload.duplicates ?? {
+      scope: 'ALL_ACCOUNTS',
+      accountId: null,
+      rows: [],
+      flaggedRows: 0,
+    },
+  };
+}
+
+/**
+ * `POST /v1/import/statement/duplicates` — the same question, asked again.
+ *
+ * The answer depends on the account, and the account is usually chosen after
+ * the file has been read. Rows and not the file: eight megabytes do not need to
+ * go up the wire a second time to re-run one query.
+ */
+export async function postDuplicateCheck(input: {
+  accountId: string | null;
+  rows: { lineNumber: number; date: string; amountMinor: number }[];
+}): Promise<DuplicateReport> {
+  return api<DuplicateReport>('/import/statement/duplicates', {
+    method: 'POST',
+    body: { accountId: input.accountId, rows: input.rows },
+  });
+}
+
+/** A row as the commit endpoint takes it, plus the two decisions a person made. */
+export type CommitRow = ParsedRow & {
+  /**
+   * The category picked on the review screen. Beats `categoryName`, which is a
+   * text match and cannot tell two categories with the same name apart.
+   */
+  categoryId?: string | null;
+  /**
+   * "I was shown this might already be in the books and I want it anyway."
+   *
+   * Only ever true on a row somebody pressed approve on after seeing what it
+   * matched. Without it the server skips a row it recognises, which is the
+   * right default for a file nobody has looked at line by line.
+   */
+  acceptDuplicate?: boolean;
+};
+
 export interface CommitInput {
   filename: string;
   fileHash: string;
   accountId: string;
   mapping: ColumnMapping;
   datePreference: DatePreference;
-  rows: ParsedRow[];
+  rows: CommitRow[];
 }
 
 /** `POST /v1/import/commit`. The body is exactly what the schema accepts. */

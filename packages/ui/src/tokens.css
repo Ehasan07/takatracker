@@ -1,6 +1,41 @@
-/* Design tokens — CSS mirror of packages/ui/src/index.ts. Keep both in sync. */
+/* Design tokens — the CSS mirror of packages/ui/src/index.ts for the default
+ * palette. The three added palettes below are CSS only: nothing but the web app
+ * reads them yet, and a TypeScript copy that no caller imports is a copy that
+ * silently rots. When a mobile client needs them, lift them then.
+ *
+ * ## Two attributes, both resolved before the first paint
+ *
+ * `<html data-theme="…" data-mode="…">`.
+ *
+ * - `data-theme` is the palette: `default` | `mono` | `contrast` | `calm`.
+ * - `data-mode` is `light` or `dark`, and never `system` — the boot script in
+ *   `lib/theme.ts` has already asked `prefers-color-scheme` on the reader's
+ *   behalf. Resolving it in one place, once, is what keeps this file free of
+ *   media queries: every palette needs a light face and a dark face, and
+ *   writing each of the eight twice — once for the attribute, once for the
+ *   media query — is eight chances for the two to disagree.
+ *
+ * The one exception is the block at the end, which is the no-JavaScript floor.
+ *
+ * ## Every block sets every colour
+ *
+ * No palette inherits half of another's. Inheriting looks tidy until a palette
+ * forgets one token, picks up the default's, and ships a stray blue in a
+ * black-and-white theme that nobody notices for a month. `theme.test.ts` fails
+ * a block that is missing one.
+ *
+ * ## Green is money in and red is money out, in all four
+ *
+ * That pair is semantic, not decorative, so no palette is free to reassign it.
+ * `mono` cannot use hue at all, so it separates the two by lightness *and* by a
+ * rule under money-out amounts — see the `.money` block in `globals.css`. In
+ * every palette the sign and the row's own label still carry the meaning on
+ * their own, because roughly one man in twelve cannot tell red from green and
+ * colour is never the only signal in this app.
+ */
 
 :root {
+  /* ---- default: the app's own colours, and what a new reader gets --------- */
   --hishab-ink: #17251e;
   --hishab-ink-muted: #5a6b62;
   --hishab-paper: #fafbf7;
@@ -22,7 +57,11 @@
      rather than the income colour moving onto blue. */
   --hishab-income: #1f6f4a;
   --hishab-expense: #d32029;
-  --hishab-brass: #8e6c18;
+  /* Two shades darker than the brass it shipped as, which read 4.41:1 against a
+     greenbar row and so missed AA on the one ground it is most often seen on —
+     `text-brass` labels sit in ledger rows. Nothing else about the default
+     palette moved. */
+  --hishab-brass: #8a6716;
 
   --hishab-radius-sm: 4px;
   --hishab-radius-md: 8px;
@@ -49,10 +88,7 @@
   --hishab-touch-min: 44px;
 }
 
-/* Dark palette, applied by the .dark class or by the OS when the user has not
-   explicitly chosen light. */
-.dark,
-:root:has(> body.dark) {
+:root[data-mode='dark'] {
   --hishab-ink: #e8efe7;
   --hishab-ink-muted: #9aab9f;
   --hishab-paper: #101614;
@@ -73,20 +109,181 @@
   --hishab-brass: #d6ac4e;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --hishab-brand: #4d9ae8;
-    --hishab-brand-strong: #7ab6f0;
-    --hishab-brand-soft: #4d9ae8;
-    --hishab-brand-tint: #14293f;
-    --hishab-brand-contrast: #071018;
+/* ---- mono: no hue anywhere -----------------------------------------------
+ *
+ * Why a Bangladeshi finance app wants this one: a balance gets screenshotted
+ * and sent on WhatsApp or imo constantly, and it gets printed and photocopied
+ * at a shop. Both of those flatten to grey somewhere along the way, and a
+ * screen that survives being flattened is a screen that never leaned on hue in
+ * the first place. This palette is the standing proof that it does not — if a
+ * figure becomes ambiguous here, the bug is in the screen, not in the theme.
+ *
+ * It is also the quietest thing in the list, which some people want from an app
+ * they open eight times a day.
+ *
+ * Money in is the darkest ink there is; money out is a clear step lighter *and*
+ * carries a rule beneath it. Two channels, neither of them hue. */
+:root[data-theme='mono'] {
+  --hishab-ink: #121212;
+  --hishab-ink-muted: #4a4a4a;
+  --hishab-paper: #f7f7f7;
+  --hishab-surface: #ffffff;
+  --hishab-greenbar: #eeeeee;
+  --hishab-rule: #c2c2c2;
+  --hishab-brand: #1f1f1f;
+  --hishab-brand-strong: #000000;
+  --hishab-brand-soft: #3a3a3a;
+  --hishab-brand-tint: #e8e8e8;
+  --hishab-brand-contrast: #ffffff;
 
+  --hishab-income: #0d0d0d;
+  --hishab-expense: #4f4f4f;
+  --hishab-brass: #2e2e2e;
+}
+
+:root[data-theme='mono'][data-mode='dark'] {
+  --hishab-ink: #f2f2f2;
+  --hishab-ink-muted: #b0b0b0;
+  --hishab-paper: #0d0d0d;
+  --hishab-surface: #171717;
+  --hishab-greenbar: #202020;
+  --hishab-rule: #3d3d3d;
+  --hishab-brand: #e8e8e8;
+  --hishab-brand-strong: #ffffff;
+  --hishab-brand-soft: #cfcfcf;
+  --hishab-brand-tint: #272727;
+  --hishab-brand-contrast: #0d0d0d;
+
+  --hishab-income: #fafafa;
+  --hishab-expense: #a8a8a8;
+  --hishab-brass: #d0d0d0;
+}
+
+/* ---- contrast: for a phone in the sun, and for eyes that need more ---------
+ *
+ * The light face is the one that matters most here. This app is used standing
+ * at a counter, in a rickshaw, on a footpath — outdoors, at midday, on a
+ * mid-range phone whose backlight loses that argument. The default palette's
+ * soft rules and muted secondary text are the first things to disappear in
+ * glare, so this face pushes body text to black, secondary text to nearly
+ * black, and every rule to something that survives a washed-out screen.
+ *
+ * The dark face is pure black rather than the default's near-black, which is
+ * the same answer to a different problem: an OLED panel spends no power on a
+ * black pixel, and the phone this app is used on is often on its last quarter
+ * of battery by evening. It is also the highest contrast available anywhere in
+ * the app, at 21:1.
+ *
+ * The cost is honest: at this separation the interface looks harder, and long
+ * spells of pure black on pure white tire some readers. That is what `calm` is
+ * for, and why this is not the default. */
+:root[data-theme='contrast'] {
+  --hishab-ink: #000000;
+  --hishab-ink-muted: #2b2b2b;
+  --hishab-paper: #ffffff;
+  --hishab-surface: #ffffff;
+  --hishab-greenbar: #ededed;
+  --hishab-rule: #5c5c5c;
+  --hishab-brand: #003a8c;
+  --hishab-brand-strong: #002766;
+  --hishab-brand-soft: #00479f;
+  --hishab-brand-tint: #e3edfb;
+  --hishab-brand-contrast: #ffffff;
+
+  --hishab-income: #00552b;
+  --hishab-expense: #9e0009;
+  --hishab-brass: #4f3a00;
+}
+
+:root[data-theme='contrast'][data-mode='dark'] {
+  --hishab-ink: #ffffff;
+  --hishab-ink-muted: #d6d6d6;
+  --hishab-paper: #000000;
+  /* One step off black so a card still has an edge when the rule is thin, but
+     the page itself — which is most of the pixels — stays fully off. */
+  --hishab-surface: #0b0b0b;
+  --hishab-greenbar: #191919;
+  --hishab-rule: #777777;
+  --hishab-brand: #9ecbff;
+  --hishab-brand-strong: #cfe6ff;
+  --hishab-brand-soft: #9ecbff;
+  --hishab-brand-tint: #0a1c30;
+  --hishab-brand-contrast: #000000;
+
+  --hishab-income: #74e8a8;
+  --hishab-expense: #ff9c94;
+  --hishab-brass: #f2c351;
+}
+
+/* ---- calm: warm paper, low saturation -------------------------------------
+ *
+ * The opposite trade to `contrast`, and the one people ask for by describing a
+ * feeling rather than a colour. Money is stressful, this is an app somebody
+ * opens to look at a number they may not want to see, and a bright white sheet
+ * with a saturated red on it makes that worse than it needs to be. Cream paper
+ * and desaturated inks read like the paper খাতা this replaces.
+ *
+ * Green and red are still green and red — muted, not reassigned. They are held
+ * above 4.5:1 on all three grounds, which is what stops "gentle" from becoming
+ * "faint": a low-saturation palette is exactly where contrast quietly fails, so
+ * this is the face the test file was written for. */
+:root[data-theme='calm'] {
+  --hishab-ink: #2c2a26;
+  --hishab-ink-muted: #5f5850;
+  --hishab-paper: #f6f2ea;
+  --hishab-surface: #fffdf8;
+  --hishab-greenbar: #efe9dd;
+  --hishab-rule: #d9cfbe;
+  --hishab-brand: #3f6285;
+  --hishab-brand-strong: #2f4a66;
+  --hishab-brand-soft: #4d7597;
+  --hishab-brand-tint: #e8eef4;
+  --hishab-brand-contrast: #ffffff;
+
+  --hishab-income: #3a6647;
+  --hishab-expense: #97362e;
+  --hishab-brass: #6f5824;
+}
+
+:root[data-theme='calm'][data-mode='dark'] {
+  --hishab-ink: #ece6da;
+  --hishab-ink-muted: #a79e90;
+  --hishab-paper: #1b1917;
+  --hishab-surface: #23201c;
+  --hishab-greenbar: #2a2620;
+  --hishab-rule: #3f3931;
+  --hishab-brand: #8fb0cb;
+  --hishab-brand-strong: #b3cbdf;
+  --hishab-brand-soft: #8fb0cb;
+  --hishab-brand-tint: #26313b;
+  --hishab-brand-contrast: #14120f;
+
+  --hishab-income: #8ec9a2;
+  --hishab-expense: #e0a099;
+  --hishab-brass: #cfa95f;
+}
+
+/* The floor for a reader whose JavaScript never ran, and the only place in this
+ * file that asks the OS directly.
+ *
+ * `data-mode` is missing exactly twice: before the boot script executes, and
+ * forever if it could not. Only the default palette needs covering, because
+ * every other one is reached by tapping a button — which needs the script that
+ * would have set the attribute. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode]) {
     --hishab-ink: #e8efe7;
     --hishab-ink-muted: #9aab9f;
     --hishab-paper: #101614;
     --hishab-surface: #16201c;
     --hishab-greenbar: #1a241f;
     --hishab-rule: #2c3a33;
+    --hishab-brand: #4d9ae8;
+    --hishab-brand-strong: #7ab6f0;
+    --hishab-brand-soft: #4d9ae8;
+    --hishab-brand-tint: #14293f;
+    --hishab-brand-contrast: #071018;
+
     --hishab-income: #63c295;
     --hishab-expense: #f0827d;
     --hishab-brass: #d6ac4e;

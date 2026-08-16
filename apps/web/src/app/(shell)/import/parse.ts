@@ -9,19 +9,10 @@
  * a row the server then imports.
  *
  * What is left here is presentation — the UI thinks in "column 3 is the date",
- * core thinks in `{ date: { index: 2 } }` — plus merging core's rows and its
- * errors into one list the preview table can show in file order.
+ * core thinks in `{ date: { index: 2 } }`.
  */
 
-import {
-  buildRows,
-  markDuplicates,
-  type ColumnMapping,
-  type DatePreference,
-  type ImportColumn,
-  type ParsedRow,
-  type RowError,
-} from '@hishab/core';
+import type { ColumnMapping, ImportColumn } from '@hishab/core';
 import { roleLabel, type ColumnRole } from './labels';
 
 /* -------------------------------------------------------------------------
@@ -115,93 +106,6 @@ export interface DisplayRow {
   duplicate: boolean;
 }
 
-export interface BuiltPreview {
-  /** Core's rows, duplicate-marked. These are what a commit sends. */
-  rows: (ParsedRow & { dedupeKey: string; isDuplicate: boolean })[];
-  /** Rows and failures together, in file order, for the preview table. */
-  display: DisplayRow[];
-  /** Mapping-level failures (line 1) — the ones that stop everything. */
-  blockingErrors: RowError[];
-  counts: { importable: number; duplicates: number; broken: number };
-}
-
-/**
- * Apply the mapping to the whole file.
- *
- * Cheap enough to re-run on every dropdown change, which is what makes the
- * preview live, and it is core doing the work, so what the user sees here is
- * what the server would have produced from the same file.
- *
- * `knownDuplicateKeys` are the dedupe keys the server has already told us are
- * in the books. Rows repeated *within* one file are not duplicates of each
- * other — core numbers the occurrences, so two ৳৫০ cups of tea on one Tuesday
- * are two transactions, exactly as the server will treat them.
- */
-export function buildPreview(
-  grid: readonly (readonly string[])[],
-  mapping: ColumnMapping,
-  datePreference: DatePreference,
-  knownDuplicateKeys: ReadonlySet<string>,
-): BuiltPreview {
-  const { rows, errors } = buildRows(grid, mapping, { datePreference });
-  const marked = markDuplicates(rows, knownDuplicateKeys);
-
-  const blockingErrors = errors.filter((error) => error.lineNumber <= 1);
-  const rowErrors = errors.filter((error) => error.lineNumber > 1);
-
-  const display: DisplayRow[] = [
-    ...marked.map((row) => ({
-      key: `r${row.lineNumber}`,
-      lineNumber: row.lineNumber,
-      date: row.date,
-      description: row.description,
-      reference: row.reference,
-      categoryName: row.categoryName,
-      amountMinor: row.direction === 'OUT' ? -row.amountMinor : row.amountMinor,
-      problem: null,
-      duplicate: row.isDuplicate,
-    })),
-    ...rowErrors.map((error, i) => ({
-      key: `e${error.lineNumber}-${i}`,
-      lineNumber: error.lineNumber,
-      date: null,
-      description: error.value,
-      reference: null,
-      categoryName: null,
-      amountMinor: null,
-      problem: error.message,
-      duplicate: false,
-    })),
-  ].sort((a, b) => a.lineNumber - b.lineNumber);
-
-  const duplicates = marked.filter((row) => row.isDuplicate).length;
-
-  return {
-    rows: marked,
-    display,
-    blockingErrors,
-    counts: {
-      importable: marked.length - duplicates,
-      duplicates,
-      broken: rowErrors.length,
-    },
-  };
-}
-
-/**
- * What `/import/commit` accepts, exactly: core's `ParsedRow` and nothing else.
- * The duplicate marks are dropped — the server dedupes again at commit and its
- * answer is the authoritative one, so sending the rows it will skip is what
- * lets its `skippedCount` corroborate (or contradict) what we promised.
- */
-export function toCommitRows(rows: readonly ParsedRow[]): ParsedRow[] {
-  return rows.map((row) => ({
-    lineNumber: row.lineNumber,
-    date: row.date,
-    description: row.description,
-    amountMinor: row.amountMinor,
-    direction: row.direction,
-    reference: row.reference,
-    categoryName: row.categoryName,
-  }));
-}
+/* Building the rows themselves moved to `review.ts` when the preview became a
+ * row-by-row approval rather than a summary. There is no second copy of the
+ * parsing here or there: both call `@hishab/core`, which is what the API runs. */

@@ -63,6 +63,9 @@ export const REJECT_REASONS: readonly (readonly [RejectReason, string])[] = [
  */
 export const FIELD_LABEL: Record<string, string> = {
   amountMinor: 'টাকার পরিমাণ',
+  /* Named for what it is rather than for taka. The whole point of the field is
+     that the message was in some other money. */
+  fxAmountMinor: 'বার্তায় লেখা মূল অঙ্ক',
   direction: 'কোন দিকে গেল',
   date: 'তারিখ',
   payee: 'কার সাথে',
@@ -73,6 +76,7 @@ export const FIELD_LABEL: Record<string, string> = {
 /** The same names again, short enough to sit on a highlight inside the message. */
 export const FIELD_TAG: Record<string, string> = {
   amountMinor: 'টাকা',
+  fxAmountMinor: 'মূল অঙ্ক',
   direction: 'দিক',
   date: 'তারিখ',
   payee: 'নাম',
@@ -94,6 +98,9 @@ export function fieldTag(field: string): string {
  */
 export const FIELD_TINT: Record<string, string> = {
   amountMinor: 'bg-brass/25 decoration-brass',
+  /* The same tint as the amount it stands in for: to a reader it is the amount,
+     and giving it a colour of its own would suggest a second figure. */
+  fxAmountMinor: 'bg-brass/25 decoration-brass',
   direction: 'bg-income/20 decoration-income',
   date: 'bg-ink/10 decoration-ink-muted',
   balanceMinor: 'bg-greenbar decoration-ink-muted',

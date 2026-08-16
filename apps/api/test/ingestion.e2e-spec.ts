@@ -591,6 +591,244 @@ describe('ingestion', () => {
     expect(messages.body.items).toHaveLength(4);
   });
 
+  /**
+   * The dollar charge that was about to be filed as ৳4.60.
+   *
+   * Measured on the owner's own inbox, and reproduced here byte for byte. Every
+   * assertion below is about one number: 460 is *cents*, and the taka figure is
+   * the one thing this pipeline is not allowed to invent.
+   */
+  describe('a message that was not in taka', () => {
+    const OPENAI =
+      'USD 4.6 transacted at OPENAI *CHATGPT SUBSCR on 16/08/26 [10:33:37 PM BST] ' +
+      'using Card#***0492. Available balance: USD 538.24. Helpline 16221.';
+
+    const draftFrom = async (ws: Ws, body: string) => {
+      const received = await post(ws, body).expect(200);
+      const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
+      return drafts.body.items.find(
+        (d: { id: string }) => d.id === (received.body.draftId as string),
+      );
+    };
+
+    it('records the dollars and refuses to guess the taka', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      expect(draft.fxCurrency).toBe('USD');
+      // Cents, because a dollar has a hundred of them — not poisha.
+      expect(draft.fxAmountMinor).toBe(460);
+      /* The whole bug in one assertion. 460 here would be ৳4.60 for a charge of
+         about ৳560, and it is what the screen used to offer. */
+      expect(draft.amountMinor).toBeNull();
+      // Never a one-tap accept: the figure the ledger needs is not in the text.
+      expect(draft.needsReview).toBe(true);
+    });
+
+    it('quotes the code with the figure, so the screen can show its working', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      expect(draft.evidence.fxAmountMinor).toBe('USD 4.6');
+      /* And not under the taka name. A quotation there would have the review
+         screen print "4.6" beside an empty box under a quotation mark. */
+      expect(draft.evidence.amountMinor).toBeUndefined();
+      expect(draft.message.body).toContain(draft.evidence.fxAmountMinor);
+    });
+
+    it('will not be accepted until somebody says what it cost in taka', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      const refused = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${draft.id as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ws.cashId, categoryId: ws.categoryId, direction: 'OUT' })
+        .expect(400);
+      expect(refused.body.message).toContain('USD');
+
+      // Nothing reached the books on the way past.
+      const accounts = await ctx.http().get('/v1/accounts').set(auth(ws.user)).expect(200);
+      expect(accounts.body.find((a: { id: string }) => a.id === ws.cashId).balanceMinor).toBe(
+        5_000_000,
+      );
+    });
+
+    it('writes the taka the reviewer declared, with the dollars beside it', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      /* ৳561.20 at a rate of 122 — the reviewer's own figure, read off their
+         card app. Nothing here computed it and nothing here checked it against
+         a feed: the rate that applied is the issuer's, not the mid-market. */
+      const accepted = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${draft.id as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          direction: 'OUT',
+          amountMinor: 56_120,
+        })
+        .expect(200);
+
+      const txn = await ctx.prisma.transaction.findFirstOrThrow({
+        where: { id: accepted.body.transactionId as string },
+      });
+      expect(txn.fxCurrency).toBe('USD');
+      expect(Number(txn.fxAmountMinor)).toBe(460);
+
+      const entries = await ctx.prisma.ledgerEntry.findMany({
+        where: { transactionId: txn.id },
+        select: { amountMinor: true },
+      });
+      // Both legs in taka, at the declared figure — never at 460 poisha.
+      expect(entries.map((e) => Number(e.amountMinor))).toEqual([56_120, 56_120]);
+
+      /* The rate is the ratio of the two stored integers, exactly, and is the
+         reason no fractional number was ever written anywhere. */
+      expect(56_120 / Number(txn.fxAmountMinor)).toBe(122);
+
+      const accounts = await ctx.http().get('/v1/accounts').set(auth(ws.user)).expect(200);
+      expect(accounts.body.find((a: { id: string }) => a.id === ws.cashId).balanceMinor).toBe(
+        5_000_000 - 56_120,
+      );
+    });
+
+    it('leaves an ordinary taka alert exactly as it was', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, SMS);
+
+      expect(draft.fxCurrency).toBeNull();
+      expect(draft.fxAmountMinor).toBeNull();
+      expect(draft.amountMinor).toBe(125_050);
+    });
+
+    it('does not take a three-letter reference for a currency', async () => {
+      /* SAR is a real ISO code and this is a reference number. Reading it would
+         relabel five thousand taka as five thousand Saudi riyals. */
+      const ws = await workspace();
+      const draft = await draftFrom(
+        ws,
+        'Your A/C **4521 has been credited BDT 5,000.00 on 09-08-26. Ref SAR 12345',
+      );
+
+      expect(draft.fxCurrency).toBeNull();
+      expect(draft.amountMinor).toBe(500_000);
+    });
+
+    it('re-reads a draft written before the columns existed', async () => {
+      /* The 47 drafts already in the owner's queue when this shipped were parsed
+         by code that could not see a currency: their `fxCurrency` is null and
+         their `amountMinor` holds the dollar figure under a taka name. The raw
+         message is kept for exactly this kind of correction, so it is read
+         again rather than left to be accepted wrongly. Simulated by putting the
+         row back the way the old parser left it. */
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      await ctx.prisma.transactionDraft.update({
+        where: { id: draft.id as string },
+        data: {
+          fxCurrency: null,
+          fxAmountMinor: null,
+          amountMinor: 460n,
+          confidence: 85,
+          evidence: { amountMinor: '4.6', date: '16/08/26' },
+        },
+      });
+
+      const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
+      const legacy = drafts.body.items.find((d: { id: string }) => d.id === (draft.id as string));
+
+      expect(legacy.fxCurrency).toBe('USD');
+      expect(legacy.fxAmountMinor).toBe(460);
+      // The stored 460 is a dollar figure wearing a taka name. Not repeated.
+      expect(legacy.amountMinor).toBeNull();
+      expect(legacy.needsReview).toBe(true);
+
+      /* And the accept path reads it the same way, so the screen and the ledger
+         cannot disagree about the same row. */
+      const accepted = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${draft.id as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          direction: 'OUT',
+          amountMinor: 56_120,
+        })
+        .expect(200);
+
+      const txn = await ctx.prisma.transaction.findFirstOrThrow({
+        where: { id: accepted.body.transactionId as string },
+      });
+      expect(txn.fxCurrency).toBe('USD');
+      expect(Number(txn.fxAmountMinor)).toBe(460);
+    });
+
+    it('lets a reviewer say it was not another currency after all', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      const accepted = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${draft.id as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          direction: 'OUT',
+          amountMinor: 46_000,
+          fxCurrency: null,
+          fxAmountMinor: null,
+        })
+        .expect(200);
+
+      const txn = await ctx.prisma.transaction.findFirstOrThrow({
+        where: { id: accepted.body.transactionId as string },
+      });
+      expect(txn.fxCurrency).toBeNull();
+      expect(txn.fxAmountMinor).toBeNull();
+    });
+
+    it('refuses half a pair, whichever half is missing', async () => {
+      const ws = await workspace();
+      const draft = await draftFrom(ws, OPENAI);
+
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${draft.id as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          direction: 'OUT',
+          amountMinor: 56_120,
+          fxCurrency: null,
+        })
+        .expect(400);
+
+      // And a currency this build has never heard of is refused at the door.
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${draft.id as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          direction: 'OUT',
+          amountMinor: 56_120,
+          fxCurrency: 'ZZZ',
+          fxAmountMinor: 460,
+        })
+        .expect(400);
+    });
+  });
+
   it('never shows one workspace another s drafts', async () => {
     const mine = await workspace();
     const received = await post(mine).expect(200);

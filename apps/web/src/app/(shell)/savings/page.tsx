@@ -47,6 +47,8 @@ interface Instalment {
   dueDate: string;
   expectedMinor: number;
   status: 'DUE' | 'PAID' | 'MISSED' | 'SKIPPED';
+  /** The ledger row that moved this instalment's money, once one exists. */
+  transactionId: string | null;
 }
 interface SavingsPlan {
   id: string;
@@ -58,9 +60,31 @@ interface SavingsPlan {
   frequency: string;
   termMonths: number;
   startDate: string;
+  /** When the term ends. Part of deciding whether profit can have arrived yet. */
+  maturityDate: string | null;
   profitRateBps: number;
   profitCalc: string;
   status: string;
+  /**
+   * `PERIODIC` — a Sanchayapatra, which credits a bank account as it goes.
+   * `AT_MATURITY` — a DPS or FDR, which pays nothing at all until the end.
+   */
+  profitPayout: 'PERIODIC' | 'AT_MATURITY';
+  /**
+   * What the rate says has built up so far and has *not* been received.
+   *
+   * Derived from the projection over the months elapsed. Nothing books it, and
+   * the screen never puts it in a box somebody can submit.
+   */
+  accruedProfitMinor: number;
+  /**
+   * The savings account this instrument's money actually sits in, or null.
+   *
+   * Optional and it stays optional. Without it the screen behaves exactly as it
+   * always has — ticking an instalment moves no money — and with it, ticking one
+   * *offers* to book the deposit as a transfer. Nothing here ever assumes.
+   */
+  linkedAccountId: string | null;
   /** Free text. The migration writes its own warnings here, so the sheet must show it. */
   note: string | null;
   /** Profit actually paid out, summed off the ledger. Not the projection. */
@@ -100,6 +124,39 @@ const STATUSES = [
 
 const labelOf = (pairs: readonly (readonly [string, string])[], value: string): string =>
   pairs.find(([v]) => v === value)?.[1] ?? value;
+
+/**
+ * Whether this instrument can honestly have handed over any profit yet.
+ *
+ * ## The mistake this replaced
+ *
+ * "মুনাফা পেয়েছি" used to sit on every plan, with the whole projected maturity
+ * profit prefilled. On a Sanchayapatra that is right — it credits a bank
+ * account every month or quarter. On a **DPS it is the dangerous kind of
+ * wrong**: a DPS pays nothing before maturity, principal and profit arrive
+ * together at the end, so a button offering to record profit received is an
+ * invitation to book income that has neither been earned nor received. That
+ * overstates the year and carries straight into the tax worksheet.
+ *
+ * ## What is offered instead
+ *
+ * Three ways an instrument can have paid:
+ *
+ *  - it pays periodically by construction (`PERIODIC` — the Sanchayapatra);
+ *  - the saver has already marked it মেয়াদপূর্ণ or বন্ধ, which is them saying
+ *    it is over;
+ *  - its maturity date has arrived, which is the case the status has not caught
+ *    up with yet — and the one `MatureSheet` sends people to first, since it
+ *    asks for the profit to be booked *before* the money is brought home.
+ *
+ * A running DPS matches none of these and gets no button. It gets the accrued
+ * figure, which is a number to look at rather than a number to file.
+ */
+function profitCanHaveArrived(plan: SavingsPlan, today: string): boolean {
+  if (plan.profitPayout === 'PERIODIC') return true;
+  if (plan.status !== 'ACTIVE') return true;
+  return plan.maturityDate !== null && plan.maturityDate <= today;
+}
 
 /** Taka typed by a human into integer poisha. Null when it cannot be read. */
 /* Takes the currency rather than reading it: this is a module-level helper
@@ -181,6 +238,21 @@ export default function SavingsPage() {
   const [profitFor, setProfitFor] = React.useState<SavingsPlan | null>(null);
   /** The plan being brought home at maturity. `null` closes the sheet. */
   const [maturing, setMaturing] = React.useState<SavingsPlan | null>(null);
+  /**
+   * The instalment being deposited, on a plan that has a linked account.
+   *
+   * Only ever set for a linked plan: without a link there is nowhere for the
+   * money to go and the tick behaves as it always has.
+   */
+  const [depositing, setDepositing] = React.useState<{
+    plan: SavingsPlan;
+    instalment: Instalment;
+  } | null>(null);
+
+  /* Read once per render rather than per row. Whether a plan has matured is a
+     question about a calendar day, not a moment, and the four places that ask
+     it must not straddle midnight and disagree. */
+  const today = toLocalDateString(new Date());
 
   const plans = useQuery({
     queryKey: ['savings'],
@@ -191,6 +263,10 @@ export default function SavingsPage() {
     queryFn: () => api<SavingsPlan>(`/savings/${openId}`),
     enabled: openId !== null,
   });
+  /* Only to name the linked account in the detail sheet. Cached under the same
+     key every other screen uses, so this costs nothing after the first read. */
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+  const linkedAccount = (accounts.data ?? []).find((a) => a.id === detail.data?.linkedAccountId);
 
   const pay = useMutation({
     mutationFn: ({ planId, installmentId }: { planId: string; installmentId: string }) =>
@@ -341,10 +417,46 @@ export default function SavingsPage() {
               </p>
             </div>
 
+            {/* On an instrument that pays nothing until the end — a DPS, an FDR
+                — this is the honest figure, and it is deliberately not a button.
+
+                What has *built up* is not what has *arrived*. A running DPS
+                hands over nothing at all until maturity, so a screen offering
+                to record profit received on one would be inviting somebody to
+                file income they have not earned yet and have certainly not been
+                paid. The number is here to be looked at; nothing books it, and
+                under this ledger's cash basis it is neither income nor an
+                asset until the bank actually pays. */}
+            {detail.data.profitPayout === 'AT_MATURITY' ? (
+              <div className="border-rule flex items-center justify-between gap-2 rounded-md border p-3">
+                <div className="min-w-0">
+                  <p className="text-ink text-sm font-medium">
+                    {t('savings.profitAccrued', 'এ পর্যন্ত জমেছে')}
+                  </p>
+                  <p className="text-ink-muted text-xs">
+                    {t(
+                      'savings.profitAccruedHint',
+                      'হাতে আসেনি — মেয়াদপূর্তিতে আসল ও মুনাফা একসঙ্গে পাবেন। এটি হারের হিসাবে আনুমানিক, কর কাটার আগের।',
+                    )}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Money
+                    minor={detail.data.accruedProfitMinor}
+                    className="text-ink text-base font-semibold"
+                  />
+                </div>
+              </div>
+            ) : null}
+
             {/* What this instrument has actually paid, beside what it promised.
                 A Sanchayapatra pays every month or quarter and the bank deducts
                 source tax first, so the two are never the same number — and the
-                one on the left is the one that happened. */}
+                one on the left is the one that happened.
+
+                Shown whatever the instrument, including a running DPS where it
+                will read zero: the zero is the point, sitting beside the accrued
+                figure above it. */}
             <div className="border-rule flex items-center justify-between gap-2 rounded-md border p-3">
               <div className="min-w-0">
                 <p className="text-ink text-sm font-medium">
@@ -353,6 +465,15 @@ export default function SavingsPage() {
                 <p className="text-ink-muted text-xs">
                   {t('savings.profitHint', 'ব্যাংক যা হাতে দিয়েছে — কর কাটার পরে')}
                 </p>
+                {/* The khata is the primary way in now: an ordinary আয় row with
+                    "কোন সঞ্চয় থেকে" set counts here exactly the same. Saying so
+                    keeps this screen from implying it owns the figure. */}
+                <p className="text-ink-muted mt-1 text-xs">
+                  {t(
+                    'savings.profitFromLedger',
+                    'খাতায় আয় লেখার সময় “কোন সঞ্চয় থেকে” বেছে দিলে সেটিও এখানে যোগ হয়।',
+                  )}
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Money
@@ -360,6 +481,36 @@ export default function SavingsPage() {
                   className="text-income text-base font-semibold"
                 />
               </div>
+            </div>
+
+            {/* Whether the instalments reach the books, said where somebody
+                deciding can read it.
+
+                A DPS deposit is not an expense — it is one asset becoming
+                another — and an app that quietly filed it either way would be
+                wrong in a direction nobody would notice. So the state of the
+                link is on the plan, in a sentence, and the way to change it is
+                the ordinary সম্পাদনা button below. */}
+            <div className="border-rule flex items-start justify-between gap-3 rounded-md border p-3">
+              <div className="min-w-0">
+                <p className="text-ink text-sm font-medium">
+                  {t('savings.linkedAccount', 'কিস্তির টাকা যে হিসাবে জমা হয়')}
+                </p>
+                <p className="text-ink-muted mt-0.5 text-xs">
+                  {detail.data.linkedAccountId
+                    ? t(
+                        'savings.linkedOn',
+                        'কিস্তিতে টিক দিলে এই হিসাবে টাকা সরানোর সুযোগ পাবেন — খরচ হিসেবে নয়, স্থানান্তর হিসেবে।',
+                      )
+                    : t(
+                        'savings.linkedOff',
+                        'যুক্ত করা নেই — কিস্তিতে টিক দিলে শুধু চিহ্ন পড়বে, খাতায় টাকা সরবে না। সম্পাদনা করে একটি সঞ্চয়ী হিসাব বেছে নিতে পারেন।',
+                      )}
+                </p>
+              </div>
+              <span className="text-ink shrink-0 text-right text-xs">
+                {linkedAccount?.name ?? t('savings.notLinked', 'যুক্ত নেই')}
+              </span>
             </div>
 
             <ul className="divide-rule divide-y">
@@ -375,13 +526,28 @@ export default function SavingsPage() {
                   {row.status === 'PAID' ? (
                     <span className="text-income flex w-24 shrink-0 items-center justify-end gap-1 text-xs">
                       <Check className="h-3.5 w-3.5" aria-hidden />
-                      জমা হয়েছে
+                      {/* Whether the money reached the books is the difference
+                          between a tick and a ledger row, and a screen that
+                          showed both the same way would hide it. */}
+                      {row.transactionId
+                        ? t('savings.depositBooked', 'খাতায় জমা')
+                        : t('savings.markedPaid', 'জমা হয়েছে')}
                     </span>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => pay.mutate({ planId: detail.data!.id, installmentId: row.id })}
-                      className="press border-rule text-ink hover:bg-greenbar w-24 shrink-0 rounded-md border py-1.5 text-xs"
+                      onClick={() => {
+                        /* A linked plan asks before it moves anything. An
+                           unlinked one has nowhere to move money to, so it does
+                           what this button has always done. */
+                        if (detail.data!.linkedAccountId) {
+                          setDepositing({ plan: detail.data!, instalment: row });
+                          setOpenId(null);
+                          return;
+                        }
+                        pay.mutate({ planId: detail.data!.id, installmentId: row.id });
+                      }}
+                      className="press border-rule text-ink hover:bg-greenbar min-h-11 w-24 shrink-0 rounded-md border py-1.5 text-xs"
                     >
                       জমা দিলাম
                     </button>
@@ -395,19 +561,26 @@ export default function SavingsPage() {
               {/* The institution asks for a statement every year, and the API
                   has served SAVINGS since statement sharing shipped — only the
                   button was missing. */}
-              {/* First, and the only filled button here: on a Sanchayapatra this
-                  is the thing somebody does every month, and the rest are done
-                  once a year at most. */}
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  setProfitFor(detail.data!);
-                  setOpenId(null);
-                }}
-              >
-                <TrendingUp className="h-4 w-4" aria-hidden />
-                {t('savings.gotProfit', 'মুনাফা পেয়েছি')}
-              </Button>
+              {/* First, and the only filled button here, on the instruments
+                  where it belongs: on a Sanchayapatra this is the thing somebody
+                  does every month, and the rest are done once a year at most.
+
+                  Absent on a running DPS — see `profitCanHaveArrived`. A DPS
+                  pays nothing before maturity, so offering to record profit
+                  received on one would invite somebody to book income they have
+                  not earned. They get the accrued figure above instead. */}
+              {profitCanHaveArrived(detail.data, today) ? (
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setProfitFor(detail.data!);
+                    setOpenId(null);
+                  }}
+                >
+                  <TrendingUp className="h-4 w-4" aria-hidden />
+                  {t('savings.gotProfit', 'মুনাফা পেয়েছি')}
+                </Button>
+              ) : null}
               {/* Offered whatever the status. A plan already marked মেয়াদপূর্ণ or
                   বন্ধ from the status box is exactly the one whose money is
                   still sitting in a savings account waiting to be moved — hiding
@@ -480,6 +653,24 @@ export default function SavingsPage() {
 
       {maturing ? (
         <MatureSheet plan={maturing} onOpenChange={(next) => !next && setMaturing(null)} />
+      ) : null}
+
+      {depositing ? (
+        <DepositSheet
+          plan={depositing.plan}
+          instalment={depositing.instalment}
+          linkedAccountName={
+            (accounts.data ?? []).find((a) => a.id === depositing.plan.linkedAccountId)?.name ?? ''
+          }
+          onOpenChange={(next) => {
+            if (!next) {
+              const planId = depositing.plan.id;
+              setDepositing(null);
+              // Back to the plan the tick was made on, now one instalment on.
+              setOpenId(planId);
+            }
+          }}
+        />
       ) : null}
 
       <PlanSheet
@@ -582,6 +773,8 @@ interface PlanForm {
   rate: string;
   profitCalc: string;
   status: string;
+  /** A savings account id, or '' for "not linked" — which is the default. */
+  linkedAccountId: string;
   note: string;
 }
 
@@ -597,6 +790,11 @@ const emptyPlanForm = (): PlanForm => ({
   rate: '',
   profitCalc: 'COMPOUND_MONTHLY',
   status: 'ACTIVE',
+  /* Empty, always. A new plan is not linked to anything until somebody says so:
+     defaulting to the only savings account they happen to have would be the app
+     deciding that this DPS's money lives there, and being wrong about that puts
+     transfers into the wrong account month after month. */
+  linkedAccountId: '',
   note: '',
 });
 
@@ -614,6 +812,7 @@ const planToForm = (plan: SavingsPlan): PlanForm => ({
   rate: formatMinor(plan.profitRateBps, { symbol: false }),
   profitCalc: plan.profitCalc,
   status: plan.status,
+  linkedAccountId: plan.linkedAccountId ?? '',
   note: plan.note ?? '',
 });
 
@@ -629,6 +828,7 @@ const planToApi = (plan: SavingsPlan) => ({
   startDate: plan.startDate,
   profitRateBps: plan.profitRateBps,
   profitCalc: plan.profitCalc,
+  linkedAccountId: plan.linkedAccountId ?? '',
   note: plan.note ?? '',
 });
 
@@ -658,6 +858,16 @@ function PlanSheet({
 
   /* The books' currency decides how many minor units a typed amount is worth — 100 for taka, 1 for yen, 1000 for a dinar. */
   const { currency } = useWorkspaceSettings();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+  /* Only savings accounts, and the server agrees. A link is what lets an
+     instalment be booked as a transfer *into* somewhere, and the only somewhere
+     that makes sense is the account the bank actually holds the DPS in. An
+     archived one is still offered when the plan already points at it, so an
+     unrelated edit cannot silently unlink a plan. */
+  const savingsAccounts = (accounts.data ?? []).filter(
+    (a) => a.type === 'SAVINGS' && (!a.isArchived || a.id === form.linkedAccountId),
+  );
+
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       plan
@@ -710,21 +920,33 @@ function PlanSheet({
             startDate: form.startDate,
             profitRateBps,
             profitCalc: form.profitCalc,
+            linkedAccountId: form.linkedAccountId,
             note: form.note.trim(),
           };
 
           if (!plan) {
-            save.mutate({ ...next, institution: next.institution || undefined });
+            save.mutate({
+              ...next,
+              institution: next.institution || undefined,
+              // Absent, not empty: the id column takes a cuid or nothing.
+              linkedAccountId: next.linkedAccountId || undefined,
+            });
             return;
           }
 
           /* Only what changed: the API rederives the maturity date whenever it
              is handed a start date or a term, so resending either untouched
              would overwrite a maturity typed off the passbook. */
-          const body = changedOnly(
+          const body: Record<string, unknown> = changedOnly(
             { ...planToApi(plan), status: plan.status },
             { ...next, status: form.status },
           );
+          /* '' is how this form spells "not linked", and the API spells it
+             `null` — omitting the field means "leave it alone", which is the
+             one thing somebody unlinking a plan did not ask for. */
+          if ('linkedAccountId' in body && body.linkedAccountId === '') {
+            body.linkedAccountId = null;
+          }
           if (Object.keys(body).length === 0) {
             onOpenChange(false);
             return;
@@ -852,6 +1074,41 @@ function PlanSheet({
           </Field>
         ) : null}
 
+        {/* The one field on this form that can make money move.
+
+            It is last, optional, and empty by default, because most plans do
+            not want it: somebody tracking a Sanchayapatra they hold on paper
+            wants a schedule and a reminder, not a second account to keep. The
+            hint spells out the consequence in both directions, because "যুক্ত
+            করুন" on its own tells a reader nothing about what changes. */}
+        <Field
+          label={t('savings.linkAccount', 'কিস্তির টাকা কোন হিসাবে জমা হয়')}
+          htmlFor="sp-linked"
+        >
+          <Select id="sp-linked" value={form.linkedAccountId} onChange={set('linkedAccountId')}>
+            <option value="">{t('savings.linkNone', 'যুক্ত করব না')}</option>
+            {savingsAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+          <p className="text-ink-muted mt-1 text-xs">
+            {t(
+              'savings.linkHint',
+              'যুক্ত করলে প্রতিটি কিস্তিতে টিক দেওয়ার সময় জিজ্ঞেস করা হবে টাকাটা কোন হিসাব থেকে গেল, আর সেটি খাতায় স্থানান্তর হিসেবে বসবে — খরচ হিসেবে নয়, কারণ ডিপিএসে টাকা রাখা খরচ নয়, এক হিসাব থেকে আরেক হিসাবে সরানো। যুক্ত না করলে আগের মতোই শুধু চিহ্ন পড়বে, খাতায় কিছু বসবে না।',
+            )}
+          </p>
+          {savingsAccounts.length === 0 ? (
+            <p className="text-ink-muted mt-1 text-xs">
+              {t(
+                'savings.linkNoAccounts',
+                'এখনও কোনো “সঞ্চয়ী” ধরনের অ্যাকাউন্ট নেই। অ্যাকাউন্ট পাতা থেকে একটি খুলে নিলে এখানে দেখা যাবে।',
+              )}
+            </p>
+          ) : null}
+        </Field>
+
         <Field label={t('savings.note', 'নোট')} htmlFor="sp-note">
           <Textarea
             id="sp-note"
@@ -891,23 +1148,39 @@ function PlanSheet({
 }
 
 /**
- * "মুনাফা পেয়েছি" — the monthly or quarterly payout on a Sanchayapatra, or the
- * excess a DPS hands over at maturity.
+ * "মুনাফা পেয়েছি" — money the instrument has actually handed over.
  *
- * ## Why this is its own button
+ * ## Where it is offered, and where it is not
+ *
+ * Only where profit can have arrived: a Sanchayapatra, which credits a bank
+ * account every month or quarter, or any plan that has reached maturity. **Not
+ * a running DPS** — see `profitCanHaveArrived`. A DPS pays nothing before the
+ * end, so this sheet on one would be a form for filing income nobody has been
+ * paid, and the tax worksheet reads what it files.
+ *
+ * ## Why it is its own button at all
  *
  * Somebody holding four Sanchayapatra does this twelve to forty-eight times a
- * year, and doing it through the ordinary entry sheet means choosing "আয়" and
- * then remembering to say which certificate it came from — which nobody does,
- * which is why the ledger could not answer "how much did this one earn me".
- * Here the instrument is already known, so there is nothing to remember.
+ * year, and here the instrument is already known. The khata's ordinary আয় sheet
+ * now carries a "কোন সঞ্চয় থেকে" picker that does the same job and is the
+ * primary route; both write `savingsPlanId` and both count in the same total,
+ * so neither screen owns the figure.
+ *
+ * ## Nothing is prefilled, deliberately
+ *
+ * The amount box starts empty. It used to open with
+ * `projection.profitMinor − profitReceivedMinor` already in it, which reads as
+ * "this is what you got" — and on anything short of maturity that figure has
+ * not been received at all. The app cannot know what the bank paid: source tax
+ * and excise duty come off first, a bonus sometimes goes on, and the only
+ * reliable source is the passbook in the person's hand. So it asks, and files
+ * exactly what it is told.
  *
  * ## What it does not ask
  *
  * Whether this is income. It is (IFRS 9), and asking a question whose answer is
- * always the same teaches nothing and slows down the person who does this every
- * month. The principal coming home at maturity is a *transfer* between two
- * accounts and is deliberately not this button.
+ * always the same teaches nothing. The principal coming home at maturity is a
+ * *transfer* between two accounts and is deliberately not this button.
  */
 function ProfitSheet({
   plan,
@@ -927,19 +1200,21 @@ function ProfitSheet({
   const [error, setError] = React.useState<string | null>(null);
 
   /**
-   * What the plan's own rate says is still owed: the whole projected profit,
-   * less whatever has already been booked.
+   * Empty. Always.
    *
-   * Prefilled rather than enforced. Somebody clearing a matured DPS should not
-   * have to work out `principal × rate × years` on paper — the plan already
-   * knows — but the bank deducts source tax and excise duty before it pays, and
-   * sometimes adds a bonus on top, so the box stays a box. What gets booked is
-   * always what somebody read and confirmed.
+   * This box used to open with `projection.profitMinor − profitReceivedMinor`
+   * in it — what the rate says the plan will yield over its whole term, less
+   * what has been booked. As a convenience at maturity that was defensible; as
+   * a default it was not, because a number sitting in a box labelled "কত টাকা
+   * পেলেন" reads as a statement that this is what arrived, and on anything
+   * short of maturity none of it has. Income filed that way overstates the year
+   * and carries into the tax worksheet.
+   *
+   * There is no figure the app could put here honestly: the bank deducts source
+   * tax and excise duty before it pays and sometimes adds a bonus, so the only
+   * true number is the one on the passbook. The person reads it and types it.
    */
-  const outstandingProfit = Math.max(0, plan.projection.profitMinor - plan.profitReceivedMinor);
-  const [amount, setAmount] = React.useState(() =>
-    outstandingProfit > 0 ? formatMinor(outstandingProfit, { symbol: false }) : '',
-  );
+  const [amount, setAmount] = React.useState('');
 
   /* Default to the first live account rather than making somebody pick twice.
      Where profit lands is nearly always the same account month after month. */
@@ -1002,17 +1277,18 @@ function ProfitSheet({
             className="money text-xl"
             placeholder="০.০০"
           />
-          {/* The bank deducts source tax and excise duty before it pays, and
-              sometimes adds a bonus, so the figure on the passbook is never the
-              one on the projection. The prefill is a starting point, and the
-              hint says which number wins. */}
+          {/* Nothing is filled in for them. The bank deducts source tax and
+              excise duty before it pays and sometimes adds a bonus, so the
+              projection is never the figure that arrived — and a projected
+              number sitting in this box would read as a claim that it did. */}
           <p className="text-ink-muted mt-1 text-xs">
-            {outstandingProfit > 0
-              ? t(
-                  'savings.profitPrefilled',
-                  'হারের হিসাবে যতটা পাওনা, বসিয়ে দেওয়া হয়েছে। ব্যাংক যা হাতে দিয়েছে সেটাই লিখুন — কর কাটা থাকলে কম, বোনাস থাকলে বেশি।',
-                )
-              : t('savings.profitAmountHint', 'ব্যাংক যত টাকা হাতে দিয়েছে, ঠিক তত।')}
+            {/* A new key rather than a reworded one: `savings.profitAmountHint`
+                is shipped English that says only "exactly what the bank handed
+                over", and the sentence that matters now is the second half. */}
+            {t(
+              'savings.profitReceivedOnly',
+              'ব্যাংক যত টাকা হাতে দিয়েছে, ঠিক তত — পাসবই বা এসএমএস দেখে লিখুন। যা এখনও পাননি তা লিখবেন না।',
+            )}
           </p>
         </Field>
 
@@ -1177,6 +1453,17 @@ function MatureSheet({
               )}
             </span>
           </p>
+          {/* The sentence above names a button that is not always on screen: a
+              running DPS gets no "মুনাফা পেয়েছি", because it has paid nothing
+              yet. Somebody closing one early would otherwise be sent looking
+              for a control that is not there, so the other route — which always
+              works, and is the primary one now — is named beside it. */}
+          <p className="text-ink-muted mt-2 text-xs">
+            {t(
+              'savings.matureProfitWhere',
+              'বোতামটি না দেখলে খাতা থেকে আয় লিখে “কোন সঞ্চয় থেকে” এই সঞ্চয়টি বেছে দিন — একই হিসাবে যোগ হবে।',
+            )}
+          </p>
         </div>
 
         <Field label={t('savings.matureFrom', 'কোন অ্যাকাউন্টে টাকাটা আছে')} htmlFor="mt-from">
@@ -1233,6 +1520,211 @@ function MatureSheet({
         ) : null}
         <Button type="submit" size="block" disabled={save.isPending}>
           {t('common.save', 'সংরক্ষণ করুন')}
+        </Button>
+      </form>
+    </Sheet>
+  );
+}
+
+/**
+ * "কিস্তি জমা দিলাম" — on a plan whose money has somewhere to go.
+ *
+ * ## Why this sheet exists at all
+ *
+ * Ticking an instalment used to flip a status and nothing else, and the ledger
+ * never heard about it. The owner of these books has ten savings plans and
+ * ৳31,000 across four savings accounts, which is what years of deposits look
+ * like when none of them reach the books.
+ *
+ * ## Why it is a transfer, and why the sheet says so
+ *
+ * Money into a DPS is **not an expense**. Nothing is consumed and nobody is
+ * owed — ৳2,000 leaves the current account and arrives in the savings account,
+ * one asset becoming another. Filed as an expense it understates net worth by
+ * every poisha ever saved and overstates the month's spending by the
+ * instalment, and both errors run in the direction that makes somebody believe
+ * they are poorer than they are. The sentence at the top of this sheet is the
+ * only place a person is ever told that, so it goes before the fields.
+ *
+ * ## Why "শুধু চিহ্ন দিন" is a real button and not a cancel
+ *
+ * Because it is what this screen did yesterday, and it is still right for a
+ * plan whose deposits are already in the books some other way — an auto-debit
+ * the bank statement import already picked up, a standing instruction, an
+ * instalment somebody paid in cash and entered by hand last week. Moving money
+ * a second time would double it. The choice is on the screen, both ways round,
+ * and neither is taken for the person.
+ */
+function DepositSheet({
+  plan,
+  instalment,
+  linkedAccountName,
+  onOpenChange,
+}: {
+  plan: SavingsPlan;
+  instalment: Instalment;
+  linkedAccountName: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { currency } = useWorkspaceSettings();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
+
+  const [fromId, setFromId] = React.useState('');
+  const [amount, setAmount] = React.useState(() =>
+    formatMinor(instalment.expectedMinor, { symbol: false }),
+  );
+  const [date, setDate] = React.useState(toLocalDateString(new Date()));
+  const [error, setError] = React.useState<string | null>(null);
+
+  /* Never the account the money is going *into*: a transfer to itself is
+     refused by the server and is not a thing anybody meant to ask for. */
+  const sources = React.useMemo(
+    () => (accounts.data ?? []).filter((a) => !a.isArchived && a.id !== plan.linkedAccountId),
+    [accounts.data, plan.linkedAccountId],
+  );
+
+  /* Default to the first current account rather than making somebody pick
+     twice: a DPS instalment leaves the same bank account month after month, and
+     a wallet or a plot of land is not where it comes from. */
+  const firstSourceId =
+    sources.find((a) => a.type === 'BANK')?.id ??
+    sources.find((a) => a.type === 'CASH' || a.type === 'MOBILE_WALLET')?.id ??
+    sources[0]?.id ??
+    '';
+  React.useEffect(() => {
+    if (firstSourceId) setFromId((current) => current || firstSourceId);
+  }, [firstSourceId]);
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api(`/savings/${plan.id}/installments/${instalment.id}/pay`, { method: 'POST', body }),
+    onSuccess: (result) => {
+      haptic('success');
+      /* Money moved, so this is not the savings screen's business alone: an
+         account balance changed, the khata has a new row and the net worth on
+         the dashboard is different. */
+      for (const key of [['savings'], ['accounts'], ['transactions'], ['summary'], ['reports']]) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
+      /* The two halves can disagree — the tick always lands, the transfer may
+         not — so the failure is reported rather than swallowed by a green
+         toast. The instalment stays paid either way, which is why this is a
+         message and not a rollback. */
+      const deposit = (result as { deposit?: { booked: boolean; message: string | null } | null })
+        .deposit;
+      if (deposit && !deposit.booked) {
+        setError(deposit.message ?? 'টাকাটা খাতায় সরানো যায়নি');
+        return;
+      }
+      onOpenChange(false);
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'সংরক্ষণ করা যায়নি'),
+  });
+
+  return (
+    <Sheet
+      open
+      onOpenChange={onOpenChange}
+      title={t('savings.payInstalment', 'কিস্তি জমা দিলাম')}
+      description={`${plan.planName} · ${instalment.dueDate}`}
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          const amountMinor = toMinor(amount, currency);
+          if (amountMinor === null || amountMinor <= 0) {
+            setError('টাকার অঙ্ক লিখুন');
+            return;
+          }
+          if (!fromId) {
+            setError('কোন অ্যাকাউন্ট থেকে গেল বেছে নিন');
+            return;
+          }
+          save.mutate({ fromAccountId: fromId, amountMinor, paidDate: date });
+        }}
+      >
+        {/* Before any field, because this is the sentence that stops somebody
+            believing their savings are money they have spent. */}
+        <div className="rounded-card border-rule bg-greenbar border p-3">
+          <p className="text-ink flex items-start gap-2 text-sm">
+            <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              {t(
+                'savings.depositHint',
+                'ডিপিএসে টাকা রাখা খরচ নয় — এক হিসাব থেকে আরেক হিসাবে সরানো। তাই এটি খাতায় স্থানান্তর হিসেবে বসবে, আপনার মোট সম্পদ কমবে না।',
+              )}
+            </span>
+          </p>
+        </div>
+
+        <Field label={t('savings.depositFrom', 'কোন অ্যাকাউন্ট থেকে গেল')} htmlFor="dp-from">
+          <Select id="dp-from" value={fromId} onChange={(e) => setFromId(e.target.value)} required>
+            {sources.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('savings.depositTo', 'জমা হবে:')} {linkedAccountName || plan.planName}
+          </p>
+        </Field>
+
+        <Field label={t('savings.depositAmount', 'কত টাকা (৳)')} htmlFor="dp-amount">
+          <Input
+            id="dp-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            required
+            className="money text-xl"
+            placeholder="০.০০"
+          />
+          {/* Prefilled from the schedule, and still a box: a late instalment
+              collects a penalty and a bank sometimes takes the excise duty out
+              of the same debit, so what gets booked has to be what the
+              statement says. */}
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('savings.depositAmountHint', 'কিস্তির নির্ধারিত অঙ্ক বসানো আছে — বদলাতে পারেন।')}
+          </p>
+        </Field>
+
+        <Field label={t('savings.depositDate', 'কোন তারিখে')} htmlFor="dp-date">
+          <Input
+            id="dp-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </Field>
+
+        {error ? (
+          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="block" disabled={save.isPending}>
+          {t('savings.depositAndMove', 'জমা দিন ও টাকা সরান')}
+        </Button>
+        {/* The other half of the choice, and a real one — see the note above
+            this component. Outlined rather than filled, because moving the
+            money is what most people opening this sheet came to do. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="block"
+          disabled={save.isPending}
+          onClick={() => {
+            setError(null);
+            save.mutate({ paidDate: date });
+          }}
+        >
+          {t('savings.markOnly', 'শুধু চিহ্ন দিন, টাকা সরাবেন না')}
         </Button>
       </form>
     </Sheet>

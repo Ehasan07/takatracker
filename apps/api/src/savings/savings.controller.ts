@@ -51,7 +51,21 @@ const savingsPlanFields = z.object({
   /** Basis points: 8.25% is 825, capped at a 100% annual rate. */
   profitRateBps: z.number().int().min(0).max(10_000).default(0),
   profitCalc: z.enum(PROFIT_CALCS).default('COMPOUND_YEARLY'),
-  linkedAccountId: cuid.optional(),
+  /**
+   * The `SAVINGS` ledger account this instrument's money actually sits in.
+   *
+   * Optional, and it stays optional. A plan without one behaves exactly as
+   * savings plans always have — a schedule, a projection, a status somebody
+   * ticks — and only a plan *with* one can offer to book an instalment as a
+   * transfer. The note field is still where the account number and the branch
+   * go; this is a different thing, and it is only worth setting for somebody
+   * who wants the deposits on their balance sheet.
+   *
+   * `nullish` rather than `optional`, because an edit has to be able to say
+   * "unlink it" as well as "leave it alone": omitted keeps the link, `null`
+   * removes it. Same three-way rule `Transaction.personId` follows.
+   */
+  linkedAccountId: cuid.nullish(),
   note: z.string().max(2000).optional(),
 });
 
@@ -63,11 +77,47 @@ const updateSavingsPlanSchema = savingsPlanFields.partial().extend({
 });
 export type UpdateSavingsPlanInput = z.infer<typeof updateSavingsPlanSchema>;
 
+/**
+ * "জমা দিলাম" — the instalment is paid.
+ *
+ * ## Why `fromAccountId` is what decides whether money moves
+ *
+ * Marking an instalment paid has never touched the ledger, and it still does
+ * not unless the caller names an account for the money to leave. That is the
+ * whole switch: no `fromAccountId`, no transaction, exactly the behaviour this
+ * endpoint shipped with. Send one and the deposit is booked as a **transfer**
+ * out of that account and into the plan's linked savings account.
+ *
+ * A transfer, never an expense. Putting ৳2,000 into a DPS is one asset becoming
+ * another (Conceptual Framework 4.3 — nothing is consumed, nothing is owed);
+ * filed as an expense it would understate net worth by every poisha ever saved
+ * and overstate the month's spending by the instalment. The owner of these
+ * books has ten plans and ৳31,000 across four savings accounts, which is what
+ * that error looks like from outside.
+ *
+ * The plan must have a linked account for this to mean anything, and the
+ * service refuses rather than guessing at one.
+ */
 const payInstallmentSchema = z.object({
-  /** Defaults to today in the workspace timezone. */
+  /** Defaults to today in the workspace timezone. Also dates the transfer. */
   paidDate: isoDate.optional(),
-  /** The ledger transaction that moved the money, once one exists. */
+  /** A ledger transaction recorded separately, for a caller that has one. */
   transactionId: cuid.optional(),
+  /**
+   * Where the money left from — the current account, the wallet, cash.
+   *
+   * Absent means "just mark it": the status flips and the books are untouched.
+   */
+  fromAccountId: cuid.optional(),
+  /**
+   * What actually left, when it was not the scheduled amount.
+   *
+   * Defaults to the instalment's `expectedMinor`. A box rather than a fixed
+   * figure because a late instalment collects a penalty and a bank sometimes
+   * takes the excise duty out of the same debit — and what gets booked has to
+   * be what the statement says, not what the schedule hoped for.
+   */
+  amountMinor: positiveMinorAmount.optional(),
 });
 export type PayInstallmentInput = z.infer<typeof payInstallmentSchema>;
 
@@ -140,6 +190,7 @@ export class SavingsController {
     return this.savings.update(user.workspaceId, user.id, id, body, user.timezone);
   }
 
+  /** The whole `user`: booking the deposit wants a `TenantContext`. */
   @Post(':id/installments/:installmentId/pay')
   @HttpCode(200)
   pay(
@@ -148,14 +199,7 @@ export class SavingsController {
     @Param('installmentId') installmentId: string,
     @Body(zodPipe(payInstallmentSchema)) body: PayInstallmentInput,
   ) {
-    return this.savings.payInstallment(
-      user.workspaceId,
-      user.id,
-      id,
-      installmentId,
-      body,
-      user.timezone,
-    );
+    return this.savings.payInstallment(user, id, installmentId, body);
   }
 
   /** The whole `user`: `TransactionsService.create` wants a `TenantContext`. */

@@ -27,8 +27,23 @@ export interface DraftView {
   status: DraftStatus;
   /** `YYYY-MM-DD`, or null when the parser could not read one. */
   date: string | null;
-  /** Integer poisha, or null when the message carried no figure at all. */
+  /**
+   * Integer minor units of the **workspace's own** currency.
+   *
+   * Null when the message carried no figure at all — and also, deliberately,
+   * whenever `fxCurrency` is set. A message reading "USD 4.6" states no taka
+   * figure and the server refuses to invent one; that null is what makes this
+   * screen ask instead of quietly offering ৳4.60 for a $4.60 charge.
+   */
   amountMinor: number | null;
+  /** ISO 4217 the message stated, when that was not the currency of the books. */
+  fxCurrency: string | null;
+  /**
+   * The amount in `fxCurrency`, integer minor units of *that* currency — cents
+   * for a dollar, whole yen for a yen. The rate is never carried: it is
+   * `amountMinor / fxAmountMinor` once a person has supplied the first.
+   */
+  fxAmountMinor: number | null;
   direction: Direction | null;
   payee: string | null;
   accountId: string | null;
@@ -72,6 +87,17 @@ export interface AcceptDraftBody {
   categoryId?: string;
   description?: string;
   notes?: string;
+  /**
+   * What the money actually was, when it was not the workspace's own.
+   *
+   * Left out by this screen in the ordinary case: the server already holds both
+   * halves on the draft and merges whatever the request omits, so sending them
+   * back unchanged would only tell the accept audit that the person had to
+   * correct the parser. Sent as an explicit pair when they *are* corrected, and
+   * as `null` twice when somebody says it was not another currency after all.
+   */
+  fxCurrency?: string | null;
+  fxAmountMinor?: number | null;
 }
 
 /** One row of "everything this phone sent me", from `GET /ingestion/messages`. */

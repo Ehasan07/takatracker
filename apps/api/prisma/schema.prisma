@@ -1496,7 +1496,27 @@ model TransactionDraft {
   status      DraftStatus @default(PENDING)
 
   date        DateTime?
+  /// Always in the workspace's own currency, exactly like `Transaction.amountMinor`.
+  ///
+  /// **Null whenever `fxCurrency` is set.** A message that said "USD 4.6"
+  /// states no taka figure and none can be derived from it, so the draft claims
+  /// none: the rate that applied is the card issuer's, not the mid-market one,
+  /// and only the person holding the statement knows it. See the migration.
   amountMinor BigInt?
+  /// ISO 4217 of the money as the message stated it. Null = the workspace's own.
+  ///
+  /// The same pair as `Transaction.fxCurrency` / `fxAmountMinor`, and named the
+  /// same on purpose: accepting a draft copies the two columns straight across,
+  /// so there is one shape for "this money was in another currency" rather than
+  /// a draft dialect and a ledger dialect that have to be kept in step.
+  fxCurrency  String?
+  /// The amount in `fxCurrency`, integer minor units of *that* currency.
+  ///
+  /// Cents for a dollar, fils for a dinar, whole yen for a yen. No rate is
+  /// stored here any more than it is on `Transaction`: once the reviewer
+  /// supplies the taka figure the rate is the ratio of the two, and a ratio of
+  /// integers is the only form of it that cannot be a float.
+  fxAmountMinor BigInt?
   direction   String?
   payee       String?
   accountId   String?
@@ -1656,6 +1676,26 @@ model Transaction {
   /// solves the same problem for people and is deliberately mirrored here,
   /// `SetNull` included: deleting a plan must not take its income with it.
   savingsPlanId String?
+  /// The first month a one-off payment covers, when it covers more than one.
+  ///
+  /// A year of car insurance, a trade licence, a school session's fee. Only the
+  /// month is ever read — the day is carried because the column is a timestamp
+  /// like every other date here, not because anything divides by days.
+  ///
+  /// **These two columns generate nothing.** No prepaid asset is recognised, no
+  /// monthly amortisation row is written, and the whole expense still posts on
+  /// the day the money left. One screen reads them, divides for the eye, and
+  /// says out loud that it is doing so.
+  ///
+  /// Recognising the prepayment and releasing it monthly is what IAS 1.27 asks
+  /// for and it is the wrong trade in this ledger: every statement served
+  /// declares `basis: 'CASH'` from one shared constant, and accruing while four
+  /// responses go on saying otherwise makes that declaration false. A nicer
+  /// monthly figure does not buy a statement that lies about what it is.
+  prepaidStartDate DateTime?
+  /// How many months the payment covers, counting `prepaidStartDate`'s month as
+  /// the first. The two move together — one without the other says nothing.
+  prepaidMonths Int?
   attachmentIds String[]          @default([])
   source        TransactionSource @default(MANUAL)
   sourceDraftId String?
@@ -1685,6 +1725,10 @@ model Transaction {
   @@index([workspaceId, externalRef])
   @@index([workspaceId, importBatchId])
   @@index([workspaceId, savingsPlanId])
+  /// "Which of this workspace's rows cover a period at all?" A household marks
+  /// a handful among thousands, so the index that matters is the one that skips
+  /// the thousands: `prepaidMonths IS NOT NULL` is a range on the second column.
+  @@index([workspaceId, prepaidMonths])
 }
 
 enum EntryDirection {
@@ -2260,4 +2304,87 @@ model TaxProfile {
   updatedAt DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Feedback
+// ---------------------------------------------------------------------------
+
+/// What the person came to say. Three, not thirty.
+///
+/// A long list of kinds is a list nobody reads: somebody with a broken screen
+/// picks whichever word is nearest and the taxonomy stops meaning anything. The
+/// only distinction that changes what happens next is "something is wrong" —
+/// which is triage — against "I wish this existed", which is a roadmap. `OTHER`
+/// is the honest home for everything that is neither, and it is the default so
+/// that a person who ignores the picker is not silently filed as a bug report.
+enum FeedbackKind {
+  PROBLEM
+  IDEA
+  OTHER
+}
+
+/// What a user wrote to us, kept exactly as they wrote it.
+///
+/// ## Why there is no foreign key to `User` or `Workspace`
+///
+/// Deliberate, and the same reasoning as `TaxRegime.verifiedByUserId`. A report
+/// that "the balance sheet is wrong" has to survive the person who sent it
+/// closing their account — which is precisely the case where they were angry
+/// enough to leave — and both a cascade and a `SET NULL` would destroy it or
+/// strip it of who it came from. The identifying columns are therefore plain
+/// strings, and `userEmail`/`userName` are copies taken at the moment of
+/// writing rather than joins, so the row can still be answered afterwards.
+///
+/// It follows that nothing here is truncated when a workspace is deleted, and
+/// that is the intent: this is the one table in the product that belongs to the
+/// operator rather than to the tenant.
+///
+/// ## Why `workspaceId` is stored even though nothing filters on it
+///
+/// Every other table carries it because the repository layer filters on it.
+/// This one carries it because the *first* question about any complaint is
+/// "whose books?" — an operator reading "my numbers don't add up" needs to be
+/// able to go and look, and an email address is a slower way to get there.
+model Feedback {
+  id          String @id @default(cuid())
+  workspaceId String
+  userId      String
+
+  /// Who to write back to, and what to call them, as they stood when this was
+  /// sent. Copies, not joins — see the note above about outliving the account.
+  userEmail String
+  userName  String
+
+  kind FeedbackKind @default(OTHER)
+
+  /// Whatever they typed, trimmed and length-capped at the edge but otherwise
+  /// untouched. Never parsed, never summarised: the wording is the evidence.
+  message String
+
+  /// The path they were on when they opened the form — `/reports`, `/loans`.
+  ///
+  /// Nullable because it is a courtesy, not a contract: a person who navigates
+  /// straight to the form has no previous screen and the answer is honestly
+  /// nothing. Stored as the path only. A full URL would drag query strings —
+  /// and with them account ids and date ranges — into a table read by an
+  /// operator who has no business seeing them.
+  screen String?
+
+  /// The browser string, verbatim. "The keypad does not work" is unanswerable
+  /// without knowing whether it was an old Android WebView; asking somebody to
+  /// find that out themselves is asking them not to report it.
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  /// Newest first is the only order this is ever read in.
+  @@index([createdAt(sort: Desc)])
+  /// "Everything this workspace has ever told us", which is what an operator
+  /// looking at one tenant wants.
+  @@index([workspaceId, createdAt(sort: Desc)])
+  /// The daily-cap query: this person's rows since a cutoff. Without it the
+  /// ceiling that stops one person flooding the table costs a full scan, which
+  /// would make the flood cheaper the more of it there already was.
+  @@index([userId, createdAt])
 }

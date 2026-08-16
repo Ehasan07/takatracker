@@ -28,20 +28,33 @@
  * Its bars are therefore whole calendar months — said so on screen whenever the
  * range does not line up with month boundaries, because a half-month range
  * showing a full month's bar is the sort of number that looks right and is not.
+ *
+ * ## Why there is no charting library on this page any more
+ *
+ * There was one, and it was the largest thing this route downloaded — larger
+ * than the rest of the page put together, which is why it had to be lazily
+ * imported behind a skeleton, which is why the two charts arrived a beat after
+ * the numbers did on every visit. What it was drawing was a ring and some
+ * rectangles. Both are now a few dozen lines of `<svg>` in
+ * `components/charts/`, they render in the first paint with everything else,
+ * and they are the app's own shapes rather than a library's: the ring adds its
+ * own slices up, the bars diverge from a shared baseline so that position and
+ * not only colour says which is income, and each carries its figures in its
+ * `aria-label` and again as text underneath.
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, FileText } from 'lucide-react';
-import dynamic from 'next/dynamic';
+import { FileText } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';
+import { FlowBars } from '@/components/charts/flow-bars';
 import { Money } from '@/components/money';
 import { Skeleton, SkeletonCard } from '@/components/skeleton';
-import { Select } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/t';
+import { BreakdownPanel } from './breakdown';
 import { Delta, Panel, PanelSkeleton, QueryError } from './parts';
 import {
   fetchBalanceSheet,
@@ -63,31 +76,13 @@ import {
   isoOf,
   periodLabel,
   previousPeriod,
-  rangeParams,
   resolveRange,
+  shortMonth,
   trendWindow,
   withinWindow,
   type ReportRange,
 } from './range';
-import type { Kind } from './types';
-
-/* Categorical colours from the ledger palette, ordered so neighbouring slices
-   stay distinguishable in both themes and for the most common colour-vision
-   deficiencies. */
-const SLICE_COLOURS = ['#1F6F4A', '#8E6C18', '#A8342A', '#4C7BA6', '#6B5B95', '#2E8B75'];
-
-/* Recharts is bigger than the rest of this page put together, so it loads
-   after the numbers do. The cards above the fold render immediately. */
-const chartLoading = () => <Skeleton className="h-full w-full" />;
-
-const TrendChart = dynamic(() => import('@/components/report-charts').then((m) => m.TrendChart), {
-  ssr: false,
-  loading: chartLoading,
-});
-const CategoryPie = dynamic(() => import('@/components/report-charts').then((m) => m.CategoryPie), {
-  ssr: false,
-  loading: chartLoading,
-});
+import { resolveSlicing, viewParams, type Slicing } from './slicer';
 
 export function ReportsView() {
   /* "আজ" is a different day on the server than in the browser, and a range
@@ -119,18 +114,18 @@ function ReportsBody({ today }: { today: Date }) {
   const range = React.useMemo(() => resolveRange(params, today), [params, today]);
   const previous = React.useMemo(() => previousPeriod(range, today), [range, today]);
   const trendBounds = React.useMemo(() => trendWindow(range, today), [range, today]);
-  const kind: Kind = params.get('kind') === 'INCOME' ? 'INCOME' : 'EXPENSE';
+  /* Everything the reader has arranged, read back out of the URL: which side of
+     the books, how the ring is cut, and which category it is opened on. */
+  const slicing = React.useMemo(() => resolveSlicing(params), [params]);
+  const kind = slicing.kind;
 
-  const [expanded, setExpanded] = React.useState<string | null>(null);
   const [drilldownId, setDrilldownId] = React.useState<string | null>(null);
 
   /* `replace`, not `push`: flipping between চিপ should not fill the back stack
      with periods the user has to tap through to leave the screen. */
   const navigate = React.useCallback(
-    (next: ReportRange, nextKind: Kind) => {
-      const search = rangeParams(next);
-      if (nextKind !== 'EXPENSE') search.set('kind', nextKind);
-      router.replace(`${pathname}?${search.toString()}`, { scroll: false });
+    (next: ReportRange, nextSlicing: Slicing) => {
+      router.replace(`${pathname}?${viewParams(next, nextSlicing).toString()}`, { scroll: false });
     },
     [pathname, router],
   );
@@ -171,23 +166,7 @@ function ReportsBody({ today }: { today: Date }) {
     enabled: drilldownId !== null,
   });
 
-  const byCategory = kind === 'EXPENSE' ? expense : income;
   const rangeText = periodLabel(range);
-
-  /* One `kind` in the URL, a handle on each panel that answers by it. Distinct
-     accessible names, because two controls called the same thing on one screen
-     is a control nobody can refer to. */
-  const kindSelect = (label: string): React.ReactNode => (
-    <Select
-      aria-label={label}
-      value={kind}
-      onChange={(e) => navigate(range, e.target.value === 'INCOME' ? 'INCOME' : 'EXPENSE')}
-      className="w-auto"
-    >
-      <option value="EXPENSE">{t('entry.tab.expense', 'খরচ')}</option>
-      <option value="INCOME">{t('entry.tab.income', 'আয়')}</option>
-    </Select>
-  );
   const asOfText = `${t('reports.asOf', 'আজকের হিসাবে')} · ${bnDate(isoOf(today))}`;
   const comparison = comparisonLabel(range);
 
@@ -219,7 +198,19 @@ function ReportsBody({ today }: { today: Date }) {
         </Link>
       </header>
 
-      <RangeBar range={range} onChange={(next) => navigate(next, kind)} today={today} />
+      <RangeBar range={range} onChange={(next) => navigate(next, slicing)} today={today} />
+
+      {/* The ring, and the controls that decide what goes into it. First on the
+          screen because it is the answer to the question people open a reports
+          screen holding — "where did it all go" — and because everything below
+          it is a different, narrower question about the same period. */}
+      <BreakdownPanel
+        period={range}
+        rangeText={rangeText}
+        slicing={slicing}
+        onSlicing={(next) => navigate(range, next)}
+        onOpenCategory={setDrilldownId}
+      />
 
       {/* Income, spending and the difference for the chosen period, each against
           the previous equivalent one. */}
@@ -235,55 +226,58 @@ function ReportsBody({ today }: { today: Date }) {
         ) : summaryLoading ? (
           <PanelSkeleton rows={2} />
         ) : (
-          <dl className="divide-rule mt-3 grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            {(
-              [
-                [t('dashboard.income', 'আয়'), incomeMinor, prevIncomeMinor, 'up', 'text-income'],
+          <>
+            <InOut incomeMinor={incomeMinor} expenseMinor={expenseMinor} />
+            <dl className="divide-rule mt-3 grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              {(
                 [
-                  t('dashboard.expense', 'খরচ'),
-                  expenseMinor,
-                  prevExpenseMinor,
-                  'down',
-                  'text-expense',
-                ],
-                [
-                  t('dashboard.net', 'নিট'),
-                  incomeMinor - expenseMinor,
-                  prevIncomeMinor - prevExpenseMinor,
-                  'up',
-                  '',
-                ],
-              ] as const
-            ).map(([label, amount, prior, goodWhen, tone], i) => (
-              <div key={label} className={cn('min-w-0 py-2', i > 0 && 'sm:pl-4')}>
-                <dt className="text-ink-muted text-xs">{label}</dt>
-                <dd>
-                  {/* নিট can go either way, so it carries the sign colour;
+                  [t('dashboard.income', 'আয়'), incomeMinor, prevIncomeMinor, 'up', 'text-income'],
+                  [
+                    t('dashboard.expense', 'খরচ'),
+                    expenseMinor,
+                    prevExpenseMinor,
+                    'down',
+                    'text-expense',
+                  ],
+                  [
+                    t('dashboard.net', 'নিট'),
+                    incomeMinor - expenseMinor,
+                    prevIncomeMinor - prevExpenseMinor,
+                    'up',
+                    '',
+                  ],
+                ] as const
+              ).map(([label, amount, prior, goodWhen, tone], i) => (
+                <div key={label} className={cn('min-w-0 py-2', i > 0 && 'sm:pl-4')}>
+                  <dt className="text-ink-muted text-xs">{label}</dt>
+                  <dd>
+                    {/* নিট can go either way, so it carries the sign colour;
                       আয় and খরচ are magnitudes and keep their fixed tone. */}
-                  <Money
-                    minor={amount}
-                    colored={tone === ''}
-                    className={cn('block text-lg font-semibold', tone)}
-                    decimals={false}
-                  />
-                  {comparisonReady ? (
-                    <Delta
-                      currentMinor={amount}
-                      previousMinor={prior}
-                      goodWhen={goodWhen}
-                      comparison={comparison}
+                    <Money
+                      minor={amount}
+                      colored={tone === ''}
+                      className={cn('block text-lg font-semibold', tone)}
+                      decimals={false}
                     />
-                  ) : prevIncome.isError || prevExpense.isError ? (
-                    <p className="text-ink-muted mt-1 text-xs">
-                      {t('reports.comparisonFailed', 'তুলনার হিসাব আনা যায়নি')}
-                    </p>
-                  ) : (
-                    <Skeleton className="mt-1 h-3 w-28" />
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
+                    {comparisonReady ? (
+                      <Delta
+                        currentMinor={amount}
+                        previousMinor={prior}
+                        goodWhen={goodWhen}
+                        comparison={comparison}
+                      />
+                    ) : prevIncome.isError || prevExpense.isError ? (
+                      <p className="text-ink-muted mt-1 text-xs">
+                        {t('reports.comparisonFailed', 'তুলনার হিসাব আনা যায়নি')}
+                      </p>
+                    ) : (
+                      <Skeleton className="mt-1 h-3 w-28" />
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </>
         )}
       </Panel>
 
@@ -344,19 +338,18 @@ function ReportsBody({ today }: { today: Date }) {
             </p>
           ) : (
             <>
-              {/* A wide chart scrolls inside its own box; the page never does. */}
-              <div className="-mx-1 mt-3 overflow-x-auto px-1">
-                <div
-                  className="h-56"
-                  style={
-                    trendPoints.length > 6
-                      ? { minWidth: `${trendPoints.length * 44}px` }
-                      : undefined
-                  }
-                >
-                  <TrendChart data={trendPoints} />
-                </div>
-              </div>
+              <FlowBars
+                className="mt-3"
+                title={t('reports.trend', 'মাসভিত্তিক আয় ও খরচ')}
+                incomeLabel={t('dashboard.income', 'আয়')}
+                expenseLabel={t('dashboard.expense', 'খরচ')}
+                points={trendPoints.map((point) => ({
+                  key: point.month,
+                  label: shortMonth(point.month),
+                  incomeMinor: point.incomeMinor,
+                  expenseMinor: point.expenseMinor,
+                }))}
+              />
               <p className="text-ink-muted mt-2 text-xs">
                 {t('reports.monthCount', '{n}টি মাস').replace('{n}', bnNum(trendPoints.length))}
                 {trendBounds.partialMonths
@@ -370,145 +363,19 @@ function ReportsBody({ today }: { today: Date }) {
           )}
         </Panel>
 
-        {/* Category split */}
-        <Panel
-          title={t('reports.byCategory', 'খাতভিত্তিক হিসাব')}
-          scope={rangeText}
-          action={kindSelect(t('reports.byCategoryKind', 'খাতভিত্তিক হিসাবে আয় না খরচ'))}
-        >
-          {byCategory.isError ? (
-            <QueryError
-              message={t('reports.byCategoryFailed', 'খাতভিত্তিক হিসাব আনা যায়নি।')}
-              onRetry={() => void byCategory.refetch()}
-            />
-          ) : byCategory.isPending ? (
-            <PanelSkeleton rows={4} />
-          ) : byCategory.data.nodes.length === 0 ? (
-            <p className="text-ink-muted mt-3 text-sm">
-              {t('reports.emptyPeriod', 'এই সময়ে কিছু নেই।')}
-            </p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="h-40 w-full sm:w-40 sm:shrink-0">
-                <CategoryPie
-                  colours={SLICE_COLOURS}
-                  data={byCategory.data.nodes.slice(0, 6).map((n) => ({
-                    name: n.name,
-                    value: n.rolledUpMinor,
-                  }))}
-                />
-              </div>
-
-              {/* The legend is the real interface: colour is never the only signal. */}
-              <ul className="min-w-0 flex-1">
-                {byCategory.data.nodes.map((node, i) => {
-                  const total = byCategory.data.total;
-                  const share =
-                    total === 0 ? 0 : Math.floor((node.rolledUpMinor / total) * 1000 + 0.5) / 10;
-                  const isOpen = expanded === node.categoryId;
-                  const hasChildren = node.children.length > 0;
-
-                  return (
-                    <li key={node.categoryId ?? node.name}>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={!node.categoryId}
-                          onClick={() => node.categoryId && setDrilldownId(node.categoryId)}
-                          className="press hover:bg-greenbar flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left disabled:cursor-default"
-                        >
-                          <span
-                            aria-hidden
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ background: SLICE_COLOURS[i % SLICE_COLOURS.length] }}
-                          />
-                          <span className="text-ink min-w-0 flex-1 truncate text-sm">
-                            {node.name}
-                          </span>
-                          <span className="text-ink-muted shrink-0 text-xs">
-                            {bnNum(String(share))}%
-                          </span>
-                          <Money
-                            minor={node.rolledUpMinor}
-                            className="shrink-0 text-sm"
-                            decimals={false}
-                          />
-                        </button>
-
-                        {hasChildren ? (
-                          <button
-                            type="button"
-                            aria-expanded={isOpen}
-                            aria-label={`${node.name} — উপ-খাত`}
-                            onClick={() => setExpanded(isOpen ? null : node.categoryId)}
-                            className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
-                          >
-                            <ChevronDown
-                              className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')}
-                              aria-hidden
-                            />
-                          </button>
-                        ) : (
-                          <span className="w-11 shrink-0" aria-hidden />
-                        )}
-                      </div>
-
-                      {isOpen ? (
-                        <ul className="border-rule mb-1 ml-4 border-l pl-2">
-                          {/* Money spent on the parent itself, not on any child. */}
-                          {node.totalMinor > 0 ? (
-                            <li className="flex items-center justify-between gap-2 py-1">
-                              <span className="text-ink-muted min-w-0 truncate text-xs">
-                                সরাসরি {node.name}
-                              </span>
-                              <Money
-                                minor={node.totalMinor}
-                                className="shrink-0 text-xs"
-                                decimals={false}
-                              />
-                            </li>
-                          ) : null}
-                          {node.children.map((child) => (
-                            <li key={child.categoryId}>
-                              <button
-                                type="button"
-                                onClick={() => child.categoryId && setDrilldownId(child.categoryId)}
-                                className="press hover:bg-greenbar flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-1 text-left"
-                              >
-                                <span className="text-ink min-w-0 truncate text-xs">
-                                  {child.name}
-                                </span>
-                                <Money
-                                  minor={child.totalMinor}
-                                  className="shrink-0 text-xs"
-                                  decimals={false}
-                                />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-        </Panel>
-
-        {/* The same money, cut by who it was for rather than what it went on.
-            Directly after the category split, because the pair of them is the
-            only place the difference between the two is visible at all. */}
         {/* After the money panels, because it answers a different question and
             reading it as though it were taka would be the one mistake here. */}
         <QuantityPanel period={range} />
 
-        <TagPanel
-          kind={kind}
-          period={range}
-          rangeText={rangeText}
-          action={kindSelect(t('reports.byTagKind', 'ট্যাগভিত্তিক হিসাবে আয় না খরচ'))}
-        />
+        {/* The same money, cut by who it was for rather than what it went on.
+            Deliberately its own panel and not a third option in the ring's cut
+            control: tags do not partition the money — one transaction can carry
+            three of them — so a ring of tag slices adds up to more than the
+            period cost and there is no honest total to put in the middle of it.
+            The reasoning is written out in `slicer.ts`. Its আয়/খরচ follows the
+            ring's, because there is one `kind` in the URL and two panels
+            reading it is one setting, not two that can disagree. */}
+        <TagPanel kind={kind} period={range} rangeText={rangeText} />
 
         {/* Cash flow */}
         <Panel title={t('reports.cashFlow', 'নগদ প্রবাহ')} scope={rangeText}>
@@ -646,6 +513,65 @@ function ReportsBody({ today }: { today: Date }) {
           </ul>
         )}
       </Sheet>
+    </div>
+  );
+}
+
+/**
+ * What came in against what went out, as two bars on one scale.
+ *
+ * The three figures underneath were already here and they are the precise
+ * answer; this is the one a person gets from across the room. Both bars are
+ * measured against the larger of the two, which is the only scaling under which
+ * "the red one is longer" means what it looks like it means — two bars each
+ * filling their own track would show a month that spent twice its income as two
+ * equal lines.
+ *
+ * Every bar carries its word and its amount beside it, so the colour is the
+ * third signal rather than the first. The widths are percentages of a container
+ * — a screenful of pixels, never money — and the amounts they are derived from
+ * stay integer poisha and are printed by `<Money>` from those integers.
+ */
+function InOut({ incomeMinor, expenseMinor }: { incomeMinor: number; expenseMinor: number }) {
+  const peak = Math.max(incomeMinor, expenseMinor);
+  const width = (minor: number): string =>
+    peak <= 0 ? '0%' : `${Math.max(0, (minor / peak) * 100)}%`;
+
+  /* Kept in basis points until the last moment, the way the API's own
+     `savingsRateBps` is: a whole percent is what gets read, and dividing at the
+     end means the number on screen is derived from the integers above it. */
+  const savedBps =
+    incomeMinor > 0 ? Math.trunc(((incomeMinor - expenseMinor) * 10_000) / incomeMinor) : 0;
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {(
+        [
+          [t('dashboard.income', 'আয়'), incomeMinor, 'bg-income', 'text-income'],
+          [t('dashboard.expense', 'খরচ'), expenseMinor, 'bg-expense', 'text-expense'],
+        ] as const
+      ).map(([label, minor, fill, tone]) => (
+        <div key={label}>
+          <p className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="text-ink-muted">{label}</span>
+            <Money minor={minor} className={cn('shrink-0', tone)} decimals={false} />
+          </p>
+          <div className="bg-greenbar mt-1 h-2 w-full overflow-hidden rounded-full">
+            <div
+              className={cn('h-2 rounded-full motion-safe:transition-all', fill)}
+              style={{ width: width(minor) }}
+            />
+          </div>
+        </div>
+      ))}
+      {incomeMinor > 0 ? (
+        <p className="text-ink-muted text-xs">
+          {t('reports.savingsRate', 'আয়ের {n}% রাখা গেছে').replace(
+            '{n}',
+            bnNum(Math.trunc(savedBps / 100)),
+          )}
+        </p>
+      ) : null}
     </div>
   );
 }

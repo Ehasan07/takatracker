@@ -24,6 +24,7 @@ import { periodQuery, type Period } from './range';
 import type {
   BalanceSheetDto,
   ByCategoryDto,
+  ByCategoryFlatDto,
   ByTagDto,
   CashFlowDto,
   DrilldownDto,
@@ -37,6 +38,8 @@ export const reportKeys = {
   all: ['reports'] as const,
   byCategory: (kind: Kind, period: Period) =>
     ['reports', 'by-category', kind, period.from, period.to] as const,
+  byCategoryFlat: (kind: Kind, period: Period) =>
+    ['reports', 'by-category', 'flat', kind, period.from, period.to] as const,
   byTag: (kind: Kind, period: Period) =>
     ['reports', 'by-tag', kind, period.from, period.to] as const,
   trend: (months: number) => ['reports', 'trend', months] as const,
@@ -53,6 +56,17 @@ export const reportKeys = {
 
 export function fetchByCategory(kind: Kind, period: Period): Promise<ByCategoryDto> {
   return api<ByCategoryDto>(`/reports/by-category?kind=${kind}&${periodQuery(period)}`);
+}
+
+/**
+ * The same period with nothing rolled up — `flat=1`, a parameter the endpoint
+ * has always taken and nothing on this screen had asked for.
+ *
+ * No new route was needed for the উপ-খাত view, which is the point of checking
+ * what the API already answers before adding to it.
+ */
+export function fetchByCategoryFlat(kind: Kind, period: Period): Promise<ByCategoryFlatDto> {
+  return api<ByCategoryFlatDto>(`/reports/by-category?kind=${kind}&flat=1&${periodQuery(period)}`);
 }
 
 export function fetchByTag(kind: Kind, period: Period): Promise<ByTagDto> {

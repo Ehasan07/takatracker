@@ -71,6 +71,14 @@ export default defineConfig({
         HIBP_DISABLED: '1',
         JWT_ACCESS_SECRET: 'e2e-access-secret',
         JWT_REFRESH_SECRET: 'e2e-refresh-secret',
+        /* Without a root secret the ingestion webhook is closed — every request
+           gets the same deliberately vague 401 — and `/inbox` can never have a
+           draft in it. `inbox-fx.spec.ts` posts a real bank SMS through the real
+           door, which is the only way to prove the screen against what the
+           parser actually produces rather than against a fixture. Each
+           workspace's own secret is derived from this by HMAC; see
+           `IngestionService.webhookSecretFor`. */
+        INGESTION_WEBHOOK_SECRET: 'e2e-ingestion-secret',
         CORS_ORIGINS: BASE_URL,
         /* The migration screen is an allowlist held in the server's
            environment. A whole domain here lets every test sign up a fresh

@@ -45,6 +45,68 @@ export function Chip({
   );
 }
 
+/**
+ * A segmented control: two or three ways of looking at the same thing, all of
+ * them visible at once.
+ *
+ * A `<select>` was here first and it is the wrong shape for this. Choosing
+ * between খাত and উপ-খাত, or between আয় and খরচ, is something somebody does
+ * four times in a row *while looking at the chart* — and on a phone a native
+ * picker covers the chart every time it opens. Buttons cost one tap each, show
+ * both answers at once, and never hide what they are changing.
+ *
+ * `aria-pressed` rather than a radio group: a radio group owes the reader
+ * arrow-key navigation and a roving tabstop, and two or three independently
+ * tabbable buttons is the simpler promise to keep. The group is named, so a
+ * screen reader announces what the pressed button is a choice *about*.
+ */
+export function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: T;
+  options: readonly (readonly [T, string])[];
+  onChange: (next: T) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className={cn(
+        'border-rule bg-greenbar inline-flex max-w-full shrink-0 gap-0.5 overflow-hidden rounded-full border p-0.5',
+        className,
+      )}
+    >
+      {options.map(([key, text]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={value === key}
+          onClick={() => {
+            haptic('tap');
+            onChange(key);
+          }}
+          className={cn(
+            /* 44px on a finger, tighter under a mouse — the same floor `Chip`
+               keeps, and the reason this is not a row of 32px pills. */
+            'press flex min-h-11 min-w-0 items-center justify-center rounded-full px-3 text-sm md:min-h-8',
+            value === key
+              ? 'bg-surface text-ink font-medium shadow-sm'
+              : 'text-ink-muted hover:text-ink',
+          )}
+        >
+          <span className="truncate">{text}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Every query gets one of these instead of a blank panel or an English fallback. */
 export function QueryError({
   message = 'তথ্য আনা যায়নি।',
@@ -82,15 +144,20 @@ export function Panel({
   action,
   children,
   className,
+  testId,
 }: {
   title: string;
   scope: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  testId?: string;
 }) {
   return (
-    <section className={cn('rounded-card border-rule bg-surface border p-4', className)}>
+    <section
+      data-testid={testId}
+      className={cn('rounded-card border-rule bg-surface border p-4', className)}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-ink-muted text-sm font-medium">{title}</h2>

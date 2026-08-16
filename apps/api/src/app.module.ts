@@ -16,6 +16,7 @@ import { SplitModule } from './split/split.module';
 import { MailAccountsModule } from './mail-accounts/mail-accounts.module';
 import { SavingsModule } from './savings/savings.module';
 import { EntitlementsModule } from './entitlements/entitlements.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { HealthController } from './health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { FxModule } from './fx/fx.module';
@@ -63,6 +64,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     ReportsModule,
     TaxModule,
     NotificationsModule,
+    FeedbackModule,
   ],
   controllers: [HealthController],
 })

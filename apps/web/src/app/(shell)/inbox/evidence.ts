@@ -23,8 +23,14 @@
  * emphatically no regex built from user text.
  */
 
-/** The fields `packages/core` can quote. Order breaks ties between equal-length spans. */
+/** The fields the server can quote. Order breaks ties between equal-length spans. */
 export const EVIDENCE_FIELDS = [
+  /* First, and ahead of `amountMinor`, because it is the longer span of the two
+     and covers it: the quotation for a dollar charge is `USD 4.6`, not `4.6`.
+     A draft never carries both — the server moves the quotation from one to the
+     other when the message turns out to name a foreign currency — but the order
+     is what stops a future one from being highlighted half-way. */
+  'fxAmountMinor',
   'amountMinor',
   'direction',
   'date',
