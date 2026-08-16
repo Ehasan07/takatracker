@@ -2,6 +2,8 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { fetchPeople, peopleKeys } from '../people/queries';
+import type { PersonDto } from '../people/types';
 import {
   toDashboard,
   toDetail,
@@ -10,6 +12,7 @@ import {
   type Loan,
   type LoanDashboard,
   type LoanDetail,
+  type LoanPerson,
   type LoanStatementResponse,
   type PartyLedgerResponse,
   type RawLoan,
@@ -45,6 +48,32 @@ export const loanKeys = {
   statement: (id: string, range: string) => ['loans', 'statement', id, range] as const,
   ledger: (personId: string, range: string) => ['loans', 'ledger', personId, range] as const,
 };
+
+/**
+ * Everybody in the khata, not only the ones who already owe something.
+ *
+ * The loan sheets used to build their counterparty list by walking the loan
+ * list and collecting distinct `personId`s, which quietly meant *a person you
+ * have never lent to cannot be picked* — including all 28 brought over from
+ * Wallet, who existed in the database and appeared nowhere on screen.
+ *
+ * `GET /people` had been there the whole time, and the quick-add sheet was
+ * already using it through `people/queries`. The sheets reuse that function and
+ * that key rather than adding a second way to ask the same question.
+ *
+ * Deliberately a plain mapper over an already-fetched list rather than a
+ * `queryFn` of its own. Two query functions under one key is a real bug even
+ * when both hit the same endpoint: whichever runs first fills the cache, the
+ * other reads a shape it never produced, and the failure only shows up in the
+ * order the user happens to open the screens in.
+ */
+export function toLoanPeople(rows: readonly PersonDto[]): LoanPerson[] {
+  return rows
+    .map((row) => ({ id: row.id, name: row.name, phone: row.phone ?? null }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'bn'));
+}
+
+export { fetchPeople, peopleKeys };
 
 export async function fetchLoans(filters: LoanListFilters): Promise<Loan[]> {
   const rows = await api<RawLoan[]>(`/loans${search({ ...filters })}`);
@@ -96,6 +125,9 @@ export function invalidateLoanData(queryClient: QueryClient): void {
     ['summary'],
     ['reports'],
     ['entitlements'],
+    /* Creating a loan against a typed-in name creates the person too, so the
+       next sheet must offer them without a reload. */
+    ['people'],
   ]) {
     void queryClient.invalidateQueries({ queryKey: key });
   }

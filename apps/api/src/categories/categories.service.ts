@@ -247,9 +247,54 @@ export class CategoriesService {
     });
     if (!existing) throw new NotFoundException('ক্যাটাগরি পাওয়া যায়নি');
 
+    /**
+     * Re-parenting: promote a sub-category to the top, or move it under a
+     * different head.
+     *
+     * `parentId` used to be accepted by the schema and then silently dropped
+     * here, so the screen could offer the move, the request could succeed, and
+     * nothing changed — the worst of the three possible behaviours. It is now
+     * either applied or refused out loud.
+     *
+     * Omitted leaves the parent alone. `null` promotes to a top-level head.
+     * `resolveParent` enforces the two rules that were always true of creation:
+     * the parent must be the same kind, and it must not itself be a child.
+     */
+    const movingParent = input.parentId !== undefined;
+    const nextParentId = movingParent
+      ? await this.resolveParent(workspaceId, existing.kind, input.parentId)
+      : existing.parentId;
+
+    if (movingParent && nextParentId !== existing.parentId) {
+      if (nextParentId === id) {
+        throw new BadRequestException('একটি খাত তার নিজের উপ-খাত হতে পারে না');
+      }
+      /* Two levels, and this is the half `resolveParent` cannot see: it checks
+         that the *destination* is not a child, but moving a head that has
+         children of its own under another head would bury them three deep. */
+      const childCount = await this.prisma.category.count({
+        where: { workspaceId, parentId: id, deletedAt: null },
+      });
+      if (nextParentId && childCount > 0) {
+        throw new BadRequestException(
+          'এই খাতের নিচে উপ-খাত আছে, তাই একে অন্য খাতের নিচে নেওয়া যাবে না',
+        );
+      }
+    }
+
+    /* Names are unique per parent, so a move has to re-check the name even when
+       the name itself is untouched — `বিদ্যুৎ` may be free at the top and taken
+       under `ইউটিলিটি`. */
     const nextName = input.nameBn ?? input.name;
-    if (nextName && nextName !== (existing.nameBn ?? existing.name)) {
-      await this.assertNameFree(workspaceId, existing.kind, nextName, id);
+    const renaming = Boolean(nextName) && nextName !== (existing.nameBn ?? existing.name);
+    if (renaming || (movingParent && nextParentId !== existing.parentId)) {
+      await this.assertNameFree(
+        workspaceId,
+        existing.kind,
+        nextName ?? existing.nameBn ?? existing.name,
+        id,
+        nextParentId,
+      );
     }
 
     /* Absent leaves the list alone; present replaces it whole, including with
@@ -266,6 +311,7 @@ export class CategoriesService {
         color: input.color,
         sortOrder: input.sortOrder,
         ...(aliases === undefined ? {} : { searchAliases: aliases }),
+        ...(movingParent ? { parentId: nextParentId } : {}),
         // The kind is deliberately fixed: flipping a category from expense to
         // income would silently invert every transaction already filed under it.
       },
@@ -280,10 +326,12 @@ export class CategoriesService {
       before: {
         name: existing.nameBn ?? existing.name,
         ...(aliases === undefined ? {} : { searchAliases: existing.searchAliases }),
+        ...(movingParent ? { parentId: existing.parentId } : {}),
       },
       after: {
         name: nextName ?? existing.nameBn ?? existing.name,
         ...(aliases === undefined ? {} : { searchAliases: aliases }),
+        ...(movingParent ? { parentId: nextParentId } : {}),
       },
     });
 

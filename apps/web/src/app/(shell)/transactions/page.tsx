@@ -181,9 +181,10 @@ const CHIP_KEYS: readonly FilterKey[] = [
   'personId',
 ];
 
-interface LoanPersonRow {
-  personId: string;
-  personName: string;
+/** As much of `PersonView` as this filter reads. */
+interface PersonRow {
+  id: string;
+  name: string;
 }
 
 export default function TransactionsPage() {
@@ -713,26 +714,29 @@ function FilterBar({
   React.useEffect(() => setTyped(filters.q), [filters.q]);
 
   /**
-   * People come from the loans list because there is no endpoint that lists
-   * them. Only fetched once the disclosure is open, so the khata does not pay
-   * for a filter almost nobody opens, and a failure just hides the control.
+   * Everybody in the khata, from `GET /people`. Only fetched once the
+   * disclosure is open, so the khata does not pay for a filter almost nobody
+   * opens, and a failure just hides the control.
+   *
+   * This used to read `/loans` and collect distinct counterparties, which meant
+   * the filter could only offer people who already had a loan — anybody
+   * imported, or recorded on a plain transaction, was missing from a menu that
+   * looked complete.
    */
   const people = useQuery({
-    // Under the `loans` namespace so a loan write invalidates it, but its own
-    // leaf so it never collides with the loans screen's own list cache.
-    queryKey: ['loans', 'person-options'],
-    queryFn: () => api<LoanPersonRow[]>('/loans'),
+    queryKey: ['people', 'list'],
+    queryFn: () => api<PersonRow[]>('/people'),
     enabled: moreOpen,
     staleTime: 60_000,
   });
 
-  const peopleOptions = React.useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const loan of people.data ?? []) {
-      if (loan.personId && !seen.has(loan.personId)) seen.set(loan.personId, loan.personName);
-    }
-    return [...seen.entries()];
-  }, [people.data]);
+  const peopleOptions = React.useMemo(
+    () =>
+      (people.data ?? [])
+        .map((row): [string, string] => [row.id, row.name])
+        .sort((a, b) => a[1].localeCompare(b[1], 'bn')),
+    [people.data],
+  );
 
   const now = new Date();
   const today = toLocalDateString(now);

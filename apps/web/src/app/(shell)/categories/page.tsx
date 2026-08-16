@@ -767,9 +767,39 @@ function CategorySheet({
      replaces the list whole, so a blind save must send back what it was shown. */
   const [aliases, setAliases] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
+  /* Which head this খাত sits under. Empty string is the top level — a `<select>`
+     value can only be a string, and `null` would render as the literal "null". */
+  const [parentId, setParentId] = React.useState('');
+
+  /* The same key the page itself uses, so this is the page's cached list rather
+     than a second request. */
+  const allCategories = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api<CategoryRow[]>('/categories'),
+    enabled: open,
+  });
+
+  /**
+   * The heads this row could move under: same kind, top-level, and never
+   * itself.
+   *
+   * Rows that already have children of their own are left out, because the tree
+   * is two levels deep on purpose and the API refuses to bury them a third —
+   * better to not offer the move than to offer it and fail.
+   */
+  const parentOptions = React.useMemo(() => {
+    const rows = allCategories.data ?? [];
+    if (!editing) return [];
+    const hasChildren = rows.some((row) => row.parentId === editing.id);
+    if (hasChildren) return [];
+    return rows
+      .filter((row) => row.kind === editing.kind && !row.parentId && row.id !== editing.id)
+      .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'bn'));
+  }, [allCategories.data, editing, nameOf]);
 
   React.useEffect(() => {
     if (!open) return;
+    setParentId(editing?.parentId ?? '');
     setName(editing ? (editing.nameBn ?? editing.name) : '');
     /* Empty when the two columns hold the same string — what every খাত the
        user made before this box existed looks like. Showing the Bengali name
@@ -788,7 +818,16 @@ function CategorySheet({
             /* No English name given means the two mirror, exactly as every খাত
                made before this box did. `name` is NOT NULL, so it can never be
                written as the empty string. */
-            body: { name: nameEn.trim() || name, nameBn: name, searchAliases: aliases },
+            body: {
+              name: nameEn.trim() || name,
+              nameBn: name,
+              searchAliases: aliases,
+              /* Sent only when the box was offered, so a খাত with children —
+                 which has no picker — cannot have its parent cleared by a
+                 blind save. `null` is the top level and is meaningful, so it
+                 has to go on the wire rather than be dropped as falsy. */
+              ...(parentOptions.length > 0 ? { parentId: parentId || null } : {}),
+            },
           })
         : api('/categories', {
             method: 'POST',
@@ -868,12 +907,43 @@ function CategorySheet({
             যোগ হবে।
           </p>
         ) : editing ? (
-          /* Flipping a category from expense to income would silently invert
-             every transaction already filed under it. */
-          <p className="text-ink-muted text-xs">
-            ধরন বদলানো যায় না ({editing.kind === 'INCOME' ? 'আয়' : 'খরচ'})। অন্য ধরন লাগলে নতুন
-            খাত বানান।
-          </p>
+          <>
+            {/* Flipping a category from expense to income would silently invert
+                every transaction already filed under it. */}
+            <p className="text-ink-muted text-xs">
+              ধরন বদলানো যায় না ({editing.kind === 'INCOME' ? 'আয়' : 'খরচ'})। অন্য ধরন লাগলে নতুন
+              খাত বানান।
+            </p>
+            {parentOptions.length > 0 ? (
+              <Field label={t('cat.parent', 'মূল খাত')} htmlFor="cat-parent">
+                <Select
+                  id="cat-parent"
+                  value={parentId}
+                  onChange={(e) => setParentId(e.target.value)}
+                >
+                  <option value="">{t('cat.noParent', 'কোনোটির নিচে নয় (মূল খাত)')}</option>
+                  {parentOptions.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {nameOf(row)}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-ink-muted mt-1 text-xs">
+                  {t(
+                    'cat.parentHint',
+                    'খাতটি অন্য কোনো খাতের নিচে সরাতে পারেন। আগের লেনদেনগুলো এর সঙ্গেই যাবে, কিছু হারাবে না।',
+                  )}
+                </p>
+              </Field>
+            ) : (
+              <p className="text-ink-muted text-xs">
+                {t(
+                  'cat.parentLocked',
+                  'এই খাতের নিচে উপ-খাত আছে, তাই একে অন্য খাতের নিচে নেওয়া যায় না। আগে উপ-খাতগুলো সরান।',
+                )}
+              </p>
+            )}
+          </>
         ) : (
           <Field label="ধরন" htmlFor="cat-kind">
             <Select id="cat-kind" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>

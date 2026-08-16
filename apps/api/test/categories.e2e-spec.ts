@@ -755,3 +755,195 @@ describe('category search', () => {
     expect(res.body.some((c: { id: string }) => c.id === rickshawId)).toBe(false);
   });
 });
+
+/**
+ * Re-parenting: moving a খাত under a different head, or up to the top.
+ *
+ * `parentId` was accepted by the update schema and then dropped before the
+ * write, so a screen could offer the move, the request could return 200, and
+ * the row would not budge. These tests exist so it cannot go quiet again.
+ */
+describe('changing a category’s parent', () => {
+  let ctx: TestContext;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  interface Row {
+    id: string;
+    kind: string;
+    nameBn: string | null;
+    parentId: string | null;
+    parentName: string | null;
+  }
+
+  const rows = async (user: Awaited<ReturnType<typeof signup>>): Promise<Row[]> =>
+    (await ctx.http().get('/v1/categories').set(auth(user)).expect(200)).body as Row[];
+
+  const one = async (user: Awaited<ReturnType<typeof signup>>, id: string): Promise<Row> => {
+    const found = (await rows(user)).find((r) => r.id === id);
+    if (!found) throw new Error(`category ${id} is gone`);
+    return found;
+  };
+
+  const create = async (
+    user: Awaited<ReturnType<typeof signup>>,
+    body: Record<string, unknown>,
+  ): Promise<Row> =>
+    (
+      await ctx
+        .http()
+        .post('/v1/categories')
+        .set(auth(user))
+        .send({ kind: 'EXPENSE', ...body })
+        .expect(201)
+    ).body as Row;
+
+  const patch = (
+    user: Awaited<ReturnType<typeof signup>>,
+    id: string,
+    body: Record<string, unknown>,
+  ) => ctx.http().patch(`/v1/categories/${id}`).set(auth(user)).send(body);
+
+  it('moves a sub-khat from one head to another', async () => {
+    const user = await signup(ctx);
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    const home = await create(user, { name: 'Home', nameBn: 'বাসা' });
+    const fuel = await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: vehicle.id });
+
+    await patch(user, fuel.id, { parentId: home.id }).expect(200);
+
+    const after = await one(user, fuel.id);
+    expect(after.parentId).toBe(home.id);
+    expect(after.parentName).toBe('বাসা');
+  });
+
+  it('promotes a sub-khat to the top when parentId is null', async () => {
+    const user = await signup(ctx);
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    const fuel = await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: vehicle.id });
+
+    await patch(user, fuel.id, { parentId: null }).expect(200);
+
+    const after = await one(user, fuel.id);
+    expect(after.parentId).toBeNull();
+    expect(after.parentName).toBeNull();
+  });
+
+  it('leaves the parent alone when the field is absent', async () => {
+    const user = await signup(ctx);
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    const fuel = await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: vehicle.id });
+
+    /* A rename must not orphan the row. This is the reason the write is
+       conditional rather than `parentId: input.parentId ?? null`. */
+    await patch(user, fuel.id, { nameBn: 'জ্বালানি' }).expect(200);
+
+    const after = await one(user, fuel.id);
+    expect(after.parentId).toBe(vehicle.id);
+    expect(after.nameBn).toBe('জ্বালানি');
+  });
+
+  it('keeps the transactions with the khat that moved', async () => {
+    const user = await signup(ctx);
+    const cash = (
+      await ctx
+        .http()
+        .post('/v1/accounts')
+        .set(auth(user))
+        .send({ name: 'নগদ', type: 'CASH' })
+        .expect(201)
+    ).body as { id: string };
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    const home = await create(user, { name: 'Home', nameBn: 'বাসা' });
+    const fuel = await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: vehicle.id });
+
+    await ctx
+      .http()
+      .post('/v1/transactions')
+      .set(auth(user))
+      .send({
+        date: today,
+        type: 'EXPENSE',
+        amountMinor: 50_000,
+        accountId: cash.id,
+        categoryId: fuel.id,
+      })
+      .expect(201);
+
+    await patch(user, fuel.id, { parentId: home.id }).expect(200);
+
+    const res = await ctx
+      .http()
+      .get(`/v1/transactions?categoryId=${fuel.id}`)
+      .set(auth(user))
+      .expect(200);
+    expect(res.body.items).toHaveLength(1);
+    /* Negative on the khata: an expense leaves the account. The sign is not
+       what this test is about — that the row followed the khat is. */
+    expect(Math.abs(res.body.items[0].amountMinor)).toBe(50_000);
+  });
+
+  it('refuses a head that has sub-khat of its own', async () => {
+    const user = await signup(ctx);
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    const home = await create(user, { name: 'Home', nameBn: 'বাসা' });
+    await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: vehicle.id });
+
+    /* Two levels, never three. `resolveParent` cannot catch this one: the
+       destination is a valid top-level head, it is the *source* that is deep. */
+    const res = await patch(user, vehicle.id, { parentId: home.id }).expect(400);
+    expect(String(res.body.message)).toContain('উপ-খাত');
+
+    expect((await one(user, vehicle.id)).parentId).toBeNull();
+  });
+
+  it('refuses a khat moved under itself', async () => {
+    const user = await signup(ctx);
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+
+    await patch(user, vehicle.id, { parentId: vehicle.id }).expect(400);
+    expect((await one(user, vehicle.id)).parentId).toBeNull();
+  });
+
+  it('refuses a parent on the other side of the ledger', async () => {
+    const user = await signup(ctx);
+    const salary = await create(user, {
+      kind: 'INCOME',
+      name: 'Consulting retainer',
+      nameBn: 'পরামর্শ ফি',
+    });
+    const fuel = await create(user, { name: 'Fuel', nameBn: 'তেল' });
+
+    await patch(user, fuel.id, { parentId: salary.id }).expect(400);
+    expect((await one(user, fuel.id)).parentId).toBeNull();
+  });
+
+  it('refuses a parent belonging to somebody else', async () => {
+    const user = await signup(ctx);
+    const stranger = await signup(ctx);
+    const theirs = await create(stranger, { name: 'Theirs', nameBn: 'তাদের' });
+    const fuel = await create(user, { name: 'Fuel', nameBn: 'তেল' });
+
+    await patch(user, fuel.id, { parentId: theirs.id }).expect(404);
+    expect((await one(user, fuel.id)).parentId).toBeNull();
+  });
+
+  it('refuses a move that would collide with a name already under that head', async () => {
+    const user = await signup(ctx);
+    const vehicle = await create(user, { name: 'Vehicle', nameBn: 'যানবাহন' });
+    await create(user, { name: 'Fuel', nameBn: 'তেল', parentId: vehicle.id });
+    /* Free at the top level, taken under যানবাহন. The name is untouched by this
+       request, so only the move can notice the clash. */
+    const loose = await create(user, { name: 'Fuel too', nameBn: 'তেল' });
+
+    await patch(user, loose.id, { parentId: vehicle.id }).expect(400);
+    expect((await one(user, loose.id)).parentId).toBeNull();
+  });
+});

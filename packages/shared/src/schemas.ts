@@ -157,7 +157,16 @@ export const createCategorySchema = z.object({
   name: z.string().min(1).max(120),
   nameBn: z.string().min(1).max(120).optional(),
   kind: z.enum(CATEGORY_KINDS),
-  parentId: cuid.optional(),
+  /**
+   * The head this sits under, or `null` for a top-level one.
+   *
+   * Nullish rather than merely optional because on `PATCH` the three cases are
+   * genuinely different: absent means *leave the parent as it is*, `null` means
+   * *promote this to the top*, and an id means *move it under that one*. With
+   * `.optional()` there was no way to say the second, so a sub-khat could be
+   * moved sideways and never back out.
+   */
+  parentId: cuid.nullish(),
   icon: z.string().max(40).optional(),
   color: z.string().max(20).optional(),
   sortOrder: z.number().int().default(0),

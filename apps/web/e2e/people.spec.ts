@@ -176,4 +176,36 @@ test.describe('people', () => {
     await page.keyboard.press('Escape');
     await expect(personRow(page, 'করিম')).toHaveCount(1);
   });
+
+  test('somebody with no loan yet can still be lent to', async ({ page }) => {
+    /* The regression this exists for: the loan sheet built its counterparty
+       list out of the loan list, so a person who had never borrowed could not
+       be chosen. Everybody imported from Wallet was in that position — present
+       in the database, absent from the only menu that could reach them. */
+    await signup(page);
+    await addCashAccount(page);
+
+    await page.goto('/people');
+    await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+    await page.getByRole('dialog').getByLabel('নাম').fill('নতুন লোক');
+    await saveSheet(page, 'সংরক্ষণ করুন');
+    await expect(personRow(page, 'নতুন লোক')).toHaveCount(1);
+
+    await page.goto('/loans');
+    await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+
+    const picker = sheet.getByLabel('কার সাথে');
+    await expect(picker.getByRole('option', { name: /নতুন লোক/ })).toHaveCount(1);
+
+    await picker.selectOption({ label: 'নতুন লোক' });
+    await sheet.getByLabel('মূল টাকা (৳)').fill('4000');
+    await saveSheet(page, 'সংরক্ষণ করুন');
+
+    // The loan went to the person already on file, not to a second copy of them.
+    await expect(page.getByText('নতুন লোক').first()).toBeVisible();
+    await page.goto('/people');
+    await expect(personRow(page, 'নতুন লোক')).toHaveCount(1);
+  });
 });

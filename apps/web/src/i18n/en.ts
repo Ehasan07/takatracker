@@ -746,6 +746,12 @@ export const EN: Record<string, string> = {
   'account.limit': 'Limit',
   'account.drawn': 'Used',
   'account.undrawn': 'Left',
+  'cat.parent': 'Sits under',
+  'cat.noParent': 'Not under anything (a main head)',
+  'cat.parentHint':
+    'You can move this head under another one. Its transactions move with it \u2014 nothing is lost.',
+  'cat.parentLocked':
+    'This head has sub-heads of its own, so it cannot be moved under another. Move the sub-heads first.',
   'account.openingDate': 'The balance is as of',
   /* IAS 1.38: a dated opening balance is what makes two periods comparable. */
   'account.openingDateHint':

@@ -10,8 +10,8 @@ import { api, ApiError, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { DIRECTIONS, INTEREST_TYPES } from './labels';
-import { fetchLoans, invalidateLoanData, loanKeys } from './queries';
-import type { LoanDirection, LoanInterestType, LoanPerson } from './types';
+import { fetchPeople, invalidateLoanData, peopleKeys, toLoanPeople } from './queries';
+import type { LoanDirection, LoanInterestType } from './types';
 
 const NEW_PERSON = '__new__';
 
@@ -31,27 +31,17 @@ export function AddLoanSheet({
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: endpoints.accounts });
 
-  /* There is no /people endpoint in the contract, so the people already in the
-     ledger come from the unfiltered loan list. */
-  const everyLoan = useQuery({
-    queryKey: loanKeys.list({}),
-    queryFn: () => fetchLoans({}),
+  /* Everybody in the khata, from `GET /people`. This used to collect distinct
+     counterparties out of the loan list, which meant somebody you had never
+     lent to could not be chosen — the 28 people brought over from Wallet were
+     in the database and absent from this menu. */
+  const peopleQuery = useQuery({
+    queryKey: peopleKeys.list(''),
+    queryFn: () => fetchPeople(),
     enabled: open,
   });
 
-  const people = React.useMemo(() => {
-    const seen = new Map<string, LoanPerson>();
-    for (const loan of everyLoan.data ?? []) {
-      if (loan.personId && !seen.has(loan.personId)) {
-        seen.set(loan.personId, {
-          id: loan.personId,
-          name: loan.personName,
-          phone: loan.personPhone,
-        });
-      }
-    }
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, 'bn'));
-  }, [everyLoan.data]);
+  const people = React.useMemo(() => toLoanPeople(peopleQuery.data ?? []), [peopleQuery.data]);
 
   const [form, setForm] = React.useState({
     direction: direction as LoanDirection,
