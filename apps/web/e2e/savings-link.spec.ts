@@ -99,7 +99,10 @@ test.describe('savings instalments on the balance sheet', () => {
     ).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'জমা দিলাম' }).first().click();
 
-    const sheet = page.getByRole('dialog');
+    /* Named, not `getByRole('dialog')`. Closing this sheet deliberately
+       reopens the plan behind it — so *a* dialog is always on screen
+       afterwards, and a generic locator can never go hidden. */
+    const sheet = page.getByRole('dialog').filter({ hasText: 'কিস্তি জমা দিলাম' });
     /* Said before anything is filled in. Somebody who thinks a DPS deposit is
        spending would read their own net worth wrong by every poisha they have
        ever saved, and this sentence is the only thing in the way. */
@@ -159,7 +162,8 @@ test.describe('savings instalments on the balance sheet', () => {
     await openPlan(page, 'সিটি ডিপিএস');
     await page.getByRole('dialog').getByRole('button', { name: 'জমা দিলাম' }).first().click();
 
-    const sheet = page.getByRole('dialog');
+    // Named for the same reason as above: the plan reopens behind this one.
+    const sheet = page.getByRole('dialog').filter({ hasText: 'কিস্তি জমা দিলাম' });
     await sheet.getByRole('button', { name: 'শুধু চিহ্ন দিন, টাকা সরাবেন না' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
@@ -175,19 +179,24 @@ test.describe('savings instalments on the balance sheet', () => {
 });
 
 /**
- * Profit that has built up, against profit that has arrived.
+ * Accrued profit sits beside received profit, and neither is the other.
  *
- * A **DPS pays nothing at all before maturity** — principal and profit come
- * together at the end. A button offering to record "profit received" on a
- * running DPS is therefore an invitation to file income that has neither been
- * earned nor received, and the tax worksheet reads what gets filed. So the
- * button is not there, and a plainly-labelled accrued figure is.
+ * The accrued figure is arithmetic at the stated rate — an estimate of what
+ * should have built up. The received figure is what the bank actually handed
+ * over, after it deducted source tax. They answer different questions and are
+ * never the same number.
  *
- * A **Sanchayapatra** is the opposite case and keeps the button, because it
- * really does credit a bank account every month or quarter.
+ * The button to record a payout is offered on **every** plan, and that is the
+ * correction this describes. In Bangladesh a DPS and a সঞ্চয়পত্র are both
+ * routinely opened against a bank account, and the profit on both is commonly
+ * credited to that account as it accrues; some DPS products hold it to
+ * maturity instead. Only the passbook knows which, so the app does not guess.
+ * The safeguard is the empty box, asserted below.
  */
 test.describe('accrued profit is not received profit', () => {
-  test('a running DPS shows what has built up and offers no way to book it', async ({ page }) => {
+  test('a running DPS shows what has built up and still lets a payout be recorded', async ({
+    page,
+  }) => {
     await signup(page);
     await addAccount(page, 'চলতি হিসাব', 'ব্যাংক', '50000');
     await addPlan(page, 'চলমান ডিপিএস');
@@ -195,19 +204,33 @@ test.describe('accrued profit is not received profit', () => {
     await openPlan(page, 'চলমান ডিপিএস');
     const detail = page.getByRole('dialog');
 
-    // Said as what it is: built up, not in hand.
+    // What the rate says should have built up — an estimate, plainly labelled.
     await expect(detail.getByText('এ পর্যন্ত জমেছে')).toBeVisible();
-    await expect(detail.getByText('হাতে আসেনি', { exact: false })).toBeVisible();
+    await expect(detail.getByText('আনুমানিক', { exact: false })).toBeVisible();
 
-    /* And there is no button. This is the assertion the correction exists for:
-       the figure above is a number to look at, never a number to file. */
-    await expect(detail.getByRole('button', { name: 'মুনাফা পেয়েছি' })).toHaveCount(0);
+    /* Offered here too. A bank crediting a DPS every month is the common case,
+       and hiding this hid it from exactly those people. */
+    await expect(detail.getByRole('button', { name: 'মুনাফা পেয়েছি' })).toBeVisible();
 
     // Bringing the money home at maturity is still offered, as it must be.
     await expect(detail.getByRole('button', { name: 'মেয়াদপূর্তি' })).toBeVisible();
   });
 
-  test('a Sanchayapatra keeps the button, because it really does pay out', async ({ page }) => {
+  test('the amount box opens empty, whatever the instrument', async ({ page }) => {
+    /* The whole safeguard, now that there is no gate. A figure sitting in a box
+       labelled "কত টাকা পেলেন" reads as a claim that it arrived — and on
+       anything short of maturity nobody has been paid it. */
+    await signup(page);
+    await addAccount(page, 'চলতি হিসাব', 'ব্যাংক', '50000');
+    await addPlan(page, 'চলমান ডিপিএস');
+
+    await openPlan(page, 'চলমান ডিপিএস');
+    await page.getByRole('dialog').getByRole('button', { name: 'মুনাফা পেয়েছি' }).click();
+    const sheet = page.getByRole('dialog', { name: 'মুনাফা পেয়েছি' });
+    await expect(sheet.getByLabel('কত টাকা পেলেন (৳)')).toHaveValue('');
+  });
+
+  test('a Sanchayapatra keeps the button too', async ({ page }) => {
     await signup(page);
     await addAccount(page, 'চলতি হিসাব', 'ব্যাংক', '50000');
     await addPlan(page, 'পরিবার সঞ্চয়পত্র', undefined, 'সঞ্চয়পত্র');
@@ -215,10 +238,6 @@ test.describe('accrued profit is not received profit', () => {
     await openPlan(page, 'পরিবার সঞ্চয়পত্র');
     const detail = page.getByRole('dialog');
     await expect(detail.getByRole('button', { name: 'মুনাফা পেয়েছি' })).toBeVisible();
-    /* No accrued line here: a certificate that pays as it goes is described by
-       what it has actually handed over, and two figures side by side would
-       invite somebody to reconcile numbers that answer different questions. */
-    await expect(detail.getByText('এ পর্যন্ত জমেছে')).toHaveCount(0);
     await expect(detail.getByText('এ পর্যন্ত মুনাফা পেয়েছি')).toBeVisible();
   });
 });

@@ -56,10 +56,16 @@ async function addPremium(page: Page): Promise<void> {
   await sheet.getByLabel('পরিমাণ (৳)').fill('12000');
   await sheet.getByLabel('ক্যাটাগরি').selectOption({ index: 1 });
   await sheet.getByLabel('বিবরণ').fill('গাড়ির বীমা');
-  await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+  /* Not `exact`: once an amount is typed the button reads
+     "৳12,000.00 সংরক্ষণ করুন", so an exact match never resolves. */
+  await sheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
   await expect(sheet).toBeHidden({ timeout: 15_000 });
 }
 
+/* The transaction detail renders twice — an aside beside the list on a wide
+   screen, a sheet over it on a narrow one — so a plain `.first()` can resolve to
+   the copy that is not on screen. That one never settles, and the click waits
+   out the timeout against an element nobody can see. Hence `:visible`. */
 test.describe('prepaid expenses, spread for the eye', () => {
   test('a year of insurance reads as a month at a time, and the khata does not move', async ({
     page,
@@ -73,10 +79,16 @@ test.describe('prepaid expenses, spread for the eye', () => {
 
     /* Said on the row itself, where somebody is deciding. "It will be divided"
        without "the books do not change" is the half that misleads. */
-    await expect(page.getByText('খাতায় কিছু বদলাবে না', { exact: false }).first()).toBeVisible();
-    await page.getByRole('button', { name: 'কয়েক মাসের খরচ' }).first().click();
+    await expect(
+      page.locator('p:visible', { hasText: 'খাতায় কিছু বদলাবে না' }).first(),
+    ).toBeVisible();
+    await page.locator('button:visible', { hasText: 'কয়েক মাসের খরচ' }).first().click();
 
-    const sheet = page.getByRole('dialog');
+    /* By accessible name, not by text. "কয়েক মাসের খরচ" is both this sheet's
+       title *and* the label of the button that opened it, and the transaction's
+       own sheet stays open underneath — so a `hasText` filter matches both and
+       `toBeHidden` on the pair can only ever time out. */
+    const sheet = page.getByRole('dialog', { name: 'কয়েক মাসের খরচ' });
     await expect(sheet.getByLabel('কত মাসের')).toHaveValue('12');
     await sheet.getByRole('button', { name: 'ভাগ করে দেখান' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
@@ -102,14 +114,19 @@ test.describe('prepaid expenses, spread for the eye', () => {
 
     await page.goto('/transactions');
     await page.getByTestId('ledger-list').getByText('গাড়ির বীমা').first().click();
-    await page.getByRole('button', { name: 'কয়েক মাসের খরচ' }).first().click();
-    let sheet = page.getByRole('dialog');
+    await page.locator('button:visible', { hasText: 'কয়েক মাসের খরচ' }).first().click();
+    // Named, for the same reason: the transaction sheet stays open behind it.
+    /* By accessible name, not by text. "কয়েক মাসের খরচ" is both this sheet's
+       title *and* the label of the button that opened it, so a `hasText`
+       filter matches the transaction sheet underneath as well — and that one
+       never closes, so `toBeHidden` on the pair can only ever time out. */
+    let sheet = page.getByRole('dialog', { name: 'কয়েক মাসের খরচ' });
     await sheet.getByRole('button', { name: 'ভাগ করে দেখান' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 
     await page.getByTestId('ledger-list').getByText('গাড়ির বীমা').first().click();
-    await page.getByRole('button', { name: 'মেয়াদ বদলান' }).first().click();
-    sheet = page.getByRole('dialog');
+    await page.locator('button:visible', { hasText: 'মেয়াদ বদলান' }).first().click();
+    sheet = page.getByRole('dialog', { name: 'কয়েক মাসের খরচ' });
     await sheet.getByRole('button', { name: 'ভাগ করা বন্ধ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
 

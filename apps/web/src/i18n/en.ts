@@ -1579,7 +1579,7 @@ export const EN: Record<string, string> = {
     'To change the period or stop spreading it, open the expense from the ledger.',
   'savings.profitAccrued': 'Built up so far',
   'savings.profitAccruedHint':
-    'Not received yet — the principal and the profit arrive together at maturity. This is an estimate from the rate, before tax.',
+    'What the stated rate says should have built up by now \u2014 an estimate, before tax. Whatever the bank actually hands over shows in the line below.',
   'savings.profitFromLedger':
     'Income recorded in the ledger with “from which savings” set is counted here too.',
   'savings.profitReceivedOnly':

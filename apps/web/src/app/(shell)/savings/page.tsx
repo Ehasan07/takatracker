@@ -138,25 +138,24 @@ const labelOf = (pairs: readonly (readonly [string, string])[], value: string): 
  * invitation to book income that has neither been earned nor received. That
  * overstates the year and carries straight into the tax worksheet.
  *
- * ## What is offered instead
+ * ## Why it is offered on every plan
  *
- * Three ways an instrument can have paid:
+ * Because the app cannot know which product the bank actually sold. In
+ * Bangladesh a DPS and a সঞ্চয়পত্র are both routinely opened *against* a bank
+ * account, and the profit on both is commonly credited to that account as it
+ * accrues — monthly or quarterly — rather than held to the end. Some DPS
+ * products do hold it to maturity. The passbook says which; `planType` does
+ * not, and inferring it was a guess that hid the button from people whose bank
+ * was paying them every month.
  *
- *  - it pays periodically by construction (`PERIODIC` — the Sanchayapatra);
- *  - the saver has already marked it মেয়াদপূর্ণ or বন্ধ, which is them saying
- *    it is over;
- *  - its maturity date has arrived, which is the case the status has not caught
- *    up with yet — and the one `MatureSheet` sends people to first, since it
- *    asks for the profit to be booked *before* the money is brought home.
+ * So the button is always there, and the safeguard sits where it belongs
+ * instead: the box opens **empty**. Nothing is prefilled, because a figure
+ * sitting in a box labelled "কত টাকা পেলেন" reads as a claim that it arrived.
+ * What gets booked is what somebody read off their statement.
  *
- * A running DPS matches none of these and gets no button. It gets the accrued
- * figure, which is a number to look at rather than a number to file.
+ * The accrued figure stays beside it as arithmetic, clearly an estimate at the
+ * stated rate and clearly not a receipt.
  */
-function profitCanHaveArrived(plan: SavingsPlan, today: string): boolean {
-  if (plan.profitPayout === 'PERIODIC') return true;
-  if (plan.status !== 'ACTIVE') return true;
-  return plan.maturityDate !== null && plan.maturityDate <= today;
-}
 
 /** Taka typed by a human into integer poisha. Null when it cannot be read. */
 /* Takes the currency rather than reading it: this is a module-level helper
@@ -248,11 +247,6 @@ export default function SavingsPage() {
     plan: SavingsPlan;
     instalment: Instalment;
   } | null>(null);
-
-  /* Read once per render rather than per row. Whether a plan has matured is a
-     question about a calendar day, not a moment, and the four places that ask
-     it must not straddle midnight and disagree. */
-  const today = toLocalDateString(new Date());
 
   const plans = useQuery({
     queryKey: ['savings'],
@@ -427,7 +421,12 @@ export default function SavingsPage() {
                 paid. The number is here to be looked at; nothing books it, and
                 under this ledger's cash basis it is neither income nor an
                 asset until the bank actually pays. */}
-            {detail.data.profitPayout === 'AT_MATURITY' ? (
+            {/* Shown whenever the instrument states a rate, including while the
+                figure is still zero. Gating on the amount would make the line
+                appear and vanish as it crossed zero, and a row that comes and
+                goes teaches the reader nothing. A plan at 0% has no accrual to
+                describe and is the one case that is genuinely absent. */}
+            {detail.data.profitRateBps > 0 ? (
               <div className="border-rule flex items-center justify-between gap-2 rounded-md border p-3">
                 <div className="min-w-0">
                   <p className="text-ink text-sm font-medium">
@@ -436,7 +435,7 @@ export default function SavingsPage() {
                   <p className="text-ink-muted text-xs">
                     {t(
                       'savings.profitAccruedHint',
-                      'হাতে আসেনি — মেয়াদপূর্তিতে আসল ও মুনাফা একসঙ্গে পাবেন। এটি হারের হিসাবে আনুমানিক, কর কাটার আগের।',
+                      'হারের হিসাবে এ পর্যন্ত এতটা জমার কথা — কর কাটার আগের, আনুমানিক। ব্যাংক হাতে দিলে নিচের ঘরে উঠবে।',
                     )}
                   </p>
                 </div>
@@ -561,26 +560,26 @@ export default function SavingsPage() {
               {/* The institution asks for a statement every year, and the API
                   has served SAVINGS since statement sharing shipped — only the
                   button was missing. */}
-              {/* First, and the only filled button here, on the instruments
-                  where it belongs: on a Sanchayapatra this is the thing somebody
-                  does every month, and the rest are done once a year at most.
+              {/* First, and the only filled button here: on an instrument whose
+                  bank credits the profit as it accrues, this is the thing
+                  somebody does every month, and everything else on this row is
+                  done once a year at most.
 
-                  Absent on a running DPS — see `profitCanHaveArrived`. A DPS
-                  pays nothing before maturity, so offering to record profit
-                  received on one would invite somebody to book income they have
-                  not earned. They get the accrued figure above instead. */}
-              {profitCanHaveArrived(detail.data, today) ? (
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    setProfitFor(detail.data!);
-                    setOpenId(null);
-                  }}
-                >
-                  <TrendingUp className="h-4 w-4" aria-hidden />
-                  {t('savings.gotProfit', 'মুনাফা পেয়েছি')}
-                </Button>
-              ) : null}
+                  On every plan, including a running DPS. In Bangladesh a DPS is
+                  opened against a bank account and the profit is commonly paid
+                  into it monthly; some products hold it to maturity instead.
+                  Only the passbook knows which, so the app does not guess — the
+                  safeguard is that the box opens empty. */}
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  setProfitFor(detail.data!);
+                  setOpenId(null);
+                }}
+              >
+                <TrendingUp className="h-4 w-4" aria-hidden />
+                {t('savings.gotProfit', 'মুনাফা পেয়েছি')}
+              </Button>
               {/* Offered whatever the status. A plan already marked মেয়াদপূর্ণ or
                   বন্ধ from the status box is exactly the one whose money is
                   still sitting in a savings account waiting to be moved — hiding
@@ -1150,13 +1149,16 @@ function PlanSheet({
 /**
  * "মুনাফা পেয়েছি" — money the instrument has actually handed over.
  *
- * ## Where it is offered, and where it is not
+ * ## Offered on every plan, and why
  *
- * Only where profit can have arrived: a Sanchayapatra, which credits a bank
- * account every month or quarter, or any plan that has reached maturity. **Not
- * a running DPS** — see `profitCanHaveArrived`. A DPS pays nothing before the
- * end, so this sheet on one would be a form for filing income nobody has been
- * paid, and the tax worksheet reads what it files.
+ * In Bangladesh both a সঞ্চয়পত্র and a DPS are routinely opened against a bank
+ * account, and the profit on both is commonly credited to that account as it
+ * accrues rather than held to the end. Some DPS products do hold it. The
+ * passbook says which; `planType` does not, and gating on it hid this from
+ * people whose bank was paying them every month.
+ *
+ * The safeguard is not a gate but the empty box below: nothing is prefilled, so
+ * the only figure that can be filed is one somebody read off a statement.
  *
  * ## Why it is its own button at all
  *
