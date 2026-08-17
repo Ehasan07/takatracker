@@ -199,3 +199,72 @@ describe('progress', () => {
     expect(summariseProgress([]).percentComplete).toBe(0);
   });
 });
+
+/**
+ * A lump sum has no instalments, so its progress is the calendar.
+ *
+ * This existed because every FDR and Sanchayapatra read 0% forever: the ring
+ * counted instalments, a lump sum has none, and the branch returned zero. Time
+ * is the honest measure there — the money went in on day one and nothing
+ * remains that could fail to happen — and it is the wrong measure for a DPS,
+ * where a skipped month must not look like progress.
+ */
+describe('progress on a lump sum', () => {
+  const span = (start: string, maturity: string | null, today: string) => ({
+    startDate: new Date(`${start}T00:00:00.000Z`),
+    maturityDate: maturity ? new Date(`${maturity}T00:00:00.000Z`) : null,
+    today: new Date(`${today}T00:00:00.000Z`),
+  });
+
+  it('reports how much of the term has run', () => {
+    /* A two-year FDR at its midpoint. 2025 and 2026 are both common years, so
+       the halfway day is exactly halfway — 2024 is a leap year and would put
+       this at 50.1, which is correct arithmetic and a confusing assertion. */
+    expect(
+      summariseProgress([], span('2025-01-01', '2027-01-01', '2026-01-01')).percentComplete,
+    ).toBe(50);
+  });
+
+  it('is zero on the day it starts and 100 at maturity', () => {
+    expect(
+      summariseProgress([], span('2024-01-01', '2026-01-01', '2024-01-01')).percentComplete,
+    ).toBe(0);
+    expect(
+      summariseProgress([], span('2024-01-01', '2026-01-01', '2026-01-01')).percentComplete,
+    ).toBe(100);
+  });
+
+  it('never exceeds 100, however long it is left', () => {
+    expect(
+      summariseProgress([], span('2024-01-01', '2026-01-01', '2030-01-01')).percentComplete,
+    ).toBe(100);
+  });
+
+  it('stays at zero when nothing is known about the term', () => {
+    /* No maturity date is not a 0% plan, it is an unanswerable question — and
+       the honest answer to that is the same zero it always gave. */
+    expect(summariseProgress([], span('2024-01-01', null, '2025-01-01')).percentComplete).toBe(0);
+    expect(summariseProgress([]).percentComplete).toBe(0);
+  });
+
+  it('refuses to divide by a term that ends before it starts', () => {
+    expect(
+      summariseProgress([], span('2026-01-01', '2024-01-01', '2025-01-01')).percentComplete,
+    ).toBe(0);
+  });
+
+  it('leaves a plan with instalments counting instalments', () => {
+    /* The dates are supplied and deliberately ignored: somebody who skipped
+       three months of a DPS is not as far along as somebody who did not, and a
+       ring driven by the calendar would say they were. */
+    const rows = [
+      { status: 'PAID', expectedMinor: 100_000 },
+      { status: 'DUE', expectedMinor: 100_000 },
+      { status: 'DUE', expectedMinor: 100_000 },
+      { status: 'DUE', expectedMinor: 100_000 },
+    ];
+    expect(
+      summariseProgress(rows, span('2024-01-01', '2026-01-01', '2025-12-01')).percentComplete,
+    ).toBe(25);
+  });
+});

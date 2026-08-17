@@ -955,7 +955,13 @@ export class SavingsService {
       status: plan.status,
       note: plan.note,
       projection: projectSavings({ ...input, termMonths: plan.termMonths }),
-      progress: summariseProgress(installments),
+      /* The dates matter only for a lump sum — an FDR or a Sanchayapatra has no
+         instalments to count, so its progress is the calendar. See
+         `summariseProgress`. */
+      progress: summariseProgress(installments, {
+        startDate: plan.startDate,
+        maturityDate: plan.maturityDate,
+      }),
       /* A missed instalment is still owed, so it is what comes next. Skipping
        * past it would point the saver at a later date and quietly drop the
        * payment they actually have to make. */

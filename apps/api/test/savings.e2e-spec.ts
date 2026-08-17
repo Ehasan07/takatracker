@@ -223,11 +223,14 @@ describe('savings', () => {
     // would show the holder eleven instalments they never owe.
     expect(res.body.installments).toEqual([]);
     expect(res.body.nextDueDate).toBeNull();
-    expect(res.body.progress).toMatchObject({
-      paidCount: 0,
-      remainingCount: 0,
-      percentComplete: 0,
-    });
+    /* No instalments to count — but `percentComplete` is no longer stuck at
+       zero because of it. A lump sum's progress is the calendar: the money went
+       in on day one and nothing remains that could fail to happen, so an FDR
+       part-way through its term reads part-way through. Before this it read 0%
+       for its whole life, which is the one thing a progress ring must not do. */
+    expect(res.body.progress).toMatchObject({ paidCount: 0, remainingCount: 0 });
+    expect(res.body.progress.percentComplete).toBeGreaterThan(0);
+    expect(res.body.progress.percentComplete).toBeLessThanOrEqual(100);
     expect(res.body.projection.installmentCount).toBe(0);
     expect(res.body.projection.depositedMinor).toBe(FDR_PRINCIPAL);
 

@@ -160,18 +160,63 @@ export interface SavingsProgress {
   percentComplete: number;
 }
 
+/**
+ * How far along a plan is.
+ *
+ * ## Two kinds of instrument, two honest answers
+ *
+ * A DPS is measured by **instalments paid**: the saver's job is a payment every
+ * month, and the fraction of them made is exactly how far through they are.
+ * Time elapsed would be the wrong measure there — somebody who skipped three
+ * months is not as far along as somebody who did not, and a ring driven by the
+ * calendar would say they were.
+ *
+ * An FDR or a Sanchayapatra has no instalments at all. The money went in once,
+ * on the first day, and the only thing that changes afterwards is the calendar.
+ * So for those, **time toward maturity is the progress** — and it is not a
+ * guess, because there is nothing left to pay that could fail to happen.
+ *
+ * Returning zero for a lump sum, which is what this did before, made every FDR
+ * read 0% forever: an instrument that could never move, on a screen whose whole
+ * job is to say how far along things are.
+ *
+ * `span` is optional so the DPS path is untouched — with no dates supplied a
+ * plan with no instalments still reports zero, which is the only truthful
+ * answer when nothing is known about its term.
+ */
 export function summariseProgress(
   rows: readonly { status: string; expectedMinor: number }[],
+  span?: { startDate: Date; maturityDate: Date | null; today?: Date },
 ): SavingsProgress {
   const paid = rows.filter((r) => r.status === 'PAID');
   const missed = rows.filter((r) => r.status === 'MISSED');
   const total = rows.length;
+
+  if (total === 0) {
+    const maturity = span?.maturityDate;
+    if (!span || !maturity) {
+      return { paidCount: 0, missedCount: 0, remainingCount: 0, paidMinor: 0, percentComplete: 0 };
+    }
+    const start = span.startDate.getTime();
+    const end = maturity.getTime();
+    const now = (span.today ?? new Date()).getTime();
+    /* A term that ends before it starts is bad data, not a 0% plan; refuse to
+       divide by it rather than report a figure derived from nonsense. */
+    const elapsed = end <= start ? 0 : Math.min(1, Math.max(0, (now - start) / (end - start)));
+    return {
+      paidCount: 0,
+      missedCount: 0,
+      remainingCount: 0,
+      paidMinor: 0,
+      percentComplete: Math.floor(elapsed * 1000 + 0.5) / 10,
+    };
+  }
 
   return {
     paidCount: paid.length,
     missedCount: missed.length,
     remainingCount: total - paid.length,
     paidMinor: sumMinor(paid.map((r) => r.expectedMinor)),
-    percentComplete: total === 0 ? 0 : Math.floor((paid.length / total) * 1000 + 0.5) / 10,
+    percentComplete: Math.floor((paid.length / total) * 1000 + 0.5) / 10,
   };
 }
