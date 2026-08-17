@@ -11,6 +11,7 @@ import { haptic } from '@/lib/haptics';
 import { fmtNumber } from '@/lib/format';
 import { t } from '@/lib/t';
 import { invalidateAfterWrite } from '@/lib/invalidate';
+import { cn } from '@/lib/utils';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import {
   api,
@@ -27,7 +28,31 @@ import { Button } from './ui/button';
 import { Field, Input, Select, Textarea } from './ui/field';
 import { Sheet } from './ui/sheet';
 
-type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER';
+/**
+ * The five things this sheet can write.
+ *
+ * The first three go to `POST /transactions`; the last two go to `POST /loans`,
+ * which books the disbursement itself. They share a sheet because they are the
+ * same act — money moved today and it has to be written down — and because the
+ * khata is where people are when they remember it. Sending somebody to
+ * `/loans`, finding the নতুন button and filling in a nine-field form is how ধার
+ * ends up not being recorded at all.
+ *
+ * `LENT` and `BORROWED` are two tabs rather than one tab with a direction
+ * select, because that is already the grammar of this row: খরচ and আয় are one
+ * transaction type each and the tab is what says which way the money went.
+ * A single ধার tab would be the only one that needed a second question answered
+ * before it knew.
+ */
+type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'LENT' | 'BORROWED';
+
+/** Sentinel for the counterparty select: a name typed here, not an existing row. */
+const NEW_PERSON = '__new__';
+
+/* A predicate rather than a boolean, so that the early return in `save` narrows
+   `kind` for the transaction body underneath it: `type: kind` there must be a
+   TransactionType, and the compiler is what should be saying so. */
+const isLoan = (kind: Kind): kind is 'LENT' | 'BORROWED' => kind === 'LENT' || kind === 'BORROWED';
 
 /**
  * The row being edited.
@@ -39,11 +64,18 @@ type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER';
 type TaggedTxn = TransactionDto;
 
 /* Keys beside the Bengali, resolved at render rather than here: a module-level
-   constant is evaluated before a workspace's wording override has arrived. */
-const TABS: { kind: Kind; key: string; label: string }[] = [
-  { kind: 'EXPENSE', key: 'entry.tab.expense', label: 'খরচ' },
-  { kind: 'INCOME', key: 'entry.tab.income', label: 'আয়' },
-  { kind: 'TRANSFER', key: 'entry.tab.transfer', label: 'ট্রান্সফার' },
+   constant is evaluated before a workspace's wording override has arrived.
+
+   The spans are what keeps five tabs legible at 320px: six columns, the three
+   transaction kinds at two each on the first row and the two ধার kinds at three
+   each on the second. Five across a 288px sheet would give each label 57px,
+   and ট্রান্সফার does not fit in 57px in any weight. */
+const TABS: { kind: Kind; key: string; label: string; span: string }[] = [
+  { kind: 'EXPENSE', key: 'entry.tab.expense', label: 'খরচ', span: 'col-span-2' },
+  { kind: 'INCOME', key: 'entry.tab.income', label: 'আয়', span: 'col-span-2' },
+  { kind: 'TRANSFER', key: 'entry.tab.transfer', label: 'ট্রান্সফার', span: 'col-span-2' },
+  { kind: 'LENT', key: 'entry.tab.lent', label: 'ধার দিয়েছি', span: 'col-span-3' },
+  { kind: 'BORROWED', key: 'entry.tab.borrowed', label: 'ধার নিয়েছি', span: 'col-span-3' },
 ];
 
 export interface QuickAddSheetProps {
@@ -75,7 +107,12 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
   const [description, setDescription] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [tagIds, setTagIds] = React.useState<string[]>([]);
+  /* One field for two questions, because they are the same question: "কার সাথে"
+     on an expense and the counterparty of a ধার are both a row in `Person`. On
+     the ধার tabs it may also hold NEW_PERSON, which is the only value the
+     transaction body must never see — cleared on the way out of those tabs. */
   const [personId, setPersonId] = React.useState('');
+  const [personName, setPersonName] = React.useState('');
   /* Which investment this row belongs to — a Sanchayapatra, a DPS, an FDR.
      Optional, and the reason it lives here rather than on the savings screen:
      profit arrives as an ordinary income row in the khata, and the only thing
@@ -140,6 +177,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setTagIds((editing.tags ?? []).map((tag) => tag.id));
       setTagsKnown(editing.tags !== undefined);
       setPersonId(editing.personId ?? '');
+      setPersonName('');
       setSavingsPlanId(editing.savingsPlanId ?? '');
       setFx(
         editing.fxCurrency && editing.fxAmountMinor
@@ -170,6 +208,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setTagIds([]);
       setTagsKnown(true);
       setPersonId('');
+      setPersonName('');
       setFx(null);
       setFxRate('');
       setQuantity(null);
@@ -234,6 +273,63 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       const amountMinor = converted ?? parseMoneyToMinor(amount, currency);
       if (amountMinor <= 0)
         throw new Error(t('entry.amountPositive', 'পরিমাণ শূন্যের চেয়ে বেশি হতে হবে'));
+
+      /**
+       * ধার goes to `POST /loans`, not to `POST /transactions`.
+       *
+       * A loan is a relationship, not a row: the loans module opens a control
+       * account for the direction, files the person, books the disbursement
+       * against the cash account and leaves something that repayments can be
+       * added to and a party ledger can be drawn from. Posting an EXPENSE here
+       * instead would put the right number in the right account and lose every
+       * one of those, and the money would never come back off the books when it
+       * was repaid.
+       *
+       * ## What this tab asks for, and what it does not
+       *
+       * Five fields: how much, from or into which account, with whom, when, and
+       * a note. That is a loan recorded honestly — the API needs nothing else,
+       * and every one of them is a thing the person is holding in their head at
+       * the moment they reach for the + button.
+       *
+       * Deliberately left to `/loans`: the interest (a fixed sum or an annual
+       * rate, plus the choice between them — three controls that would double
+       * the height of this sheet and are wrong for the overwhelming majority of
+       * ধার between family and neighbours, which carries none), the due date,
+       * the counterparty's phone number, and receipts. None of them can be
+       * missed later: the loan exists the moment this saves, and `/loans` can
+       * edit its terms, its dates and its note afterwards. The quick sheet's
+       * job is that the ধার gets written down at all — the common case here is
+       * still somebody recording an expense, and every control added for the
+       * rare case is paid for by all of them.
+       */
+      if (isLoan(kind)) {
+        const named = personId === NEW_PERSON;
+        if (!named && !personId) {
+          throw new Error(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'));
+        }
+        if (named && !personName.trim()) {
+          throw new Error(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'));
+        }
+        return api('/loans', {
+          method: 'POST',
+          body: {
+            ...(named ? { personName: personName.trim() } : { personId }),
+            direction: kind,
+            principalMinor: amountMinor,
+            interestType: 'NONE',
+            loanDate: date,
+            accountId: effectiveAccountId,
+            /* One note field, and it is the নোট box rather than বিবরণ — which is
+               why বিবরণ is not drawn on these two tabs. A loan is already
+               headed by a name and a direction; a second free-text line with
+               nowhere on the loan to put it would be a field that eats what
+               somebody typed. */
+            note: notes.trim() || undefined,
+          },
+        });
+      }
+
       /* The <select> is `required`, so the browser normally refuses first. Said
          again here in words, because native validation is a bubble that a
          scrolled sheet can push off screen, and because an offline save is
@@ -259,8 +355,11 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         tagIds: tagsKnown ? tagIds : undefined,
         /* `null`, not `undefined`, when the picker is empty: omitting the field
            leaves the row's person alone, which would make "কেউ না" impossible
-           to save. Sent on a create too, where the two mean the same thing. */
-        personId: personId || null,
+           to save. Sent on a create too, where the two mean the same thing.
+           NEW_PERSON is refused rather than sent: the tab switch clears it, and
+           a sentinel that reached the server would be a 400 on an id nobody
+           chose. */
+        personId: personId && personId !== NEW_PERSON ? personId : null,
         /* Same three-way rule as `personId`: `null` unfiles it, which is how
            somebody takes a row back off an investment they tagged by mistake. */
         savingsPlanId: savingsPlanId || null,
@@ -337,42 +436,72 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           save.mutate();
         }}
       >
-        <div
-          role="tablist"
-          aria-label={t('entry.kind', 'ধরন')}
-          className="bg-greenbar grid grid-cols-3 gap-1 rounded-lg p-1"
-        >
-          {TABS.map((tab) => (
-            <button
-              key={tab.kind}
-              type="button"
-              role="tab"
-              aria-selected={kind === tab.kind}
-              onClick={() => {
-                haptic('tap');
-                setKind(tab.kind);
-                /* খরচের খাত must not survive a switch to আয়. The picker below
+        {/* Frozen to the top of the sheet.
+         *
+         * Which way the money went is the frame every field below is read in,
+         * and this form is long — an expense with a category, a date, a note,
+         * tags and a receipt runs well past one screen on a phone. Once the
+         * strip scrolls away the only way back to আয় is to scroll the whole
+         * form up again, and somebody who started on the wrong tab has to do
+         * that before they can do anything at all.
+         *
+         * `-mx-4 px-4` bleeds it to the sheet's own edges so rows pass behind
+         * it rather than beside it, and `bg-surface` is the sheet's ground
+         * rather than a new colour. */}
+        <div className="bg-surface sticky top-0 z-20 -mx-4 -mt-1 px-4 pb-1 pt-1">
+          <div
+            role="tablist"
+            aria-label={t('entry.kind', 'ধরন')}
+            className="bg-greenbar grid grid-cols-6 gap-1 rounded-lg p-1"
+          >
+            {/* Editing offers the three transaction kinds only. `PATCH
+              /transactions` cannot turn a row into a loan — a loan is a control
+              account, a person and a repayment schedule, none of which this
+              body can create — so a ধার tab here would be a tab that could
+              only fail. */}
+            {(editing ? TABS.filter((tab) => !isLoan(tab.kind)) : TABS).map((tab) => (
+              <button
+                key={tab.kind}
+                type="button"
+                role="tab"
+                aria-selected={kind === tab.kind}
+                onClick={() => {
+                  haptic('tap');
+                  setKind(tab.kind);
+                  /* খরচের খাত must not survive a switch to আয়. The picker below
                    only offers one kind, so a category left over from the other
                    one shows as an unmatched value in the box — and the API
                    checks only that the category exists, so saving it would file
                    an income under an expense খাত and quietly bend the report.
                    TRANSFER counts as EXPENSE here so that খরচ → ট্রান্সফার →
                    খরচ, which shows no category in the middle, keeps it. */
-                if ((tab.kind === 'INCOME') !== (kind === 'INCOME')) setCategoryId('');
-              }}
-              className={
-                kind === tab.kind
-                  ? 'press bg-surface text-ink min-h-10 rounded-md text-sm font-semibold shadow-sm'
-                  : 'press text-ink-muted min-h-10 rounded-md text-sm'
-              }
-            >
-              {t(tab.key, tab.label)}
-            </button>
-          ))}
+                  if ((tab.kind === 'INCOME') !== (kind === 'INCOME')) setCategoryId('');
+                  /* "নতুন ব্যক্তি" is a choice only the ধার tabs offer. Left
+                   behind on the way out it would sit in কার সাথে as a value
+                   that select has no option for — a box that looks empty and
+                   is not. */
+                  if (!isLoan(tab.kind) && personId === NEW_PERSON) setPersonId('');
+                }}
+                /* min-h-11, up from min-h-10. Two rows of tabs is two rows of
+                 things to hit with a thumb, and 40px was already under the
+                 44px floor when there was one. */
+                className={cn(
+                  tab.span,
+                  kind === tab.kind
+                    ? 'press bg-surface text-ink min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
+                    : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
+                )}
+              >
+                {t(tab.key, tab.label)}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* One-tap repeat of something recent (spec §6.4). */}
-        {!editing && repeatable.length > 0 ? (
+        {/* One-tap repeat of something recent (spec §6.4). Transaction kinds
+            only: every chip sets the tab back to খরচ or আয়, so on a ধার tab the
+            strip is a row of buttons that quietly undo the tab just chosen. */}
+        {!editing && !isLoan(kind) && repeatable.length > 0 ? (
           <div className="chip-strip" aria-label={t('entry.repeat', 'আবার যোগ করুন')}>
             {repeatable.map((txn) => (
               <button
@@ -417,8 +546,13 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
 
         {/* A chip writes the one id the two boxes below are derived from, so a
             sub-category chip fills the parent in as well — the fast path and the
-            slow path cannot disagree. */}
-        {kind !== 'TRANSFER' ? (
+            slow path cannot disagree.
+
+            Neither a transfer nor a ধার carries a খাত: one moves money between
+            two of your own accounts and the other is a debt, and filing either
+            under খাবার ও বাজার would put money in this month's expense report
+            that was never spent. */}
+        {kind !== 'TRANSFER' && !isLoan(kind) ? (
           <CategoryChips
             categories={categoryList}
             kind={categoryKind}
@@ -439,11 +573,21 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           />
         </Field>
 
+        {/* The account is the one field every kind needs and the one whose
+            question changes most: money leaves it on a খরচ or a ধার দিয়েছি,
+            arrives in it on an আয় or a ধার নিয়েছি. Saying which in the label is
+            cheaper than a hint underneath, and on the ধার tabs it is the only
+            thing telling the reader that the money really moves — a loan
+            recorded here is not a note to self. */}
         <Field
           label={
             kind === 'TRANSFER'
               ? t('entry.fromAccount', 'যে অ্যাকাউন্ট থেকে')
-              : t('entry.account', 'অ্যাকাউন্ট')
+              : kind === 'LENT'
+                ? t('entry.loanFromAccount', 'কোন অ্যাকাউন্ট থেকে দিলেন')
+                : kind === 'BORROWED'
+                  ? t('entry.loanToAccount', 'কোন অ্যাকাউন্টে এল')
+                  : t('entry.account', 'অ্যাকাউন্ট')
           }
           htmlFor="qa-account"
         >
@@ -481,6 +625,14 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                 ))}
             </Select>
           </Field>
+        ) : isLoan(kind) ? (
+          <LoanPersonField
+            direction={kind}
+            personId={personId}
+            personName={personName}
+            onPersonId={setPersonId}
+            onPersonName={setPersonName}
+          />
         ) : (
           <CategoryPicker
             categories={categoryList}
@@ -492,28 +644,44 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
           />
         )}
 
-        {/* Directly under the category, because that is where the difference
-            has to be learned: one box asks what the money went on, the next
-            asks who it was for. A transfer has no category and can still be
-            tagged — গাড়ি is a tag whether the money was spent or moved. */}
-        <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
+        {/* Everything from here down belongs to a transaction and to nothing
+            else. `POST /loans` takes a person, an amount, an account, a date
+            and a note — no tags, no quantity, no foreign currency, no second
+            free-text line — and a control that silently discards what somebody
+            typed into it is worse than a control that is not there. */}
+        {isLoan(kind) ? (
+          <p className="text-ink-muted text-xs">
+            {t(
+              'entry.loanHint',
+              'টাকাটা এই অ্যাকাউন্ট থেকেই যাবে বা আসবে — খাতায় লেনদেনটি নিজে থেকে বসে যাবে। সুদ, ফেরতের তারিখ বা কিস্তি যোগ করতে ধার-দেনা পাতায় যান।',
+            )}
+          </p>
+        ) : (
+          <>
+            {/* Directly under the category, because that is where the difference
+                has to be learned: one box asks what the money went on, the next
+                asks who it was for. A transfer has no category and can still be
+                tagged — গাড়ি is a tag whether the money was spent or moved. */}
+            <TagPicker value={tagIds} onChange={setTagIds} idPrefix="qa" />
 
-        <PersonField value={personId} onChange={setPersonId} />
-        <InvestmentField kind={kind} value={savingsPlanId} onChange={setSavingsPlanId} />
+            <PersonField value={personId} onChange={setPersonId} />
+            <InvestmentField kind={kind} value={savingsPlanId} onChange={setSavingsPlanId} />
 
-        <QuantityField value={quantity} onChange={setQuantity} />
+            <QuantityField value={quantity} onChange={setQuantity} />
 
-        <FxField value={fx} onChange={setFx} rate={fxRate} onRateChange={setFxRate} />
+            <FxField value={fx} onChange={setFx} rate={fxRate} onRateChange={setFxRate} />
 
-        <Field label={t('entry.description', 'বিবরণ')} htmlFor="qa-description">
-          <Input
-            id="qa-description"
-            name="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder={t('entry.descriptionHint', 'যেমন: সাপ্তাহিক বাজার')}
-          />
-        </Field>
+            <Field label={t('entry.description', 'বিবরণ')} htmlFor="qa-description">
+              <Input
+                id="qa-description"
+                name="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('entry.descriptionHint', 'যেমন: সাপ্তাহিক বাজার')}
+              />
+            </Field>
+          </>
+        )}
 
         <Field label={t('entry.notes', 'নোট')} htmlFor="qa-notes">
           <Textarea
@@ -539,6 +707,111 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         </Button>
       </form>
     </Sheet>
+  );
+}
+
+/**
+ * Who the ধার is with.
+ *
+ * ## The list is everybody
+ *
+ * `GET /people`, through the same `fetchPeople` and the same
+ * `['people', 'list', '']` key the কার সাথে box below already uses — so opening
+ * this tab costs no request the sheet had not made anyway, and the two boxes
+ * can never disagree about who exists. A second way to ask the same question is
+ * exactly how the loans screen came to offer only people who already had a
+ * loan: the 28 brought over from Wallet were in the database and appeared in no
+ * menu.
+ *
+ * ## And a name may be typed
+ *
+ * Which `PersonField` below deliberately refuses to allow, and the difference is
+ * not an inconsistency. Creating a contact as a side effect of an expense is how
+ * the duplicate করিমs got there. A ধার is the other case: the person *is* the
+ * loan, there is no loan without one, and `POST /loans` takes a `personName` and
+ * files them itself precisely so that recording one is a single screen.
+ */
+function LoanPersonField({
+  direction,
+  personId,
+  personName,
+  onPersonId,
+  onPersonName,
+}: {
+  direction: 'LENT' | 'BORROWED';
+  personId: string;
+  personName: string;
+  onPersonId: (id: string) => void;
+  onPersonName: (name: string) => void;
+}) {
+  const people = useQuery({
+    queryKey: ['people', 'list', ''],
+    queryFn: () => fetchPeople(),
+    staleTime: 60_000,
+  });
+
+  const rows = React.useMemo(
+    () => [...(people.data ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'bn')),
+    [people.data],
+  );
+
+  /* A khata with nobody in it yet has nothing to choose between, so it asks for
+     the name outright. Waiting for `isSuccess` matters: an empty list while the
+     request is still in flight is not the same answer as an empty khata, and
+     flipping to the name box and back as the data lands would move the field
+     under somebody's thumb. */
+  const empty = people.isSuccess && rows.length === 0;
+  React.useEffect(() => {
+    if (empty && personId !== NEW_PERSON) onPersonId(NEW_PERSON);
+  }, [empty, personId, onPersonId]);
+
+  const label =
+    direction === 'LENT'
+      ? t('entry.lentTo', 'কাকে ধার দিয়েছেন')
+      : t('entry.borrowedFrom', 'কার কাছ থেকে ধার নিয়েছেন');
+
+  return (
+    <div className="flex flex-col gap-4">
+      {empty ? null : (
+        <Field label={label} htmlFor="qa-loan-person">
+          <Select
+            id="qa-loan-person"
+            name="loanPersonId"
+            value={personId}
+            onChange={(e) => onPersonId(e.target.value)}
+            required
+          >
+            <option value="">{t('common.choose', 'বেছে নিন')}</option>
+            <option value={NEW_PERSON}>{t('entry.newPerson', 'নতুন ব্যক্তি')}</option>
+            {rows.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+                {person.phone ? ` · ${person.phone}` : ''}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      {personId === NEW_PERSON ? (
+        <Field label={empty ? label : t('entry.personName', 'নাম')} htmlFor="qa-loan-person-name">
+          <Input
+            id="qa-loan-person-name"
+            name="loanPersonName"
+            value={personName}
+            onChange={(e) => onPersonName(e.target.value)}
+            required
+            placeholder={t('entry.personNameHint', 'যেমন: রহিম উদ্দিন')}
+          />
+          {/* The number is on the contact, not on the loan, so it can be added
+              later without touching the money. Said here because somebody
+              typing a name is exactly the person wondering where it went. */}
+          <p className="text-ink-muted mt-1 text-xs">
+            {t('entry.personPhoneLater', 'মোবাইল নম্বর পরে মানুষজন পাতায় যোগ করা যাবে।')}
+          </p>
+        </Field>
+      ) : null}
+    </div>
   );
 }
 

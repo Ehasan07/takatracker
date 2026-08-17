@@ -125,7 +125,6 @@ export default function PeoplePage() {
               person={person}
               onEdit={() => setEditing(person)}
               onMerge={() => setMerging(person)}
-              onDelete={() => setDeleting(person)}
               onShare={() => setSharing(person)}
             />
           ))}
@@ -146,7 +145,6 @@ export default function PeoplePage() {
                 person={person}
                 onEdit={() => setEditing(person)}
                 onMerge={() => setMerging(person)}
-                onDelete={() => setDeleting(person)}
                 onShare={() => setSharing(person)}
               />
             ))}
@@ -168,6 +166,12 @@ export default function PeoplePage() {
           setAdding(false);
           setEditing(null);
           done(message);
+        }}
+        /* One sheet at a time: the editor closes as the question opens, the way
+           the savings and insurance screens already do it. */
+        onDelete={(person) => {
+          setEditing(null);
+          setDeleting(person);
         }}
       />
       {/* Mounted with the person it is for, so closing it forgets the token
@@ -226,13 +230,11 @@ function PersonCard({
   person,
   onEdit,
   onMerge,
-  onDelete,
   onShare,
 }: {
   person: PersonDto;
   onEdit: () => void;
   onMerge: () => void;
-  onDelete: () => void;
   onShare: () => void;
 }) {
   const photo = safePhotoUri(person.photoUri);
@@ -240,7 +242,18 @@ function PersonCard({
 
   return (
     <li className="rounded-card border-rule bg-surface border p-3">
-      <div className="flex items-start gap-3">
+      {/* The card itself opens the person, the way an account row does. The
+          two labelled buttons that used to say সম্পাদনা and সরান are gone from
+          the footer: the first was a second way of doing what tapping the card
+          now does, and the second put the irreversible action beside it on a
+          list where the only thing separating them is a few pixels of thumb.
+          Both live inside now, the destructive one last. */}
+      <button
+        type="button"
+        aria-label={`${person.name} — ${t('common.edit', 'সম্পাদনা')}`}
+        onClick={onEdit}
+        className="press flex w-full items-start gap-3 text-left"
+      >
         <span
           aria-hidden
           className="bg-greenbar text-income flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold"
@@ -255,35 +268,36 @@ function PersonCard({
           )}
         </span>
 
-        <div className="min-w-0 flex-1">
-          <p className="text-ink truncate text-sm font-medium">
+        <span className="min-w-0 flex-1">
+          <span className="text-ink block truncate text-sm font-medium">
             {person.name}
             {/* Two suppliers can share a name and a shop phone; only this tells
                 them apart, so it sits beside the name rather than on a detail
                 screen nobody opens while reading a delivery note. */}
             <span className="text-ink-muted money ml-1.5 text-xs">{person.code}</span>
-          </p>
-          <p className="text-ink-muted truncate text-xs">
+          </span>
+          <span className="text-ink-muted block truncate text-xs">
             {[person.relation, person.phone ? bn(person.phone) : null]
               .filter(Boolean)
               .join(' · ') || t('people.noDetails', 'কোনো তথ্য নেই')}
-          </p>
+          </span>
           {person.loanCount > 0 ? (
-            <p className="text-ink-muted mt-0.5 text-xs">
+            <span className="text-ink-muted mt-0.5 block text-xs">
               {bn(person.loanCount)}টি ঋণ · সর্বশেষ {bnDate(person.lastActivityDate)}
-            </p>
+            </span>
           ) : null}
-        </div>
+        </span>
 
-        <div className="shrink-0 text-right">
+        <span className="shrink-0 text-right">
           {position ? (
             <>
               <Money minor={Math.abs(person.netMinor)} className="block text-sm" decimals={false} />
-              <span className="text-ink-muted text-[11px]">{position}</span>
+              <span className="text-ink-muted block text-[11px]">{position}</span>
             </>
           ) : null}
-        </div>
-      </div>
+        </span>
+        <Pencil className="text-ink-muted mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+      </button>
 
       {person.duplicateOfIds.length > 0 ? (
         <p className="text-ink-muted bg-greenbar mt-2 flex items-start gap-1.5 rounded-md p-2 text-xs">
@@ -316,29 +330,17 @@ function PersonCard({
             {t('share.short', 'শেয়ার')}
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={onEdit}
-          className="press text-ink hover:bg-greenbar flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
-        >
-          <Pencil className="h-3.5 w-3.5" aria-hidden />
-          সম্পাদনা
-        </button>
+        {/* Merge stays on the card and stays labelled, for the reason written
+            on the tag screen: a feature reachable only through an icon inside
+            something else is a feature nobody finds, and two spellings of one
+            person is the commonest mess on this screen. */}
         <button
           type="button"
           onClick={onMerge}
-          className="press text-ink hover:bg-greenbar flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
+          className="press text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
         >
           <Merge className="h-3.5 w-3.5" aria-hidden />
           মিলিয়ে দিন
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="press text-expense hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
-        >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-          সরান
         </button>
       </div>
     </li>
@@ -350,11 +352,14 @@ function PersonSheet({
   person,
   onOpenChange,
   onSaved,
+  onDelete,
 }: {
   open: boolean;
   person: PersonDto | null;
   onOpenChange: (open: boolean) => void;
   onSaved: (message: string) => void;
+  /** Asks the page for `DeleteSheet`; this form never deletes anybody itself. */
+  onDelete: (person: PersonDto) => void;
 }) {
   const [form, setForm] = React.useState({
     name: person?.name ?? '',
@@ -448,6 +453,33 @@ function PersonSheet({
         <Button type="submit" size="block" disabled={save.isPending}>
           সংরক্ষণ করুন
         </Button>
+
+        {/* Last, below a rule, and only on somebody who already exists.
+         *
+         * The card used to carry this as a labelled button beside সম্পাদনা,
+         * which is one thumb-width between "let me fix their phone number" and
+         * "take them off the list". Down here the name is on screen, and the
+         * sheet that follows still names the loan count that would refuse. */}
+        {person ? (
+          <div className="border-rule flex flex-col gap-2 border-t pt-4">
+            <p className="text-ink-muted text-xs">
+              {t(
+                'people.deleteHint',
+                'তালিকা থেকে সরালেও তাঁর কোনো লেনদেন মুছবে না। চলমান ঋণ থাকলে সরানোই যাবে না।',
+              )}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="block"
+              className="text-expense"
+              onClick={() => onDelete(person)}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {t('people.delete', 'তালিকা থেকে সরান')}
+            </Button>
+          </div>
+        ) : null}
       </form>
     </Sheet>
   );

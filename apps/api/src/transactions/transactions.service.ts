@@ -84,6 +84,22 @@ export interface TransactionView {
   categoryId: string | null;
   categoryName: string | null;
   /**
+   * The খাত the one above hangs off, when it hangs off one.
+   *
+   * `categoryId` is whichever level the user actually filed under — the tree is
+   * two deep and a sub-খাত is what most rows end up on — so `categoryName` is
+   * already the leaf and this pair is the branch above it. Null when the row was
+   * filed straight under a top-level category, which is also how a client tells
+   * "this *is* the খাত" from "this is a sub-খাত of one".
+   *
+   * Both halves are needed together or neither is any use: the khata leads its
+   * rows with the leaf, and রেস্টুরেন্ট under খাবার ও বাজার and রেস্টুরেন্ট
+   * under বেড়ানো are the same word for two different questions. The parent is
+   * what tells them apart, on a line the row was already drawing.
+   */
+  parentCategoryId: string | null;
+  parentCategoryName: string | null;
+  /**
    * Who the money was with, if anybody. Not the same question as `payee`, which
    * is free text: this one is a row in `Person`, so it groups, filters and adds
    * up on the party ledger. Returned because a client that can set a field has
@@ -129,7 +145,20 @@ const txInclude = {
   entries: {
     include: {
       account: { select: { id: true, name: true, type: true, systemKey: true } },
-      category: { select: { id: true, name: true, nameBn: true } },
+      /* `parent` rather than a second lookup by `parentId`. Prisma resolves a
+       * nested relation with one extra statement for the whole page, not one
+       * per row, so a fifty-row khata costs the same single join it always did
+       * — and the alternative, having the client match `parentId` against its
+       * own cached category tree, silently prints nothing for the second or
+       * two before that tree has arrived. */
+      category: {
+        select: {
+          id: true,
+          name: true,
+          nameBn: true,
+          parent: { select: { id: true, name: true, nameBn: true } },
+        },
+      },
     },
   },
   /* Name, never the phone or the note: this rides along on every row of the
@@ -1265,6 +1294,8 @@ export class TransactionsService {
       counterAccountName: tx.type === 'TRANSFER' ? (counter?.account.name ?? null) : null,
       categoryId: category?.id ?? null,
       categoryName: category ? displayName(category, ctx.locale) : null,
+      parentCategoryId: category?.parent?.id ?? null,
+      parentCategoryName: category?.parent ? displayName(category.parent, ctx.locale) : null,
       personId: tx.personId,
       savingsPlanId: tx.savingsPlanId,
       prepaidStartDate: tx.prepaidStartDate ? toLocalDateString(tx.prepaidStartDate, tz) : null,

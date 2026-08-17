@@ -54,6 +54,31 @@ export interface BalanceLine {
   amountMinor: number;
 }
 
+/** The five kinds of thing an `ASSET` account can be. */
+export type AssetKind = 'PROPERTY' | 'VEHICLE' | 'GOLD' | 'INVESTMENT' | 'OTHER';
+
+/** `type === 'ASSET'` rows folded by what they actually are (IAS 1.54). */
+export interface AssetGroupDto {
+  kind: AssetKind;
+  amountMinor: number;
+  count: number;
+}
+
+/**
+ * A group of accounts of one type, with what they come to between them.
+ *
+ * Used for both sides of the position panel — what is owed and what is
+ * spendable — because they are the same shape, and the invariant that matters
+ * is the same on both: the groups add up to the total they sit under. See
+ * `buildBalanceSheet` in @hishab/core.
+ */
+export interface TypeGroupDto {
+  type: string;
+  /** On the liability side this is positive when money is owed. */
+  amountMinor: number;
+  count: number;
+}
+
 /** `GET /v1/reports/balance-sheet` — takes no arguments: it is always "now". */
 export interface BalanceSheetDto {
   assetsMinor: number;
@@ -69,7 +94,59 @@ export interface BalanceSheetDto {
   nonCurrentLiabilitiesMinor: number;
   /** Current assets less current liabilities. */
   workingCapitalMinor: number;
+  /** The three breakdowns the position panel draws, each summing to its total. */
+  assetGroups: AssetGroupDto[];
+  /**
+   * What `assetGroups` adds up to. **Not** `nonCurrentAssetsMinor`, which also
+   * takes in a DPS — see the field's comment in @hishab/core.
+   */
+  groupedAssetsMinor: number;
+  liabilityGroups: TypeGroupDto[];
+  liquidGroups: TypeGroupDto[];
   asOf?: string;
+}
+
+/**
+ * One credit card's last statement — `GET /v1/reports/card-statements`.
+ *
+ * `statementMinor` is what the books say was owed **on the day the bill
+ * closed**, and `currentMinor` is what is owed now. They are different numbers
+ * for most of every month and the screen must never present one as the other.
+ *
+ * What the app cannot know is on the row by its absence: interest, the late
+ * fee, the annual fee and the foreign-currency markup are in these figures only
+ * if somebody recorded them, and no field here is the minimum payment, because
+ * nothing in the schema records one.
+ */
+export interface CardStatementDto {
+  id: string;
+  name: string;
+  accountNumberMasked: string | null;
+  statementDayOfMonth: number | null;
+  dueDayOfMonth: number | null;
+  /** Null when the card has no statement day — then there is no statement. */
+  statementDate: string | null;
+  previousStatementDate: string | null;
+  dueDate: string | null;
+  openingMinor: number;
+  purchasesMinor: number;
+  paymentsMinor: number;
+  statementMinor: number | null;
+  currentMinor: number;
+  /** Positive: used again since the bill. Negative: some of it has been paid. */
+  sinceStatementMinor: number | null;
+  creditLimitMinor: number;
+  /** Disclosed and never added to anything. IAS 7.50(a). */
+  undrawnMinor: number;
+  reconciled: boolean;
+}
+
+export interface CardStatementsDto {
+  asOf: string;
+  cards: CardStatementDto[];
+  statementTotalMinor: number;
+  currentTotalMinor: number;
+  withoutStatementDay: number;
 }
 
 /** `GET /v1/reports/income-statement?from=&to=&compareFrom=&compareTo=` */

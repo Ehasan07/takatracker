@@ -114,6 +114,20 @@ export class ReportsController {
   }
 
   /**
+   * `GET /v1/reports/card-statements` — what each credit card's last bill says
+   * is owed, beside what is owed on it today.
+   *
+   * Takes no arguments for the same reason `balance-sheet` takes no range: a
+   * statement closes on a day the *card* decides, not one the reader picks, so
+   * a `from`/`to` here would be a question the data cannot answer. The day each
+   * figure is true for travels on every row.
+   */
+  @Get('card-statements')
+  cardStatements(@CurrentUser() user: AuthUser) {
+    return this.reports.cardStatements(user);
+  }
+
+  /**
    * `GET /v1/reports/by-quantity` — how much of each thing, not how much it cost.
    *
    * The question money cannot answer: a price rise and a habit change look

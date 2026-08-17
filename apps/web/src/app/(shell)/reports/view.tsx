@@ -66,6 +66,7 @@ import {
 } from './queries';
 import Link from 'next/link';
 import { RangeBar } from './range-bar';
+import { CardStatementsPanel, PositionPanel } from './position';
 import { QuantityPanel } from './quantity-panel';
 import { TagPanel } from './tag-panel';
 import {
@@ -316,6 +317,18 @@ function ReportsBody({ today }: { today: Date }) {
           </>
         )}
       </Panel>
+
+      {/* The same three totals again, each opened up into what it is made of.
+          Directly under নিট সম্পদ because it is the same photograph at a closer
+          focus — and because a reader who has just been shown "দায় ৳1,62,400"
+          asks "of what?" before they ask anything about last month's spending.
+          It shares the balance-sheet query with the panel above, so the two are
+          one fetch and cannot be a moment apart. */}
+      <PositionPanel asOfText={asOfText} />
+
+      {/* And the one liability that has a bill with a date on it. Nothing at
+          all when the workspace has no cards. */}
+      <CardStatementsPanel asOfText={asOfText} />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Trend */}

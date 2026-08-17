@@ -17,7 +17,10 @@
  * **Delete** is safe and does not feel safe. A tag on three hundred
  * transactions is a word somebody typed once and now cannot get rid of; the API
  * detaches it and destroys nothing, and it returns the exact count so that this
- * screen can say so *before* the button is pressed rather than after.
+ * screen can say so *before* the button is pressed rather than after. Which is
+ * also why it is not on the row: the count that makes it safe is only on screen
+ * once the tag has been opened, so the bin lives at the foot of the editor and
+ * the row does nothing but open it.
  *
  * **Merge** is the feature people need and never find. Everybody ends up with
  * both পরিবার and পারিবারিক. It is a labelled row on every tag card, not an
@@ -26,7 +29,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Info, Merge, Pencil, Plus, Search, Tag as TagIcon, Trash2 } from 'lucide-react';
+import { Info, Merge, Pencil, Plus, Search, Tag as TagIcon } from 'lucide-react';
 import * as React from 'react';
 import { t } from '@/lib/t';
 import { Money } from '@/components/money';
@@ -222,24 +225,20 @@ export default function TagsPage() {
                   </span>
 
                   {/* Net, because a tag like গাড়ি genuinely has both sides — the
-                      fuel every month and the day it was sold. */}
+                      fuel every month and the day it was sold.
+
+                      In the amount column the rest of the app uses: a rule down
+                      its left and the figure pushed to the right of it, so the
+                      digits of thirty tags line up under one another and can be
+                      compared by running an eye down the list. */}
                   <Money
                     minor={tag.netMinor}
                     colored
                     signed
                     decimals={false}
-                    className="shrink-0 text-sm"
+                    className="amount-col shrink-0 pl-2 text-sm"
                   />
                   <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
-                </button>
-
-                <button
-                  type="button"
-                  aria-label={`${nameOf(tag)} ট্যাগটি সরান`}
-                  onClick={() => openDelete(tag)}
-                  className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden />
                 </button>
               </div>
 
@@ -270,7 +269,17 @@ export default function TagsPage() {
         নতুন ট্যাগ যোগ করুন
       </Button>
 
-      <TagSheet open={addOpen || editing !== null} editing={editing} onOpenChange={closeSheets} />
+      <TagSheet
+        open={addOpen || editing !== null}
+        editing={editing}
+        onOpenChange={closeSheets}
+        /* One sheet at a time: the editor closes as the question opens, the way
+           the savings and insurance screens already do it. */
+        onDelete={(tag) => {
+          setEditing(null);
+          openDelete(tag);
+        }}
+      />
 
       <MergeSheet
         source={merging}

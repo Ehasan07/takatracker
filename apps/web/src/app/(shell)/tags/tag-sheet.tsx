@@ -3,13 +3,14 @@
 /** Create a tag, or rename, recolour and re-word an existing one. */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ban } from 'lucide-react';
+import { Ban, Trash2 } from 'lucide-react';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { t } from '@/lib/t';
 import { cn } from '@/lib/utils';
 import { useDisplayName } from '@/lib/display-name';
 import { invalidateTagData } from './queries';
@@ -20,11 +21,20 @@ export function TagSheet({
   editing,
   onOpenChange,
   onSaved,
+  onDelete,
 }: {
   open: boolean;
   editing: TagDto | null;
   onOpenChange: (open: boolean) => void;
   onSaved?: (tag: TagDto) => void;
+  /**
+   * Asks the caller for its confirmation sheet; this component never deletes.
+   *
+   * Optional because the picker mounts this sheet too, to make a tag mid-entry.
+   * There is nothing to delete there — the tag is one keystroke old — and a bin
+   * inside the transaction being written is a trap rather than a shortcut.
+   */
+  onDelete?: (tag: TagDto) => void;
 }) {
   const queryClient = useQueryClient();
   const { name: nameOf } = useDisplayName();
@@ -187,6 +197,35 @@ export function TagSheet({
         <Button type="submit" size="block" disabled={save.isPending}>
           {save.isPending ? 'সংরক্ষণ হচ্ছে…' : 'সংরক্ষণ করুন'}
         </Button>
+
+        {/* Last, below a rule, and only on a tag that already exists.
+         *
+         * The list row used to carry a bin beside the name. Deleting a tag is
+         * not destructive — the API detaches it and touches no transaction —
+         * but nobody believes that at the moment their thumb is over the icon,
+         * and the count that makes it believable is in the sheet that opens
+         * after this button, not on the row. So the row is for looking and this
+         * is where the decision gets made. */}
+        {editing && onDelete ? (
+          <div className="border-rule flex flex-col gap-2 border-t pt-4">
+            <p className="text-ink-muted text-xs">
+              {t(
+                'tags.deleteHint',
+                'ট্যাগটি লেনদেনগুলো থেকে সরে যাবে — একটি লেনদেনও মুছবে না। কতগুলোতে আছে তা পরের ধাপে লেখা থাকবে।',
+              )}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="block"
+              className="text-expense"
+              onClick={() => onDelete(editing)}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {t('tags.delete', 'ট্যাগটি সরিয়ে ফেলুন')}
+            </Button>
+          </div>
+        ) : null}
       </form>
     </Sheet>
   );

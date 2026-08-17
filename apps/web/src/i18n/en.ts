@@ -1625,4 +1625,85 @@ export const EN: Record<string, string> = {
   'inbox.fxOrType':
     'Type a rate and the box below fills itself in. If you already know the amount that was taken, skip the rate and type that instead.',
   'inbox.fxNeedAmount': 'Give a rate, or type how much was taken',
+
+  /* The khata: what a row says it is, and ধার recorded from the entry sheet. */
+  'entry.tab.lent': 'Lent out',
+  'entry.tab.borrowed': 'Borrowed',
+  'entry.lentTo': 'Who you lent it to',
+  'entry.borrowedFrom': 'Who you borrowed it from',
+  'entry.newPerson': 'New person',
+  'entry.personName': 'Name',
+  'entry.personNameHint': 'e.g. Rahim Uddin',
+  'entry.personPhoneLater': 'A phone number can be added later, on the People screen.',
+  'entry.pickPerson': 'Who the loan is with — choose somebody or type a name',
+  'entry.loanFromAccount': 'Which account it came out of',
+  'entry.loanToAccount': 'Which account it went into',
+  'entry.loanHint':
+    'The money really moves in or out of this account — the entry posts to the khata by itself. Interest, a due date or instalments are added on the Loans screen.',
+
+  /* Lists: the row opens the editor, delete moved inside, figures right-aligned. */
+  'cat.delete': 'Delete this category',
+  'cat.deleteSafe':
+    'This category has no transactions and no sub-categories, so deleting it changes no figure.',
+  'tags.delete': 'Remove this tag',
+  'tags.deleteHint':
+    'The tag comes off the transactions it is on — not one of them is deleted. The next step spells out how many.',
+  'people.delete': 'Remove from the list',
+  'people.deleteHint':
+    'Removing somebody from the list deletes none of their transactions. Somebody with a live loan cannot be removed at all.',
+  'renewal.delete': 'Delete this paper',
+  'renewal.deleteAsk':
+    'The paper leaves the list and stops reminding you. No expense already written is deleted.',
+  'renewal.deleteYes': 'Yes, delete it',
+  'renewal.deleting': 'Deleting…',
+
+  /* Where you stand — grouped liabilities, assets and liquid, and the card statements. */
+  'reports.position.title': 'Where you stand',
+  'reports.position.failed': 'Could not load your position.',
+  'reports.position.owed': 'What you owe',
+  'reports.position.owedHint': 'Total owed, by kind of debt',
+  'reports.position.noDebt': 'Nothing owed.',
+  'reports.position.owned': 'What you own',
+  'reports.position.ownedHint': 'Land, vehicles, gold, investments',
+  'reports.position.noAssets': 'Nothing of that kind.',
+  'reports.position.liquid': 'What you can spend today',
+  'reports.position.liquidHint': 'Cash, bank and mobile wallets',
+  'reports.position.noLiquid': 'Nothing in hand.',
+  'reports.position.accountCount': '{n} accounts',
+  'reports.position.footnote':
+    'Savings certificates and DPS count as assets but are not under “What you own” — they are not possessions and cannot be cashed in today. Total assets and net worth are in the panel above.',
+  'reports.position.type.CASH': 'Cash',
+  'reports.position.type.BANK': 'In the bank',
+  'reports.position.type.MOBILE_WALLET': 'In mobile wallets',
+  'reports.position.type.CREDIT_CARD': 'Credit cards',
+  'reports.position.type.PAYABLE': 'Owed to people',
+  'reports.position.type.LIABILITY': 'Loans',
+  'reports.position.kind.PROPERTY': 'Property',
+  'reports.position.kind.VEHICLE': 'Vehicles',
+  'reports.position.kind.GOLD': 'Gold and jewellery',
+  'reports.position.kind.INVESTMENT': 'Investments',
+  'reports.position.kind.OTHER': 'Other',
+  'reports.cards.title': 'Credit card statements',
+  'reports.cards.failed': 'Could not load the card figures.',
+  'reports.cards.statementTotal': 'Owed per the statements',
+  'reports.cards.currentTotal': 'Owed right now',
+  'reports.cards.closedOn': 'Statement closed',
+  'reports.cards.dueOn': 'Due',
+  'reports.cards.noStatementDay': 'No statement day set',
+  'reports.cards.statementOwed': 'Per the statement',
+  'reports.cards.currentOwed': 'Owed now',
+  'reports.cards.opening': 'Brought forward',
+  'reports.cards.purchases': 'Added this statement',
+  'reports.cards.payments': 'Paid this statement',
+  'reports.cards.sinceUp': 'Spent since the statement',
+  'reports.cards.sinceDown': 'Paid since the statement',
+  'reports.cards.someWithoutDay':
+    '{n} cards have no statement day set, so they are not in the statement total above.',
+  'reports.cards.notReconciled': 'This card does not add up — please get in touch.',
+  'reports.cards.limit': 'Card limit',
+  'reports.cards.undrawn': 'Left to draw',
+  'reports.cards.undrawnNote':
+    'An undrawn limit is not your money — the bank can withdraw it at any time, so it is never added to your assets or to what you can spend.',
+  'reports.cards.caveat':
+    'These figures come from your own books. Interest, late fees, the annual fee and foreign-currency charges are here only if you recorded them — and a bank may post a purchase to the following bill. Check against the bank’s own statement; the minimum payment cannot be worked out here.',
 };

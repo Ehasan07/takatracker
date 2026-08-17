@@ -17,6 +17,8 @@
  *                                      range is applied by asking for enough
  *                                      months and cutting the answer down
  *   balance-sheet  (nothing)         — point in time, and that point is now
+ *   card-statements (nothing)        — point in time, and the point is a day
+ *                                      each card picks, not one the reader can
  */
 
 import { api } from '@/lib/api';
@@ -26,6 +28,7 @@ import type {
   ByCategoryDto,
   ByCategoryFlatDto,
   ByTagDto,
+  CardStatementsDto,
   CashFlowDto,
   DrilldownDto,
   IncomeStatementDto,
@@ -52,6 +55,7 @@ export const reportKeys = {
   netWorthChanges: (period: Period) =>
     ['reports', 'net-worth-changes', period.from, period.to] as const,
   balanceSheetAt: (asOf: string) => ['reports', 'balance-sheet', asOf] as const,
+  cardStatements: () => ['reports', 'card-statements'] as const,
 };
 
 export function fetchByCategory(kind: Kind, period: Period): Promise<ByCategoryDto> {
@@ -95,6 +99,15 @@ export function fetchIncomeStatement(
 
 export function fetchNetWorthChanges(period: Period): Promise<NetWorthChangesDto> {
   return api<NetWorthChangesDto>(`/reports/net-worth-changes?${periodQuery(period)}`);
+}
+
+/**
+ * What each card's last bill says is owed. No range and no `asOf`: a statement
+ * closes on a day the card decides, so there is nothing here for a date picker
+ * to change — the response carries the day every figure on it is true for.
+ */
+export function fetchCardStatements(): Promise<CardStatementsDto> {
+  return api<CardStatementsDto>('/reports/card-statements');
 }
 
 /** The sheet as at one day, which is what a statement for a period needs. */

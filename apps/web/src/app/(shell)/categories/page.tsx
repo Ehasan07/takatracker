@@ -143,36 +143,46 @@ export default function CategoriesPage() {
         </Button>
       </header>
 
-      <div
-        role="tablist"
-        aria-label="ধরন"
-        className="bg-greenbar grid grid-cols-2 gap-1 rounded-lg p-1"
-      >
-        {(
-          [
-            ['EXPENSE', t('cat.expense', 'খরচের খাত')],
-            ['INCOME', t('cat.income', 'আয়ের খাত')],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={kind === value}
-            onClick={() => {
-              haptic('tap');
-              setKind(value);
-            }}
-            className={
-              // 44px, like every other target on the screen.
-              kind === value
-                ? 'press bg-surface text-ink min-h-11 rounded-md text-sm font-semibold shadow-sm'
-                : 'press text-ink-muted min-h-11 rounded-md text-sm'
-            }
-          >
-            {label}
-          </button>
-        ))}
+      {/* Frozen to the top of the scroller.
+       *
+       * The two sides of the khata are the frame the whole list is read in, and
+       * a workspace with forty খাত pushes the switch off a phone screen inside
+       * one flick — after which the only way back to আয় is to scroll all the way
+       * up again. `-mt-4 pt-4` swallows the shell's own top padding so nothing
+       * shows in the gap above the strip, and `bg-paper` is the page's own
+       * ground rather than a new colour: the rows have to pass *behind* it. */}
+      <div className="bg-paper sticky top-0 z-20 -mt-4 pb-1 pt-4">
+        <div
+          role="tablist"
+          aria-label="ধরন"
+          className="bg-greenbar grid grid-cols-2 gap-1 rounded-lg p-1"
+        >
+          {(
+            [
+              ['EXPENSE', t('cat.expense', 'খরচের খাত')],
+              ['INCOME', t('cat.income', 'আয়ের খাত')],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={kind === value}
+              onClick={() => {
+                haptic('tap');
+                setKind(value);
+              }}
+              className={
+                // 44px, like every other target on the screen.
+                kind === value
+                  ? 'press bg-surface text-ink min-h-11 rounded-md text-sm font-semibold shadow-sm'
+                  : 'press text-ink-muted min-h-11 rounded-md text-sm'
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Said once, at the top: what the second level is for and why there is no
@@ -232,15 +242,7 @@ export default function CategoriesPage() {
                     : usageLabel(parent)
                 }
                 childCount={children.length}
-                deleteBlockedBy={
-                  parent.usageCount > 0
-                    ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
-                    : children.length > 0
-                      ? t('cat.deleteChildrenFirst', 'আগে উপ-খাতগুলো মুছুন')
-                      : null
-                }
                 onEdit={() => openEdit(parent)}
-                onDelete={() => openDelete(parent)}
                 onMove={() => openMove(parent)}
               />
 
@@ -254,13 +256,7 @@ export default function CategoriesPage() {
                         category={child}
                         meta={`উপ-খাত · ${usageLabel(child)}`}
                         childCount={0}
-                        deleteBlockedBy={
-                          child.usageCount > 0
-                            ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
-                            : null
-                        }
                         onEdit={() => openEdit(child)}
-                        onDelete={() => openDelete(child)}
                         onMove={() => openMove(child)}
                         nested
                       />
@@ -304,6 +300,13 @@ export default function CategoriesPage() {
             setAddUnder(null);
           }
         }}
+        /* One sheet at a time: the editor closes as the question opens, the way
+           the savings and insurance screens already do it. Two stacked sheets on
+           a 320px phone leave nowhere to read the consequence from. */
+        onDelete={(category) => {
+          setEditing(null);
+          openDelete(category);
+        }}
       />
 
       <ConfirmSheet
@@ -343,34 +346,31 @@ export default function CategoriesPage() {
 /**
  * One category, parent or child.
  *
- * The name block is the edit button, the way an account row is: a third icon
- * would leave nothing of the name at 320px. `nested` adds the arrow and the
- * indent that mark a child — the "উপ-খাত" in `meta` says it in words, because
- * neither an arrow nor an indent survives a glance on a small phone.
+ * The whole name block is the button, the way an account row is: tapping the
+ * row opens the খাত and everything that can be done to it is inside. `nested`
+ * adds the arrow and the indent that mark a child — the "উপ-খাত" in `meta` says
+ * it in words, because neither an arrow nor an indent survives a glance on a
+ * small phone.
  *
- * ## Why the trailing control changes rather than doubling
+ * ## Why there is no bin here any more
  *
- * Two icons is the ceiling this row can carry, and the two actions are almost
- * never both available anyway: a খাত with history cannot be deleted, and a খাত
- * with no history has nothing to move. So the slot shows whichever one is real.
+ * A row-level bin is a destructive action offered before the person has seen
+ * what they would be destroying, and on a list of forty খাত the thumb that
+ * meant to open one is a few pixels from the one that empties it. So deleting
+ * moved to the bottom of the editor, after the name, the kind and the count of
+ * transactions are all on screen. The row is one tap to look; deleting is still
+ * two taps and a sheet that spells out the consequence.
  *
- * That also repairs the oldest dead end on this screen. The bin used to sit
- * there greyed out with `title="এই খাতে লেনদেন আছে"` — a tooltip, on a phone,
- * where there is no hover — and the API's refusal told people to "আগে সেগুলো
- * অন্য ক্যাটাগরিতে সরান" while offering nowhere to do it. Now the row that
- * cannot be deleted offers the thing that would make it deletable.
- *
- * A parent that still has sub-খাত keeps the disabled bin, because the API
- * refuses to move one too and an enabled button that always errors is worse
- * than a disabled one that says why.
+ * That also lets the trailing slot say the one thing it is good for. A খাত with
+ * history cannot be deleted and the API's refusal used to tell people to "আগে
+ * সেগুলো অন্য ক্যাটাগরিতে সরান" while offering nowhere to do it; the move button
+ * is that nowhere, and it now has the slot to itself.
  */
 function CategoryLine({
   category,
   meta,
   childCount,
-  deleteBlockedBy,
   onEdit,
-  onDelete,
   onMove,
   nested = false,
 }: {
@@ -378,9 +378,7 @@ function CategoryLine({
   meta: string;
   /** Live sub-categories. Above zero the server refuses to move this row. */
   childCount: number;
-  deleteBlockedBy: string | null;
   onEdit: () => void;
-  onDelete: () => void;
   onMove: () => void;
   nested?: boolean;
 }) {
@@ -417,18 +415,7 @@ function CategoryLine({
         >
           <Merge className="h-4 w-4" aria-hidden />
         </button>
-      ) : (
-        <button
-          type="button"
-          aria-label={`${nameOf(category)} মুছুন`}
-          disabled={deleteBlockedBy !== null}
-          title={deleteBlockedBy ?? undefined}
-          onClick={onDelete}
-          className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md disabled:opacity-30"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden />
-        </button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -743,12 +730,15 @@ function CategorySheet({
   parent,
   defaultKind,
   onOpenChange,
+  onDelete,
 }: {
   open: boolean;
   editing: CategoryRow | null;
   parent: CategoryRow | null;
   defaultKind: Kind;
   onOpenChange: (open: boolean) => void;
+  /** Asks the page for the confirmation sheet. Never deletes anything itself. */
+  onDelete: (category: CategoryRow) => void;
 }) {
   const queryClient = useQueryClient();
   /* For naming the parent this খাত will sit under — a name *about* another row,
@@ -805,6 +795,17 @@ function CategorySheet({
      transaction under it was booked with a direction — and one with sub-khat
      would leave them stranded on the side it left. */
   const canFlipKind = Boolean(editing) && editing!.usageCount === 0 && !hasChildren;
+
+  /* The same two refusals the API makes, said before the button rather than
+     after it. `null` means the খাত really can go. */
+  const deleteBlockedBy =
+    editing === null
+      ? null
+      : editing.usageCount > 0
+        ? t('cat.hasTransactions', 'এই খাতে লেনদেন আছে')
+        : hasChildren
+          ? t('cat.deleteChildrenFirst', 'আগে উপ-খাতগুলো মুছুন')
+          : null;
 
   React.useEffect(() => {
     if (!open) return;
@@ -1019,6 +1020,43 @@ function CategorySheet({
         <Button type="submit" size="block" disabled={save.isPending}>
           সংরক্ষণ করুন
         </Button>
+
+        {/* Last, below a rule, and only on a খাত that already exists.
+         *
+         * The row used to carry a bin, which put the one irreversible action on
+         * this screen a thumb's width from the one that merely opens it. Down
+         * here the name, the side and the transaction count are all on screen
+         * first, which is the only state in which "মুছে ফেলবেন?" is a question
+         * somebody can actually answer.
+         *
+         * Blocked is said in words rather than through a greyed-out icon and a
+         * `title` — there is no hover on a phone, so a tooltip is not a message,
+         * it is a silence. */}
+        {editing ? (
+          <div className="border-rule flex flex-col gap-2 border-t pt-4">
+            {deleteBlockedBy ? (
+              <p className="text-ink-muted text-xs">{deleteBlockedBy}</p>
+            ) : (
+              <p className="text-ink-muted text-xs">
+                {t(
+                  'cat.deleteSafe',
+                  'এই খাতে কোনো লেনদেন বা উপ-খাত নেই, তাই মুছলে কোনো হিসাব বদলাবে না।',
+                )}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="block"
+              className="text-expense"
+              disabled={deleteBlockedBy !== null}
+              onClick={() => onDelete(editing)}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {t('cat.delete', 'খাতটি মুছে ফেলুন')}
+            </Button>
+          </div>
+        ) : null}
       </form>
     </Sheet>
   );

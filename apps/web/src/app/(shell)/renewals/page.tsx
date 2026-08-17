@@ -20,6 +20,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { ApiError, api, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { invalidateAfterWrite } from '@/lib/invalidate';
+import { t } from '@/lib/t';
 
 /**
  * Papers that expire.
@@ -106,7 +107,9 @@ export default function RenewalsPage() {
   const remove = useMutation({
     mutationFn: (id: string) => api<{ id: string }>(`/renewals/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      haptic('tap');
+      haptic('success');
+      /* The editor is what asked, so the editor is what closes. */
+      setEditing(null);
       refresh();
     },
   });
@@ -196,8 +199,9 @@ export default function RenewalsPage() {
             >
               <button
                 type="button"
+                aria-label={`${row.title} — ${t('common.edit', 'সম্পাদনা')}`}
                 onClick={() => setEditing(row)}
-                className="press min-w-0 flex-1 text-left"
+                className="press min-h-11 min-w-0 flex-1 text-left"
               >
                 <span className="text-ink block truncate text-sm font-medium">{row.title}</span>
                 <span className="text-ink-muted block truncate text-xs">
@@ -219,19 +223,15 @@ export default function RenewalsPage() {
                 {whenText(row)}
               </span>
 
+              {/* The bin used to sit here, and it deleted on one tap with
+                  nothing asked — the only control in the app that did. It is
+                  inside the row now, at the foot of the editor, where the name
+                  and the date are on screen and it takes a second press. */}
               {row.status === 'DONE' ? null : (
                 <div className="flex shrink-0 gap-1">
                   <Button variant="outline" size="sm" onClick={() => setCompleting(row)}>
                     <Check className="h-4 w-4" aria-hidden />
                     হয়ে গেছে
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`${row.title} — মুছুন`}
-                    onClick={() => remove.mutate(row.id)}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden />
                   </Button>
                 </div>
               )}
@@ -276,7 +276,12 @@ export default function RenewalsPage() {
         />
       ) : null}
 
+      {/* Keyed by the row it is for. The form seeds its state from `editing`
+          once, at mount, so a sheet that stayed mounted across two different
+          rows showed the first row's values while claiming to edit the second —
+          which is precisely the thing tapping a row is now supposed to do. */}
       <ObligationSheet
+        key={editing?.id ?? 'new'}
         open={addOpen || editing !== null}
         editing={editing}
         accounts={(accounts.data ?? []).map((a) => ({ id: a.id, name: a.name }))}
@@ -288,6 +293,10 @@ export default function RenewalsPage() {
           setAddOpen(false);
           setEditing(null);
           refresh();
+        }}
+        deleting={remove.isPending}
+        onDelete={() => {
+          if (editing) remove.mutate(editing.id);
         }}
       />
     </div>
@@ -509,14 +518,29 @@ function ObligationSheet({
   accounts,
   onClose,
   onSaved,
+  onDelete,
+  deleting = false,
 }: {
   open: boolean;
   editing: Obligation | null;
   accounts: { id: string; name: string }[];
   onClose: () => void;
   onSaved: () => void;
+  /** Runs only after the second press below. This form never deletes on one. */
+  onDelete: () => void;
+  deleting?: boolean;
 }) {
   const [kind, setKind] = React.useState<RenewalKind>(editing?.kind ?? 'FITNESS');
+  /**
+   * The second press.
+   *
+   * Every other destructive action in the app opens a sheet to ask. This one
+   * asks in place instead, because the thing being deleted is a reminder and
+   * not money — nothing in the books moves — and stacking a third layer over an
+   * editor that is already a sheet leaves a 320px phone with nowhere to read
+   * the question from. What matters is that it is never one tap, and it is not.
+   */
+  const [confirming, setConfirming] = React.useState(false);
   const [form, setForm] = React.useState({
     title: editing?.title ?? RENEWAL_DEFAULTS.FITNESS.label,
     dueDate: editing?.dueDate ?? '',
@@ -672,6 +696,46 @@ function ObligationSheet({
             বাতিল
           </Button>
         </div>
+
+        {/* Last, below a rule, and only on a paper that already exists. */}
+        {editing ? (
+          <div className="border-rule mt-2 flex flex-col gap-2 border-t pt-3">
+            {confirming ? (
+              <>
+                <p className="text-ink text-sm">
+                  {t(
+                    'renewal.deleteAsk',
+                    'কাগজটি তালিকা থেকে চলে যাবে এবং এর মনে করানো বন্ধ হবে। আগে লেখা কোনো খরচ মুছবে না।',
+                  )}
+                </p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="danger" disabled={deleting} onClick={onDelete}>
+                    {deleting
+                      ? t('renewal.deleting', 'মোছা হচ্ছে…')
+                      : t('renewal.deleteYes', 'হ্যাঁ, মুছে ফেলুন')}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+                    থাক
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="block"
+                className="text-expense"
+                onClick={() => {
+                  haptic('warn');
+                  setConfirming(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+                {t('renewal.delete', 'কাগজটি মুছে ফেলুন')}
+              </Button>
+            )}
+          </div>
+        ) : null}
       </form>
     </Sheet>
   );

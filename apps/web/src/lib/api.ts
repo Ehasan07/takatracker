@@ -236,6 +236,20 @@ export interface TransactionDto {
   counterAccountName: string | null;
   categoryId: string | null;
   categoryName: string | null;
+  /**
+   * The খাত `categoryName` hangs off, when it hangs off one.
+   *
+   * The tree is two levels deep and `categoryId` is whichever of them the user
+   * filed under, so `categoryName` is the leaf and this is the branch above it.
+   * Null on a row filed straight under a top-level খাত — which is how the khata
+   * tells "this is the খাত" from "this is a sub-খাত of one" without a second
+   * request.
+   *
+   * Optional at the type level because a row replayed from the offline queue,
+   * or one cached before the API carried the pair, has neither.
+   */
+  parentCategoryId?: string | null;
+  parentCategoryName?: string | null;
   /** Who the money was with. A `Person` row, unlike the free-text `payee`. */
   personId: string | null;
   /** The DPS, FDR or Sanchayapatra this row belongs to, when it belongs to one. */

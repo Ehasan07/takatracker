@@ -1,4 +1,5 @@
 import { sumMinor, type AccountType, type AssetKind } from '@hishab/shared';
+import { clampDayToMonth } from './card-reminders.js';
 
 /**
  * Report assembly. The database does the grouping; this decides what the groups
@@ -74,6 +75,41 @@ export interface AssetGroup {
   count: number;
 }
 
+/**
+ * What is owed, folded by the kind of obligation it is.
+ *
+ * "কত দায় আছে" is one number and three unrelated answers. A credit card is
+ * revolving, priced at thirty-odd percent, and settled monthly; a car loan is
+ * amortising over years at a rate that was fixed when it was signed; a shop
+ * account is neither, and is owed to somebody the household will see again.
+ * Somebody deciding what to pay down first cannot use a combined figure, and
+ * the combined figure is the only one this application used to give them.
+ *
+ * `amountMinor` is positive when money is owed, the same way `liabilities` is —
+ * see `buildBalanceSheet`. A group is only present when the workspace has an
+ * account of that type on the books, so nobody reads a line telling them they
+ * have no credit cards.
+ */
+export interface LiabilityGroup {
+  type: AccountType;
+  /** Positive means money is owed. Negative would mean the lender owes you. */
+  amountMinor: number;
+  count: number;
+}
+
+/**
+ * Money that could be spent today, folded by where it is sitting.
+ *
+ * The same three types `LIQUID_TYPES` names, and never more: this is a
+ * breakdown of `liquidMinor`, so anything that would not have been counted in
+ * that total must not appear here either, or the parts would exceed the whole.
+ */
+export interface LiquidGroup {
+  type: AccountType;
+  amountMinor: number;
+  count: number;
+}
+
 export interface BalanceSheet {
   assetsMinor: number;
   liabilitiesMinor: number;
@@ -87,6 +123,22 @@ export interface BalanceSheet {
    * which is the truthful answer to "what kind is it" when nobody has said.
    */
   assetGroups: AssetGroup[];
+  /**
+   * What `assetGroups` adds up to, stated rather than left to be summed.
+   *
+   * Deliberately **not** `nonCurrentAssetsMinor`, which the two agree with only
+   * by accident. Non-current is a statement about time and takes in a DPS;
+   * this is the total of the `ASSET` rows — the things owned rather than the
+   * money held — and it is what the groups are a breakdown *of*. A screen that
+   * printed one as the header over the other's rows would be showing a total
+   * that its own lines do not reach, which is the single failure a breakdown
+   * exists to prevent.
+   */
+  groupedAssetsMinor: number;
+  /** What is owed, folded by kind of obligation. Sums to `liabilitiesMinor`. */
+  liabilityGroups: LiabilityGroup[];
+  /** What could be spent today, folded by where it sits. Sums to `liquidMinor`. */
+  liquidGroups: LiquidGroup[];
   /**
    * The same lines again, split the way IAS 1.60 requires.
    *
@@ -181,6 +233,8 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
     liabilities.filter((l) => isCurrent(l.type)).map((l) => l.amountMinor),
   );
 
+  const assetGroups = groupAssets(assets);
+
   return {
     assetsMinor,
     liabilitiesMinor,
@@ -193,8 +247,63 @@ export function buildBalanceSheet(rows: readonly AccountBalanceRow[]): BalanceSh
     workingCapitalMinor: currentAssetsMinor - currentLiabilitiesMinor,
     assets: assets.sort((a, b) => b.amountMinor - a.amountMinor),
     liabilities: liabilities.sort((a, b) => b.amountMinor - a.amountMinor),
-    assetGroups: groupAssets(assets),
+    assetGroups,
+    /* Summed from the groups themselves, not from `assets` again. Two routes to
+       one figure is two chances to disagree, and the header over a list of
+       parts is precisely where a disagreement would be believed. */
+    groupedAssetsMinor: sumMinor(assetGroups.map((g) => g.amountMinor)),
+    liabilityGroups: groupLiabilities(liabilities),
+    liquidGroups: groupLiquid(assets),
   };
+}
+
+/**
+ * Rows folded by their account type, biggest first, with a count.
+ *
+ * Shared by the liability and the liquid split because they are the same fold
+ * over the same shape, and writing it twice is how the two would eventually
+ * come to sort differently or drop an empty group on only one side.
+ */
+function groupByType<T extends { type: AccountType; amountMinor: number }>(
+  lines: readonly T[],
+): { type: AccountType; amountMinor: number; count: number }[] {
+  const totals = new Map<AccountType, { amountMinor: number; count: number }>();
+
+  for (const line of lines) {
+    const current = totals.get(line.type) ?? { amountMinor: 0, count: 0 };
+    totals.set(line.type, {
+      amountMinor: current.amountMinor + line.amountMinor,
+      count: current.count + 1,
+    });
+  }
+
+  return [...totals.entries()]
+    .map(([type, value]) => ({ type, ...value }))
+    .sort((a, b) => b.amountMinor - a.amountMinor);
+}
+
+/**
+ * The liability lines folded into kinds of debt.
+ *
+ * Takes the lines `buildBalanceSheet` has already flipped to positive rather
+ * than the raw rows, so a group can never disagree in sign with the line it was
+ * built from. Every liability line lands in exactly one group and none is
+ * dropped, which is what makes the groups sum to `liabilitiesMinor`.
+ */
+export function groupLiabilities(lines: readonly BalanceSheetLine[]): LiabilityGroup[] {
+  return groupByType(lines);
+}
+
+/**
+ * The liquid part of the asset lines, folded by where the money sits.
+ *
+ * The filter is `LIQUID_TYPES` — the same list `liquidMinor` is summed over —
+ * so these groups add up to that total exactly. A DPS is an asset and is not
+ * money you can spend this afternoon, which is the whole distinction, and the
+ * one thing that must not leak into this list.
+ */
+export function groupLiquid(lines: readonly BalanceSheetLine[]): LiquidGroup[] {
+  return groupByType(lines.filter((line) => LIQUID_TYPES.includes(line.type)));
 }
 
 /**
@@ -241,6 +350,89 @@ export function nextDateKey(date: string): string {
   const [, year, month, day] = m;
   const next = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 1));
   return next.toISOString().slice(0, 10);
+}
+
+// --- credit card statement periods -------------------------------------------
+
+/**
+ * The window one credit-card statement covers.
+ *
+ * Both ends are date keys in the workspace's own calendar; the caller turns
+ * them into instants with `fromLocalDateString`, the same two-step every other
+ * dated report on this page uses. The period is **`(previousDate,
+ * statementDate]`** — the previous bill's closing balance is this one's
+ * opening balance, so the day itself belongs to the earlier statement and
+ * counting it twice would overstate every card in the workspace.
+ */
+export interface StatementPeriod {
+  /** The most recent statement day on or before the day asked about. */
+  statementDate: string;
+  /** The statement day before that one. Exclusive lower bound. */
+  previousDate: string;
+}
+
+/** `YYYY-MM-DD` from three numbers, zero-padded. */
+function dateKey(year: number, month: number, day: number): string {
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * The statement day inside one `YYYY-MM`, clamped to that month's length.
+ *
+ * `clampDayToMonth` comes from `card-reminders.ts` rather than being written
+ * again here, and that is not tidiness: a card billed on the 31st is billed on
+ * the 28th in February, and the reminder that goes out and the figure this
+ * report shows have to be talking about the same day. Two implementations of
+ * one clamp is two answers to "when did February's bill close".
+ */
+function dayInMonth(monthKey: string, dayOfMonth: number): string {
+  const [year, month] = monthKey.split('-').map(Number) as [number, number];
+  return dateKey(year, month, clampDayToMonth(year, month, dayOfMonth));
+}
+
+/**
+ * The statement period in force on `today`, for a card billed on
+ * `statementDayOfMonth`.
+ *
+ * On the statement day itself the bill that closes *that evening* is the
+ * current one — a reader looking at their books on the 5th, for a card that
+ * cuts on the 5th, is asking about the statement that has just been drawn, not
+ * last month's.
+ */
+export function statementPeriodFor(today: string, statementDayOfMonth: number): StatementPeriod {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (!match) throw new TypeError(`Expected YYYY-MM-DD, got ${JSON.stringify(today)}`);
+  const [, year, month, day] = match;
+
+  const thisMonth = `${year}-${month}`;
+  const cutThisMonth = clampDayToMonth(Number(year), Number(month), statementDayOfMonth);
+  const closed = Number(day) >= cutThisMonth ? thisMonth : shiftMonthKey(thisMonth, -1);
+
+  return {
+    statementDate: dayInMonth(closed, statementDayOfMonth),
+    previousDate: dayInMonth(shiftMonthKey(closed, -1), statementDayOfMonth),
+  };
+}
+
+/**
+ * The first `dayOfMonth` strictly after `date` — when a bill closed on `date`
+ * falls due.
+ *
+ * Strictly after, because a card whose statement and payment fall on the same
+ * day of the month is not asking to be paid the instant the bill is drawn; it
+ * is asking a month later. Same clamp as everything else, so a payment due on
+ * the 31st is due on the 28th in February.
+ */
+export function nextDayOfMonthAfter(date: string, dayOfMonth: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) throw new TypeError(`Expected YYYY-MM-DD, got ${JSON.stringify(date)}`);
+  const [, year, month, day] = match;
+
+  const thisMonth = `${year}-${month}`;
+  const dueThisMonth = clampDayToMonth(Number(year), Number(month), dayOfMonth);
+  return dueThisMonth > Number(day)
+    ? dateKey(Number(year), Number(month), dueThisMonth)
+    : dayInMonth(shiftMonthKey(thisMonth, 1), dayOfMonth);
 }
 
 /** The four figures a reader compares between two balance sheets. */

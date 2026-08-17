@@ -87,6 +87,8 @@ test.describe('people', () => {
     await expect(karim).toContainText('50,000');
     await expect(karim).toContainText('পাব');
 
+    /* The whole card is the button now — there is no separate সম্পাদনা beside
+       it — so this is the row's own accessible name, "করিম — সম্পাদনা". */
     await karim.getByRole('button', { name: 'সম্পাদনা' }).click();
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('ফোন').fill('+8801711223344');
@@ -167,8 +169,16 @@ test.describe('people', () => {
     await lend(page, 'করিম', '50000');
 
     await page.goto('/people');
-    await personRow(page, 'করিম').getByRole('button', { name: 'সরান' }).click();
-    const sheet = page.getByRole('dialog');
+    /* Two taps and a sheet, not one tap on the row. Removing somebody is
+       inside the person now — the card opens the editor, and the bin is at the
+       foot of it, under the name of whoever is about to be removed. */
+    await personRow(page, 'করিম').getByRole('button', { name: 'সম্পাদনা' }).click();
+    await page
+      .getByRole('dialog', { name: 'তথ্য বদলান' })
+      .getByRole('button', { name: 'তালিকা থেকে সরান' })
+      .click();
+
+    const sheet = page.getByRole('dialog', { name: 'তালিকা থেকে সরাবেন?' });
     await sheet.getByRole('button', { name: 'সরিয়ে ফেলুন' }).click();
 
     // The count, not "this person has loans" — one of those is actionable.

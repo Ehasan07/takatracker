@@ -129,9 +129,6 @@ type LedgerTxn = TransactionDto;
  */
 const attachmentsOf = (txn: LedgerTxn): string[] => txn.attachmentIds ?? [];
 
-const labelOf = (txn: TransactionDto): string =>
-  txn.description || txn.categoryName || t('entry.transaction', 'লেনদেন');
-
 /* The two label tables above keep their Bengali beside the key and are looked
    up through `t` at render, rather than being translated where they are
    declared: a module-level constant is evaluated before a workspace's own
@@ -141,6 +138,100 @@ const typeLabel = (type: string): string =>
 
 const sourceLabel = (source: string): string =>
   SOURCE_LABEL[source] ? t(`txn.source.${source}`, SOURCE_LABEL[source]) : source;
+
+// --- what one row says -----------------------------------------------------
+
+/**
+ * The three lines of a khata row, and why they are in this order.
+ *
+ * A row used to lead with `description` — the note somebody had typed — so the
+ * most prominent line on the screen people spend the most time on read
+ * "Sir bolse Milanor jonne gojamil dite" and said nothing whatever about what
+ * kind of money had moved or where it went. The note is the least structured
+ * thing on a row and it was winning the heading; two rows in a row of it and
+ * the list stops being scannable at all.
+ *
+ * So, top to bottom:
+ *
+ *   ১. `headingOf`  রেস্টুরেন্ট          the সাব-খাত, the খাত, or the kind
+ *   ২. `whereOf`    নগদ · খাবার ও বাজার  where the money was
+ *   ৩. `noteOf`     রাতের খাবার          the note, small, only when there is one
+ *
+ * All three truncate; none of them wrap. Three lines of Bengali on a 320px
+ * phone is already as much as one row can carry, and a second line that wraps
+ * turns a list somebody is scanning for one particular row into a wall.
+ */
+
+/**
+ * Line one: what this row *is*.
+ *
+ * Income and expense are the two kinds where the খাত is the answer — nobody
+ * needs telling that a red −৳250 filed under বাজার was an expense, the sign and
+ * the colour have already said so, and the useful thing to know is what it was
+ * spent on. `categoryName` is the leaf the user actually picked, so a row filed
+ * under a sub-খাত leads with the sub-খাত and one filed under a top-level খাত
+ * leads with that; the fallback is only for a row with no খাত at all.
+ *
+ * Every other kind names itself instead. Money moved between two of your own
+ * accounts is neither income nor expense, and a row that showed only the two
+ * account names left the reader to work that out — which is the thing the owner
+ * could not do. A loan, a savings deposit or a premium is the same case, and
+ * those rows carry no খাত to lead with anyway: the loans and savings screens
+ * write them against a control account, not a category.
+ */
+const headingOf = (txn: TransactionDto): string =>
+  txn.type === 'INCOME' || txn.type === 'EXPENSE'
+    ? txn.categoryName || typeLabel(txn.type)
+    : typeLabel(txn.type);
+
+/** The kinds whose second line is better spent on a person than on a খাত. */
+const PERSON_TYPES = new Set(['LOAN_GIVEN', 'LOAN_REPAID', 'BORROWED', 'BORROW_REPAID']);
+
+/**
+ * Line two: where the money was.
+ *
+ * A transfer is the one kind with two accounts and the arrow is the whole
+ * point of the line — `নগদ → ব্যাংক` says which way in less space than any
+ * sentence would.
+ *
+ * Everything else leads with the account and then adds whichever second fact
+ * the row has going for it. For an ordinary expense that is the parent খাত,
+ * which is exactly what the heading dropped when it took the leaf: রেস্টুরেন্ট
+ * under খাবার ও বাজার and রেস্টুরেন্ট under বেড়ানো are the same word for two
+ * different questions, and this is the line that tells them apart. For a loan
+ * it is the counterparty — "ধার দিয়েছি / নগদ" with no name on it is a row that
+ * has forgotten the one thing a loan is about.
+ *
+ * The source stays where it always was, last and only when it is not MANUAL:
+ * an SMS-read row is worth marking, a hand-written one is every other row.
+ */
+const whereOf = (txn: TransactionDto): string => {
+  if (txn.type === 'TRANSFER') {
+    return `${txn.accountName ?? '—'} → ${txn.counterAccountName ?? '—'}`;
+  }
+  const parts: (string | null | undefined)[] = [txn.accountName];
+  parts.push(PERSON_TYPES.has(txn.type) ? txn.personName : txn.parentCategoryName);
+  if (txn.source !== 'MANUAL') parts.push(sourceLabel(txn.source));
+  return parts.filter(Boolean).join(' · ');
+};
+
+/**
+ * Line three: the note, if somebody wrote one.
+ *
+ * `description` first because it is the field the entry sheet labels বিবরণ and
+ * therefore the one people actually type in; `notes` is the longer second
+ * thought, and a row that has only that should still show it rather than
+ * pretend the transaction was never annotated.
+ */
+const noteOf = (txn: TransactionDto): string => txn.description?.trim() || txn.notes?.trim() || '';
+
+/**
+ * One line naming a row, for the places that can only have one: the undo toast
+ * and the receipt sheet's subtitle. The note leads here, and only here, because
+ * "মোছা হয়েছে: খরচ" identifies nothing — what a person recognises a row they
+ * just deleted by is the words they wrote on it.
+ */
+const labelOf = (txn: TransactionDto): string => noteOf(txn) || headingOf(txn);
 
 // --- filter state ----------------------------------------------------------
 
@@ -527,15 +618,21 @@ function TransactionsScreen() {
                         >
                           <span className="min-w-0 flex-1">
                             <span className="text-ink flex items-center gap-1.5">
-                              <span className="truncate text-sm">{labelOf(txn)}</span>
+                              <span className="truncate text-sm">{headingOf(txn)}</span>
                               <AttachmentBadge count={receipts.length} />
                             </span>
                             <span className="text-ink-muted block truncate text-xs">
-                              {txn.type === 'TRANSFER'
-                                ? `${txn.accountName} → ${txn.counterAccountName}`
-                                : [txn.accountName, txn.categoryName].filter(Boolean).join(' · ')}
-                              {txn.source !== 'MANUAL' ? ` · ${sourceLabel(txn.source)}` : ''}
+                              {whereOf(txn)}
                             </span>
+                            {/* Only tagged rows pay for their chips and only
+                                annotated rows pay for this line. A blank third
+                                line on every untouched row would push a screenful
+                                of khata down to two-thirds of a screenful. */}
+                            {noteOf(txn) ? (
+                              <span className="text-ink-muted/80 block truncate text-[11px]">
+                                {noteOf(txn)}
+                              </span>
+                            ) : null}
                           </span>
 
                           <span className="amount-col shrink-0 pl-2 text-right">
@@ -1177,7 +1274,16 @@ function TransactionDetail({
       </div>
       <div>
         <dt className="text-ink-muted text-xs">{t('entry.category', 'ক্যাটাগরি')}</dt>
-        <dd className="text-ink">{txn.categoryName ?? '—'}</dd>
+        {/* The whole path, unlike the row above, which has one line for it and
+            leads with the leaf. Here there is room, and "খাবার ও বাজার ›
+            রেস্টুরেন্ট" is the answer to both questions at once. */}
+        <dd className="text-ink break-words">
+          {txn.categoryName
+            ? txn.parentCategoryName
+              ? `${txn.parentCategoryName} › ${txn.categoryName}`
+              : txn.categoryName
+            : '—'}
+        </dd>
       </div>
       {/* Beside the category on purpose: one line says what the money went on,
           the next says who it was for. */}

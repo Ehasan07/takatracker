@@ -16,7 +16,9 @@ import {
   compareBalanceSheets,
   LIQUID_TYPES,
   nextDateKey,
+  nextDayOfMonthAfter,
   rollUpToParents,
+  statementPeriodFor,
   SYSTEM_ACCOUNT_KEYS,
   topWithRest,
   type TrendPoint,
@@ -252,6 +254,93 @@ export interface ChangesInNetWorth {
   closingMinor: number;
   /** `closingMinor − openingMinor`, stated so nobody has to subtract. */
   movementMinor: number;
+}
+
+/**
+ * What one credit card's last statement says is owed, and what it cannot say.
+ *
+ * ## What `statementMinor` is
+ *
+ * The balance on the card at the end of the statement day, derived from the
+ * ledger. It is **not** today's balance and it is **not** today's balance with
+ * later payments added back: a bill is a photograph of a moment, and either of
+ * those two would produce a figure that looks like the bank's and is not.
+ *
+ * ## What it is not, and cannot be
+ *
+ * These books hold what the household recorded. A real card statement also
+ * carries interest, the late fee, the annual fee, the 1% foreign-currency
+ * markup and any purchase the bank posted into a different cycle than the day
+ * it happened. None of that is here unless somebody typed it in, so this is
+ * *what your books say the statement should be*, which is a genuinely useful
+ * number for checking a bill and a dangerous one for paying it blind. The
+ * screen says so; `reports.cards.caveat` is that sentence.
+ *
+ * It also cannot say what the minimum payment is. That is a term of the card's
+ * contract, nothing in the schema records it, and inventing a percentage would
+ * be the worst kind of plausible.
+ */
+export interface CardStatementRow {
+  id: string;
+  name: string;
+  accountNumberMasked: string | null;
+  statementDayOfMonth: number | null;
+  dueDayOfMonth: number | null;
+  /** The day the last bill closed, or null when the card has no statement day. */
+  statementDate: string | null;
+  /** The bill before it. The period is `(previousStatementDate, statementDate]`. */
+  previousStatementDate: string | null;
+  /** When that bill falls due, when the card carries a payment day. */
+  dueDate: string | null;
+  /** Owed at the previous statement date — the figure this bill opened on. */
+  openingMinor: number;
+  /** What the period added to the debt: purchases, fees, anything recorded. */
+  purchasesMinor: number;
+  /** What the period took off it. */
+  paymentsMinor: number;
+  /**
+   * Owed at the statement date. Positive means money is owed, the same way the
+   * balance sheet's liabilities are. Null when no statement day is set, because
+   * with no day there is no statement and a number here would be a guess.
+   */
+  statementMinor: number | null;
+  /** Owed right now, from the same sum the balance sheet above it is built on. */
+  currentMinor: number;
+  /**
+   * What has happened since the bill was cut. Positive means the card has been
+   * used again; negative means some of the bill has been paid. Named rather
+   * than left for the reader to subtract, because the gap between the statement
+   * figure and today's is the thing that misleads people about card debt.
+   */
+  sinceStatementMinor: number | null;
+  creditLimitMinor: number;
+  /**
+   * Disclosed, never added to anything. An undrawn limit is money the bank
+   * still holds and may withdraw — not cash under IAS 7.6, not a resource the
+   * entity controls. IAS 7.50(a): a figure beside the sheet, not a line in it.
+   */
+  undrawnMinor: number;
+  /**
+   * `opening + purchases − payments === statement`, and the ledger-walk agrees
+   * with the balance the rest of the application uses.
+   *
+   * Sent on every row including the ones where it is true, for the reason
+   * `CashFlowStatement.reconciled` is: a field that only appears when things
+   * are broken is a field no client remembers to check.
+   */
+  reconciled: boolean;
+}
+
+export interface CardStatementsReport {
+  /** Today, in the workspace's timezone — the day `currentMinor` is true for. */
+  asOf: string;
+  cards: CardStatementRow[];
+  /** Owed across the cards that have a statement to report. */
+  statementTotalMinor: number;
+  /** Owed across every card right now. Agrees with the balance sheet's card lines. */
+  currentTotalMinor: number;
+  /** Cards that cannot produce a statement figure because no day is set. */
+  withoutStatementDay: number;
 }
 
 /**
@@ -672,6 +761,204 @@ export class ReportsService {
         balanceMinor: balances.get(a.id) ?? 0,
         assetKind: a.assetKind,
       }));
+  }
+
+  /**
+   * What each credit card's last statement says is owed.
+   *
+   * ## Why this is its own report and not a column on the balance sheet
+   *
+   * The balance sheet answers "what do I owe on this card **now**". A bill
+   * answers "what did I owe on the day the bank drew the line", and the two are
+   * different numbers for most of every month — a card cut on the 5th and used
+   * on the 6th, 8th and 11th shows a statement of ৳12,400 and a balance of
+   * ৳19,000 on the 12th. Paying the second figure is harmless; reading the
+   * second figure as the bill and being surprised by interest is not. So both
+   * are on the row, each labelled with the day it is true for.
+   *
+   * ## Where the dates come from
+   *
+   * `statementPeriodFor` in @hishab/core, which clamps through the same
+   * `clampDayToMonth` the payment reminders use. That shared clamp is the point:
+   * a card billed on the 31st closes on the 28th in February, and the Telegram
+   * reminder and this report must not disagree about which day that was.
+   *
+   * ## Two routes to today's balance, checked against each other
+   *
+   * `currentMinor` comes from `AccountsService.balances` — the one summing
+   * convention in the application, and the one the balance sheet on the same
+   * screen is built from, so this panel and that one cannot quietly differ. The
+   * dated figures come from walking the card's own entries, because a balance
+   * "as at" two arbitrary days is not something that aggregate can answer
+   * without being run twice per card. `reconciled` is where the two are made to
+   * agree: it holds only if the walk reaches the same total the aggregate does
+   * *and* the statement's own arithmetic closes.
+   *
+   * The walk fetches every entry on the card accounts rather than aggregating
+   * per date. A card carries one entry per transaction on it — a heavily used
+   * card is a few thousand rows after several years — and one indexed read that
+   * answers all three dates is cheaper than three aggregates per card, as well
+   * as being obviously consistent between them.
+   */
+  async cardStatements(ctx: TenantContext): Promise<CardStatementsReport> {
+    const asOf = toLocalDateString(new Date(), ctx.timezone);
+
+    /* Archived cards are fetched and then dropped only if they are settled. A
+       card somebody has closed and still owes ৳40,000 on is exactly the debt a
+       position panel exists to surface; a closed card at zero is furniture. */
+    const cards = await this.prisma.account.findMany({
+      where: { workspaceId: ctx.workspaceId, type: 'CREDIT_CARD', deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        accountNumberMasked: true,
+        statementDayOfMonth: true,
+        dueDayOfMonth: true,
+        creditLimitMinor: true,
+        isArchived: true,
+      },
+    });
+
+    if (cards.length === 0) {
+      return {
+        asOf,
+        cards: [],
+        statementTotalMinor: 0,
+        currentTotalMinor: 0,
+        withoutStatementDay: 0,
+      };
+    }
+
+    const ids = cards.map((c) => c.id);
+    const [balances, entries] = await Promise.all([
+      this.accounts.balances(ctx.workspaceId),
+      this.prisma.ledgerEntry.findMany({
+        where: {
+          workspaceId: ctx.workspaceId,
+          accountId: { in: ids },
+          transaction: { deletedAt: null },
+        },
+        select: {
+          accountId: true,
+          direction: true,
+          amountMinor: true,
+          transaction: { select: { date: true } },
+        },
+      }),
+    ]);
+
+    const byCard = new Map<string, { at: number; owedMinor: number }[]>();
+    for (const entry of entries) {
+      /* A credit card is credit-normal: a purchase credits it and what is owed
+         goes *up*. Signed as "owed" from here down, so every figure on the row
+         reads the way a bill does and nothing has to be flipped on the way out. */
+      const magnitude = minorToNumber(entry.amountMinor);
+      const owedMinor = entry.direction === 'CREDIT' ? magnitude : -magnitude;
+      const list = byCard.get(entry.accountId) ?? [];
+      list.push({ at: entry.transaction.date.getTime(), owedMinor });
+      byCard.set(entry.accountId, list);
+    }
+
+    const rows: CardStatementRow[] = [];
+
+    for (const card of cards) {
+      const own = byCard.get(card.id) ?? [];
+      /* The authority. `balances` signs an account the ledger's way, so what is
+         owed on a card is the negative of it — the same flip
+         `buildBalanceSheet` performs to put a liability on the sheet. */
+      const currentMinor = -(balances.get(card.id) ?? 0);
+      if (card.isArchived && currentMinor === 0) continue;
+
+      const period =
+        card.statementDayOfMonth === null
+          ? null
+          : statementPeriodFor(asOf, card.statementDayOfMonth);
+
+      /* Exclusive upper bounds: local midnight at the *start of the day after*
+         the statement day, in the workspace's timezone. `nextDateKey` then
+         `fromLocalDateString`, never `+ 86_400_000`, so the boundary survives an
+         offset change — the same two-step `balanceSheetLines` uses. */
+      const closeAt = period
+        ? fromLocalDateString(nextDateKey(period.statementDate), ctx.timezone).getTime()
+        : null;
+      const openAt = period
+        ? fromLocalDateString(nextDateKey(period.previousDate), ctx.timezone).getTime()
+        : null;
+
+      let walkedMinor = 0;
+      let openingMinor = 0;
+      let closingMinor = 0;
+      let purchasesMinor = 0;
+      let paymentsMinor = 0;
+
+      for (const entry of own) {
+        walkedMinor += entry.owedMinor;
+        if (openAt === null || closeAt === null) continue;
+        if (entry.at < openAt) openingMinor += entry.owedMinor;
+        if (entry.at < closeAt) closingMinor += entry.owedMinor;
+        if (entry.at >= openAt && entry.at < closeAt) {
+          if (entry.owedMinor > 0) purchasesMinor += entry.owedMinor;
+          else paymentsMinor += -entry.owedMinor;
+        }
+      }
+
+      const limit = minorToNumber(card.creditLimitMinor);
+      const statementMinor = period ? closingMinor : null;
+      const reconciled =
+        walkedMinor === currentMinor &&
+        (period === null || openingMinor + purchasesMinor - paymentsMinor === closingMinor);
+
+      if (!reconciled) {
+        /* Not thrown. A card whose walk disagrees with the aggregate is a
+           defect worth a log line and a flag on the row the screen can print;
+           it is not worth turning the whole reports page into a 500 for
+           somebody who wanted to see their land and their cash. */
+        this.logger.error(
+          `Card statement does not reconcile for account ${card.id} in workspace ` +
+            `${ctx.workspaceId}: walked ${walkedMinor}, balance ${currentMinor}, ` +
+            `opening ${openingMinor} + ${purchasesMinor} − ${paymentsMinor} vs ${closingMinor}`,
+        );
+      }
+
+      rows.push({
+        id: card.id,
+        name: card.name,
+        accountNumberMasked: card.accountNumberMasked,
+        statementDayOfMonth: card.statementDayOfMonth,
+        dueDayOfMonth: card.dueDayOfMonth,
+        statementDate: period?.statementDate ?? null,
+        previousStatementDate: period?.previousDate ?? null,
+        dueDate:
+          period && card.dueDayOfMonth !== null
+            ? nextDayOfMonthAfter(period.statementDate, card.dueDayOfMonth)
+            : null,
+        openingMinor,
+        purchasesMinor,
+        paymentsMinor,
+        statementMinor,
+        currentMinor,
+        sinceStatementMinor: statementMinor === null ? null : currentMinor - statementMinor,
+        creditLimitMinor: limit,
+        /* Never below zero: over the limit is a fact about the debt, not spare
+           room, and a negative "left to spend" would read as one. The same rule
+           `AccountsService.present` keeps, so the wallet and this agree. */
+        undrawnMinor: Math.max(0, limit - Math.max(0, currentMinor)),
+        reconciled,
+      });
+    }
+
+    return {
+      asOf,
+      cards: rows,
+      /* Only the cards that have a statement. A card with no statement day
+         contributes nothing here rather than contributing today's balance,
+         which would put a figure that is not on any bill into a total labelled
+         as being off the bills. `withoutStatementDay` is how the screen says so. */
+      statementTotalMinor: rows.reduce((sum, row) => sum + (row.statementMinor ?? 0), 0),
+      currentTotalMinor: rows.reduce((sum, row) => sum + row.currentMinor, 0),
+      withoutStatementDay: rows.filter((row) => row.statementDate === null).length,
+    };
   }
 
   /**

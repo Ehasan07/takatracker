@@ -6,9 +6,11 @@ import {
   buildTrend,
   compareBalanceSheets,
   nextDateKey,
+  nextDayOfMonthAfter,
   rollUpToParents,
   shiftMonthKey,
   signedEffectFor,
+  statementPeriodFor,
   topWithRest,
   withShares,
   type AccountBalanceRow,
@@ -461,5 +463,215 @@ describe('grouping assets by kind', () => {
   it('reports nothing when there are no assets to split', () => {
     // Not a row of zeroes. A household with no gold should not read about gold.
     expect(buildBalanceSheet([row('bank', 'BANK', 2_000_000)]).assetGroups).toEqual([]);
+  });
+});
+
+/**
+ * The three groups the position panel is built from — what is owed, what is
+ * owned, what is spendable — and the one property all three of them share.
+ *
+ * **A group total must equal the total it is a group of.** Everything else in
+ * this block is detail; that is the assertion. A breakdown whose parts do not
+ * reach its whole is worse than no breakdown, because the reader has no way to
+ * tell which of the two numbers to believe and will pick the smaller one.
+ */
+describe('position groups', () => {
+  const sheet = buildBalanceSheet(FIXTURE);
+
+  it('folds what is owed into kinds of debt, biggest first', () => {
+    /* গাড়ির ঋণ ৳150,000, ক্রেডিট কার্ড ৳12,400, দোকানের দেনা ৳2,500 — three
+       obligations that are priced, settled and worried about differently. */
+    expect(sheet.liabilityGroups).toEqual([
+      { type: 'LIABILITY', amountMinor: 15_000_000, count: 1 },
+      { type: 'CREDIT_CARD', amountMinor: 1_240_000, count: 1 },
+      { type: 'PAYABLE', amountMinor: 250_000, count: 1 },
+    ]);
+  });
+
+  it('reports what is owed as a positive figure in the groups too', () => {
+    /* The lines are flipped by `buildBalanceSheet`; the groups are built from
+       the lines, so a group can never come out signed the other way. */
+    const card = sheet.liabilityGroups.find((g) => g.type === 'CREDIT_CARD');
+    expect(card?.amountMinor).toBeGreaterThan(0);
+  });
+
+  it('liability groups add up to the liability total', () => {
+    const grouped = sheet.liabilityGroups.reduce((sum, g) => sum + g.amountMinor, 0);
+    expect(grouped).toBe(sheet.liabilitiesMinor);
+  });
+
+  it('folds spendable money by where it sits', () => {
+    expect(sheet.liquidGroups).toEqual([
+      { type: 'BANK', amountMinor: 4_500_000, count: 1 },
+      { type: 'MOBILE_WALLET', amountMinor: 330_050, count: 1 },
+      { type: 'CASH', amountMinor: 120_000, count: 1 },
+    ]);
+  });
+
+  it('liquid groups add up to the liquid total', () => {
+    const grouped = sheet.liquidGroups.reduce((sum, g) => sum + g.amountMinor, 0);
+    expect(grouped).toBe(sheet.liquidMinor);
+  });
+
+  it('keeps a DPS and a plot of land out of the spendable groups', () => {
+    /* Both are assets, neither pays this month's rent, and counting either as
+       liquid is how a screen tells somebody they have money they do not. */
+    const types = sheet.liquidGroups.map((g) => g.type);
+    expect(types).not.toContain('SAVINGS');
+    expect(types).not.toContain('ASSET');
+  });
+
+  it('states what the asset groups add up to rather than leaving it to be summed', () => {
+    const grouped = sheet.assetGroups.reduce((sum, g) => sum + g.amountMinor, 0);
+    expect(sheet.groupedAssetsMinor).toBe(grouped);
+    // জমি ৳500,000 is the only `ASSET` row in the fixture.
+    expect(sheet.groupedAssetsMinor).toBe(50_000_000);
+  });
+
+  it('does not confuse what is owned with what is merely non-current', () => {
+    /* The fixture holds a ৳60,000 DPS. It is non-current — it does not turn
+       into cash this year — and it is not a possession the way জমি is. If these
+       two ever came out equal the panel would be printing a header its own rows
+       could not reach. */
+    expect(sheet.nonCurrentAssetsMinor).toBe(56_000_000);
+    expect(sheet.groupedAssetsMinor).toBe(50_000_000);
+    expect(sheet.groupedAssetsMinor).toBeLessThan(sheet.nonCurrentAssetsMinor);
+  });
+
+  it('every group total lands inside the total it belongs to', () => {
+    /* The three headings on the panel, checked against the three figures on the
+       balance sheet above them. This is the whole contract of the screen. */
+    expect(sheet.liquidMinor).toBeLessThanOrEqual(sheet.assetsMinor);
+    expect(sheet.groupedAssetsMinor).toBeLessThanOrEqual(sheet.assetsMinor);
+    expect(sheet.liquidMinor + sheet.groupedAssetsMinor).toBeLessThanOrEqual(sheet.assetsMinor);
+    expect(sheet.assetsMinor - sheet.liabilitiesMinor).toBe(sheet.netWorthMinor);
+  });
+
+  it('leaves out a group the workspace has none of', () => {
+    // A household with no credit card should not read a ৳0 credit card line.
+    const cashOnly = buildBalanceSheet([
+      { id: 'c', name: 'নগদ', type: 'CASH', balanceMinor: 100_000 },
+    ]);
+    expect(cashOnly.liabilityGroups).toEqual([]);
+    expect(cashOnly.liquidGroups).toEqual([{ type: 'CASH', amountMinor: 100_000, count: 1 }]);
+  });
+
+  it('counts two accounts of one kind as one group of two', () => {
+    const twoCards = buildBalanceSheet([
+      { id: 'v', name: 'ভিসা', type: 'CREDIT_CARD', balanceMinor: -300_000 },
+      { id: 'm', name: 'মাস্টারকার্ড', type: 'CREDIT_CARD', balanceMinor: -120_000 },
+    ]);
+    expect(twoCards.liabilityGroups).toEqual([
+      { type: 'CREDIT_CARD', amountMinor: 420_000, count: 2 },
+    ]);
+    expect(twoCards.liabilitiesMinor).toBe(420_000);
+  });
+
+  it('holds even when a bank account is overdrawn', () => {
+    /* An overdrawn current account is a negative liquid balance, not a
+       liability line, and the group has to carry the sign rather than the
+       magnitude or the total would come out larger than the money. */
+    const overdrawn = buildBalanceSheet([
+      { id: 'c', name: 'নগদ', type: 'CASH', balanceMinor: 100_000 },
+      { id: 'b', name: 'ব্যাংক', type: 'BANK', balanceMinor: -40_000 },
+    ]);
+    expect(overdrawn.liquidGroups).toEqual([
+      { type: 'CASH', amountMinor: 100_000, count: 1 },
+      { type: 'BANK', amountMinor: -40_000, count: 1 },
+    ]);
+    const grouped = overdrawn.liquidGroups.reduce((sum, g) => sum + g.amountMinor, 0);
+    expect(grouped).toBe(overdrawn.liquidMinor);
+    expect(grouped).toBe(60_000);
+  });
+
+  it('adds nothing at all for an empty workspace', () => {
+    const empty = buildBalanceSheet([]);
+    expect(empty.liabilityGroups).toEqual([]);
+    expect(empty.liquidGroups).toEqual([]);
+    expect(empty.groupedAssetsMinor).toBe(0);
+  });
+});
+
+/**
+ * When one credit-card statement closed, and the one before it.
+ *
+ * The window is `(previousDate, statementDate]`. Both ends come off the same
+ * `clampDayToMonth` the payment reminders use, because the bill the reminder
+ * nags about and the figure this report shows have to be the same bill.
+ */
+describe('credit card statement periods', () => {
+  it('takes the statement day that has already passed this month', () => {
+    expect(statementPeriodFor('2026-08-17', 5)).toEqual({
+      statementDate: '2026-08-05',
+      previousDate: '2026-07-05',
+    });
+  });
+
+  it('falls back to last month when this month has not reached the day', () => {
+    expect(statementPeriodFor('2026-08-03', 25)).toEqual({
+      statementDate: '2026-07-25',
+      previousDate: '2026-06-25',
+    });
+  });
+
+  it('counts the statement day itself as closed', () => {
+    /* Somebody looking at their books on the 5th, on a card that cuts on the
+       5th, is asking about the bill just drawn — not the one before it. */
+    expect(statementPeriodFor('2026-08-05', 5).statementDate).toBe('2026-08-05');
+  });
+
+  it('clamps a day past the end of a short month rather than spilling over', () => {
+    // The 31st is the 28th in February 2026, not the 3rd of March.
+    expect(statementPeriodFor('2026-03-01', 31)).toEqual({
+      statementDate: '2026-02-28',
+      previousDate: '2026-01-31',
+    });
+    // And the 29th in a leap February.
+    expect(statementPeriodFor('2024-03-01', 31).statementDate).toBe('2024-02-29');
+  });
+
+  it('crosses a year end without a special case', () => {
+    expect(statementPeriodFor('2026-01-04', 20)).toEqual({
+      statementDate: '2025-12-20',
+      previousDate: '2025-11-20',
+    });
+  });
+
+  it('never returns a period that ends before it starts', () => {
+    for (const day of [1, 5, 15, 28, 29, 30, 31]) {
+      for (const today of ['2026-01-01', '2026-02-28', '2026-03-01', '2024-02-29', '2026-12-31']) {
+        const period = statementPeriodFor(today, day);
+        expect(period.previousDate < period.statementDate, `${today} on day ${day}`).toBe(true);
+        expect(period.statementDate <= today, `${today} on day ${day}`).toBe(true);
+      }
+    }
+  });
+
+  it('refuses anything that is not a ledger date', () => {
+    expect(() => statementPeriodFor('17-08-2026', 5)).toThrow(TypeError);
+  });
+});
+
+describe('when a statement falls due', () => {
+  it('takes the due day later in the same month', () => {
+    expect(nextDayOfMonthAfter('2026-08-05', 25)).toBe('2026-08-25');
+  });
+
+  it('rolls into next month when the due day has already passed', () => {
+    expect(nextDayOfMonthAfter('2026-08-25', 5)).toBe('2026-09-05');
+  });
+
+  it('rolls over rather than falling due the day the bill is drawn', () => {
+    /* A card whose statement and payment share a day of the month is asking to
+       be paid next month, not the instant the bill is cut. */
+    expect(nextDayOfMonthAfter('2026-08-05', 5)).toBe('2026-09-05');
+  });
+
+  it('clamps into a short month', () => {
+    expect(nextDayOfMonthAfter('2026-01-31', 31)).toBe('2026-02-28');
+  });
+
+  it('crosses a year end', () => {
+    expect(nextDayOfMonthAfter('2026-12-25', 10)).toBe('2027-01-10');
   });
 });

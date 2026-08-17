@@ -493,23 +493,6 @@ export default function AccountsPage() {
                   </span>
                   <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
                 </button>
-                {/* In its own money, with the ISO code spelled out beside it.
-                    The symbol alone is not enough: `$` is a dozen currencies
-                    and `¥` is two, so a bare `$500.00` on a screen whose totals
-                    are in taka is exactly the ambiguity that has to go. */}
-                {group === 'foreign' ? (
-                  <span className="amount-col shrink-0 pl-2 text-sm">
-                    <Money minor={account.balanceMinor} currency={account.currency} />
-                    <span className="text-ink-muted ml-1 text-xs">
-                      {account.currency.toUpperCase()}
-                    </span>
-                  </span>
-                ) : (
-                  <Money
-                    minor={account.balanceMinor}
-                    className="amount-col shrink-0 pl-2 text-sm"
-                  />
-                )}
                 {account.dueDayOfMonth ? (
                   <button
                     type="button"
@@ -569,6 +552,39 @@ export default function AccountsPage() {
                   >
                     <Scale className="h-4 w-4" aria-hidden />
                   </button>
+                )}
+                {/* Last on the row, and that is the whole point.
+                 *
+                 * The balance used to sit before the icons, and the icons a row
+                 * carries depend on what kind of account it is — a card adds the
+                 * mute bell, an asset adds the sell coin, everything else has
+                 * neither. So no two rows put their figure at the same distance
+                 * from the right edge, and a column of numbers that has to be
+                 * compared could not be: ৳12,345.67 on a cash row landed two
+                 * whole targets to the right of ৳9,00,000.00 on a land row.
+                 *
+                 * Moving it to the end costs nothing — no width has to be
+                 * reserved for the widest row — and it lands the figure exactly
+                 * under the section subtotal above it, which was already flush
+                 * right and had nothing beneath it to line up with.
+                 *
+                 * In its own money on a foreign account, with the ISO code
+                 * spelled out beside it. The symbol alone is not enough: `$` is
+                 * a dozen currencies and `¥` is two, so a bare `$500.00` on a
+                 * screen whose totals are in taka is exactly the ambiguity that
+                 * has to go. */}
+                {group === 'foreign' ? (
+                  <span className="amount-col shrink-0 pl-2 text-right text-sm">
+                    <Money minor={account.balanceMinor} currency={account.currency} />
+                    <span className="text-ink-muted ml-1 text-xs">
+                      {account.currency.toUpperCase()}
+                    </span>
+                  </span>
+                ) : (
+                  <Money
+                    minor={account.balanceMinor}
+                    className="amount-col shrink-0 pl-2 text-sm"
+                  />
                 )}
               </li>
             )),
