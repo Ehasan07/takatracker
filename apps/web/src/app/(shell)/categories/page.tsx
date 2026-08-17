@@ -175,7 +175,7 @@ export default function CategoriesPage() {
               className={
                 // 44px, like every other target on the screen.
                 kind === value
-                  ? 'press bg-surface text-ink min-h-11 rounded-md text-sm font-semibold shadow-sm'
+                  ? 'press bg-brand text-brand-contrast min-h-11 rounded-md text-sm font-semibold shadow-sm'
                   : 'press text-ink-muted min-h-11 rounded-md text-sm'
               }
             >

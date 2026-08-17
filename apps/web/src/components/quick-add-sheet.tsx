@@ -485,10 +485,21 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                 /* min-h-11, up from min-h-10. Two rows of tabs is two rows of
                  things to hit with a thumb, and 40px was already under the
                  44px floor when there was one. */
+                /* The selected tab is drawn in the brand colour, not in
+                   `bg-surface`.
+                   
+                   On the dark palettes `--hishab-surface` and
+                   `--hishab-greenbar` are two shades of the same near-black —
+                   #16201c on #1a241f — so a tab lifted by `bg-surface` and a
+                   `shadow-sm` was invisible: five tabs, none of them visibly
+                   chosen. `brand` and `brand-contrast` are defined as a legible
+                   pair in every one of the eight faces, which is what this
+                   needs. The weight and `aria-selected` carry it for anybody
+                   who cannot see the hue. */
                 className={cn(
                   tab.span,
                   kind === tab.kind
-                    ? 'press bg-surface text-ink min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
+                    ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
                     : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
                 )}
               >

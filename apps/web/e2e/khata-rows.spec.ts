@@ -320,4 +320,42 @@ test.describe('ধার, written from the khata', () => {
       );
     }
   });
+
+  test('the chosen tab is visibly chosen, in every theme', async ({ page }) => {
+    /* The regression this exists for: the selected tab was drawn with
+       `bg-surface` on a `bg-greenbar` strip, and on the dark palettes those two
+       tokens are #16201c and #1a241f — the same near-black. Five tabs, and no
+       way to see which one you were on. `aria-selected` was correct the whole
+       time, which is why nothing caught it.
+
+       So this asserts the *pixels*. It reads whichever tab reports
+       `aria-selected="true"` rather than clicking one by name: at 320px the
+       five tabs wrap onto two rows and a click by label is not reliably the
+       thing that ends up chosen — and what this test is about is the paint, not
+       the clicking. */
+    await signup(page);
+    await page.goto('/transactions');
+    await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+
+    const strip = sheet.getByRole('tablist');
+    const chosen = strip.locator('[aria-selected="true"]');
+    const unchosen = strip.locator('[aria-selected="false"]').first();
+    await expect(chosen).toHaveCount(1);
+
+    for (const theme of ['default', 'mono', 'contrast', 'calm']) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+
+      const bg = await chosen.evaluate((el) => getComputedStyle(el).backgroundColor);
+      const stripBg = await strip.evaluate((el) => getComputedStyle(el).backgroundColor);
+      const otherBg = await unchosen.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+      /* Not transparent — an unset background reads as the strip behind it,
+         which is the bug wearing a different hat. */
+      expect(bg, `theme ${theme}: the chosen tab must be painted`).not.toBe('rgba(0, 0, 0, 0)');
+      expect(bg, `theme ${theme}: the chosen tab must not look like the strip`).not.toBe(stripBg);
+      expect(bg, `theme ${theme}: the chosen tab must not look like the rest`).not.toBe(otherBg);
+    }
+  });
 });
