@@ -242,6 +242,19 @@ function ReviewForm({
     if (chosen && chosen.kind !== wantedKind) setForm((f) => ({ ...f, categoryId: '' }));
   }, [form.categoryId, wantedKind, categories.data]);
 
+  /* The counter-account picker lists everything except the account this message
+     is about — so changing *that* account to the one already picked as the
+     other side deletes the selected option out from under the select. The
+     browser then draws its first option, "আয় বা খরচ", while the state still
+     holds the id: the screen says one thing, the ledger would book another, and
+     the খাত box disappears under a label that says it should not. Clear it
+     instead, and the two can never disagree. */
+  React.useEffect(() => {
+    if (form.counterAccountId && form.counterAccountId === form.accountId) {
+      setForm((f) => ({ ...f, counterAccountId: '' }));
+    }
+  }, [form.accountId, form.counterAccountId]);
+
   const set =
     (key: keyof FormState) =>
     (e: { target: { value: string } }): void =>

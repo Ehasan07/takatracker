@@ -312,4 +312,43 @@ test.describe('a message that was really a transfer', () => {
     await page.goto('/transactions');
     await expect(page.getByTestId('ledger-list').getByText('নগদ → ইসলামী ডিপিএস')).toBeVisible();
   });
+
+  /**
+   * The screen saying one thing while the form holds another.
+   *
+   * The counter-account picker lists everything except the account the message
+   * is about, so changing *that* account to the one already chosen as the other
+   * side deletes the selected option. The browser falls back to drawing its
+   * first option — "আয় বা খরচ" — while the state still holds the id, and the
+   * খাত box stays hidden under a label that says it should not be. A reviewer
+   * reading that screen has no way to know what would be booked.
+   */
+  test('a counter account that collides with the account clears itself', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+    await page.goto('/accounts');
+    await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+    await page.getByLabel('নাম').fill('ইসলামী ডিপিএস');
+    await page.getByLabel('ধরন', { exact: true }).selectOption({ label: 'সঞ্চয় / ডিপিএস' });
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await forward(page, DPS_SMS);
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    await sheet.getByRole('radio', { name: 'টাকা ঢুকেছে' }).click();
+    await sheet.locator('#dr-account').selectOption({ label: 'ইসলামী ডিপিএস' });
+    await sheet.locator('#dr-counter').selectOption({ label: 'নগদ থেকে এসেছে' });
+    await expect(sheet.locator('#dr-category')).toHaveCount(0);
+
+    // Now make the account the same one. The other side can no longer be নগদ.
+    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+
+    // Back to an ordinary income draft, and the খাত box says so.
+    await expect(sheet.locator('#dr-counter')).toHaveValue('');
+    await expect(sheet.getByText('আয়ও নয়, খরচও নয়')).toHaveCount(0);
+    await expect(sheet.locator('#dr-category')).toBeVisible();
+  });
 });
