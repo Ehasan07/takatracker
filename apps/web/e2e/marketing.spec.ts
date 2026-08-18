@@ -140,6 +140,35 @@ test.describe('the public site', () => {
     await expect(table).toContainText('রসিদের ছবি');
   });
 
+  /**
+   * Every paid tier can actually be paid for.
+   *
+   * প্রো had a price, a feature list and no way to buy it: the payment link was
+   * drawn only on the card marked "recommended", which was never what that
+   * marking meant. A reader who wanted the top tier was left to guess that the
+   * button on the card beside it would somehow do.
+   *
+   * Asserted as a relationship rather than a count. How many plans exist is a
+   * row in the database an operator can add to — this suite's workspace has two
+   * and production has three — so a test that expects a number would go red the
+   * next time somebody priced a new tier, which is exactly the moment it should
+   * be checking that the new tier got a button.
+   */
+  test('every paid plan carries its own payment link, naming itself', async ({ page }) => {
+    await page.goto('/pricing');
+
+    /* One link per paid card. Counted off the "/ মাস" price line, which every
+       paid card prints and the free card does not — a plan without a price is
+       a plan with nothing to pay. */
+    const paidCards = await page.getByText('/ মাস').count();
+    const payLinks = page.getByRole('link', { name: 'বিকাশ / কার্ডে পেমেন্ট করুন' });
+    expect(paidCards).toBeGreaterThan(0);
+    expect(await payLinks.count()).toBe(paidCards);
+
+    // And the note under each says which package the payment switches on.
+    await expect(page.getByText('প্রিমিয়াম চালু করে দেব')).toBeVisible();
+  });
+
   test('gets from the landing page to a real account', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'ফ্রি অ্যাকাউন্ট খুলুন' }).first().click();

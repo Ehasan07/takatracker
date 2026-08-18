@@ -165,8 +165,10 @@ const COPY: Record<'bn' | 'en', Copy> = {
     freeCta: 'ফ্রি শুরু করুন',
     premiumCta: 'ফ্রি দিয়ে শুরু করুন',
     premiumBadge: 'সব সীমাহীন',
+    /* `{plan}` is filled in per card — the note used to say “প্রিমিয়াম” on
+       every tier, which on the প্রো card promised the wrong package. */
     premiumNote:
-      'পেমেন্টের পর আমরা আপনার অ্যাকাউন্টে প্রিমিয়াম চালু করে দেব — ইনভয়েসটি কে দিয়েছেন সেটি স্বয়ংক্রিয়ভাবে মিলিয়ে নেওয়ার ব্যবস্থা এখনো হয়নি, তাই কাজটি হাতে হয়।',
+      'পেমেন্টের সময় প্যাকেজের নাম লিখে দিন। পেমেন্টের পর আমরা আপনার অ্যাকাউন্টে {plan} চালু করে দেব — ইনভয়েসটি কে দিয়েছেন সেটি স্বয়ংক্রিয়ভাবে মিলিয়ে নেওয়ার ব্যবস্থা এখনো হয়নি, তাই কাজটি হাতে হয়।',
     payNow: 'বিকাশ / কার্ডে পেমেন্ট করুন',
     helpLabel: 'সাহায্য দরকার?',
     sideBySide: 'পাশাপাশি',
@@ -209,7 +211,7 @@ const COPY: Record<'bn' | 'en', Copy> = {
     premiumCta: 'Start on the free plan',
     premiumBadge: 'Everything unlimited',
     premiumNote:
-      'After paying we switch premium on for your account — matching an invoice to an account automatically is not built yet, so it is done by hand.',
+      'Write the plan name on the invoice. After paying we switch {plan} on for your account — matching an invoice to an account automatically is not built yet, so it is done by hand.',
     payNow: 'Pay by bKash or card',
     helpLabel: 'Need help?',
     sideBySide: 'Side by side',
@@ -250,7 +252,16 @@ export async function Pricing({ content, locale }: { content: SiteContent; local
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <div className="grid gap-4 lg:grid-cols-2">
+        {/* One column per plan on a wide screen, rather than a fixed two.
+            With three plans the fixed grid dropped প্রো onto a second row on
+            its own, beside an empty half — which reads as an afterthought
+            rather than as the top tier it is. Below `lg` they stack, which is
+            the only honest way to compare three feature lists on a phone. */}
+        <div
+          className={`grid gap-4 ${
+            plans.length >= 3 ? 'md:grid-cols-2 lg:grid-cols-3' : 'lg:grid-cols-2'
+          }`}
+        >
           {plans.map((plan) => (
             <PlanCard
               key={plan.code}
@@ -372,13 +383,18 @@ function PlanCard({
         {free ? t.freeCta : t.premiumCta}
         <ArrowRight className="h-4 w-4" aria-hidden />
       </Link>
-      {highlight ? (
+      {/* Every paid tier, not only the recommended one. প্রো had a price, a
+          feature list and no way to buy it — a reader who wanted the top tier
+          had to guess that the button on the card beside it would somehow do.
+          `highlight` marks which plan is suggested; it was never meant to mark
+          which one takes money. */}
+      {!free ? (
         <>
           {/* The invoice is hosted by SSLCommerz, so no card detail ever
               reaches this application and there is no PCI surface here to get
               wrong. What the link cannot do is tell us who paid — so the note
-              says premium is switched on by hand rather than implying the plan
-              flips itself the moment the payment clears. */}
+              says the plan is switched on by hand rather than implying it flips
+              itself the moment the payment clears. */}
           <a
             href={PAYMENT_URL}
             target="_blank"
@@ -387,7 +403,9 @@ function PlanCard({
           >
             {t.payNow}
           </a>
-          <p className="text-ink-muted mt-2 text-center text-xs">{t.premiumNote}</p>
+          <p className="text-ink-muted mt-2 text-center text-xs">
+            {t.premiumNote.replace('{plan}', plan.name)}
+          </p>
           <p className="text-ink-muted mt-1 text-center text-xs">
             {t.helpLabel}{' '}
             <a href={CONTACT.hotlineHref} className="text-brand underline">
