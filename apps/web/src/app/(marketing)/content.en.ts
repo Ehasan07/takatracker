@@ -78,6 +78,18 @@ const GROUPS: FeatureGroup[] = [
         route: '/accounts',
       },
       {
+        title: 'Property and vehicles, kept apart',
+        titleEn: 'A plot of land is not spending money',
+        body: 'Land, a flat, a car, gold — what you paid beside what it is worth now, and never mixed in with the money in your bank. Asking how much you have on hand does not get answered with the value of a plot of land.',
+        route: '/assets',
+      },
+      {
+        title: 'Selling an asset',
+        titleEn: 'Only the gain is income',
+        body: 'The proceeds land in the account that received them, and only the amount above what you paid is income. Sell for less and the shortfall is a loss. What you have sold stays on its own list rather than disappearing.',
+        route: '/assets',
+      },
+      {
         title: 'Categories and sub-categories',
         titleEn: 'A tree, not a flat list',
         body: 'Twenty-one categories seeded, as many sub-categories under them as you need. Reports roll children up into the parent.',
@@ -201,6 +213,12 @@ const GROUPS: FeatureGroup[] = [
         route: '/savings',
       },
       {
+        title: 'Profit where profit belongs',
+        titleEn: 'A DPS deposit is a transfer, not an expense',
+        body: 'Record a scheme’s profit as income on the transactions screen, tagged to the scheme it came from. Paying into a DPS is not spending — one asset simply becomes another — so it is recorded as a transfer, and the monthly report keeps the two apart.',
+        route: '/savings',
+      },
+      {
         title: 'Insurance policies',
         titleEn: 'Premiums and renewals',
         body: 'When the premium is due, how much, which one is outstanding. Policy number and term in one place.',
@@ -224,6 +242,18 @@ const GROUPS: FeatureGroup[] = [
         title: 'Income, expense and cash flow',
         titleEn: 'By month, category or account',
         body: 'Compare with last month in one click.',
+        route: '/reports',
+      },
+      {
+        title: 'Income, spending and savings together',
+        titleEn: 'The third figure no statement can give',
+        body: 'What came in, what went out, and what actually went into savings — three figures side by side, month by month. The savings rate is the share of income you put away, not what happened to be left over; money left over can simply be sitting in a wallet.',
+        route: '/reports',
+      },
+      {
+        title: 'Charts',
+        titleEn: 'Readable without relying on colour',
+        body: 'Category shares, monthly trends, income against spending — a picture beside the figures. Colour is never the only signal, so they read on a colour-blind screen too.',
         route: '/reports',
       },
       {
@@ -308,6 +338,12 @@ const GROUPS: FeatureGroup[] = [
         route: '/import',
       },
       {
+        title: 'Bringing an old app across',
+        titleEn: 'Wallet by BudgetBakers, balance for balance',
+        body: 'Your whole history from Wallet by BudgetBakers — accounts, categories, transfers, years of transactions. Whatever cannot be matched comes back as a spreadsheet, and every balance is checked against the old app’s own figure.',
+        route: '/settings',
+      },
+      {
         title: 'Receipt attachments',
         titleEn: 'Photograph the paper',
         body: 'Attach a receipt to a transaction. Unlimited on premium.',
@@ -355,6 +391,10 @@ const COMING: { title: string; body: string }[] = [
   {
     title: 'Reading bank SMS directly',
     body: 'Drafts straight from bKash, Nagad and bank messages. The pipeline is built; the per-bank templates are not.',
+  },
+  {
+    title: 'Budgets',
+    body: 'A monthly limit per category, and a warning before you pass it. You can see the pace of your spending today, but you cannot yet set a ceiling on it.',
   },
   {
     title: 'Android and iOS store apps',
