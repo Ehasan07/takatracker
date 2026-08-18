@@ -35,10 +35,23 @@ export const metadata = pageMetadata({
   ],
 });
 
-/* Revalidated rather than static: an operator can change a price in the admin
-   panel without a deployment, and an hour is short enough that the page is
-   never meaningfully wrong while still costing one request an hour. */
-export const revalidate = 3600;
+/**
+ * Rendered per request, not prerendered.
+ *
+ * This page's entire content is the plan catalogue, and the catalogue is a
+ * table an operator edits in the admin panel. It was `revalidate = 3600`, which
+ * sounds harmless and is not: the static prerender happens during the build,
+ * the build runs *before* the new API is listening, so every deploy baked the
+ * `FALLBACK` list below into the live page — and served it for an hour. The
+ * fallback has two plans; the catalogue has three. প্রো shipped, was priced, and
+ * was invisible on the page that sells it.
+ *
+ * A render per view is the right price for that: the API is on localhost, the
+ * page is small, and a pricing page that is quietly a deploy-old is worse than
+ * one that costs a request. `FALLBACK` stays for the case it was written for —
+ * the API being down when somebody actually asks.
+ */
+export const dynamic = 'force-dynamic';
 
 interface PlanFeature {
   key: string;
@@ -88,7 +101,11 @@ const FALLBACK: PlanView[] = [
 async function fetchPlans(): Promise<PlanView[]> {
   const base = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000';
   try {
-    const res = await fetch(`${base}/v1/entitlements/plans`, { next: { revalidate } });
+    /* A minute of cache, not an hour: long enough that a burst of visitors is
+       one request, short enough that an operator who just changed a price sees
+       it. The page itself is dynamic — see the note at the top — so this is the
+       only thing deciding how stale a figure can be. */
+    const res = await fetch(`${base}/v1/entitlements/plans`, { next: { revalidate: 60 } });
     if (!res.ok) return FALLBACK;
     const body = (await res.json()) as PlanView[];
     return Array.isArray(body) && body.length > 0 ? body : FALLBACK;

@@ -522,7 +522,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'How do I pay?',
-    a: 'Premium is ৳350 a month or ৳3600 a year, saving ৳600. Online payment is not live yet — contact us and we will enable premium on your account.',
+    a: 'Premium is ৳350 a month (৳3600 a year, saving ৳600) and Pro is ৳499 a month. Each paid plan has its own payment button on the pricing page — pay by bKash or card. Write the plan name on the invoice: matching a payment to an account is still done by hand, and we switch the plan on once it clears.',
   },
 ];
 

@@ -14,7 +14,10 @@ export const metadata = pageMetadata({
 
 /* Same revalidation as the Bengali page: both read the prices the API enforces
    rather than carrying their own copy. */
-export const revalidate = 3600;
+/* Same reason as the Bengali page: the catalogue is live data and a
+   prerender bakes in whatever the API answered during the build — which is
+   nothing, because the build runs before the API restarts. */
+export const dynamic = 'force-dynamic';
 
 export default function EnglishPricingPage() {
   return <Pricing content={CONTENT_EN} locale="en" />;

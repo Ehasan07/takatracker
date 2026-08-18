@@ -302,7 +302,9 @@ test.describe('the public site', () => {
     await expect(page.getByRole('link', { name: 'LinkedIn' })).toBeVisible();
 
     await page.goto('/pricing');
-    const pay = page.getByRole('link', { name: /পেমেন্ট করুন/ });
+    /* `.first()` since every paid plan carries one — that they all exist is
+       asserted by its own test above; this one is about the link being safe. */
+    const pay = page.getByRole('link', { name: /পেমেন্ট করুন/ }).first();
     await expect(pay).toBeVisible();
     // Hosted invoice, opened safely — `noopener` or the new tab keeps a live
     // handle back into this one.
