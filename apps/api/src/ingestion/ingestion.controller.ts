@@ -173,6 +173,17 @@ const acceptDraftSchema = z.object({
   direction: z.enum(DIRECTIONS).optional(),
   payee: z.string().max(200).nullable().optional(),
   accountId: cuid.optional(),
+  /**
+   * The account on the *other* side, when this was a transfer between two of
+   * the reviewer's own accounts.
+   *
+   * Absent for the ordinary case, and there is deliberately no way for the
+   * parser to fill it: a bank message sees one account and cannot know whether
+   * the money it describes came from a wallet of yours or from your employer.
+   * Supplying it says "this was not income or spending" and the accept books a
+   * TRANSFER instead — with no খাত, because there is nothing for one to mean.
+   */
+  counterAccountId: cuid.optional(),
   categoryId: cuid.optional(),
   description: z.string().max(500).optional(),
   notes: z.string().max(2000).optional(),

@@ -84,6 +84,8 @@ export interface AcceptDraftBody {
   direction?: Direction;
   payee?: string | null;
   accountId?: string;
+  /** The other side, when the reviewer says this was a transfer of their own money. */
+  counterAccountId?: string;
   categoryId?: string;
   description?: string;
   notes?: string;

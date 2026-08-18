@@ -258,3 +258,58 @@ test.describe('a draft that was not in taka', () => {
     await expect(sheet.getByText('বার্তাটি অন্য মুদ্রার')).toHaveCount(0);
   });
 });
+
+/**
+ * The half a bank message cannot see.
+ *
+ * A DPS alert says ৳10,000 arrived and has no way to say it left a bKash wallet
+ * a second earlier — the bank does not know. Accepted as income it invents
+ * ৳10,000 of earnings every month, which is how this ledger came to hold
+ * ৳66,98,616 of savings deposits filed as spending. So the reviewer has to be
+ * able to name the other side on the screen, and naming it has to move money
+ * rather than conjure it.
+ */
+test.describe('a message that was really a transfer', () => {
+  const DPS_SMS =
+    'প্রিয় গ্রাহক, 18-AUG-2026 এ আপনার মাসিক ইসলামী ডিপিএস অ্যাকাউন্ট 1783060406070 ' +
+    'র মাসিক কিস্তি 10000 টাকা জমা হয়েছে। ধন্যবাদ।';
+
+  test('books it between two accounts, with no খাত and no income', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    // The other end: the DPS the money lands in.
+    await page.goto('/accounts');
+    await page.getByRole('button', { name: 'নতুন', exact: true }).click();
+    await page.getByLabel('নাম').fill('ইসলামী ডিপিএস');
+    await page.getByLabel('ধরন', { exact: true }).selectOption({ label: 'সঞ্চয় / ডিপিএস' });
+    await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    await forward(page, DPS_SMS);
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    await sheet.getByRole('radio', { name: 'টাকা ঢুকেছে' }).click();
+    await sheet.locator('#dr-account').selectOption({ label: 'ইসলামী ডিপিএস' });
+
+    // Until the other side is named this is an ordinary income draft.
+    await expect(sheet.locator('#dr-category')).toBeVisible();
+
+    await sheet.locator('#dr-counter').selectOption({ label: 'নগদ থেকে এসেছে' });
+    /* The খাত box goes, because there is no longer a question it answers: one
+       of your accounts became another and nothing was earned. */
+    await expect(sheet.locator('#dr-category')).toHaveCount(0);
+    await expect(sheet.getByText('আয়ও নয়, খরচও নয়')).toBeVisible();
+
+    await sheet.getByRole('button', { name: 'খাতায় যোগ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // ৳10,000 out of one and into the other, and the khata calls it a transfer.
+    await page.goto('/accounts');
+    await expect(page.getByText('৳10,000.00').first()).toBeVisible({ timeout: 15_000 });
+    await page.goto('/transactions');
+    await expect(page.getByTestId('ledger-list').getByText('নগদ → ইসলামী ডিপিএস')).toBeVisible();
+  });
+});

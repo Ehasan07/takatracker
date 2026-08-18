@@ -52,6 +52,8 @@ interface FormState {
   direction: '' | Direction;
   payee: string;
   accountId: string;
+  /** Set only when this was a move between two of the reviewer's own accounts. */
+  counterAccountId: string;
   categoryId: string;
   description: string;
   notes: string;
@@ -203,6 +205,10 @@ function ReviewForm({
     direction: draft.direction ?? '',
     payee: draft.payee ?? '',
     accountId: draft.accountId ?? sticky.accountId,
+    /* Never carried over and never guessed. The parser has no way to know it,
+       and a stuck-on counter-account would silently turn the next unrelated
+       message into a transfer. */
+    counterAccountId: '',
     categoryId: draft.categoryId ?? sticky.categoryId,
     description: '',
     notes: '',
@@ -224,7 +230,8 @@ function ReviewForm({
   const formRef = React.useRef<HTMLFormElement>(null);
 
   const liveAccounts = (accounts.data ?? []).filter((account) => !account.isArchived);
-  const wantedKind = categoryKindFor(form.direction);
+  const isTransfer = form.counterAccountId !== '';
+  const wantedKind = isTransfer ? null : categoryKindFor(form.direction);
 
   /* A category carried over from an expense must not survive a switch to
      income: the server would refuse it, and leaving it on screen would make
@@ -341,8 +348,12 @@ function ReviewForm({
       setError('অ্যাকাউন্ট নির্বাচন করুন');
       return;
     }
-    if (!form.categoryId) {
+    if (!isTransfer && !form.categoryId) {
       setError('ক্যাটাগরি নির্বাচন করুন');
+      return;
+    }
+    if (isTransfer && form.counterAccountId === form.accountId) {
+      setError('একই অ্যাকাউন্টে সরানো যায় না — অন্য একটি বেছে নিন');
       return;
     }
 
@@ -362,7 +373,12 @@ function ReviewForm({
      * merged result can have them at all. */
     accept.mutate({
       accountId: form.accountId,
-      categoryId: form.categoryId,
+      /* Sent together or not at all: a transfer has no খাত, and sending a
+         leftover one would be asking the server to book two contradictory
+         things. */
+      ...(isTransfer
+        ? { counterAccountId: form.counterAccountId }
+        : { categoryId: form.categoryId }),
       ...(form.date === draft.date ? {} : { date: form.date }),
       ...(amountMinor === draft.amountMinor ? {} : { amountMinor }),
       ...(form.direction === draft.direction ? {} : { direction: form.direction }),
@@ -555,23 +571,60 @@ function ReviewForm({
           </Select>
         </EvidenceField>
 
-        <EvidenceField label="খাত" htmlFor="dr-category">
-          <Select
-            id="dr-category"
-            value={form.categoryId}
-            onChange={set('categoryId')}
-            disabled={!pending || busy || wantedKind === null}
-          >
-            <option value="">{wantedKind === null ? 'আগে দিক বেছে নিন' : 'খাত বেছে নিন'}</option>
-            {/* Nothing at all until the direction says which half of the tree
-                this is. The box is disabled in that state anyway; listing both
-                kinds behind the disable would only mean the wrong one flashes
-                past on the way to the right one. */}
-            {wantedKind === null ? null : (
-              <CategoryOptions categories={categories.data} kind={wantedKind} />
-            )}
+        {/* The one field on this screen that is pure human knowledge.
+            A DPS message says ৳10,000 arrived and cannot say it came from a
+            bKash wallet — the bank does not know, and the parser has nothing to
+            read. Left empty this behaves as it always has. Filled in, the খাত
+            box goes away: moving money between two of your own accounts is not
+            spending, and a DPS instalment booked as income invents ৳10,000 of
+            earnings a month that nobody can later explain. */}
+        <EvidenceField
+          label={t('inbox.counterAccount', 'নিজের অন্য কোন হিসাবে?')}
+          htmlFor="dr-counter"
+        >
+          <Select id="dr-counter" value={form.counterAccountId} onChange={set('counterAccountId')}>
+            <option value="">
+              {t('inbox.counterNone', 'আয় বা খরচ — নিজের হিসাবের মধ্যে সরানো নয়')}
+            </option>
+            {liveAccounts
+              .filter((account) => account.id !== form.accountId)
+              .map((account) => (
+                <option key={account.id} value={account.id}>
+                  {form.direction === 'IN'
+                    ? t('inbox.counterFrom', '{name} থেকে এসেছে').replace('{name}', account.name)
+                    : t('inbox.counterTo', '{name}-এ গেছে').replace('{name}', account.name)}
+                </option>
+              ))}
           </Select>
+          {isTransfer ? (
+            <p className="text-ink-muted mt-1 text-xs">
+              {t(
+                'inbox.counterHint',
+                'খাতায় স্থানান্তর হিসেবে বসবে — আয়ও নয়, খরচও নয়, তাই খাত লাগবে না। মোট সম্পদ বদলাবে না, শুধু টাকাটা এক হিসাব থেকে আরেক হিসাবে যাবে।',
+              )}
+            </p>
+          ) : null}
         </EvidenceField>
+
+        {isTransfer ? null : (
+          <EvidenceField label="খাত" htmlFor="dr-category">
+            <Select
+              id="dr-category"
+              value={form.categoryId}
+              onChange={set('categoryId')}
+              disabled={!pending || busy || wantedKind === null}
+            >
+              <option value="">{wantedKind === null ? 'আগে দিক বেছে নিন' : 'খাত বেছে নিন'}</option>
+              {/* Nothing at all until the direction says which half of the tree
+                  this is. The box is disabled in that state anyway; listing both
+                  kinds behind the disable would only mean the wrong one flashes
+                  past on the way to the right one. */}
+              {wantedKind === null ? null : (
+                <CategoryOptions categories={categories.data} kind={wantedKind} />
+              )}
+            </Select>
+          </EvidenceField>
+        )}
 
         {stickyApplied && pending ? (
           <p className="text-ink-muted -mt-2 text-xs">

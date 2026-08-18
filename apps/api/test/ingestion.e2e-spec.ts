@@ -405,6 +405,70 @@ describe('ingestion', () => {
     );
   });
 
+  /**
+   * The half a bank message can never see.
+   *
+   * "১০,০০০ জমা হয়েছে" in a DPS is true and useless on its own: it says the
+   * money arrived and cannot say it left a bKash wallet ten seconds earlier.
+   * Accepted as income it invents ৳10,000 of earnings a month — the exact
+   * defect this ledger carried ৳66,98,616 of before it was found — so the
+   * reviewer has to be able to name the other side, and naming it must move
+   * money between the two accounts rather than conjure it.
+   */
+  it('books a transfer when the reviewer names the other account', async () => {
+    const ws = await workspace();
+    const dps = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(ws.user))
+      .send({ name: 'ডিপিএস', type: 'SAVINGS' })
+      .expect(201);
+    const received = await post(ws).expect(200);
+
+    const accepted = await ctx
+      .http()
+      .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+      .set(auth(ws.user))
+      // No categoryId at all: a transfer has no খাত to be filed under.
+      .send({ accountId: ws.cashId, counterAccountId: dps.body.id as string })
+      .expect(200);
+    expect(accepted.body.status).toBe('ACCEPTED');
+
+    const transaction = await ctx
+      .http()
+      .get(`/v1/transactions/${accepted.body.transactionId as string}`)
+      .set(auth(ws.user))
+      .expect(200);
+    expect(transaction.body.type).toBe('TRANSFER');
+
+    /* The message read OUT, so the account it was about pays and the one the
+       reviewer named receives. Both balances move by the same ৳1,250.50 and
+       nothing reaches an income or expense nominal. */
+    const accounts = await ctx.http().get('/v1/accounts').set(auth(ws.user)).expect(200);
+    const byId = (id: string) => accounts.body.find((a: { id: string }) => a.id === id);
+    expect(byId(ws.cashId).balanceMinor).toBe(5_000_000 - 125_050);
+    expect(byId(dps.body.id as string).balanceMinor).toBe(125_050);
+
+    const statement = await ctx
+      .http()
+      .get('/v1/reports/income-statement?from=2020-01-01&to=2030-12-31')
+      .set(auth(ws.user))
+      .expect(200);
+    expect(statement.body.incomeMinor).toBe(0);
+    expect(statement.body.expenseMinor).toBe(0);
+  });
+
+  it('refuses to send money to the account it came from', async () => {
+    const ws = await workspace();
+    const received = await post(ws).expect(200);
+    await ctx
+      .http()
+      .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+      .set(auth(ws.user))
+      .send({ accountId: ws.cashId, counterAccountId: ws.cashId })
+      .expect(400);
+  });
+
   it('refuses to apply the same draft twice', async () => {
     const ws = await workspace();
     const received = await post(ws).expect(200);

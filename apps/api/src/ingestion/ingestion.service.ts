@@ -1030,24 +1030,61 @@ export class IngestionService {
     const accountId = input.accountId ?? draft.accountId;
     if (!accountId) throw new BadRequestException('অ্যাকাউন্ট নির্বাচন করুন');
 
-    /* Required, like the manual path. An ingested expense with no category is a
-     * hole in every report the user will later look at, and the moment of
-     * review is the cheapest moment to fill it. */
-    const categoryId = input.categoryId ?? draft.categoryId;
-    if (!categoryId) throw new BadRequestException('ক্যাটাগরি নির্বাচন করুন');
+    /**
+     * The other side, when the reviewer says there is one.
+     *
+     * A message only ever sees its own account: "১০,০০০ জমা হয়েছে" in a DPS
+     * says nothing about the wallet it left. So the parser cannot propose this
+     * and never tries — it is the one field on the review screen that is pure
+     * human knowledge, and supplying it is what turns an accept from income or
+     * expense into a transfer.
+     *
+     * Getting this wrong is expensive in a way a mis-categorised expense is
+     * not: a DPS instalment booked as income invents ৳10,000 of earnings every
+     * month, and five years of that is a net worth nobody can explain.
+     */
+    const counterAccountId = input.counterAccountId ?? null;
+    const isTransfer = counterAccountId !== null;
+    if (isTransfer && counterAccountId === accountId) {
+      throw new BadRequestException('একই অ্যাকাউন্টে সরানো যায় না — অন্য একটি বেছে নিন');
+    }
 
-    await this.assertOwnership(ctx.workspaceId, accountId, categoryId);
+    /* Required for income and expense, the way the manual path requires it: an
+     * ingested expense with no category is a hole in every report the user will
+     * later look at, and review is the cheapest moment to fill it. Never
+     * required for a transfer, which has no খাত to belong to — one of your
+     * accounts became another, and nothing was earned or spent. */
+    const categoryId = isTransfer ? null : (input.categoryId ?? draft.categoryId);
+    if (!isTransfer && !categoryId) throw new BadRequestException('ক্যাটাগরি নির্বাচন করুন');
+
+    await this.assertOwnership(
+      ctx.workspaceId,
+      isTransfer ? [accountId, counterAccountId] : [accountId],
+      categoryId,
+    );
 
     const payee = input.payee === undefined ? draft.payee : input.payee;
-    /* One SMS cannot tell a transfer between your own accounts from income or
-     * expense — it only ever sees one side. The reviewer can retype it as a
-     * transfer afterwards on the transaction itself. */
-    const type = direction === 'IN' ? 'INCOME' : 'EXPENSE';
+    const type = isTransfer ? 'TRANSFER' : direction === 'IN' ? 'INCOME' : 'EXPENSE';
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
-    const entries = expandSimpleTransaction(
-      { type, amountMinor, accountId, categoryId, currency: CURRENCY },
-      system,
-    );
+    /* `direction` keeps meaning what it always meant — which way the money went
+       for the account the *message* was about — and that is what decides which
+       end of the transfer this account is. A DPS SMS reading "জমা হয়েছে" is
+       IN, so the DPS receives and the wallet the reviewer named pays. */
+    const entries = isTransfer
+      ? expandSimpleTransaction(
+          {
+            type: 'TRANSFER',
+            amountMinor,
+            accountId: direction === 'IN' ? counterAccountId : accountId,
+            counterAccountId: direction === 'IN' ? accountId : counterAccountId,
+            currency: CURRENCY,
+          },
+          system,
+        )
+      : expandSimpleTransaction(
+          { type, amountMinor, accountId, categoryId: categoryId ?? undefined, currency: CURRENCY },
+          system,
+        );
     // Belt and braces: the engine says it balances, the DB trigger will too.
     assertBalanced(entries);
 
@@ -1231,18 +1268,24 @@ export class IngestionService {
 
   private async assertOwnership(
     workspaceId: string,
-    accountId: string,
-    categoryId: string,
+    accountIds: readonly string[],
+    categoryId: string | null,
   ): Promise<void> {
-    const account = await this.prisma.account.findFirst({
-      where: { id: accountId, workspaceId, deletedAt: null, systemKey: null },
-      select: { id: true, isArchived: true },
-    });
-    if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
-    if (account.isArchived) {
-      throw new BadRequestException('আর্কাইভ করা অ্যাকাউন্টে লেনদেন করা যায় না');
+    for (const accountId of accountIds) {
+      const account = await this.prisma.account.findFirst({
+        where: { id: accountId, workspaceId, deletedAt: null, systemKey: null },
+        select: { id: true, isArchived: true },
+      });
+      if (!account) throw new NotFoundException('অ্যাকাউন্ট পাওয়া যায়নি');
+      if (account.isArchived) {
+        throw new BadRequestException('আর্কাইভ করা অ্যাকাউন্টে লেনদেন করা যায় না');
+      }
     }
 
+    /* Null for a transfer, and not an oversight: moving money between two of
+       your own accounts is not spending, so there is no খাত it could belong
+       to. See the accept path, which is where that decision is made. */
+    if (categoryId === null) return;
     const category = await this.prisma.category.count({
       where: { id: categoryId, workspaceId, deletedAt: null },
     });
