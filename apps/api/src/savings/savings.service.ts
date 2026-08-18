@@ -572,6 +572,87 @@ export class SavingsService {
    * and turning a ledger refusal into a 402 would tell somebody their deposit
    * did not go through when the schedule says it did.
    */
+  /**
+   * A transfer that has already been booked, matched to the instalment it pays.
+   *
+   * The savings schedule and the ledger are two records of one fact, and until
+   * now only one road joined them: the "জমা দিলাম" button, which writes both.
+   * Money that reached a DPS by any other road — an SMS the reviewer accepted,
+   * an entry typed on the transactions screen — left the schedule untouched.
+   * The saver then sees a ৳10,000 transfer in the khata *and* an instalment
+   * still asking to be paid, and pressing the button moves the money a second
+   * time. That is the whole reason this exists.
+   *
+   * Deliberately narrow. It claims an instalment only when
+   *
+   *  - exactly one active plan is linked to the account the money arrived in,
+   *  - the amount is exactly what that instalment expected, and
+   *  - the instalment is still DUE.
+   *
+   * A lump-sum top-up, a partial payment or a second deposit in the same month
+   * therefore does nothing, which is the right answer: those are not this
+   * month's instalment and guessing that they were would mark a schedule paid
+   * that is not. The saver can still tick by hand.
+   *
+   * Returns the instalment it claimed, or null. Never throws: the money is
+   * already in the books and a failure to tick a checkbox must not undo it.
+   */
+  async claimInstalment(
+    workspaceId: string,
+    move: { toAccountId: string; amountMinor: number; date: Date; transactionId: string },
+  ): Promise<{ planId: string; installmentId: string } | null> {
+    try {
+      const plans = await this.prisma.savingsPlan.findMany({
+        where: {
+          workspaceId,
+          deletedAt: null,
+          status: 'ACTIVE',
+          linkedAccountId: move.toAccountId,
+        },
+        select: { id: true },
+      });
+      /* Two plans on one account is a workspace nobody can disambiguate from
+         an amount, so neither is claimed. */
+      if (plans.length !== 1) return null;
+
+      const installment = await this.prisma.savingsInstallment.findFirst({
+        where: {
+          workspaceId,
+          planId: plans[0].id,
+          status: 'DUE',
+          expectedMinor: BigInt(move.amountMinor),
+        },
+        orderBy: { dueDate: 'asc' },
+        select: { id: true },
+      });
+      if (!installment) return null;
+
+      await this.prisma.$transaction([
+        /* Compare-and-set on the status, so two roads arriving at once — the
+           button and an accept — cannot both claim the same row. */
+        this.prisma.savingsInstallment.updateMany({
+          where: { id: installment.id, status: 'DUE' },
+          data: { status: 'PAID', paidDate: move.date, transactionId: move.transactionId },
+        }),
+        /* And the row says which instrument it belongs to, so "how much went
+           into this DPS" is answerable off the ledger rather than off the
+           schedule. `savingsPlanId` is the same column the button sets. */
+        this.prisma.transaction.update({
+          where: { id: move.transactionId },
+          data: { savingsPlanId: plans[0].id },
+        }),
+      ]);
+      return { planId: plans[0].id, installmentId: installment.id };
+    } catch (err) {
+      this.logger.warn(
+        `Instalment not claimed for workspace ${workspaceId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+  }
+
   private async bookDeposit(
     ctx: TenantContext,
     plan: SavingsPlan,

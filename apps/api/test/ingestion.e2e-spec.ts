@@ -458,6 +458,94 @@ describe('ingestion', () => {
     expect(statement.body.expenseMinor).toBe(0);
   });
 
+  /**
+   * The schedule and the ledger are two records of one fact.
+   *
+   * Accepting the instalment's own SMS moved ৳10,000 into the DPS. If the
+   * schedule does not hear about it the saver sees the transfer in the khata
+   * *and* an instalment still asking to be paid — and the button that answers
+   * it moves the money a second time.
+   */
+  it('ticks the instalment a transfer into a linked plan pays', async () => {
+    const ws = await workspace();
+    const dps = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(ws.user))
+      .send({ name: 'ডিপিএস', type: 'SAVINGS' })
+      .expect(201);
+    const plan = await ctx
+      .http()
+      .post('/v1/savings')
+      .set(auth(ws.user))
+      .send({
+        planName: 'ইসলামী ডিপিএস',
+        installmentMinor: 125_050,
+        termMonths: 12,
+        startDate: '2026-08-09',
+        linkedAccountId: dps.body.id as string,
+      })
+      .expect(201);
+
+    const received = await post(ws).expect(200);
+    await ctx
+      .http()
+      .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+      .set(auth(ws.user))
+      .send({ accountId: ws.cashId, counterAccountId: dps.body.id as string })
+      .expect(200);
+
+    const detail = await ctx
+      .http()
+      .get(`/v1/savings/${plan.body.id as string}`)
+      .set(auth(ws.user))
+      .expect(200);
+    const paid = detail.body.installments.filter((i: { status: string }) => i.status === 'PAID');
+    expect(paid).toHaveLength(1);
+    expect(paid[0].transactionId).toBeTruthy();
+  });
+
+  /* A top-up is not an instalment. Claiming one on any amount that happened to
+     arrive would mark a schedule paid that is not. */
+  it('leaves the schedule alone when the amount is not the instalment', async () => {
+    const ws = await workspace();
+    const dps = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(ws.user))
+      .send({ name: 'ডিপিএস', type: 'SAVINGS' })
+      .expect(201);
+    const plan = await ctx
+      .http()
+      .post('/v1/savings')
+      .set(auth(ws.user))
+      .send({
+        planName: 'ইসলামী ডিপিএস',
+        installmentMinor: 200_000,
+        termMonths: 12,
+        startDate: '2026-08-09',
+        linkedAccountId: dps.body.id as string,
+      })
+      .expect(201);
+
+    const received = await post(ws).expect(200);
+    await ctx
+      .http()
+      .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+      .set(auth(ws.user))
+      .send({ accountId: ws.cashId, counterAccountId: dps.body.id as string })
+      .expect(200);
+
+    const detail = await ctx
+      .http()
+      .get(`/v1/savings/${plan.body.id as string}`)
+      .set(auth(ws.user))
+      .expect(200);
+    expect(detail.body.installments.every((i: { status: string }) => i.status !== 'PAID')).toBe(
+      true,
+    );
+  });
+
   it('refuses to send money to the account it came from', async () => {
     const ws = await workspace();
     const received = await post(ws).expect(200);

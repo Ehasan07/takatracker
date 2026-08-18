@@ -171,7 +171,7 @@ test.describe('a draft that was not in taka', () => {
     await openTheDraft(page);
 
     const sheet = page.getByRole('dialog');
-    await sheet.getByRole('radio', { name: 'টাকা বেরিয়েছে' }).click();
+    await sheet.getByRole('tab', { name: 'খরচ' }).click();
     /* By id: the message's own highlights carry `aria-label`s naming the same
        words — "অ্যাকাউন্টের সূত্র" sits over `Card#***0492` — and a label
        lookup finds both. */
@@ -203,7 +203,7 @@ test.describe('a draft that was not in taka', () => {
     await sheet.locator('#dr-fx-rate').fill('122');
     await expect(amount).toHaveValue('561.20');
 
-    await sheet.getByRole('radio', { name: 'টাকা বেরিয়েছে' }).click();
+    await sheet.getByRole('tab', { name: 'খরচ' }).click();
     /* By id: the message's own highlights carry `aria-label`s naming the same
        words — "অ্যাকাউন্টের সূত্র" sits over `Card#***0492` — and a label
        lookup finds both. */
@@ -291,17 +291,18 @@ test.describe('a message that was really a transfer', () => {
     await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
     const sheet = page.getByRole('dialog');
 
-    await sheet.getByRole('radio', { name: 'টাকা ঢুকেছে' }).click();
-    await sheet.locator('#dr-account').selectOption({ label: 'ইসলামী ডিপিএস' });
-
-    // Until the other side is named this is an ordinary income draft.
+    // Ordinary income until the tab says otherwise.
+    await sheet.getByRole('tab', { name: 'আয়' }).click();
     await expect(sheet.locator('#dr-category')).toBeVisible();
 
-    await sheet.locator('#dr-counter').selectOption({ label: 'নগদ থেকে এসেছে' });
-    /* The খাত box goes, because there is no longer a question it answers: one
-       of your accounts became another and nothing was earned. */
+    /* The খাত box goes on ট্রান্সফার, because there is no longer a question it
+       answers: one of your accounts became another and nothing was earned. */
+    await sheet.getByRole('tab', { name: 'ট্রান্সফার' }).click();
     await expect(sheet.locator('#dr-category')).toHaveCount(0);
     await expect(sheet.getByText('আয়ও নয়, খরচও নয়')).toBeVisible();
+
+    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+    await sheet.locator('#dr-counter').selectOption({ label: 'ইসলামী ডিপিএস' });
 
     await sheet.getByRole('button', { name: 'খাতায় যোগ করুন' }).click();
     await expect(sheet).toBeHidden({ timeout: 15_000 });
@@ -323,7 +324,7 @@ test.describe('a message that was really a transfer', () => {
    * খাত box stays hidden under a label that says it should not be. A reviewer
    * reading that screen has no way to know what would be booked.
    */
-  test('a counter account that collides with the account clears itself', async ({ page }) => {
+  test('the two account pickers can never name the same account', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);
     await page.goto('/accounts');
@@ -338,17 +339,20 @@ test.describe('a message that was really a transfer', () => {
     await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
     const sheet = page.getByRole('dialog');
 
-    await sheet.getByRole('radio', { name: 'টাকা ঢুকেছে' }).click();
+    await sheet.getByRole('tab', { name: 'ট্রান্সফার' }).click();
     await sheet.locator('#dr-account').selectOption({ label: 'ইসলামী ডিপিএস' });
-    await sheet.locator('#dr-counter').selectOption({ label: 'নগদ থেকে এসেছে' });
-    await expect(sheet.locator('#dr-category')).toHaveCount(0);
+    await sheet.locator('#dr-counter').selectOption({ label: 'নগদ' });
 
-    // Now make the account the same one. The other side can no longer be নগদ.
-    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+    /* Neither picker offers the other's answer, so the pair can never name one
+       account twice — and a list that loses its selected option must clear the
+       value rather than quietly draw its first entry. */
+    await expect(sheet.locator('#dr-account').locator('option', { hasText: 'নগদ' })).toHaveCount(0);
+    await sheet.locator('#dr-account').selectOption({ label: 'ইসলামী ডিপিএস' });
+    await expect(sheet.locator('#dr-counter')).not.toHaveValue('');
 
-    // Back to an ordinary income draft, and the খাত box says so.
-    await expect(sheet.locator('#dr-counter')).toHaveValue('');
-    await expect(sheet.getByText('আয়ও নয়, খরচও নয়')).toHaveCount(0);
+    // Off the transfer tab the খাত box is back and the other side is gone.
+    await sheet.getByRole('tab', { name: 'আয়' }).click();
+    await expect(sheet.locator('#dr-counter')).toHaveCount(0);
     await expect(sheet.locator('#dr-category')).toBeVisible();
   });
 });

@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SavingsModule } from '../savings/savings.module';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { IngestionController, IngestionWebhookController } from './ingestion.controller';
 import { AiSuggestService } from './ai-suggest.service';
@@ -27,7 +28,16 @@ import { IngestionService } from './ingestion.service';
    * already reviewed in an outside console goes through the same
    * `TransactionsService.create` the app's own entry sheet uses, rather than
    * building its own ledger rows. Two write paths is how a ledger drifts. */
-  imports: [AccountsModule, NotificationsModule, forwardRef(() => TransactionsModule)],
+  /* SavingsModule for `claimInstalment`: an accepted transfer into a DPS is
+     that month's instalment, and the schedule has to be told or the saver is
+     asked to pay money they have already paid. One-way — savings knows nothing
+     of the inbox — so no forwardRef is needed. */
+  imports: [
+    AccountsModule,
+    NotificationsModule,
+    SavingsModule,
+    forwardRef(() => TransactionsModule),
+  ],
   controllers: [IngestionWebhookController, IngestionController],
   providers: [IngestionService, AiSuggestService],
   exports: [IngestionService, AiSuggestService],

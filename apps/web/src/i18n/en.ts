@@ -1787,10 +1787,9 @@ export const EN: Record<string, string> = {
   'savings.sourceNone': 'Ask me each time',
   'savings.sourceHint':
     'A DPS instalment usually leaves the same account every month. Choose it here and it will be filled in when you tick an instalment off — you can still change it for a month the money came from somewhere else.',
-  'inbox.counterAccount': 'Was this a move between your own accounts?',
-  'inbox.counterNone': 'Income or spending — not a move between my own accounts',
-  'inbox.counterFrom': 'came from {name}',
-  'inbox.counterTo': 'went to {name}',
+  'inbox.kind': 'Kind',
+  'inbox.fromAccount': 'Out of which account',
+  'inbox.toAccount': 'Into which account',
   'inbox.counterHint':
     'Recorded as a transfer — neither income nor spending, so it needs no category. Your total worth does not change; the money simply moves from one account to another.',
 };

@@ -41,6 +41,7 @@ import { UsageMeterService } from '../entitlements/usage-meter.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { CardRemindersService } from '../notifications/card-reminders.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SavingsService } from '../savings/savings.service';
 import type { TenantContext } from '../transactions/transactions.service';
 import type {
   AcceptDraftInput,
@@ -360,6 +361,9 @@ export class IngestionService {
     @Inject(forwardRef(() => TransactionsService))
     private readonly transactions: TransactionsService,
     private readonly ai: AiSuggestService,
+    /* For `claimInstalment`: a transfer into a DPS is that month's instalment,
+       and the schedule has to hear about it however the money got there. */
+    private readonly savings: SavingsService,
   ) {}
 
   // --- webhook authentication ------------------------------------------------
@@ -1175,6 +1179,24 @@ export class IngestionService {
       ctx.workspaceId,
       entries.map((e) => e.accountId),
     );
+
+    /* A transfer into a DPS *is* that month's instalment, and the saver should
+     * not have to say so twice. Without this the schedule keeps asking to be
+     * paid after the money has already moved — and the button that answers it
+     * would move the money a second time.
+     *
+     * Awaited, so the response the review screen refreshes from already has the
+     * tick; it cannot throw, and it declines whenever the match is not exact.
+     * The destination is the account that was debited: `direction` is which way
+     * the money went for the account the *message* was about. */
+    if (isTransfer) {
+      await this.savings.claimInstalment(ctx.workspaceId, {
+        toAccountId: direction === 'IN' ? accountId : counterAccountId,
+        amountMinor,
+        date,
+        transactionId,
+      });
+    }
 
     this.audit.emit({
       workspaceId: ctx.workspaceId,

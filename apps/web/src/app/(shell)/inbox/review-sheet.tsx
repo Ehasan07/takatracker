@@ -23,7 +23,7 @@ import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import { originOf, type FieldOrigin } from './evidence';
 import { convertedAmountText, FxReviewField } from './fx-review';
-import { bnDateTime, bnNum, channelLabel, DIRECTIONS, REJECT_REASONS, statusLabel } from './labels';
+import { bnDateTime, bnNum, channelLabel, REJECT_REASONS, statusLabel } from './labels';
 import { Sparkles } from 'lucide-react';
 import { t } from '@/lib/t';
 import { ConfidenceMeter, OriginBadge, StatusPill } from './parts';
@@ -46,7 +46,28 @@ export interface StickyPick {
 
 export type Outcome = 'accepted' | 'rejected';
 
+/**
+ * The three words this screen can say, matching the নতুন লেনদেন sheet.
+ *
+ * ধার is deliberately absent. A loan needs a person, a control account and a
+ * repayment schedule, none of which an accept can create — so a fourth tab here
+ * would be a tab that could only fail. A borrowed-money SMS is accepted as the
+ * transfer or income it looks like and turned into a loan on the ঋণ screen.
+ */
+const KINDS: {
+  kind: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  direction: Direction;
+  key: string;
+  label: string;
+}[] = [
+  { kind: 'EXPENSE', direction: 'OUT', key: 'entry.tab.expense', label: 'খরচ' },
+  { kind: 'INCOME', direction: 'IN', key: 'entry.tab.income', label: 'আয়' },
+  { kind: 'TRANSFER', direction: 'OUT', key: 'entry.tab.transfer', label: 'ট্রান্সফার' },
+];
+
 interface FormState {
+  /** Which of the three this is. The two below are what the accept actually sends. */
+  kind: 'EXPENSE' | 'INCOME' | 'TRANSFER';
   date: string;
   amount: string;
   direction: '' | Direction;
@@ -195,6 +216,7 @@ function ReviewForm({
   );
 
   const [form, setForm] = React.useState<FormState>(() => ({
+    kind: draft.direction === 'IN' ? 'INCOME' : 'EXPENSE',
     date: draft.date ?? '',
     /* Empty when the message carried no figure. A zero-confidence draft claims
        nothing, and a form pre-filled with ০.০০ would be claiming it — as would
@@ -230,7 +252,7 @@ function ReviewForm({
   const formRef = React.useRef<HTMLFormElement>(null);
 
   const liveAccounts = (accounts.data ?? []).filter((account) => !account.isArchived);
-  const isTransfer = form.counterAccountId !== '';
+  const isTransfer = form.kind === 'TRANSFER';
   const wantedKind = isTransfer ? null : categoryKindFor(form.direction);
 
   /* A category carried over from an expense must not survive a switch to
@@ -242,13 +264,11 @@ function ReviewForm({
     if (chosen && chosen.kind !== wantedKind) setForm((f) => ({ ...f, categoryId: '' }));
   }, [form.categoryId, wantedKind, categories.data]);
 
-  /* The counter-account picker lists everything except the account this message
-     is about — so changing *that* account to the one already picked as the
-     other side deletes the selected option out from under the select. The
-     browser then draws its first option, "আয় বা খরচ", while the state still
-     holds the id: the screen says one thing, the ledger would book another, and
-     the খাত box disappears under a label that says it should not. Clear it
-     instead, and the two can never disagree. */
+  /* Each picker leaves the other's answer out of its own list, so the pair can
+     never name one account twice. Kept as a state fix rather than only a filter
+     because a list that loses its selected option does not clear the value —
+     the select draws its first entry instead, and the screen then says one
+     thing while the form holds another. */
   React.useEffect(() => {
     if (form.counterAccountId && form.counterAccountId === form.accountId) {
       setForm((f) => ({ ...f, counterAccountId: '' }));
@@ -358,7 +378,11 @@ function ReviewForm({
       return;
     }
     if (!form.accountId) {
-      setError('অ্যাকাউন্ট নির্বাচন করুন');
+      setError(isTransfer ? 'কোন হিসাব থেকে গেল বেছে নিন' : 'অ্যাকাউন্ট নির্বাচন করুন');
+      return;
+    }
+    if (isTransfer && !form.counterAccountId) {
+      setError('কোন হিসাবে গেল বেছে নিন');
       return;
     }
     if (!isTransfer && !form.categoryId) {
@@ -518,39 +542,73 @@ function ReviewForm({
           />
         </EvidenceField>
 
+        {/* The same three words the নতুন লেনদেন sheet opens with, in the same
+            order and the same colours.
+ 
+            This screen used to ask "কোন দিকে গেল" and offer two answers, which
+            is a true question about a *bank message* and the wrong question
+            about a ledger. A DPS instalment leaves an account and enters
+            another; answering "বেরিয়েছে" is correct and still books an expense,
+            and the reviewer has no word available for what actually happened.
+            Somebody who has typed an entry by hand already knows where that
+            word lives — so it lives in the same place here. */}
         <EvidenceField
-          label="কোন দিকে গেল"
-          htmlFor="dr-direction"
+          label={t('inbox.kind', 'ধরন')}
+          htmlFor="dr-kind"
           group
           origin={originOf(draft.direction, 'direction', draft.evidence)}
           quoted={draft.evidence.direction}
         >
           <div
-            id="dr-direction"
-            role="radiogroup"
-            aria-labelledby="dr-direction-label"
-            className="border-rule bg-surface grid grid-cols-2 gap-1 rounded-md border p-1"
+            id="dr-kind"
+            role="tablist"
+            aria-label={t('inbox.kind', 'ধরন')}
+            className="bg-greenbar grid grid-cols-3 gap-1 rounded-lg p-1"
           >
-            {DIRECTIONS.map(([value, label]) => (
+            {KINDS.map((tab) => (
               <button
-                key={value}
+                key={tab.kind}
                 type="button"
-                role="radio"
-                aria-checked={form.direction === value}
+                role="tab"
+                aria-selected={form.kind === tab.kind}
                 onClick={() => {
                   haptic('tap');
-                  setForm((f) => ({ ...f, direction: value }));
+                  setForm((f) => {
+                    if (tab.kind !== 'TRANSFER') {
+                      /* Back to one account and one খাত. The other side goes,
+                         because the accept reads that field and not the tab. */
+                      return {
+                        ...f,
+                        kind: tab.kind,
+                        direction: tab.direction,
+                        accountId: f.accountId || f.counterAccountId,
+                        counterAccountId: '',
+                      };
+                    }
+                    /* Two accounts now, and the message's own is already on one
+                       of the two sides — which one is exactly what its direction
+                       said. A DPS alert reading "জমা হয়েছে" names the account
+                       that *received*, so it belongs in কোন হিসাবে and the box
+                       above it is the one still to be answered. */
+                    const arrived = f.direction === 'IN';
+                    return {
+                      ...f,
+                      kind: 'TRANSFER',
+                      // Always OUT on the wire: `accountId` pays, the other receives.
+                      direction: 'OUT',
+                      accountId: arrived ? '' : f.accountId,
+                      counterAccountId: arrived ? f.accountId : f.counterAccountId,
+                      categoryId: '',
+                    };
+                  });
                 }}
                 className={cn(
-                  'press flex min-h-11 items-center justify-center rounded-md px-3 text-sm md:min-h-9',
-                  form.direction === value
-                    ? value === 'IN'
-                      ? 'bg-income font-medium text-white'
-                      : 'bg-expense font-medium text-white'
-                    : 'text-ink hover:bg-greenbar',
+                  form.kind === tab.kind
+                    ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
+                    : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
                 )}
               >
-                {label}
+                {t(tab.key, tab.label)}
               </button>
             ))}
           </div>
@@ -573,51 +631,55 @@ function ReviewForm({
 
         {/* No provenance on the two pickers: the parser never proposes either,
             so there is nothing for it to have read or guessed. */}
-        <EvidenceField label="অ্যাকাউন্ট" htmlFor="dr-account">
+        <EvidenceField
+          label={isTransfer ? t('inbox.fromAccount', 'কোন হিসাব থেকে') : 'অ্যাকাউন্ট'}
+          htmlFor="dr-account"
+        >
           <Select id="dr-account" value={form.accountId} onChange={set('accountId')}>
             <option value="">অ্যাকাউন্ট বেছে নিন</option>
-            {liveAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </Select>
-        </EvidenceField>
-
-        {/* The one field on this screen that is pure human knowledge.
-            A DPS message says ৳10,000 arrived and cannot say it came from a
-            bKash wallet — the bank does not know, and the parser has nothing to
-            read. Left empty this behaves as it always has. Filled in, the খাত
-            box goes away: moving money between two of your own accounts is not
-            spending, and a DPS instalment booked as income invents ৳10,000 of
-            earnings a month that nobody can later explain. */}
-        <EvidenceField
-          label={t('inbox.counterAccount', 'নিজের অন্য কোন হিসাবে?')}
-          htmlFor="dr-counter"
-        >
-          <Select id="dr-counter" value={form.counterAccountId} onChange={set('counterAccountId')}>
-            <option value="">
-              {t('inbox.counterNone', 'আয় বা খরচ — নিজের হিসাবের মধ্যে সরানো নয়')}
-            </option>
             {liveAccounts
-              .filter((account) => account.id !== form.accountId)
+              .filter((account) => !isTransfer || account.id !== form.counterAccountId)
               .map((account) => (
                 <option key={account.id} value={account.id}>
-                  {form.direction === 'IN'
-                    ? t('inbox.counterFrom', '{name} থেকে এসেছে').replace('{name}', account.name)
-                    : t('inbox.counterTo', '{name}-এ গেছে').replace('{name}', account.name)}
+                  {account.name}
                 </option>
               ))}
           </Select>
-          {isTransfer ? (
+        </EvidenceField>
+
+        {/* The half a bank message cannot see.
+ 
+            A DPS alert says ৳10,000 arrived and has no way to say it left a
+            bKash wallet a second earlier — the bank does not know, and the
+            parser has nothing to read. So this is the one field on the screen
+            that is pure human knowledge, and it is why the ট্রান্সফার tab
+            exists: accepted as income that instalment invents ৳10,000 of
+            earnings every month, which is how this ledger came to hold
+            ৳66,98,616 of savings deposits filed as spending. */}
+        {isTransfer ? (
+          <EvidenceField label={t('inbox.toAccount', 'কোন হিসাবে')} htmlFor="dr-counter">
+            <Select
+              id="dr-counter"
+              value={form.counterAccountId}
+              onChange={set('counterAccountId')}
+            >
+              <option value="">অ্যাকাউন্ট বেছে নিন</option>
+              {liveAccounts
+                .filter((account) => account.id !== form.accountId)
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+            </Select>
             <p className="text-ink-muted mt-1 text-xs">
               {t(
                 'inbox.counterHint',
                 'খাতায় স্থানান্তর হিসেবে বসবে — আয়ও নয়, খরচও নয়, তাই খাত লাগবে না। মোট সম্পদ বদলাবে না, শুধু টাকাটা এক হিসাব থেকে আরেক হিসাবে যাবে।',
               )}
             </p>
-          ) : null}
-        </EvidenceField>
+          </EvidenceField>
+        ) : null}
 
         {isTransfer ? null : (
           <EvidenceField label="খাত" htmlFor="dr-category">
