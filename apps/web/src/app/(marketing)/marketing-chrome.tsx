@@ -33,7 +33,12 @@ export function MarketingHeader() {
           <BrandMark />
         </Link>
 
-        <nav aria-label="প্রধান" className="ml-4 hidden items-center gap-1 md:flex">
+        {/* `lg`, not `md`. Seven links, the language toggle, a sign-in link and
+            a call to action do not fit across a 768px tablet — they pushed the
+            header 53px past the viewport and took the whole page sideways with
+            it. Below `lg` the same links live in the ⋮ menu, which is where a
+            reader on a narrow screen looks for them anyway. */}
+        <nav aria-label="প্রধান" className="ml-4 hidden items-center gap-1 lg:flex">
           {NAV.map((item) => (
             <Link
               key={item.href}
@@ -81,7 +86,7 @@ export function MarketingHeader() {
             aria-expanded={open}
             aria-controls="marketing-menu"
             aria-label={open ? 'মেনু বন্ধ করুন' : 'মেনু খুলুন'}
-            className="press text-ink hover:bg-brand-tint -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-md md:hidden"
+            className="press text-ink hover:bg-brand-tint -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-md lg:hidden"
           >
             {open ? (
               <X className="h-5 w-5" aria-hidden />
@@ -96,7 +101,7 @@ export function MarketingHeader() {
         <nav
           id="marketing-menu"
           aria-label="মোবাইল"
-          className="border-rule bg-paper border-t px-4 pb-3 md:hidden"
+          className="border-rule bg-paper border-t px-4 pb-3 lg:hidden"
         >
           {[...NAV, { href: '/login', label: ui.login }].map((item) => (
             <Link

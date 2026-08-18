@@ -23,6 +23,11 @@ const PUBLIC_PATHS = [
      to open an account, so requiring one to read it would be backwards — and
      the rules on it are bookkeeping's rather than ours to gate. */
   '/tutorial',
+  /* How to make bank SMS write your books, on Android and on iPhone. Public for
+     the same reason the tutorial is: it is read by somebody deciding whether
+     this app would save them any typing at all, which is a decision made before
+     signing up rather than after. */
+  '/sms',
   /* The privacy statement. Requiring an account to read what an account would
      expose is the wrong way round — and the page is written for the person
      deciding whether to open one. */
@@ -83,14 +88,17 @@ export function middleware(request: NextRequest) {
 }
 
 /**
- * `robots.txt` and `sitemap.xml` are excluded for the same reason the icons
- * are: they are not screens, and the guard below would answer a crawler's
- * request for them with a redirect to `/login`. That is not a small thing —
- * a `robots.txt` that 307s is a `robots.txt` nothing can read, and the sitemap
- * it points at was equally unreachable.
+ * `robots.txt`, `sitemap.xml` and `llms.txt` are excluded for the same reason
+ * the icons are: they are not screens, and the guard below would answer a
+ * crawler's request for them with a redirect to `/login`. That is not a small
+ * thing — a `robots.txt` that 307s is a `robots.txt` nothing can read, and the
+ * sitemap it points at was equally unreachable. `llms.txt` fails more quietly
+ * still: the redirect lands on the login page, which returns 200 and HTML, so
+ * whatever fetched it gets a sign-in form it will happily summarise as the
+ * product.
  */
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|icons|favicon.ico|manifest.webmanifest|sw.js|robots.txt|sitemap.xml).*)',
+    '/((?!api|_next/static|_next/image|icons|favicon.ico|manifest.webmanifest|sw.js|robots.txt|sitemap.xml|llms.txt).*)',
   ],
 };

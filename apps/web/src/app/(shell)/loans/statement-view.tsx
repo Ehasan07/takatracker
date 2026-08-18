@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, FileText, Link2, Printer, Share2 } from 'lucide-react';
+import { ArrowUpDown, Download, FileText, Link2, Printer, Share2 } from 'lucide-react';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { endpoints } from '@/lib/api';
@@ -86,6 +86,42 @@ function columnsOf(detailHeading: string, withDetail: boolean, withReference: bo
  * balance, the rows with a running balance, closing balance, the date filters
  * and the four exports.
  */
+/**
+ * The opening or closing balance as a table row.
+ *
+ * One component rather than two literals because which of the two sits at the
+ * top of the table now depends on the sort order, and a copy of this markup per
+ * end is a copy to forget when a column is added.
+ */
+function BoundingRow({
+  label,
+  minor,
+  bold,
+  withDetail,
+  withReference,
+}: {
+  label: string;
+  minor: number;
+  bold: boolean;
+  withDetail: boolean;
+  withReference: boolean;
+}) {
+  return (
+    <tr className="border-rule border-b">
+      <td className="text-ink-muted px-2 py-2">—</td>
+      <td className="text-ink-muted px-2 py-2">—</td>
+      <td className={`text-ink px-2 py-2${bold ? 'font-semibold' : ''}`}>{label}</td>
+      <td className="px-2 py-2 text-right">—</td>
+      <td className="px-2 py-2 text-right">—</td>
+      <td className="px-2 py-2 text-right">
+        <Money minor={minor} className={bold ? 'font-semibold' : undefined} />
+      </td>
+      {withDetail ? <td className="px-2 py-2">—</td> : null}
+      {withReference ? <td className="px-2 py-2">—</td> : null}
+    </tr>
+  );
+}
+
 export function StatementView({
   heading,
   subheading,
@@ -144,6 +180,31 @@ export function StatementView({
   React.useEffect(() => setPrintedOn(toLocalDateString(new Date())), []);
 
   const rows = data?.rows ?? [];
+  /**
+   * Newest at the top, which is what a phone banking app shows and what
+   * somebody opening this screen is looking for: what happened *just now*, not
+   * what happened in December 2022. Three years of entries with the newest at
+   * the bottom means scrolling past all of them to answer "did that payment go
+   * through".
+   *
+   * A printed statement is conventionally the other way round, and a lender or
+   * a bank reading one expects it that way — so it is one tap, and the whole
+   * page follows the choice: table, phone cards, print and CSV. Two orders on
+   * one screen, or a PDF that disagrees with what was on screen when the button
+   * was pressed, is worse than either order on its own.
+   *
+   * The running balance is *not* recomputed. It is the balance after that entry
+   * whichever way the list is read, which is exactly what a bank app shows, and
+   * the serial number stays the chronological one so entry ১ is still the
+   * oldest however the page is sorted.
+   */
+  const [newestFirst, setNewestFirst] = React.useState(true);
+  const ordered = React.useMemo(
+    () => (newestFirst ? [...rows].reverse() : rows),
+    [rows, newestFirst],
+  );
+  /** The chronological serial of the row at display position `i`. */
+  const serialAt = (i: number): number => (newestFirst ? rows.length - i : i + 1);
   /* A column every row leaves blank is a column of dashes. The loan statement
      fills both of these; the account statement fills one and never the other,
      and the printed page was carrying an empty `রেফারেন্স` down its right edge.
@@ -171,10 +232,14 @@ export function StatementView({
       [`সময়: ${range}`],
       [],
       COLUMNS,
-      pad(['', '', t('stmt.opening', 'প্রারম্ভিক জের'), '', '', minorToPlain(opening)]),
-      ...rows.map((row, i) =>
+      /* The bounding row that comes first in this order: opening when the list
+         runs forwards, closing when it runs backwards. */
+      newestFirst
+        ? pad(['', '', t('stmt.closing', 'সমাপনী জের'), '', '', minorToPlain(closing)])
+        : pad(['', '', t('stmt.opening', 'প্রারম্ভিক জের'), '', '', minorToPlain(opening)]),
+      ...ordered.map((row, i) =>
         pad([
-          String(i + 1),
+          String(serialAt(i)),
           (row.date ?? '').slice(0, 10),
           row.description ?? '',
           minorToPlain(row.debitMinor),
@@ -184,7 +249,9 @@ export function StatementView({
           ...(withReference ? [row.referenceNumber ?? ''] : []),
         ]),
       ),
-      pad(['', '', t('stmt.closing', 'সমাপনী জের'), '', '', minorToPlain(closing)]),
+      newestFirst
+        ? pad(['', '', t('stmt.opening', 'প্রারম্ভিক জের'), '', '', minorToPlain(opening)])
+        : pad(['', '', t('stmt.closing', 'সমাপনী জের'), '', '', minorToPlain(closing)]),
     ]);
     setToast(t('stmt.csvDownloaded', 'এক্সেলের জন্য .csv ফাইল নামানো হয়েছে'));
   };
@@ -300,6 +367,23 @@ export function StatementView({
 
       {/* Exports */}
       <div className="no-print flex flex-col gap-1.5">
+        {/* Beside the exports rather than above the table, because it changes
+            what the exports produce as well as what the screen shows. */}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              haptic('tap');
+              setNewestFirst((v) => !v);
+            }}
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm"
+          >
+            <ArrowUpDown className="h-4 w-4 shrink-0" aria-hidden />
+            {newestFirst
+              ? t('stmt.newestFirst', 'নতুনগুলো আগে')
+              : t('stmt.oldestFirst', 'পুরনোগুলো আগে')}
+          </button>
+        </div>
         <div
           className={`grid grid-cols-2 gap-2 ${onShareLink ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}
         >
@@ -331,7 +415,9 @@ export function StatementView({
             ? 'লিংক — যাকে পাঠাবেন তিনি অ্যাকাউন্ট ছাড়াই পুরো বিবরণী দেখতে ও প্রিন্ট করতে পারবেন। সারাংশ — শুধু কয়েক লাইনের হিসাব, হোয়াটসঅ্যাপে পাঠানোর জন্য। '
             : ''}
           পিডিএফ ও প্রিন্ট — দুটিই ব্রাউজারের প্রিন্ট উইন্ডো খোলে; সেখানে গন্তব্য হিসেবে “Save as
-          PDF” বেছে নিলে পিডিএফ সংরক্ষিত হবে। এক্সেল ফাইলটি .csv ফরম্যাটে নামে।
+          PDF” বেছে নিলে পিডিএফ সংরক্ষিত হবে। এক্সেল ফাইলটি .csv ফরম্যাটে নামে। ছাপা বিবরণীতে
+          সাধারণত পুরনো লেনদেন আগে থাকে — উপরের বোতামে এক চাপে ক্রম বদলে নিতে পারেন, পিডিএফ ও
+          এক্সেলও তখন সেই ক্রমেই নামবে।
         </p>
       </div>
 
@@ -381,7 +467,7 @@ export function StatementView({
         <>
           {/* Phone: one card per entry, the running balance on its own line. */}
           <ul className="loan-screen-cards flex flex-col gap-2 md:hidden">
-            {rows.map((row, i) => (
+            {ordered.map((row, i) => (
               <li
                 key={`${row.date}-${i}`}
                 className="rounded-card border-rule bg-surface border p-3"
@@ -392,7 +478,7 @@ export function StatementView({
                       {row.description || t('stmt.entries', 'এন্ট্রি')}
                     </p>
                     <p className="text-ink-muted text-xs">
-                      {bnNum(i + 1)} · {bnDate(row.date)}
+                      {bnNum(serialAt(i))} · {bnDate(row.date)}
                       {row.method ? ` · ${formatDetail(row.method)}` : ''}
                     </p>
                   </div>
@@ -448,21 +534,25 @@ export function StatementView({
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-rule border-b">
-                  <td className="text-ink-muted px-2 py-2">—</td>
-                  <td className="text-ink-muted px-2 py-2">—</td>
-                  <td className="text-ink px-2 py-2">{t('stmt.opening', 'প্রারম্ভিক জের')}</td>
-                  <td className="px-2 py-2 text-right">—</td>
-                  <td className="px-2 py-2 text-right">—</td>
-                  <td className="px-2 py-2 text-right">
-                    <Money minor={opening} />
-                  </td>
-                  {withDetail ? <td className="px-2 py-2">—</td> : null}
-                  {withReference ? <td className="px-2 py-2">—</td> : null}
-                </tr>
-                {rows.map((row, i) => (
+                {/* The bounding balance that belongs at the top of *this* order:
+                    where the money started when the list runs forwards, where it
+                    ended when it runs backwards. A statement whose first row is
+                    the opening balance and whose entries then run backwards from
+                    it says nothing true about either. */}
+                <BoundingRow
+                  label={
+                    newestFirst
+                      ? t('stmt.closing', 'সমাপনী জের')
+                      : t('stmt.opening', 'প্রারম্ভিক জের')
+                  }
+                  minor={newestFirst ? closing : opening}
+                  bold={newestFirst}
+                  withDetail={withDetail}
+                  withReference={withReference}
+                />
+                {ordered.map((row, i) => (
                   <tr key={`${row.date}-${i}`} className="ledger-row border-rule border-b">
-                    <td className="text-ink-muted px-2 py-2">{bnNum(i + 1)}</td>
+                    <td className="text-ink-muted px-2 py-2">{bnNum(serialAt(i))}</td>
                     <td className="text-ink whitespace-nowrap px-2 py-2">{bnDate(row.date)}</td>
                     <td className="text-ink px-2 py-2">
                       {row.description || t('stmt.entries', 'এন্ট্রি')}
@@ -491,11 +581,13 @@ export function StatementView({
                 <tr className="bg-greenbar">
                   <td className="px-2 py-2" colSpan={2} />
                   <td className="text-ink px-2 py-2 font-semibold">
-                    {t('stmt.closing', 'সমাপনী জের')}
+                    {newestFirst
+                      ? t('stmt.opening', 'প্রারম্ভিক জের')
+                      : t('stmt.closing', 'সমাপনী জের')}
                   </td>
                   <td className="px-2 py-2" colSpan={2} />
                   <td className="px-2 py-2 text-right">
-                    <Money minor={closing} className="font-semibold" />
+                    <Money minor={newestFirst ? opening : closing} className="font-semibold" />
                   </td>
                   {withDetail || withReference ? (
                     <td

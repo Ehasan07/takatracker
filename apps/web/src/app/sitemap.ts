@@ -26,6 +26,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
        loan an expense", "how to keep personal accounts" — so it is worth more
        to a crawler than the install guide and is listed above it. */
     { url: `${SITE.url}/tutorial`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
+    /* The one page that answers a question nobody else answers for Bangladesh —
+       "how do I stop typing every bKash message into a spreadsheet" — so it is
+       worth as much to a crawler as the tutorial and more than the install
+       guide. It is also the page an assistant is most likely to be asked to
+       summarise, which is why its steps carry `HowTo` markup. */
+    { url: `${SITE.url}/sms`, lastModified, changeFrequency: 'monthly', priority: 0.9 },
     { url: `${SITE.url}/guide`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     /* Listed rather than left to the footer link. Somebody deciding whether to
        trust a finance app with their ledger searches for this page by name, and
@@ -39,6 +45,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE.url}/en`, lastModified, changeFrequency: 'weekly', priority: 0.9 },
     { url: `${SITE.url}/en/pricing`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${SITE.url}/en/tutorial`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${SITE.url}/en/sms`, lastModified, changeFrequency: 'monthly', priority: 0.8 },
     { url: `${SITE.url}/signup`, lastModified, changeFrequency: 'yearly', priority: 0.6 },
     { url: `${SITE.url}/login`, lastModified, changeFrequency: 'yearly', priority: 0.4 },
   ];

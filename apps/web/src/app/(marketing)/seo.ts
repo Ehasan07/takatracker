@@ -111,17 +111,28 @@ export function softwareApplicationJsonLd(priceYearlyMinor: number): Record<stri
     url: SITE.url,
     inLanguage: 'bn-BD',
     description:
-      'Double-entry personal finance app for Bangladesh. Track income, expenses, loans given and taken, DPS savings and insurance in Bangla. Works offline, installs to your phone.',
+      'Personal and small-business accounting software for Bangladesh, built on double-entry bookkeeping. Track income, expenses, loans given and taken, DPS savings, insurance and fixed assets in Bangla or English. Bank SMS become draft entries you approve. Works offline, installs to your phone, free forever tier.',
+    /* The list an assistant reads when somebody asks it what this app can do.
+       Kept in step with `FEATURES` in content.ts — a machine-readable claim
+       that outlives the screen it was true for is worse than none. */
     featureList: [
-      'Double-entry bookkeeping',
-      'Income and expense tracking',
-      'Loan and debt ledger (দেনা-পাওনা)',
-      'DPS and savings schemes',
+      'Double-entry bookkeeping with enforced debits and credits',
+      'Income and expense tracking by category and tag',
+      'Loan and debt ledger with instalments and party statements (দেনা-পাওনা)',
+      'DPS and savings schemes with schedules, profit and maturity',
       'Insurance premium tracking',
-      'Reports and balance sheet',
-      'CSV import and export',
-      'Offline support (PWA)',
+      'Fixed assets, revaluation and disposal (land, gold, vehicles)',
+      'Four financial statements: income statement, balance sheet, cash flow, changes in net worth',
+      'Monthly income, spending and savings report',
+      'Bank SMS to draft entries, reviewed before posting',
+      'Email inbox connector for bank statements',
+      'Telegram entry and credit-card due reminders',
+      'Expense splitting and group settle-up',
+      'Multi-currency transactions across 140+ currencies',
+      'CSV import and export, and migration from Wallet by BudgetBakers',
+      'Offline support (PWA), installable on Android and iOS',
       'Bangla, English and Banglish search',
+      'Eight themes and renameable on-screen wording',
     ],
     offers: [
       {

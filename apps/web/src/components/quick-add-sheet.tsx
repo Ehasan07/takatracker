@@ -44,7 +44,7 @@ import { Sheet } from './ui/sheet';
  * A single ধার tab would be the only one that needed a second question answered
  * before it knew.
  */
-type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'LENT' | 'BORROWED';
+type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'LENT' | 'BORROWED' | 'REPAY';
 
 /** Sentinel for the counterparty select: a name typed here, not an existing row. */
 const NEW_PERSON = '__new__';
@@ -53,6 +53,22 @@ const NEW_PERSON = '__new__';
    `kind` for the transaction body underneath it: `type: kind` there must be a
    TransactionType, and the compiler is what should be saying so. */
 const isLoan = (kind: Kind): kind is 'LENT' | 'BORROWED' => kind === 'LENT' || kind === 'BORROWED';
+
+/**
+ * ধার ফেরত — an instalment against a loan that already exists.
+ *
+ * Its own tab rather than a sixth field on ধার দিয়েছি, because the two are
+ * opposite movements and merging them is how somebody records a ৳2,000
+ * repayment as a second ৳2,000 loan — leaving ৳7,000 outstanding where ৳3,000
+ * is. It is also, after the first month, the more common of the two: a loan is
+ * made once and paid back in pieces.
+ *
+ * Unlike the other five it cannot invent its subject. A repayment has to name
+ * *which* loan, because one person can owe on three at once and an amount says
+ * nothing about which it settles — so the person picker here offers only people
+ * who actually have a live loan, and the loan picker only their open ones.
+ */
+const isRepay = (kind: Kind): kind is 'REPAY' => kind === 'REPAY';
 
 /**
  * The row being edited.
@@ -74,8 +90,9 @@ const TABS: { kind: Kind; key: string; label: string; span: string }[] = [
   { kind: 'EXPENSE', key: 'entry.tab.expense', label: 'খরচ', span: 'col-span-2' },
   { kind: 'INCOME', key: 'entry.tab.income', label: 'আয়', span: 'col-span-2' },
   { kind: 'TRANSFER', key: 'entry.tab.transfer', label: 'ট্রান্সফার', span: 'col-span-2' },
-  { kind: 'LENT', key: 'entry.tab.lent', label: 'ধার দিয়েছি', span: 'col-span-3' },
-  { kind: 'BORROWED', key: 'entry.tab.borrowed', label: 'ধার নিয়েছি', span: 'col-span-3' },
+  { kind: 'LENT', key: 'entry.tab.lent', label: 'ধার দিয়েছি', span: 'col-span-2' },
+  { kind: 'BORROWED', key: 'entry.tab.borrowed', label: 'ধার নিয়েছি', span: 'col-span-2' },
+  { kind: 'REPAY', key: 'entry.tab.repay', label: 'ধার ফেরত', span: 'col-span-2' },
 ];
 
 export interface QuickAddSheetProps {
@@ -113,6 +130,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
      transaction body must never see — cleared on the way out of those tabs. */
   const [personId, setPersonId] = React.useState('');
   const [personName, setPersonName] = React.useState('');
+  /** Which existing loan a ধার ফেরত settles. Empty on every other tab. */
+  const [loanId, setLoanId] = React.useState('');
   /* Which investment this row belongs to — a Sanchayapatra, a DPS, an FDR.
      Optional, and the reason it lives here rather than on the savings screen:
      profit arrives as an ordinary income row in the khata, and the only thing
@@ -303,6 +322,24 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
        * still somebody recording an expense, and every control added for the
        * rare case is paid for by all of them.
        */
+      /* A repayment is not a new loan and not a transaction: it is an
+         instalment on something that already exists, and the loans module books
+         the transfer, moves the outstanding balance and closes the loan when it
+         reaches zero. Posting a TRANSFER here instead would move the money and
+         leave the debt untouched. */
+      if (isRepay(kind)) {
+        if (!loanId) throw new Error(t('entry.pickLoan', 'কোন ধারের ফেরত — বেছে নিন'));
+        return api(`/loans/${loanId}/payments`, {
+          method: 'POST',
+          body: {
+            date,
+            amountMinor,
+            accountId: effectiveAccountId,
+            note: notes.trim() || undefined,
+          },
+        });
+      }
+
       if (isLoan(kind)) {
         const named = personId === NEW_PERSON;
         if (!named && !personId) {
@@ -459,33 +496,37 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
               account, a person and a repayment schedule, none of which this
               body can create — so a ধার tab here would be a tab that could
               only fail. */}
-            {(editing ? TABS.filter((tab) => !isLoan(tab.kind)) : TABS).map((tab) => (
-              <button
-                key={tab.kind}
-                type="button"
-                role="tab"
-                aria-selected={kind === tab.kind}
-                onClick={() => {
-                  haptic('tap');
-                  setKind(tab.kind);
-                  /* খরচের খাত must not survive a switch to আয়. The picker below
+            {(editing ? TABS.filter((tab) => !isLoan(tab.kind) && !isRepay(tab.kind)) : TABS).map(
+              (tab) => (
+                <button
+                  key={tab.kind}
+                  type="button"
+                  role="tab"
+                  aria-selected={kind === tab.kind}
+                  onClick={() => {
+                    haptic('tap');
+                    setKind(tab.kind);
+                    /* খরচের খাত must not survive a switch to আয়. The picker below
                    only offers one kind, so a category left over from the other
                    one shows as an unmatched value in the box — and the API
                    checks only that the category exists, so saving it would file
                    an income under an expense খাত and quietly bend the report.
                    TRANSFER counts as EXPENSE here so that খরচ → ট্রান্সফার →
                    খরচ, which shows no category in the middle, keeps it. */
-                  if ((tab.kind === 'INCOME') !== (kind === 'INCOME')) setCategoryId('');
-                  /* "নতুন ব্যক্তি" is a choice only the ধার tabs offer. Left
+                    if ((tab.kind === 'INCOME') !== (kind === 'INCOME')) setCategoryId('');
+                    /* "নতুন ব্যক্তি" is a choice only the ধার tabs offer. Left
                    behind on the way out it would sit in কার সাথে as a value
                    that select has no option for — a box that looks empty and
                    is not. */
-                  if (!isLoan(tab.kind) && personId === NEW_PERSON) setPersonId('');
-                }}
-                /* min-h-11, up from min-h-10. Two rows of tabs is two rows of
+                    if (!isLoan(tab.kind) && personId === NEW_PERSON) setPersonId('');
+                    /* A loan chosen on ধার ফেরত means nothing anywhere else, and
+                     left behind it would be sent with the next save. */
+                    if (!isRepay(tab.kind)) setLoanId('');
+                  }}
+                  /* min-h-11, up from min-h-10. Two rows of tabs is two rows of
                  things to hit with a thumb, and 40px was already under the
                  44px floor when there was one. */
-                /* The selected tab is drawn in the brand colour, not in
+                  /* The selected tab is drawn in the brand colour, not in
                    `bg-surface`.
                    
                    On the dark palettes `--hishab-surface` and
@@ -496,16 +537,17 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                    pair in every one of the eight faces, which is what this
                    needs. The weight and `aria-selected` carry it for anybody
                    who cannot see the hue. */
-                className={cn(
-                  tab.span,
-                  kind === tab.kind
-                    ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
-                    : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
-                )}
-              >
-                {t(tab.key, tab.label)}
-              </button>
-            ))}
+                  className={cn(
+                    tab.span,
+                    kind === tab.kind
+                      ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
+                      : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
+                  )}
+                >
+                  {t(tab.key, tab.label)}
+                </button>
+              ),
+            )}
           </div>
         </div>
 
@@ -563,7 +605,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             two of your own accounts and the other is a debt, and filing either
             under খাবার ও বাজার would put money in this month's expense report
             that was never spent. */}
-        {kind !== 'TRANSFER' && !isLoan(kind) ? (
+        {kind !== 'TRANSFER' && !isLoan(kind) && !isRepay(kind) ? (
           <CategoryChips
             categories={categoryList}
             kind={categoryKind}
@@ -598,7 +640,9 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                 ? t('entry.loanFromAccount', 'কোন অ্যাকাউন্ট থেকে দিলেন')
                 : kind === 'BORROWED'
                   ? t('entry.loanToAccount', 'কোন অ্যাকাউন্টে এল')
-                  : t('entry.account', 'অ্যাকাউন্ট')
+                  : kind === 'REPAY'
+                    ? t('entry.repayAccount', 'কোন অ্যাকাউন্টে বা কোন অ্যাকাউন্ট থেকে')
+                    : t('entry.account', 'অ্যাকাউন্ট')
           }
           htmlFor="qa-account"
         >
@@ -636,6 +680,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                 ))}
             </Select>
           </Field>
+        ) : isRepay(kind) ? (
+          <LoanToRepayField value={loanId} onChange={setLoanId} onAccountHint={setAccountId} />
         ) : isLoan(kind) ? (
           <LoanPersonField
             direction={kind}
@@ -660,7 +706,14 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             and a note — no tags, no quantity, no foreign currency, no second
             free-text line — and a control that silently discards what somebody
             typed into it is worse than a control that is not there. */}
-        {isLoan(kind) ? (
+        {isRepay(kind) ? (
+          <p className="text-ink-muted text-xs">
+            {t(
+              'entry.repayHint',
+              'ধারের বাকি টাকা কমে যাবে আর খাতায় লেনদেনটি নিজে থেকে বসে যাবে। পুরোটা শোধ হয়ে গেলে ধারটি নিজেই বন্ধ হয়ে যাবে। সুদ থাকলে আগে সুদ, তারপর আসল — হিসাবটা ধার-দেনা পাতায় দেখা যায়।',
+            )}
+          </p>
+        ) : isLoan(kind) ? (
           <p className="text-ink-muted text-xs">
             {t(
               'entry.loanHint',
@@ -742,6 +795,100 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
  * loan, there is no loan without one, and `POST /loans` takes a `personName` and
  * files them itself precisely so that recording one is a single screen.
  */
+/**
+ * Which loan a ধার ফেরত settles.
+ *
+ * One picker, not two. A person picker followed by a loan picker reads well on
+ * paper and is two decisions where one will do: nearly everybody has a handful
+ * of open loans in total, and each option can carry the name, the direction and
+ * what is left on it — which is the number somebody is checking against the
+ * money in their hand anyway.
+ *
+ * Only ACTIVE loans, and OVERDUE ones, are offered. A settled loan cannot take
+ * another payment (the API refuses one), and a cancelled loan is a debt both
+ * sides called off; listing either would be offering a choice that fails.
+ */
+function LoanToRepayField({
+  value,
+  onChange,
+  onAccountHint,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  /** The account the loan was made through, offered as the default for the money coming back. */
+  onAccountHint: (accountId: string) => void;
+}) {
+  /* The whole list, filtered here rather than by `?status=ACTIVE`. An overdue
+     loan has status OVERDUE, and that server-side filter would drop exactly the
+     loans somebody is most likely to be recording a payment against. */
+  const loans = useQuery({
+    queryKey: ['loans', 'list', ''],
+    queryFn: () => api<LoanRow[]>('/loans'),
+    staleTime: 30_000,
+  });
+
+  const rows = (loans.data ?? []).filter(
+    (row) =>
+      (row.status === 'ACTIVE' || row.status === 'OVERDUE') && row.progress.outstandingMinor > 0,
+  );
+  const chosen = rows.find((row) => row.id === value);
+
+  return (
+    <Field label={t('entry.repayWhich', 'কোন ধারের ফেরত')} htmlFor="qa-loan">
+      <Select
+        id="qa-loan"
+        name="loanId"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          const picked = rows.find((row) => row.id === e.target.value);
+          /* The account the loan went out through, offered back as the default
+             for the money returning. Nearly always right, and always editable —
+             somebody who lent from bKash may well be repaid in cash. */
+          if (picked) onAccountHint(picked.accountId);
+        }}
+        required
+      >
+        <option value="">{t('common.choose', 'বেছে নিন')}</option>
+        {rows.map((row) => (
+          <option key={row.id} value={row.id}>
+            {`${row.personName} · ${
+              row.direction === 'LENT'
+                ? t('entry.repayIn', 'ফেরত পাব')
+                : t('entry.repayOut', 'ফেরত দেব')
+            } ${formatMinor(row.progress.outstandingMinor)}`}
+          </option>
+        ))}
+      </Select>
+      {loans.isSuccess && rows.length === 0 ? (
+        <p className="text-ink-muted mt-1 text-xs">
+          {t(
+            'entry.repayNone',
+            'এখনো কোনো চলমান ধার নেই। আগে “ধার দিয়েছি” বা “ধার নিয়েছি” দিয়ে লিখে নিন।',
+          )}
+        </p>
+      ) : null}
+      {chosen ? (
+        <p className="text-ink-muted mt-1 text-xs">
+          {chosen.direction === 'LENT'
+            ? t('entry.repayInHint', 'টাকাটা আপনার হিসাবে ঢুকবে আর পাওনা কমবে।')
+            : t('entry.repayOutHint', 'টাকাটা আপনার হিসাব থেকে যাবে আর দেনা কমবে।')}
+        </p>
+      ) : null}
+    </Field>
+  );
+}
+
+/** Only what the picker above reads. `LoanView` in the API has the full shape. */
+interface LoanRow {
+  id: string;
+  personName: string;
+  direction: 'LENT' | 'BORROWED';
+  status: string;
+  accountId: string;
+  progress: { outstandingMinor: number };
+}
+
 function LoanPersonField({
   direction,
   personId,

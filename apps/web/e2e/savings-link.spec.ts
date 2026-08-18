@@ -300,3 +300,96 @@ test.describe('accrued profit is not received profit', () => {
     await expect(detail.getByText('এ পর্যন্ত মুনাফা পেয়েছি')).toBeVisible();
   });
 });
+
+/**
+ * Paying a loan back from the + sheet.
+ *
+ * The tab that was missing is the one used most: a loan is made once and repaid
+ * in pieces. Without it somebody recording a ৳2,000 repayment reaches for "ধার
+ * দিয়েছি" — the only ধার tab there was — and books a *second* loan, leaving
+ * ৳7,000 outstanding where ৳3,000 is. Both numbers look right on their own.
+ */
+test.describe('paying a loan back from the entry sheet', () => {
+  test('records the instalment against the loan, not as a new one', async ({ page }) => {
+    await signup(page);
+    await addAccount(page, 'হাতের নগদ', 'নগদ', '50000');
+
+    const openSheet = async () => {
+      await page.goto('/transactions');
+      await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
+      return page.getByRole('dialog');
+    };
+
+    // ৳5,000 lent to somebody.
+    let sheet = await openSheet();
+    await sheet.getByRole('tab', { name: 'ধার দিয়েছি' }).click();
+    await sheet.locator('#qa-amount').fill('5000');
+    await sheet.getByLabel('কোন অ্যাকাউন্ট থেকে দিলেন').selectOption({ label: 'হাতের নগদ' });
+    await sheet.getByLabel('কাকে ধার দিয়েছেন').fill('করিম');
+    await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // ৳2,000 of it back.
+    sheet = await openSheet();
+    await sheet.getByRole('tab', { name: 'ধার ফেরত' }).click();
+    await sheet.locator('#qa-amount').fill('2000');
+    /* The option carries what is still owed, which is the number somebody
+       checks against the money in their hand. */
+    await sheet.getByLabel('কোন ধারের ফেরত').selectOption({ index: 1 });
+    await expect(sheet.getByLabel('কোন ধারের ফেরত')).not.toHaveValue('');
+    await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // ৳3,000 left, not ৳7,000 — and the cash is back where it came from.
+    await page.goto('/loans');
+    await expect(page.getByText('3,000.00').first()).toBeVisible({ timeout: 15_000 });
+    await page.goto('/accounts');
+    await expect(accountRow(page, 'হাতের নগদ')).toContainText('47,000.00');
+  });
+
+  /**
+   * The other direction, which is where a sign error would hide.
+   *
+   * Repaying money you borrowed moves the cash the opposite way and reduces a
+   * liability rather than an asset. Both halves look right in isolation — the
+   * loan goes down either way — so the account balance is what actually decides
+   * it: ৳2,000 must *leave*, not arrive.
+   */
+  test('a borrowed loan repays in the other direction', async ({ page }) => {
+    await signup(page);
+    await addAccount(page, 'হাতের নগদ', 'নগদ', '50000');
+
+    const openSheet = async () => {
+      await page.goto('/transactions');
+      await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
+      return page.getByRole('dialog');
+    };
+
+    let sheet = await openSheet();
+    await sheet.getByRole('tab', { name: 'ধার নিয়েছি' }).click();
+    await sheet.locator('#qa-amount').fill('5000');
+    await sheet.getByLabel('কোন অ্যাকাউন্টে এল').selectOption({ label: 'হাতের নগদ' });
+    await sheet.getByLabel('কার কাছ থেকে ধার নিয়েছেন').fill('রহিম');
+    await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // Borrowed: the cash arrived.
+    await page.goto('/accounts');
+    await expect(accountRow(page, 'হাতের নগদ')).toContainText('55,000.00');
+
+    sheet = await openSheet();
+    await sheet.getByRole('tab', { name: 'ধার ফেরত' }).click();
+    await sheet.locator('#qa-amount').fill('2000');
+    await sheet.getByLabel('কোন ধারের ফেরত').selectOption({ index: 1 });
+    // The picker says which way this one goes, so nobody has to work it out.
+    await expect(sheet.getByText('আপনার হিসাব থেকে যাবে', { exact: false })).toBeVisible();
+    await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // ৳2,000 left the account, and ৳3,000 is still owed.
+    await page.goto('/accounts');
+    await expect(accountRow(page, 'হাতের নগদ')).toContainText('53,000.00');
+    await page.goto('/loans');
+    await expect(page.getByText('3,000.00').first()).toBeVisible({ timeout: 15_000 });
+  });
+});

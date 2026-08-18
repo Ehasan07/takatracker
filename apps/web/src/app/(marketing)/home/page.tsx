@@ -27,9 +27,24 @@ export const metadata = pageMetadata({
   path: '/',
   locale: 'bn',
   alternatePath: '/en',
+  /* The two queries this most wants to be found on are "personal accounting
+     software" and "business accounting software" — people search for the
+     *category*, not for a brand they have never heard of. Both are here in
+     English and in Bengali, beside the narrower phrases that actually describe
+     what makes this different: double entry, ধার-দেনা, DPS, bank SMS. A
+     keyword list is a weak signal on its own; what carries it is that the page
+     body genuinely says all of these things. */
   keywords: [
+    'personal accounting software',
+    'business accounting software',
+    'accounting software bangladesh',
     'personal finance app',
     'personal finance app bangladesh',
+    'ব্যক্তিগত হিসাবের সফটওয়্যার',
+    'ব্যবসার হিসাবের সফটওয়্যার',
+    'হিসাব রাখার সফটওয়্যার',
+    'double entry accounting app bangla',
+    'bank sms expense tracker',
     'expense tracker bangladesh',
     'money manager app',
     'budget app bangla',

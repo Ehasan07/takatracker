@@ -1792,4 +1792,17 @@ export const EN: Record<string, string> = {
   'inbox.toAccount': 'Into which account',
   'inbox.counterHint':
     'Recorded as a transfer — neither income nor spending, so it needs no category. Your total worth does not change; the money simply moves from one account to another.',
+  'stmt.newestFirst': 'Newest first',
+  'stmt.oldestFirst': 'Oldest first',
+  'entry.tab.repay': 'Repayment',
+  'entry.repayWhich': 'Which loan is this against',
+  'entry.repayIn': 'owes you',
+  'entry.repayOut': 'you owe',
+  'entry.repayNone': 'No live loans yet. Record one under "Lent" or "Borrowed" first.',
+  'entry.repayInHint': 'The money comes into your account and what you are owed goes down.',
+  'entry.repayOutHint': 'The money leaves your account and what you owe goes down.',
+  'entry.repayAccount': 'Into or out of which account',
+  'entry.pickLoan': 'Choose which loan this repays',
+  'entry.repayHint':
+    'The outstanding balance goes down and the entry is written to your books. Paid off in full, the loan closes itself. Where there is interest, interest is settled before principal — the split is on the loans screen.',
 };

@@ -357,15 +357,70 @@ test.describe('the public site', () => {
     await expect(page.getByRole('heading', { name: 'What you do not get' })).toBeVisible();
   });
 
+  /**
+   * The page somebody reads on one phone while setting up another.
+   *
+   * Every step of both phones has to be in the HTML that arrives — no tab, no
+   * accordion, no "read more". A reader following instructions cannot hunt, a
+   * crawler cannot click, and an assistant asked "how do I forward bank SMS to
+   * this app" reads the markup or nothing.
+   */
+  test('the SMS guide carries both phones in the HTML, with HowTo markup', async ({ page }) => {
+    await page.goto('/sms');
+    await expect(page.getByRole('heading', { name: 'অ্যান্ড্রয়েড', level: 2 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'আইফোন ও আইপ্যাড', level: 2 })).toBeVisible();
+
+    // Both lists complete, not a teaser with the rest behind a control.
+    const steps = page.locator('ol > li');
+    expect(await steps.count()).toBeGreaterThanOrEqual(17);
+
+    /* Says out loud that no banking password is involved. This is the sentence
+       that decides whether somebody sets it up at all, so it is asserted rather
+       than left to survive an edit by luck. */
+    await expect(page.getByText('পাসওয়ার্ড, পিন বা ওটিপি কখনো চাওয়া হয় না')).toBeVisible();
+
+    const graph = await page.locator('script[type="application/ld+json"]').first().textContent();
+    const parsed = JSON.parse(graph ?? '{}') as { '@graph': { '@type': string }[] };
+    const types = parsed['@graph'].map((node) => node['@type']);
+    expect(types.filter((t) => t === 'HowTo')).toHaveLength(2);
+    expect(types).toContain('FAQPage');
+  });
+
+  /**
+   * `/llms.txt` — the product as prose, for whatever is reading.
+   *
+   * Generated from the same `content.ts` the human page renders, so what it
+   * asserts is not the text but that the two cannot drift: a feature named here
+   * exists on the site, and the file is plain text rather than an HTML page
+   * with a .txt name.
+   */
+  test('serves llms.txt as plain text, generated from the feature list', async ({ page }) => {
+    const res = await page.request.get('/llms.txt');
+    expect(res.status()).toBe(200);
+    expect(res.headers()['content-type']).toContain('text/plain');
+
+    const body = await res.text();
+    expect(body).toContain('# Taka Tracker');
+    // The claim the whole product rests on, said where a machine will read it.
+    expect(body).toContain('double-entry');
+    // Both halves of the SMS guide, not just a mention that it exists.
+    expect(body).toContain('### Android');
+    expect(body).toContain('### iPhone and iPad');
+    // And the roadmap, so an assistant cannot promise what is not built.
+    expect(body).toContain('## Not built yet');
+  });
+
   test('never scrolls sideways, and every tap target is 44px', async ({ page }) => {
     for (const path of [
       '/',
       '/pricing',
       '/guide',
       '/tutorial',
+      '/sms',
       '/en',
       '/en/pricing',
       '/en/tutorial',
+      '/en/sms',
     ]) {
       await page.goto(path);
       const overflow = await page.evaluate(

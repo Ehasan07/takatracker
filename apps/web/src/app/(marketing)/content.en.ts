@@ -113,6 +113,18 @@ const GROUPS: FeatureGroup[] = [
         body: 'Type the real balance and the difference is booked as an adjustment. Your books and your statement stop drifting apart.',
         route: '/accounts',
       },
+      {
+        title: 'Annual costs, spread across the months',
+        titleEn: 'One payment, twelve months of use',
+        body: 'An insurance premium or a licence paid once a year lands in one month and makes that month look ruinous. A separate view lays it flat across the months it buys. The books stay on a cash basis; only the reading changes.',
+        route: '/transactions/prepaid',
+      },
+      {
+        title: 'Transactions in another currency',
+        titleEn: 'The rate your bank actually used',
+        body: 'A card charge in dollars stays in dollars, with what it cost in taka beside it. You supply the rate, because what your bank charged is not published anywhere. 140+ currencies, each with its own real precision.',
+        route: '/transactions',
+      },
     ],
   },
   {
@@ -230,6 +242,18 @@ const GROUPS: FeatureGroup[] = [
         body: 'A Telegram nudge before the bill. Pay it and that cycle’s reminders stop on their own.',
         route: '/settings',
       },
+      {
+        title: 'Which account the instalment leaves from',
+        titleEn: 'A DPS is a standing instruction',
+        body: 'The same wallet or the same salary account is debited on the same day every month for five years. Say it once and the deposit screen stops asking.',
+        route: '/savings',
+      },
+      {
+        title: 'Renewals and expiry dates',
+        titleEn: 'Domains, licences, papers',
+        body: 'Hosting, a trade licence, vehicle papers, a passport — when each runs out and what it will cost. They climb the list as the date approaches.',
+        route: '/renewals',
+      },
     ],
   },
   {
@@ -255,6 +279,12 @@ const GROUPS: FeatureGroup[] = [
         titleEn: 'Readable without relying on colour',
         body: 'Category shares, monthly trends, income against spending — a picture beside the figures. Colour is never the only signal, so they read on a colour-blind screen too.',
         route: '/reports',
+      },
+      {
+        title: 'How this month is going',
+        titleEn: 'Eighteen days against eighteen days',
+        body: 'This month measured against the same stretch of last month, never against all of it — that comparison says spending has halved when nothing has changed. Beside it: the pace of the month, the trend by month, and which categories moved most.',
+        route: '/',
       },
       {
         title: 'Balance sheet, as of any date',
@@ -385,6 +415,45 @@ const GROUPS: FeatureGroup[] = [
       },
     ],
   },
+  {
+    id: 'comfort',
+    heading: 'Making it yours',
+    headingEn: 'Themes, language, wording',
+    blurb:
+      'Bookkeeping is a daily habit. The screen has to be bearable and the words have to be the ones you use.',
+    features: [
+      {
+        title: 'Eight themes',
+        titleEn: 'Light, dark, high contrast, calm',
+        body: 'Four faces in light and dark. Money in and money out are never the same colour in any of them, so they stay distinguishable on a colour-blind screen.',
+        route: '/settings',
+      },
+      {
+        title: 'Bangla and English',
+        titleEn: 'The whole app, either way',
+        body: 'Both languages throughout, and Bengali or Western digits as a separate choice — some people want Bangla words with English numerals.',
+        route: '/settings',
+      },
+      {
+        title: 'Rename anything on screen',
+        titleEn: 'Your words, not ours',
+        body: 'Prefer "head" to "category", or "customer" to "party"? Change any label in your own books. The change is recorded on your workspace timeline, so it is never a mystery who renamed what.',
+        route: '/settings',
+      },
+      {
+        title: 'The manual, inside the app',
+        titleEn: 'No tab-switching to read the docs',
+        body: 'What every screen does and what every rule means, written in the app itself.',
+        route: '/help',
+      },
+      {
+        title: 'Send feedback from inside',
+        titleEn: 'With the screen you sent it from',
+        body: 'Report something wrong or ask for something missing without leaving the app. Which screen you were on travels with it.',
+        route: '/feedback',
+      },
+    ],
+  },
 ];
 
 const COMING: { title: string; body: string }[] = [
@@ -407,6 +476,10 @@ const COMING: { title: string; body: string }[] = [
   {
     title: 'Recurring transactions',
     body: 'Rent, salary, instalments — entered once, then automatic.',
+  },
+  {
+    title: 'Income tax computation',
+    body: 'Slabs, the investment rebate, minimum tax and the wealth surcharge, worked from your own books. The machinery is built; the Finance Act rates still have to be transcribed against the gazette, and nothing computes until a person has checked every figure.',
   },
   {
     title: 'Family members',
@@ -457,6 +530,7 @@ const NAV: { href: string; label: string }[] = [
   { href: '/en#features', label: 'Features' },
   { href: '/en/pricing', label: 'Pricing' },
   { href: '/en/tutorial', label: 'How to' },
+  { href: '/en/sms', label: 'Bank SMS' },
   { href: '/guide', label: 'Install' },
   { href: '/en#coming', label: 'Roadmap' },
   { href: '/en#faq', label: 'FAQ' },

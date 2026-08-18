@@ -48,6 +48,9 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: `${SITE.url}/sitemap.xml`,
+    /* `/llms.txt` needs no rule of its own — it is under the blanket allow, and
+       naming it here would only imply it is special to a crawler that has no
+       idea what it is. */
     host: SITE.url,
   };
 }

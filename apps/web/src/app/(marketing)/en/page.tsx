@@ -18,6 +18,11 @@ export const metadata = pageMetadata({
   locale: 'en',
   alternatePath: '/',
   keywords: [
+    'personal accounting software',
+    'business accounting software',
+    'accounting software bangladesh',
+    'double entry accounting software for individuals',
+    'bank sms to accounting entry',
     'personal finance app bangladesh',
     'double entry personal accounting',
     'expense tracker app',
