@@ -85,6 +85,7 @@ interface SavingsPlan {
    * *offers* to book the deposit as a transfer. Nothing here ever assumes.
    */
   linkedAccountId: string | null;
+  sourceAccountId: string | null;
   /** Free text. The migration writes its own warnings here, so the sheet must show it. */
   note: string | null;
   /** Profit actually paid out, summed off the ledger. Not the projection. */
@@ -774,6 +775,7 @@ interface PlanForm {
   status: string;
   /** A savings account id, or '' for "not linked" — which is the default. */
   linkedAccountId: string;
+  sourceAccountId: string;
   note: string;
 }
 
@@ -794,6 +796,7 @@ const emptyPlanForm = (): PlanForm => ({
      deciding that this DPS's money lives there, and being wrong about that puts
      transfers into the wrong account month after month. */
   linkedAccountId: '',
+  sourceAccountId: '',
   note: '',
 });
 
@@ -812,6 +815,7 @@ const planToForm = (plan: SavingsPlan): PlanForm => ({
   profitCalc: plan.profitCalc,
   status: plan.status,
   linkedAccountId: plan.linkedAccountId ?? '',
+  sourceAccountId: plan.sourceAccountId ?? '',
   note: plan.note ?? '',
 });
 
@@ -828,6 +832,7 @@ const planToApi = (plan: SavingsPlan) => ({
   profitRateBps: plan.profitRateBps,
   profitCalc: plan.profitCalc,
   linkedAccountId: plan.linkedAccountId ?? '',
+  sourceAccountId: plan.sourceAccountId ?? '',
   note: plan.note ?? '',
 });
 
@@ -865,6 +870,11 @@ function PlanSheet({
      unrelated edit cannot silently unlink a plan. */
   const savingsAccounts = (accounts.data ?? []).filter(
     (a) => a.type === 'SAVINGS' && (!a.isArchived || a.id === form.linkedAccountId),
+  );
+  /* Everything except where the money is going: a transfer to itself is refused
+     by the server, so offering it here would only be a way to fail later. */
+  const sourceAccounts = (accounts.data ?? []).filter(
+    (a) => a.id !== form.linkedAccountId && (!a.isArchived || a.id === form.sourceAccountId),
   );
 
   const save = useMutation({
@@ -920,6 +930,9 @@ function PlanSheet({
             profitRateBps,
             profitCalc: form.profitCalc,
             linkedAccountId: form.linkedAccountId,
+            /* Meaningless without a destination, and a stale one would sit in
+               the row waiting to confuse whoever links an account later. */
+            sourceAccountId: form.linkedAccountId ? form.sourceAccountId : '',
             note: form.note.trim(),
           };
 
@@ -929,6 +942,7 @@ function PlanSheet({
               institution: next.institution || undefined,
               // Absent, not empty: the id column takes a cuid or nothing.
               linkedAccountId: next.linkedAccountId || undefined,
+              sourceAccountId: next.sourceAccountId || undefined,
             });
             return;
           }
@@ -945,6 +959,9 @@ function PlanSheet({
              one thing somebody unlinking a plan did not ask for. */
           if ('linkedAccountId' in body && body.linkedAccountId === '') {
             body.linkedAccountId = null;
+          }
+          if ('sourceAccountId' in body && body.sourceAccountId === '') {
+            body.sourceAccountId = null;
           }
           if (Object.keys(body).length === 0) {
             onOpenChange(false);
@@ -1107,6 +1124,34 @@ function PlanSheet({
             </p>
           ) : null}
         </Field>
+
+        {/* The other end of the same movement, and the end somebody repeats.
+            Offered only once there is somewhere for the money to go, because
+            "কোন হিসাব থেকে যায়" with no destination set describes half a
+            transfer that cannot be booked. Any account type: a DPS instalment
+            leaves a bKash wallet as readily as a salary account, and the app
+            has no business ruling on which. */}
+        {form.linkedAccountId ? (
+          <Field
+            label={t('savings.sourceAccount', 'কিস্তির টাকা কোন হিসাব থেকে যায়')}
+            htmlFor="sp-source"
+          >
+            <Select id="sp-source" value={form.sourceAccountId} onChange={set('sourceAccountId')}>
+              <option value="">{t('savings.sourceNone', 'প্রতিবার জিজ্ঞেস করো')}</option>
+              {sourceAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+            <p className="text-ink-muted mt-1 text-xs">
+              {t(
+                'savings.sourceHint',
+                'ডিপিএসের কিস্তি সাধারণত প্রতি মাসে একই হিসাব থেকেই কাটে। এখানে বেছে রাখলে কিস্তিতে টিক দেওয়ার সময় ওটাই বসানো থাকবে — সেই মাসে অন্য জায়গা থেকে গেলে বদলে নিতে পারবেন।',
+              )}
+            </p>
+          </Field>
+        ) : null}
 
         <Field label={t('savings.note', 'নোট')} htmlFor="sp-note">
           <Textarea
@@ -1586,10 +1631,14 @@ function DepositSheet({
     [accounts.data, plan.linkedAccountId],
   );
 
-  /* Default to the first current account rather than making somebody pick
-     twice: a DPS instalment leaves the same bank account month after month, and
-     a wallet or a plot of land is not where it comes from. */
+  /* What the plan says, and only then a guess.
+     A DPS instalment leaves the same account month after month, so the plan is
+     asked first — that is the whole reason `sourceAccountId` exists, and
+     guessing over a saved answer would make setting it pointless. The old
+     fallback stays for plans that never named one: first current account, since
+     a wallet or a plot of land is not where an instalment comes from. */
   const firstSourceId =
+    sources.find((a) => a.id === plan.sourceAccountId)?.id ??
     sources.find((a) => a.type === 'BANK')?.id ??
     sources.find((a) => a.type === 'CASH' || a.type === 'MOBILE_WALLET')?.id ??
     sources[0]?.id ??

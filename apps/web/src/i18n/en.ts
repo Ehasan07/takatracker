@@ -1783,4 +1783,8 @@ export const EN: Record<string, string> = {
   'dashboard.split.title': 'Share of spending, by category',
   'dashboard.split.total': 'Total spent',
   'dashboard.split.rest': 'Everything else',
+  'savings.sourceAccount': 'Which account the instalment comes out of',
+  'savings.sourceNone': 'Ask me each time',
+  'savings.sourceHint':
+    'A DPS instalment usually leaves the same account every month. Choose it here and it will be filled in when you tick an instalment off — you can still change it for a month the money came from somewhere else.',
 };

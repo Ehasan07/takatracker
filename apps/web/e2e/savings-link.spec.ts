@@ -58,7 +58,13 @@ async function addAccount(page: Page, name: string, type: string, opening?: stri
  * A monthly plan. `linkTo` is the savings account's name, or nothing; `type` is
  * the instrument, which decides whether profit can have arrived yet.
  */
-async function addPlan(page: Page, name: string, linkTo?: string, type = 'ডিপিএস'): Promise<void> {
+async function addPlan(
+  page: Page,
+  name: string,
+  linkTo?: string,
+  type = 'ডিপিএস',
+  sourceFrom?: string,
+): Promise<void> {
   await page.goto('/savings');
   await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
   const sheet = page.getByRole('dialog');
@@ -69,6 +75,9 @@ async function addPlan(page: Page, name: string, linkTo?: string, type = 'ডি
   await sheet.getByLabel('মুনাফার হার (%)').fill('8.25');
   if (linkTo) {
     await sheet.getByLabel('কিস্তির টাকা কোন হিসাবে জমা হয়').selectOption({ label: linkTo });
+  }
+  if (sourceFrom) {
+    await sheet.getByLabel('কিস্তির টাকা কোন হিসাব থেকে যায়').selectOption({ label: sourceFrom });
   }
   await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
   await expect(sheet).toBeHidden({ timeout: 15_000 });
@@ -130,6 +139,56 @@ test.describe('savings instalments on the balance sheet', () => {
     await page.goto('/savings');
     await openPlan(page, 'ব্র্যাক ডিপিএস');
     await expect(page.getByRole('dialog').getByText('খাতায় জমা').first()).toBeVisible();
+  });
+
+  /**
+   * The account an instalment comes *out* of, remembered.
+   *
+   * The deposit dialog used to default to the first bank account, which is
+   * wrong for anybody paying a DPS from bKash — and wrong again every month for
+   * five years. Two accounts here, and the bank is the one the old guess would
+   * have picked, so a passing test means the plan's own answer beat it.
+   */
+  test('a plan remembers which account the instalment comes out of', async ({ page }) => {
+    await signup(page);
+    await addAccount(page, 'বেতন হিসাব', 'ব্যাংক', '50000');
+    await addAccount(page, 'বিকাশ', 'মোবাইল ওয়ালেট', '30000');
+    await addAccount(page, 'ইসলামী ডিপিএস', 'সঞ্চয় / ডিপিএস');
+    await addPlan(page, 'বিকাশ ডিপিএস', 'ইসলামী ডিপিএস', 'ডিপিএস', 'বিকাশ');
+
+    await openPlan(page, 'বিকাশ ডিপিএস');
+    await page.getByRole('dialog').getByRole('button', { name: 'জমা দিলাম' }).first().click();
+    const sheet = page.getByRole('dialog').filter({ hasText: 'কিস্তি জমা দিলাম' });
+
+    // Not the bank, which is what it would have guessed.
+    await expect(sheet.getByLabel('কোন অ্যাকাউন্ট থেকে গেল').locator('option:checked')).toHaveText(
+      'বিকাশ',
+    );
+
+    await sheet.getByRole('button', { name: 'জমা দিন ও টাকা সরান' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await page.goto('/accounts');
+    await expect(accountRow(page, 'বিকাশ')).toContainText('28,000.00');
+    // Untouched: the guess would have taken it from here.
+    await expect(accountRow(page, 'বেতন হিসাব')).toContainText('50,000.00');
+  });
+
+  /* Half a transfer is not a thing to ask about: with nowhere for the money to
+     go, "where does it come from" has no answer worth storing. */
+  test('the source field waits until there is somewhere for the money to go', async ({ page }) => {
+    await signup(page);
+    await addAccount(page, 'সঞ্চয় হিসাব', 'সঞ্চয় / ডিপিএস');
+    await page.goto('/savings');
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('কিস্তির টাকা কোন হিসাবে জমা হয়')).toBeVisible();
+    await expect(sheet.getByLabel('কিস্তির টাকা কোন হিসাব থেকে যায়')).toBeHidden();
+
+    await sheet
+      .getByLabel('কিস্তির টাকা কোন হিসাবে জমা হয়')
+      .selectOption({ label: 'সঞ্চয় হিসাব' });
+    await expect(sheet.getByLabel('কিস্তির টাকা কোন হিসাব থেকে যায়')).toBeVisible();
   });
 
   test('an unlinked plan ticks the instalment and moves nothing', async ({ page }) => {

@@ -1183,7 +1183,18 @@ model SavingsPlan {
   /// their bank advertises and we never infer it.
   profitRateBps   Int             @default(0)
   profitCalc      ProfitCalc      @default(COMPOUND_YEARLY)
+  /// The SAVINGS account the money lands in — the scheme itself, as an account.
   linkedAccountId String?
+  /// The account each instalment is taken *out* of, remembered from one month
+  /// to the next.
+  ///
+  /// A DPS is a standing instruction: the same bKash wallet or the same salary
+  /// account is debited on the same day every month for five years. Without
+  /// this the deposit dialog guessed — first bank account, then cash — and
+  /// guessed wrong for anybody paying from a wallet, sixty times over the life
+  /// of one plan. Nullable because it is a convenience and never a constraint:
+  /// the month the money comes from somewhere else, the dialog still asks.
+  sourceAccountId String?
   status          SavingsStatus   @default(ACTIVE)
   note            String?
   createdAt       DateTime        @default(now())

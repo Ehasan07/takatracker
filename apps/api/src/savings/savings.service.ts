@@ -57,6 +57,9 @@ export interface SavingsPlanView {
   profitRateBps: number;
   profitCalc: SavingsPlan['profitCalc'];
   linkedAccountId: string | null;
+  /** The account instalments are taken out of, so the deposit dialog can
+   *  default to it instead of guessing. */
+  sourceAccountId: string | null;
   status: SavingsStatus;
   note: string | null;
   projection: SavingsProjection;
@@ -322,6 +325,7 @@ export class SavingsService {
         profitRateBps: input.profitRateBps,
         profitCalc: input.profitCalc,
         linkedAccountId: input.linkedAccountId,
+        sourceAccountId: input.sourceAccountId,
         note: input.note,
         installments: {
           create: schedule.map((row) => ({
@@ -411,6 +415,7 @@ export class SavingsService {
         profitRateBps: input.profitRateBps,
         profitCalc: input.profitCalc,
         linkedAccountId: input.linkedAccountId,
+        sourceAccountId: input.sourceAccountId,
         status: input.status,
         note: input.note,
       },
@@ -952,6 +957,7 @@ export class SavingsService {
       profitRateBps: plan.profitRateBps,
       profitCalc: plan.profitCalc,
       linkedAccountId: plan.linkedAccountId,
+      sourceAccountId: plan.sourceAccountId,
       status: plan.status,
       note: plan.note,
       projection: projectSavings({ ...input, termMonths: plan.termMonths }),

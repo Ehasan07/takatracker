@@ -66,6 +66,19 @@ const savingsPlanFields = z.object({
    * removes it. Same three-way rule `Transaction.personId` follows.
    */
   linkedAccountId: cuid.nullish(),
+  /**
+   * The account each instalment comes *out* of.
+   *
+   * The other half of the same sentence, and the half a saver actually repeats:
+   * a DPS is a standing instruction against one wallet or one salary account,
+   * and remembering it is the difference between confirming a deposit and
+   * re-picking the source sixty times over five years. Any account will do —
+   * this is what the deposit dialog defaults to, not a rule about where money
+   * may come from — so unlike `linkedAccountId` it is not type-checked.
+   *
+   * Same three-way `nullish` rule: omitted keeps it, `null` forgets it.
+   */
+  sourceAccountId: cuid.nullish(),
   note: z.string().max(2000).optional(),
 });
 
