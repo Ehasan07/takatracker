@@ -6,6 +6,8 @@ import {
   type BalanceSheetComparison,
   buildBalanceSheet,
   buildCashFlow,
+  buildSavingsFlow,
+  buildSavingsTrend,
   buildSectionedCashFlow,
   buildTrend,
   type CashFlow,
@@ -18,10 +20,16 @@ import {
   nextDateKey,
   nextDayOfMonthAfter,
   rollUpToParents,
+  savingsRateBps,
+  type SavingsTrendPoint,
+  shiftMonthKey,
   statementPeriodFor,
   SYSTEM_ACCOUNT_KEYS,
   topWithRest,
+  TRANSACTION_TYPES_NOT_MOVEMENTS,
   type TrendPoint,
+  type VehicleEntryRow,
+  type VehicleFlow,
   withShares,
 } from '@hishab/core';
 import { displayName, fromLocalDateString, toLocalDateString, type Locale } from '@hishab/shared';
@@ -225,6 +233,71 @@ export interface IncomeStatement extends IncomeStatementFigures {
    */
   basis: typeof BASIS;
   comparison?: IncomeStatementFigures & { from: string; to: string };
+}
+
+/**
+ * One instrument's month: what it took in, what came back out, and what it is.
+ *
+ * `name` is the savings *plan's* name when a plan links to the account, and the
+ * account's own name otherwise. A household names its DPS on the সঞ্চয় screen —
+ * "সোনালী ডিপিএস, ১০ বছর" — and then names the account behind it something
+ * shorter; the report should print the name the person recognises. The account
+ * name travels alongside so nothing is lost when the two differ.
+ */
+export interface SavingsInstrumentRow extends VehicleFlow {
+  /** Null when the account is savings-shaped but no plan points at it. */
+  planId: string | null;
+  planType: string | null;
+  /** Always the account's own name, whatever `name` ended up being. */
+  accountName: string;
+}
+
+/**
+ * আয়, খরচ ও সঞ্চয় — the three figures the income statement can only give two of.
+ *
+ * ## Why this is its own report
+ *
+ * Income and expense are on the income statement. Saving is not, and cannot be:
+ * a DPS instalment is one asset becoming another, so it is a `TRANSFER`, it
+ * touches no nominal account and it reaches no statement in this application.
+ * That is correct accounting and the reason "মাসে সঞ্চয় কত হচ্ছে" had no answer
+ * anywhere — the question is about transfers, and it has to be asked of the
+ * ledger directly. See `savingsVehicleOf` in @hishab/core for what counts and
+ * why an `ASSET` account is reported apart from a `SAVINGS` one.
+ *
+ * ## Why the range and not only a month
+ *
+ * `incomeMinor` and `expenseMinor` here are the same two figures the
+ * সারসংক্ষেপ panel prints for the same range, from the same entries on the same
+ * two nominal accounts — see `periodFlow`. That is not a coincidence to be
+ * maintained: two panels on one screen showing different totals for আয় is worse
+ * than one panel showing none, so this report takes the range every other range
+ * report takes rather than a month of its own. `months` then carries the
+ * calendar-month series beside it, which is what "প্রত্যেক মাসে" asks for.
+ */
+export interface MonthlyFlowReport {
+  from: string;
+  to: string;
+  basis: typeof BASIS;
+  incomeMinor: number;
+  expenseMinor: number;
+  /** Income less expenses: what was **not spent**, which is not what was saved. */
+  surplusMinor: number;
+  /** Net into every `SAVINGS` account. Negative when savings were drawn on. */
+  savedMinor: number;
+  /** Net into every `ASSET` account. Disclosed beside সঞ্চয়, never inside it. */
+  investedMinor: number;
+  /**
+   * `savedMinor ÷ incomeMinor` in basis points, or null when there was no
+   * income to be a share of. Negative is a real answer; so is over 10,000.
+   */
+  savingsRateBps: number | null;
+  /** One row per savings account with movement. Sums to `savedMinor` exactly. */
+  savings: SavingsInstrumentRow[];
+  /** The same for the things that were bought. Sums to `investedMinor`. */
+  investments: SavingsInstrumentRow[];
+  /** Whole calendar months ending at the month `to` falls in. */
+  months: SavingsTrendPoint[];
 }
 
 /**
@@ -641,6 +714,249 @@ export class ReportsService {
         month: r.month,
         incomeMinor: minorToNumber(BigInt(r.income)),
         expenseMinor: minorToNumber(BigInt(r.expense)),
+      })),
+      endMonth,
+      months,
+    );
+  }
+
+  /**
+   * আয়, খরচ ও সঞ্চয় for a period, and the same three month by month.
+   *
+   * ## The one figure this report exists for
+   *
+   * `savedMinor` — the net movement into the workspace's `SAVINGS` accounts.
+   * Not "deposits into savings": the *net*, which is what makes a transfer
+   * between two DPS accounts add nothing and a withdrawal subtract. The
+   * reasoning, and the judgement that an `ASSET` account is investing rather
+   * than saving, are written out on `savingsVehicleOf` in @hishab/core, where
+   * the arithmetic is unit-tested against a hand-worked fixture.
+   *
+   * ## Why nothing here guesses
+   *
+   * A DPS instalment recorded as an uncategorised `EXPENSE` is not saving as far
+   * as this report is concerned, and no amount of "DPS" in the description will
+   * make it one. There is no heuristic here on purpose: a report that reads
+   * descriptions would be right about the rows somebody worded conveniently and
+   * silently wrong about the rest, and nobody could tell which. What a correct
+   * ledger says is what this reports; miscoded history is repaired in the data.
+   */
+  async monthlyFlow(
+    ctx: TenantContext,
+    period: PeriodQuery,
+    months = 6,
+  ): Promise<MonthlyFlowReport> {
+    const endMonth = period.to.slice(0, 7);
+
+    const [flow, vehicles, series] = await Promise.all([
+      this.periodFlow(ctx, period),
+      this.savingsMovements(ctx, period),
+      this.savingsByMonth(ctx, endMonth, months),
+    ]);
+
+    return {
+      from: period.from,
+      to: period.to,
+      basis: BASIS,
+      incomeMinor: flow.incomeMinor,
+      expenseMinor: flow.expenseMinor,
+      surplusMinor: flow.incomeMinor - flow.expenseMinor,
+      savedMinor: vehicles.savedMinor,
+      investedMinor: vehicles.investedMinor,
+      savingsRateBps: savingsRateBps(vehicles.savedMinor, flow.incomeMinor),
+      savings: vehicles.savings,
+      investments: vehicles.investments,
+      months: series,
+    };
+  }
+
+  /**
+   * What came in and what went out over a period, from the two nominal accounts.
+   *
+   * The same entries `byCategory` groups by category, summed without the
+   * grouping. That is deliberate and load-bearing: the সারসংক্ষেপ panel and the
+   * সঞ্চয় panel sit one above the other on the reports screen, both print আয়,
+   * and two figures on one screen that disagree is worse than one figure that is
+   * missing. One rule — *entries on the workspace's income account inside the
+   * window* — expressed once here and once there, over the same rows.
+   */
+  private async periodFlow(
+    ctx: TenantContext,
+    period: PeriodQuery,
+  ): Promise<{ incomeMinor: number; expenseMinor: number }> {
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    const grouped = await this.prisma.ledgerEntry.groupBy({
+      by: ['accountId'],
+      where: {
+        workspaceId: ctx.workspaceId,
+        accountId: { in: [system.incomeAccountId, system.expenseAccountId] },
+        transaction: { deletedAt: null, date: this.range(period, ctx.timezone) },
+      },
+      _sum: { amountMinor: true },
+    });
+
+    const totalOn = (accountId: string): number =>
+      minorToNumber(grouped.find((row) => row.accountId === accountId)?._sum.amountMinor ?? 0n);
+
+    return {
+      incomeMinor: totalOn(system.incomeAccountId),
+      expenseMinor: totalOn(system.expenseAccountId),
+    };
+  }
+
+  /**
+   * Every movement on the long-term accounts inside a period, folded per
+   * instrument.
+   *
+   * Aggregated by account **and direction** rather than netted in SQL, because
+   * "৳2,000 in and ৳500 out" and "৳1,500 net" are different sentences and the
+   * panel prints the first. `buildSavingsFlow` does the netting, so the rows and
+   * the totals cannot come from two different additions.
+   *
+   * `TRANSACTION_TYPES_NOT_MOVEMENTS` is what keeps an opening balance out of
+   * it. Somebody entering a DPS that already holds ৳2,00,000 has not saved two
+   * lakh this month, and a revaluation of gold is the world moving rather than
+   * the household setting anything aside.
+   */
+  private async savingsMovements(ctx: TenantContext, period: PeriodQuery) {
+    const accounts = await this.prisma.account.findMany({
+      where: { workspaceId: ctx.workspaceId, deletedAt: null, type: { in: ['SAVINGS', 'ASSET'] } },
+      select: { id: true, name: true, type: true },
+    });
+    if (accounts.length === 0) {
+      return { savedMinor: 0, investedMinor: 0, savings: [], investments: [] };
+    }
+
+    const ids = accounts.map((a) => a.id);
+    const [grouped, plans] = await Promise.all([
+      this.prisma.ledgerEntry.groupBy({
+        by: ['accountId', 'direction'],
+        where: {
+          workspaceId: ctx.workspaceId,
+          accountId: { in: ids },
+          transaction: {
+            deletedAt: null,
+            date: this.range(period, ctx.timezone),
+            type: { notIn: [...TRANSACTION_TYPES_NOT_MOVEMENTS] },
+          },
+        },
+        _sum: { amountMinor: true },
+      }),
+      /* plan → linkedAccountId is the only route from an instrument to its
+         deposits: `Transaction.savingsPlanId` is set on the profit rows and on
+         instalments booked through the savings screen, but a deposit somebody
+         made by hand from the khata carries no plan id at all. The account is
+         what every deposit has in common, so the account is what this counts
+         and the plan only supplies the name. */
+      this.prisma.savingsPlan.findMany({
+        where: { workspaceId: ctx.workspaceId, deletedAt: null, linkedAccountId: { in: ids } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, planName: true, planType: true, linkedAccountId: true },
+      }),
+    ]);
+
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    const rows: VehicleEntryRow[] = grouped.flatMap((row) => {
+      const account = byId.get(row.accountId);
+      if (!account) return [];
+      return [
+        {
+          accountId: row.accountId,
+          name: account.name,
+          type: account.type,
+          direction: row.direction,
+          amountMinor: minorToNumber(row._sum.amountMinor ?? 0n),
+        },
+      ];
+    });
+
+    /* First plan wins where two point at one account. That is a data problem
+       rather than a report problem, and picking the oldest deterministically is
+       better than a name that changes between two requests. */
+    const planFor = new Map<string, (typeof plans)[number]>();
+    for (const plan of plans) {
+      if (plan.linkedAccountId && !planFor.has(plan.linkedAccountId)) {
+        planFor.set(plan.linkedAccountId, plan);
+      }
+    }
+
+    const named = (flow: VehicleFlow): SavingsInstrumentRow => {
+      const plan = planFor.get(flow.accountId);
+      return {
+        ...flow,
+        name: plan?.planName ?? flow.name,
+        accountName: flow.name,
+        planId: plan?.id ?? null,
+        planType: plan?.planType ?? null,
+      };
+    };
+
+    const flow = buildSavingsFlow(rows);
+    return {
+      savedMinor: flow.savedMinor,
+      investedMinor: flow.investedMinor,
+      savings: flow.savings.map(named),
+      investments: flow.investments.map(named),
+    };
+  }
+
+  /**
+   * The four figures per calendar month, in one pass over the ledger.
+   *
+   * One query rather than four per month: income, expense, saving and investing
+   * are all sums over `LedgerEntry` inside the same window, and they are picked
+   * apart by `CASE` on which account the entry sits on. Bounded to the months
+   * actually asked for, which `trend` above is not — a workspace with ten years
+   * of history should not read all of it to draw six bars.
+   *
+   * The savings and investing columns carry the sign the ledger gives them —
+   * debit positive, credit negative — so a withdrawal reduces the month and a
+   * move between two DPS accounts cancels itself out inside the same `SUM`.
+   */
+  private async savingsByMonth(
+    ctx: TenantContext,
+    endMonth: string,
+    months: number,
+  ): Promise<SavingsTrendPoint[]> {
+    const system = await this.accounts.systemAccounts(ctx.workspaceId);
+    /* Local midnight of the first day of the first month, and of the first day
+       of the month after the last. `fromLocalDateString` on a day key, never
+       arithmetic on milliseconds, so the bounds survive an offset change. */
+    const gte = fromLocalDateString(`${shiftMonthKey(endMonth, -(months - 1))}-01`, ctx.timezone);
+    const lt = fromLocalDateString(`${shiftMonthKey(endMonth, 1)}-01`, ctx.timezone);
+
+    const rows = await this.prisma.$queryRaw<
+      { month: string; income: bigint; expense: bigint; saved: bigint; invested: bigint }[]
+    >`
+      SELECT to_char(t."date" AT TIME ZONE 'UTC' AT TIME ZONE ${ctx.timezone}, 'YYYY-MM') AS month,
+             COALESCE(SUM(CASE WHEN e."accountId" = ${system.incomeAccountId} THEN e."amountMinor" ELSE 0 END), 0) AS income,
+             COALESCE(SUM(CASE WHEN e."accountId" = ${system.expenseAccountId} THEN e."amountMinor" ELSE 0 END), 0) AS expense,
+             COALESCE(SUM(CASE WHEN a."type" = 'SAVINGS' AND t."type" NOT IN ('OPENING_BALANCE', 'REVALUATION')
+                               THEN (CASE WHEN e."direction" = 'DEBIT' THEN e."amountMinor" ELSE -e."amountMinor" END)
+                               ELSE 0 END), 0) AS saved,
+             COALESCE(SUM(CASE WHEN a."type" = 'ASSET' AND t."type" NOT IN ('OPENING_BALANCE', 'REVALUATION')
+                               THEN (CASE WHEN e."direction" = 'DEBIT' THEN e."amountMinor" ELSE -e."amountMinor" END)
+                               ELSE 0 END), 0) AS invested
+      FROM "LedgerEntry" e
+      JOIN "Transaction" t ON t."id" = e."transactionId"
+      JOIN "Account" a ON a."id" = e."accountId"
+      WHERE e."workspaceId" = ${ctx.workspaceId}
+        AND t."deletedAt" IS NULL
+        AND a."deletedAt" IS NULL
+        AND t."date" >= ${gte}
+        AND t."date" < ${lt}
+        AND (e."accountId" IN (${system.incomeAccountId}, ${system.expenseAccountId})
+             OR a."type" IN ('SAVINGS', 'ASSET'))
+      GROUP BY 1
+    `;
+
+    return buildSavingsTrend(
+      rows.map((r) => ({
+        month: r.month,
+        incomeMinor: minorToNumber(BigInt(r.income)),
+        expenseMinor: minorToNumber(BigInt(r.expense)),
+        savedMinor: minorToNumber(BigInt(r.saved)),
+        investedMinor: minorToNumber(BigInt(r.invested)),
       })),
       endMonth,
       months,

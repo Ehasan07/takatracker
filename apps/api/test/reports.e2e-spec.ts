@@ -1102,3 +1102,248 @@ describe('selling an asset', () => {
     expect(rows.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * আয়, খরচ ও সঞ্চয় — the third figure, which no other report here can give.
+ *
+ * Its own workspace, because every transfer below would move the cash flow and
+ * the balance sheet the first fixture asserts exactly.
+ *
+ * The month, worked out by hand:
+ *
+ *   opening  নগদ                    ৳1,00,000   dated before the month
+ *   income   বেতন    → নগদ           ৳  50,000
+ *   expense  খাবার   ← নগদ           ৳  10,000
+ *   transfer নগদ     → ডিপিএস        ৳   5,000   saving
+ *   transfer নগদ     → সঞ্চয়পত্র      ৳   2,000   saving
+ *   transfer ডিপিএস  → নগদ           ৳   1,000   dis-saving
+ *   transfer ডিপিএস  → সঞ্চয়পত্র      ৳     500   neither: it was already saved
+ *   transfer নগদ     → জমি           ৳  20,000   investing, not saving
+ *
+ *   income   = ৳50,000                       → 5,000,000 poisha
+ *   expense  = ৳10,000                       → 1,000,000 poisha
+ *   surplus  = ৳40,000                       → 4,000,000 poisha
+ *   saved    = 5,000 + 2,000 − 1,000 = ৳6,000 →   600,000 poisha
+ *   invested = ৳20,000                       → 2,000,000 poisha
+ *   rate     = 600,000 / 5,000,000           → 1200 bps, 12%
+ *
+ * The ৳500 between the two savings accounts is the case worth being explicit
+ * about: it adds nothing at all, because it was already saved.
+ */
+describe('what was put away this month', () => {
+  let ctx: TestContext;
+  let user: SignedUpUser;
+  let cashId: string;
+  let dpsId: string;
+  let certificateId: string;
+
+  const INCOME = 5_000_000;
+  const EXPENSE = 1_000_000;
+  const SAVED = 600_000;
+  const INVESTED = 2_000_000;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+    user = await signup(ctx);
+    await unlimit(ctx, user.workspaceId);
+
+    const post = (path: string, body: Record<string, unknown>) =>
+      ctx.http().post(path).set(auth(user)).send(body).expect(201);
+
+    cashId = (
+      await post('/v1/accounts', {
+        name: 'নগদ',
+        type: 'CASH',
+        openingBalance: 10_000_000,
+        openingBalanceDate: beforeMonth,
+      })
+    ).body.id;
+    dpsId = (await post('/v1/accounts', { name: 'ডিপিএস হিসাব', type: 'SAVINGS' })).body.id;
+    certificateId = (await post('/v1/accounts', { name: 'সঞ্চয়পত্র', type: 'SAVINGS' })).body.id;
+    const landId = (await post('/v1/accounts', { name: 'জমি', type: 'ASSET' })).body.id;
+
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const byName = (n: string) => cats.body.find((c: { nameBn: string }) => c.nameBn === n).id;
+
+    await post('/v1/transactions', {
+      date: day('02'),
+      type: 'INCOME',
+      amountMinor: INCOME,
+      accountId: cashId,
+      categoryId: byName('বেতন'),
+    });
+    await post('/v1/transactions', {
+      date: day('03'),
+      type: 'EXPENSE',
+      amountMinor: EXPENSE,
+      accountId: cashId,
+      categoryId: byName('খাবার ও বাজার'),
+    });
+
+    const move = (from: string, to: string, amountMinor: number, date: string) =>
+      post('/v1/transactions', {
+        date,
+        type: 'TRANSFER',
+        amountMinor,
+        accountId: from,
+        counterAccountId: to,
+      });
+
+    await move(cashId, dpsId, 500_000, day('05'));
+    await move(cashId, certificateId, 200_000, day('06'));
+    await move(dpsId, cashId, 100_000, day('07'));
+    await move(dpsId, certificateId, 50_000, day('08'));
+    await move(cashId, landId, 2_000_000, day('09'));
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  const get = (path: string) => ctx.http().get(path).set(auth(user));
+
+  it('reports income, spending and what was put away, side by side', async () => {
+    const res = await get('/v1/reports/monthly').expect(200);
+    expect(res.body.incomeMinor).toBe(INCOME);
+    expect(res.body.expenseMinor).toBe(EXPENSE);
+    expect(res.body.savedMinor).toBe(SAVED);
+    expect(res.body.basis).toBe('CASH');
+  });
+
+  it('keeps what was not spent apart from what was saved', async () => {
+    /* The distinction the whole report turns on. ৳40,000 was not spent and
+       ৳6,000 of it went into savings; the rest is sitting in the wallet or went
+       into land. A screen printing the surplus as সঞ্চয় would tell somebody they
+       saved nearly seven times what they saved. */
+    const res = await get('/v1/reports/monthly').expect(200);
+    expect(res.body.surplusMinor).toBe(4_000_000);
+    expect(res.body.savedMinor).not.toBe(res.body.surplusMinor);
+  });
+
+  it('counts buying land as investing and never as saving', async () => {
+    const res = await get('/v1/reports/monthly').expect(200);
+    expect(res.body.investedMinor).toBe(INVESTED);
+    expect(res.body.savedMinor).toBe(SAVED);
+    // And it is not quietly folded in, which is the failure that would hide it.
+    expect(res.body.savedMinor).not.toBe(SAVED + INVESTED);
+  });
+
+  it('adds nothing for money moved between two savings accounts', async () => {
+    /* ৳500 from the DPS into the certificate was already saved. The two
+       instruments still report their own movement, and they cancel. */
+    const res = await get('/v1/reports/monthly').expect(200);
+    const rows: { accountId: string; netMinor: number; inMinor: number; outMinor: number }[] =
+      res.body.savings;
+
+    const dps = rows.find((r) => r.accountId === dpsId);
+    const certificate = rows.find((r) => r.accountId === certificateId);
+    expect(dps).toMatchObject({ inMinor: 500_000, outMinor: 150_000, netMinor: 350_000 });
+    expect(certificate).toMatchObject({ inMinor: 250_000, outMinor: 0, netMinor: 250_000 });
+    expect(rows.reduce((sum, r) => sum + r.netMinor, 0)).toBe(SAVED);
+  });
+
+  it('lets money coming back out reduce the figure', async () => {
+    /* ৳1,000 came home out of the DPS, so the month put away ৳6,000 and not the
+       ৳7,000 the deposits alone add up to. */
+    const res = await get('/v1/reports/monthly').expect(200);
+    expect(res.body.savedMinor).toBe(600_000);
+    expect(res.body.savedMinor).not.toBe(700_000);
+  });
+
+  it('states the savings rate as a share of income, in basis points', async () => {
+    const res = await get('/v1/reports/monthly').expect(200);
+    // ৳6,000 of ৳50,000 is 12%.
+    expect(res.body.savingsRateBps).toBe(1200);
+  });
+
+  it('gives the same income and expense the by-category report gives', async () => {
+    /* Both panels sit on one screen. Two totals for আয় that disagree is worse
+       than one that is missing, so this is asserted rather than assumed. */
+    const [monthly, income, expense] = await Promise.all([
+      get('/v1/reports/monthly').expect(200),
+      get('/v1/reports/by-category?kind=INCOME').expect(200),
+      get('/v1/reports/by-category?kind=EXPENSE').expect(200),
+    ]);
+    expect(monthly.body.incomeMinor).toBe(income.body.total);
+    expect(monthly.body.expenseMinor).toBe(expense.body.total);
+  });
+
+  it('does not divide by zero in a period with no income', async () => {
+    /* Null, not zero: a period with no income is not a period with a 0% savings
+       rate, it is one the question cannot be asked of. */
+    const res = await get(`/v1/reports/monthly?from=${day('20')}&to=${day('28')}`).expect(200);
+    expect(res.body.incomeMinor).toBe(0);
+    expect(res.body.savingsRateBps).toBeNull();
+  });
+
+  it('carries a contiguous month-by-month series ending at the range s month', async () => {
+    const res = await get('/v1/reports/monthly?months=4').expect(200);
+    expect(res.body.months).toHaveLength(4);
+    expect(res.body.months.at(-1).month).toBe(month);
+    expect(res.body.months.at(-1).savedMinor).toBe(SAVED);
+    expect(res.body.months.at(-1).savingsRateBps).toBe(1200);
+    // Filled rather than skipped, so a chart cannot draw a line across a gap.
+    expect(res.body.months[0].savedMinor).toBe(0);
+    expect(res.body.months[0].savingsRateBps).toBeNull();
+  });
+
+  it('never counts an opening balance as money put away this month', async () => {
+    /* The sentence this exclusion exists to stop: somebody entering a DPS that
+       already holds ৳2,00,000 has not saved two lakh this month. */
+    await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(user))
+      .send({
+        name: 'পুরোনো ডিপিএস',
+        type: 'SAVINGS',
+        openingBalance: 20_000_000,
+        openingBalanceDate: day('04'),
+      })
+      .expect(201);
+
+    const res = await get('/v1/reports/monthly').expect(200);
+    expect(res.body.savedMinor).toBe(SAVED);
+    /* And the account it opened is not a row either, because nothing moved into
+       it — a line at ৳0 would be the report talking about money nobody moved. */
+    expect(
+      (res.body.savings as { accountName: string }[]).some(
+        (r) => r.accountName === 'পুরোনো ডিপিএস',
+      ),
+    ).toBe(false);
+  });
+
+  it('names the row after the savings plan when one is linked to the account', async () => {
+    await ctx
+      .http()
+      .post('/v1/savings')
+      .set(auth(user))
+      .send({
+        planName: 'সোনালী ডিপিএস, ১০ বছর',
+        planType: 'DPS',
+        installmentMinor: 500_000,
+        frequency: 'MONTHLY',
+        termMonths: 120,
+        startDate: day('01'),
+        linkedAccountId: dpsId,
+      })
+      .expect(201);
+
+    const res = await get('/v1/reports/monthly').expect(200);
+    const row = (
+      res.body.savings as { accountId: string; name: string; accountName: string }[]
+    ).find((r) => r.accountId === dpsId);
+    /* The name the household recognises, with the account's own name kept
+       beside it rather than thrown away. */
+    expect(row?.name).toBe('সোনালী ডিপিএস, ১০ বছর');
+    expect(row?.accountName).toBe('ডিপিএস হিসাব');
+  });
+
+  it('never reports across a workspace boundary', async () => {
+    const stranger = await signup(ctx);
+    const res = await ctx.http().get('/v1/reports/monthly').set(auth(stranger)).expect(200);
+    expect(res.body.savedMinor).toBe(0);
+    expect(res.body.savings).toEqual([]);
+  });
+});

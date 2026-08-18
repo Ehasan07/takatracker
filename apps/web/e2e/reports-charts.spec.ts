@@ -177,8 +177,19 @@ test.describe('the reports charts', () => {
     const summary = page.locator('section').filter({ hasText: 'সারসংক্ষেপ' }).first();
     await expect(summary).toContainText(taka(SPENT));
     await expect(summary).toContainText(taka(SALARY));
-    // ৳11,000 of ৳50,000 spent leaves 78% — the bar chart's own headline.
-    await expect(summary).toContainText('%');
+    /* A percentage used to be asserted here: "আয়ের ৭৮% রাখা গেছে", the surplus
+       over income. It has gone, and deliberately. Those words describe a savings
+       rate and that number is not one — money not spent may be sitting in a
+       wallet — and the আয়, খরচ ও সঞ্চয় panel directly below now prints a rate
+       that means what it says: what actually went into savings, over income. Two
+       percentages one panel apart answering the same question differently is
+       worse than one that is missing, so this one was removed rather than left
+       to disagree. See reports-monthly.spec.ts.
+
+       What is asserted instead is the figure the two totals above it reconcile
+       to, which is what this panel was always really for. */
+    await expect(summary).toContainText('নিট');
+    await expect(summary).toContainText(taka(SALARY - SPENT));
   });
 
   test('opens a category on its sub-categories, and comes back', async () => {

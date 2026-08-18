@@ -55,6 +55,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/t';
 import { BreakdownPanel } from './breakdown';
+import { MonthlyPanel } from './monthly';
 import { Delta, Panel, PanelSkeleton, QueryError } from './parts';
 import {
   fetchBalanceSheet,
@@ -281,6 +282,15 @@ function ReportsBody({ today }: { today: Date }) {
           </>
         )}
       </Panel>
+
+      {/* The third figure, which সারসংক্ষেপ above cannot give and no statement in
+          this application can: what actually went into savings. Directly under
+          it, because a reader who has just been shown "নিট ৳40,000" asks "so how
+          much of that did I actually put away?" — and because the two panels'
+          আয় and খরচ come from the same entries and must be read together. This
+          panel owns the savings rate; সারসংক্ষেপ deliberately no longer prints
+          one, so there is exactly one on the screen. */}
+      <MonthlyPanel period={range} rangeText={rangeText} />
 
       {/* Net worth: the number people open a finance app to see — and the first
           one on this screen that the range does not touch. */}
@@ -544,17 +554,23 @@ function ReportsBody({ today }: { today: Date }) {
  * third signal rather than the first. The widths are percentages of a container
  * — a screenful of pixels, never money — and the amounts they are derived from
  * stay integer poisha and are printed by `<Money>` from those integers.
+ *
+ * ## The percentage that used to be under these bars, and why it is gone
+ *
+ * It read "আয়ের ৪০% রাখা গেছে" and it was the *surplus* over income — income
+ * less spending, which is money that was not spent and may well be sitting in a
+ * wallet. The সঞ্চয় panel directly below now prints a savings rate that means
+ * what that sentence says: what actually went into a savings account, over
+ * income. The two are different numbers in almost every month, and two
+ * percentages on one screen that answer the same question differently is worse
+ * than one that is missing — so the ambiguous one was removed rather than left
+ * to disagree. Nothing was lost: the surplus is still on this panel as নিট, and
+ * it is named again beside the rate below so the pair cannot be confused.
  */
 function InOut({ incomeMinor, expenseMinor }: { incomeMinor: number; expenseMinor: number }) {
   const peak = Math.max(incomeMinor, expenseMinor);
   const width = (minor: number): string =>
     peak <= 0 ? '0%' : `${Math.max(0, (minor / peak) * 100)}%`;
-
-  /* Kept in basis points until the last moment, the way the API's own
-     `savingsRateBps` is: a whole percent is what gets read, and dividing at the
-     end means the number on screen is derived from the integers above it. */
-  const savedBps =
-    incomeMinor > 0 ? Math.trunc(((incomeMinor - expenseMinor) * 10_000) / incomeMinor) : 0;
 
   return (
     <div className="mt-3 flex flex-col gap-2">
@@ -577,14 +593,6 @@ function InOut({ incomeMinor, expenseMinor }: { incomeMinor: number; expenseMino
           </div>
         </div>
       ))}
-      {incomeMinor > 0 ? (
-        <p className="text-ink-muted text-xs">
-          {t('reports.savingsRate', 'আয়ের {n}% রাখা গেছে').replace(
-            '{n}',
-            bnNum(Math.trunc(savedBps / 100)),
-          )}
-        </p>
-      ) : null}
     </div>
   );
 }

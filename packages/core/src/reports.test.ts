@@ -3,11 +3,15 @@ import {
   ACCOUNT_CLASS,
   buildBalanceSheet,
   buildCashFlow,
+  buildSavingsFlow,
+  buildSavingsTrend,
   buildTrend,
   compareBalanceSheets,
   nextDateKey,
   nextDayOfMonthAfter,
   rollUpToParents,
+  savingsRateBps,
+  savingsVehicleOf,
   shiftMonthKey,
   signedEffectFor,
   statementPeriodFor,
@@ -16,6 +20,7 @@ import {
   type AccountBalanceRow,
   type BalanceSheetTotals,
   type CategoryTotal,
+  type VehicleEntryRow,
 } from './reports.js';
 
 /**
@@ -673,5 +678,180 @@ describe('when a statement falls due', () => {
 
   it('crosses a year end', () => {
     expect(nextDayOfMonthAfter('2026-12-25', 10)).toBe('2027-01-10');
+  });
+});
+
+/**
+ * সঞ্চয় — what was put away, which no statement in this application asks about.
+ *
+ * The fixture is a month worked out by hand, in taka:
+ *
+ *   ডিপিএস            +৳ 2,000   two instalments of ৳1,000        → saving
+ *   সঞ্চয়পত্র          +৳ 5,000   one deposit                      → saving
+ *   ডিপিএস            −৳   500   a partial withdrawal             → dis-saving
+ *   জমি               +৳50,000   a land instalment                → investing
+ *
+ *   saved    = 2,000 + 5,000 − 500 = ৳6,500  → 650,000 poisha
+ *   invested = ৳50,000                       → 5,000,000 poisha
+ *
+ * Against income of ৳40,000 the savings rate is 650,000 / 4,000,000 = 16.25%,
+ * which is 1625 basis points. The land is nowhere near it, on purpose.
+ */
+describe('what was put away', () => {
+  const entry = (
+    accountId: string,
+    name: string,
+    type: VehicleEntryRow['type'],
+    direction: VehicleEntryRow['direction'],
+    amountMinor: number,
+  ): VehicleEntryRow => ({ accountId, name, type, direction, amountMinor });
+
+  const FIXTURE: VehicleEntryRow[] = [
+    entry('dps', 'ডিপিএস', 'SAVINGS', 'DEBIT', 200_000),
+    entry('dps', 'ডিপিএস', 'SAVINGS', 'CREDIT', 50_000),
+    entry('sanchay', 'সঞ্চয়পত্র', 'SAVINGS', 'DEBIT', 500_000),
+    entry('land', 'জমি', 'ASSET', 'DEBIT', 5_000_000),
+  ];
+
+  it('tells a savings account apart from a thing that was bought', () => {
+    expect(savingsVehicleOf('SAVINGS')).toBe('SAVINGS');
+    expect(savingsVehicleOf('ASSET')).toBe('INVESTMENT');
+    /* Everything else receives no সঞ্চয় at all. Money moved from one bank
+       account to another is not saving in any sense, and a wallet that
+       counted would make every transfer in the workspace look like thrift. */
+    for (const type of ['CASH', 'BANK', 'MOBILE_WALLET', 'RECEIVABLE', 'CREDIT_CARD'] as const) {
+      expect(savingsVehicleOf(type)).toBeNull();
+    }
+  });
+
+  it('adds up to the hand-checked totals and never mixes the two', () => {
+    const flow = buildSavingsFlow(FIXTURE);
+    expect(flow.savedMinor).toBe(650_000);
+    expect(flow.investedMinor).toBe(5_000_000);
+  });
+
+  it('keeps every instrument s own movement, in and out apart', () => {
+    const flow = buildSavingsFlow(FIXTURE);
+    const dps = flow.savings.find((s) => s.accountId === 'dps');
+    expect(dps).toMatchObject({ inMinor: 200_000, outMinor: 50_000, netMinor: 150_000 });
+    /* The largest net first, so the instrument that took the most money this
+       month is the first line read. */
+    expect(flow.savings.map((s) => s.accountId)).toEqual(['sanchay', 'dps']);
+  });
+
+  it('reaches its total from the rows it prints, on both sides', () => {
+    /* The one property the panel depends on: a heading that its own lines do
+       not reach leaves a reader with two numbers and no way to choose. */
+    const flow = buildSavingsFlow(FIXTURE);
+    expect(flow.savings.reduce((sum, s) => sum + s.netMinor, 0)).toBe(flow.savedMinor);
+    expect(flow.investments.reduce((sum, s) => sum + s.netMinor, 0)).toBe(flow.investedMinor);
+  });
+
+  it('adds nothing when money moves between two savings accounts', () => {
+    /* ৳50,000 out of one DPS and into another is not ৳50,000 of new saving. It
+       falls out of summing signed effects rather than counting arrivals — which
+       is the whole reason the arithmetic is written that way round. */
+    const flow = buildSavingsFlow([
+      entry('a', 'পুরোনো ডিপিএস', 'SAVINGS', 'CREDIT', 5_000_000),
+      entry('b', 'নতুন ডিপিএস', 'SAVINGS', 'DEBIT', 5_000_000),
+    ]);
+    expect(flow.savedMinor).toBe(0);
+    /* Both instruments still report their own movement. One of them really did
+       gain ৳50,000 and the other really did lose it. */
+    expect(flow.savings.map((s) => s.netMinor)).toEqual([5_000_000, -5_000_000]);
+  });
+
+  it('lets money coming back out reduce the figure', () => {
+    /* A month that emptied the savings to pay for a wedding did not save
+       ৳2,000. A report counting only deposits would say it did. */
+    const flow = buildSavingsFlow([
+      entry('dps', 'ডিপিএস', 'SAVINGS', 'DEBIT', 200_000),
+      entry('dps', 'ডিপিএস', 'SAVINGS', 'CREDIT', 6_000_000),
+    ]);
+    expect(flow.savedMinor).toBe(-5_800_000);
+    expect(flow.savings[0]).toMatchObject({ inMinor: 200_000, outMinor: 6_000_000 });
+  });
+
+  it('ignores an account that is neither', () => {
+    const flow = buildSavingsFlow([entry('b', 'ব্যাংক', 'BANK', 'DEBIT', 1_000_000)]);
+    expect(flow).toEqual({ savedMinor: 0, investedMinor: 0, savings: [], investments: [] });
+  });
+});
+
+describe('the savings rate', () => {
+  it('is what was put away over what came in', () => {
+    // ৳6,500 of ৳40,000 is 16.25%.
+    expect(savingsRateBps(650_000, 4_000_000)).toBe(1625);
+  });
+
+  it('does not divide by zero in a month with no income', () => {
+    /* Null rather than 0. A month with no income is not a month with a 0%
+       savings rate — it is a month the question cannot be asked of, and
+       printing 0% would answer a question nobody asked. */
+    expect(savingsRateBps(650_000, 0)).toBeNull();
+    expect(savingsRateBps(0, 0)).toBeNull();
+    expect(savingsRateBps(-650_000, 0)).toBeNull();
+  });
+
+  it('reports a negative rate rather than flooring it at zero', () => {
+    // ৳10,000 taken out against ৳40,000 earned: −25%, and worth noticing.
+    expect(savingsRateBps(-1_000_000, 4_000_000)).toBe(-2500);
+  });
+
+  it('reports over a hundred percent, which is a thing that happens', () => {
+    /* Savings can be fed out of cash already in hand, so more can go in than
+       came in that month. Capping it at 100 would hide the best month
+       somebody ever had. */
+    expect(savingsRateBps(8_000_000, 4_000_000)).toBe(20_000);
+  });
+
+  it('truncates rather than rounding, the way every other rate here does', () => {
+    // 1/3 is 3333.33 basis points, and `Math.round` is banned repo-wide.
+    expect(savingsRateBps(100_000, 300_000)).toBe(3333);
+  });
+});
+
+describe('the savings trend', () => {
+  const rows = [
+    {
+      month: '2026-06',
+      incomeMinor: 4_000_000,
+      expenseMinor: 3_000_000,
+      savedMinor: 500_000,
+      investedMinor: 0,
+    },
+    {
+      month: '2026-08',
+      incomeMinor: 4_000_000,
+      expenseMinor: 2_000_000,
+      savedMinor: 650_000,
+      investedMinor: 5_000_000,
+    },
+  ];
+
+  it('fills the month nothing happened in rather than skipping it', () => {
+    const trend = buildSavingsTrend(rows, '2026-08', 3);
+    expect(trend.map((p) => p.month)).toEqual(['2026-06', '2026-07', '2026-08']);
+    expect(trend[1]).toMatchObject({ incomeMinor: 0, savedMinor: 0, investedMinor: 0 });
+  });
+
+  it('carries the rate and the surplus, which are not the same number', () => {
+    /* The distinction the whole panel turns on: ৳20,000 was not spent and
+       ৳6,500 of it was put away. A screen printing one as the other would be
+       telling somebody they saved three times what they saved. */
+    const [, , august] = buildSavingsTrend(rows, '2026-08', 3);
+    expect(august?.surplusMinor).toBe(2_000_000);
+    expect(august?.savedMinor).toBe(650_000);
+    expect(august?.savingsRateBps).toBe(1625);
+  });
+
+  it('leaves the rate unanswered in a filled month rather than calling it zero', () => {
+    const [, july] = buildSavingsTrend(rows, '2026-08', 3);
+    expect(july?.savingsRateBps).toBeNull();
+  });
+
+  it('crosses a year end the way the income trend does', () => {
+    const trend = buildSavingsTrend([], '2027-01', 3);
+    expect(trend.map((p) => p.month)).toEqual(['2026-11', '2026-12', '2027-01']);
   });
 });

@@ -13,6 +13,8 @@
  *   by-tag         from, to          — range
  *   cash-flow      from, to          — range
  *   category/:id   from, to          — range
+ *   monthly        from, to, months  — range for the three headline figures,
+ *                                      plus a calendar-month series beside them
  *   trend          months only       — always ends at the current month; the
  *                                      range is applied by asking for enough
  *                                      months and cutting the answer down
@@ -33,6 +35,7 @@ import type {
   DrilldownDto,
   IncomeStatementDto,
   Kind,
+  MonthlyFlowDto,
   NetWorthChangesDto,
   TrendPoint,
 } from './types';
@@ -46,6 +49,8 @@ export const reportKeys = {
   byTag: (kind: Kind, period: Period) =>
     ['reports', 'by-tag', kind, period.from, period.to] as const,
   trend: (months: number) => ['reports', 'trend', months] as const,
+  monthly: (period: Period, months: number) =>
+    ['reports', 'monthly', period.from, period.to, months] as const,
   balanceSheet: () => ['reports', 'balance-sheet'] as const,
   cashFlow: (period: Period) => ['reports', 'cash-flow', period.from, period.to] as const,
   drilldown: (id: string, period: Period) =>
@@ -79,6 +84,17 @@ export function fetchByTag(kind: Kind, period: Period): Promise<ByTagDto> {
 
 export function fetchTrend(months: number): Promise<TrendPoint[]> {
   return api<TrendPoint[]>(`/reports/trend?months=${months}`);
+}
+
+/**
+ * আয়, খরচ ও সঞ্চয় for the range, and the same three month by month.
+ *
+ * Sends the range like every other range report, so its আয় and খরচ are the same
+ * two figures `fetchByCategory` returns for the same dates. `months` is the
+ * length of the calendar-month series that rides along beside them.
+ */
+export function fetchMonthly(period: Period, months: number): Promise<MonthlyFlowDto> {
+  return api<MonthlyFlowDto>(`/reports/monthly?${periodQuery(period)}&months=${months}`);
 }
 
 export function fetchBalanceSheet(): Promise<BalanceSheetDto> {

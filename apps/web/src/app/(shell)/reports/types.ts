@@ -167,6 +167,74 @@ export interface IncomeStatementDto extends IncomeStatementFiguresDto {
   comparison?: IncomeStatementFiguresDto & { from: string; to: string };
 }
 
+/**
+ * One savings instrument's movement over the period — a row of the সঞ্চয় panel.
+ *
+ * `netMinor` is `inMinor − outMinor` and is the only one of the three that can
+ * go negative: a month a DPS was broken into shows ৳0 in, ৳60,000 out and
+ * −৳60,000 net. The rows add up to `MonthlyFlowDto.savedMinor` exactly, which
+ * is what makes it safe to print the heading over them.
+ */
+export interface SavingsInstrumentDto {
+  accountId: string;
+  /** The plan's name when one is linked, the account's own otherwise. */
+  name: string;
+  accountName: string;
+  type: string;
+  vehicle: 'SAVINGS' | 'INVESTMENT';
+  planId: string | null;
+  planType: string | null;
+  inMinor: number;
+  outMinor: number;
+  netMinor: number;
+}
+
+/** One calendar month of the four figures. */
+export interface MonthlyFlowPointDto {
+  month: string;
+  incomeMinor: number;
+  expenseMinor: number;
+  savedMinor: number;
+  investedMinor: number;
+  surplusMinor: number;
+  savingsRateBps: number | null;
+}
+
+/**
+ * `GET /v1/reports/monthly?from=&to=&months=` — আয়, খরচ ও সঞ্চয়.
+ *
+ * The third figure is on no other endpoint and can be on none of them. Putting
+ * money into a DPS is one asset becoming another, so it is a transfer, it
+ * touches no nominal account and it never reaches an income statement. This is
+ * the transfers, netted: `savedMinor` counts money moving into `SAVINGS`
+ * accounts *from outside them*, so a move between two DPS accounts adds nothing
+ * and a withdrawal subtracts.
+ *
+ * `incomeMinor` and `expenseMinor` are the same two figures `by-category`
+ * reports for the same range, off the same entries. The সারসংক্ষেপ panel and
+ * this one sit on the same screen and must not disagree.
+ *
+ * `investedMinor` — money that went into land, gold or a car — is deliberately
+ * beside সঞ্চয় and never inside it, and is not in the savings rate. See
+ * `savingsVehicleOf` in @hishab/core for why.
+ */
+export interface MonthlyFlowDto {
+  from: string;
+  to: string;
+  basis: 'CASH';
+  incomeMinor: number;
+  expenseMinor: number;
+  /** What was **not spent**. Not the same number as `savedMinor`. */
+  surplusMinor: number;
+  savedMinor: number;
+  investedMinor: number;
+  /** Basis points. Null when there was no income to be a share of. */
+  savingsRateBps: number | null;
+  savings: SavingsInstrumentDto[];
+  investments: SavingsInstrumentDto[];
+  months: MonthlyFlowPointDto[];
+}
+
 /** `GET /v1/reports/net-worth-changes?from=&to=` */
 export interface NetWorthChangesDto {
   from: string;

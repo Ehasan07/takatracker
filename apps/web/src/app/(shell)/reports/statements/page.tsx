@@ -264,12 +264,23 @@ function IncomeStatement({ data }: { data: import('../types').IncomeStatementDto
         compareMinor={data.comparison?.surplusMinor}
         strong
       />
-      {/* The one figure somebody assessing a household reads before the detail. */}
+      {/* The one figure somebody assessing a household reads before the detail —
+          and it is the **surplus** over income, which is the row directly above
+          it. It used to be worded "আয়ের X% রাখা হয়েছে", which reads as a savings
+          rate and is not one: money not spent may be sitting in a wallet. The
+          reports screen now carries a real সঞ্চয়ের হার — what went into savings,
+          over income — and two figures using the same words for different
+          numbers is how somebody ends up believing the larger one. So this line
+          names what it is and points at the difference.
+
+          A `reports.` key on a `statements.` page because that is the prefix
+          this string was added under; the pair belong together more than the
+          neighbouring keys do. */}
       <p className="text-ink-muted mt-2 text-xs">
-        {t('statements.savingsRate', 'আয়ের {n}% রাখা হয়েছে').replace(
-          '{n}',
-          fmtNumber(rate.toFixed(1)),
-        )}
+        {t(
+          'reports.surplusRate',
+          'আয়ের {n}% উদ্বৃত্ত থেকেছে — খরচের পর যা বেঁচেছে, সঞ্চয়ে যা গেছে তা নয়',
+        ).replace('{n}', fmtNumber(rate.toFixed(1)))}
       </p>
     </Card>
   );

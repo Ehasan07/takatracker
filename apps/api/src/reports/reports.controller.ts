@@ -82,6 +82,32 @@ export class ReportsController {
   }
 
   /**
+   * `GET /v1/reports/monthly` — আয়, খরচ ও সঞ্চয় side by side, and the same
+   * three month by month.
+   *
+   * The third figure is the one no other endpoint here can give. Income and
+   * expense come off the income statement; saving does not and cannot, because
+   * putting money into a DPS is one asset becoming another and never reaches a
+   * nominal account. See `ReportsService.monthlyFlow`.
+   *
+   * Takes `from`/`to` like every other range report rather than a `month` of its
+   * own, so its আয় and খরচ are the same two numbers the সারসংক্ষেপ panel above
+   * it prints for the same range. `months` is the length of the calendar-month
+   * series beside them, clamped the way `trend` clamps it — six by default,
+   * which is what fits under a panel on a 320px phone without scrolling.
+   */
+  @Get('monthly')
+  monthly(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('months') months?: string,
+  ) {
+    const count = Math.min(36, Math.max(1, Number(months) || 6));
+    return this.reports.monthlyFlow(user, this.period(user, from, to), count);
+  }
+
+  /**
    * `GET /v1/reports/balance-sheet` — the position at the end of a day.
    *
    * `asOf=YYYY-MM-DD` is that day, in the workspace's timezone. With no

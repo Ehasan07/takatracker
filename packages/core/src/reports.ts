@@ -1,4 +1,4 @@
-import { sumMinor, type AccountType, type AssetKind } from '@hishab/shared';
+import { sumMinor, type AccountType, type AssetKind, type TransactionType } from '@hishab/shared';
 import { clampDayToMonth } from './card-reminders.js';
 
 /**
@@ -545,6 +545,268 @@ export function buildTrend(
     const incomeMinor = found?.incomeMinor ?? 0;
     const expenseMinor = found?.expenseMinor ?? 0;
     out.push({ month, incomeMinor, expenseMinor, netMinor: incomeMinor - expenseMinor });
+  }
+
+  return out;
+}
+
+// --- what was put away -------------------------------------------------------
+
+/**
+ * The two kinds of long-term account money can be moved *into*, and the reason
+ * they are counted apart.
+ *
+ * ## Why "সঞ্চয়" is not on the income statement, and cannot be
+ *
+ * A DPS instalment is not an expense. Nothing is consumed and nobody is owed:
+ * ৳2,000 leaves the current account and arrives in the savings account, one
+ * asset becoming another. So it is a `TRANSFER`, it never touches a nominal
+ * account, and it is therefore invisible to every income-statement figure in
+ * this application — correctly. "মাসে সঞ্চয় কত হচ্ছে" is a real question the
+ * books can answer and no statement asks: it is a question about *transfers*,
+ * and it has to be asked of the ledger directly.
+ *
+ * ## Why a `SAVINGS` account is সঞ্চয় and an `ASSET` account is not
+ *
+ * Both are money the household set aside, and folding them into one figure
+ * would still be wrong. A DPS instalment is a fixed monetary amount, repeated,
+ * redeemable in money at a number the bank already named — it is the thing
+ * somebody means by "কত সঞ্চয় হচ্ছে", and a savings rate built on it is
+ * comparable from one month to the next. Buying a ৳9,00,000 plot of land is
+ * also setting money aside, and putting it on the same line would swamp a
+ * ৳2,000 instalment, take the savings rate to 700% in one month and to nothing
+ * in the eleven after it, and make the series useless for the only thing a
+ * series is for.
+ *
+ * So the judgement is: **`SAVINGS` is saving, `ASSET` is investing**, they are
+ * reported side by side under their own names, and the savings rate is built on
+ * the first alone. The second is disclosed rather than hidden, so nobody has to
+ * wonder where the land went.
+ *
+ * There is a mechanical reason for the split too, and it is the stronger one. An
+ * `ASSET` account's balance also moves when the gold is revalued, which is not
+ * money being put anywhere — see `TRANSACTION_TYPES_NOT_MOVEMENTS`. Measuring
+ * "what was put away" as a balance movement would count that; measuring it as
+ * the entries on the account, with remeasurements excluded, does not.
+ */
+export type SavingsVehicle = 'SAVINGS' | 'INVESTMENT';
+
+/** Which of the two, or neither. Nothing else can receive সঞ্চয়. */
+export function savingsVehicleOf(type: AccountType): SavingsVehicle | null {
+  switch (type) {
+    case 'SAVINGS':
+      return 'SAVINGS';
+    case 'ASSET':
+      return 'INVESTMENT';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Transactions that change what a savings account holds without anybody having
+ * put anything into it. Excluded from every figure below.
+ *
+ * `OPENING_BALANCE` is the whole reason this list exists. Somebody who starts
+ * keeping books today enters a DPS that already holds ৳2,00,000; without this
+ * exclusion their first month reads "আপনি এই মাসে ২ লাখ টাকা সঞ্চয় করেছেন",
+ * which is the single most confidently wrong sentence this report could print.
+ * An opening balance is the recognition of what was already there, not an act
+ * of saving.
+ *
+ * `REVALUATION` is the same argument on the investing side: gold going up
+ * ৳50,000 is the world moving, not the household setting anything aside, and no
+ * money changed hands at all.
+ *
+ * `ADJUSTMENT` is deliberately **not** here. A correction changes what the books
+ * say is in the account, and a সঞ্চয় figure that quietly ignored corrections
+ * would stop agreeing with the balance it is supposed to explain.
+ */
+export const TRANSACTION_TYPES_NOT_MOVEMENTS: readonly TransactionType[] = [
+  'OPENING_BALANCE',
+  'REVALUATION',
+];
+
+/** One ledger entry on a savings or investment account. `amountMinor` is positive. */
+export interface VehicleEntryRow {
+  accountId: string;
+  name: string;
+  type: AccountType;
+  direction: 'DEBIT' | 'CREDIT';
+  amountMinor: number;
+}
+
+/**
+ * What one instrument took in and gave back over a period.
+ *
+ * `netMinor` is `inMinor − outMinor` and is the only one of the three that can
+ * be negative — a month where a DPS was broken into shows ৳0 in, ৳60,000 out
+ * and −৳60,000 net, and the panel that prints it must not drop the sign.
+ */
+export interface VehicleFlow {
+  accountId: string;
+  name: string;
+  type: AccountType;
+  vehicle: SavingsVehicle;
+  /** Money that arrived, always positive. */
+  inMinor: number;
+  /** Money that left, always positive. */
+  outMinor: number;
+  netMinor: number;
+}
+
+/**
+ * A period's saving, its investing, and the instruments behind each.
+ *
+ * `savings` sums to `savedMinor` exactly and `investments` to `investedMinor`,
+ * for the same reason the balance sheet's groups sum to their headings: both
+ * sides are built here, in one pass, from one list. Nothing downstream re-adds
+ * anything.
+ */
+export interface SavingsFlow {
+  /** Net into every `SAVINGS` account. Negative when more came out than went in. */
+  savedMinor: number;
+  /** Net into every `ASSET` account. Never folded into `savedMinor`. */
+  investedMinor: number;
+  savings: VehicleFlow[];
+  investments: VehicleFlow[];
+}
+
+/**
+ * Fold ledger entries on the long-term accounts into what each held on to.
+ *
+ * ## The three things this has to get right
+ *
+ * **A transfer between two savings accounts is not new saving.** Moving
+ * ৳50,000 from one DPS to another debits the second and credits the first, so
+ * the two contribute +50,000 and −50,000 and the total is zero. That falls out
+ * of summing *signed* effects rather than counting deposits, which is why the
+ * arithmetic is written this way round and not as "add up everything that
+ * arrived". The two instruments still show their own movement on their own row,
+ * which is the truth: one of them gained and the other lost.
+ *
+ * **Money coming back out is dis-saving.** A withdrawal credits the account and
+ * reduces the figure. A report that only counted deposits would tell somebody
+ * who emptied their savings to pay for a wedding that they saved ৳2,000 that
+ * month.
+ *
+ * **Profit the bank adds to the balance is saving.** It arrives as an `INCOME`
+ * transaction debiting the savings account, so it lands in আয় and in সঞ্চয়
+ * both — which is exactly right: it was earned, and it was kept.
+ *
+ * Rows arrive one per account and direction, the shape an aggregate produces.
+ * An account that only ever took money in has no credit row and gets
+ * `outMinor: 0` rather than being absent.
+ */
+export function buildSavingsFlow(rows: readonly VehicleEntryRow[]): SavingsFlow {
+  const byAccount = new Map<string, VehicleFlow>();
+
+  for (const row of rows) {
+    const vehicle = savingsVehicleOf(row.type);
+    if (!vehicle) continue;
+
+    const found = byAccount.get(row.accountId) ?? {
+      accountId: row.accountId,
+      name: row.name,
+      type: row.type,
+      vehicle,
+      inMinor: 0,
+      outMinor: 0,
+      netMinor: 0,
+    };
+    if (row.direction === 'DEBIT') found.inMinor += row.amountMinor;
+    else found.outMinor += row.amountMinor;
+    found.netMinor = found.inMinor - found.outMinor;
+    byAccount.set(row.accountId, found);
+  }
+
+  /* Biggest net first, so the instrument that took the most money this month is
+     the first line read. A withdrawal therefore sorts to the bottom, which is
+     where somebody scanning for "what did I put away" expects it. */
+  const all = [...byAccount.values()].sort((a, b) => b.netMinor - a.netMinor);
+  const savings = all.filter((flow) => flow.vehicle === 'SAVINGS');
+  const investments = all.filter((flow) => flow.vehicle === 'INVESTMENT');
+
+  return {
+    savedMinor: sumMinor(savings.map((flow) => flow.netMinor)),
+    investedMinor: sumMinor(investments.map((flow) => flow.netMinor)),
+    savings,
+    investments,
+  };
+}
+
+/**
+ * How much of what came in was put away, in basis points. 25% is 2500.
+ *
+ * `null`, never zero, when there was no income. A month with no income and
+ * ৳5,000 put away out of savings from December is not a month with a 0% savings
+ * rate — it is a month the question cannot be asked of, and printing 0% would
+ * be an answer to a question nobody asked. The screen prints a dash.
+ *
+ * Negative is a real answer and is returned as one: a month that took ৳10,000
+ * out of a DPS against ৳40,000 of income is −2500, "সঞ্চয় থেকে ভাঙানো হয়েছে",
+ * and rounding it to zero would hide the only month worth noticing. Over 10,000
+ * is real too — savings can be fed from cash already in hand.
+ *
+ * `Math.trunc`, not `Math.round`, which is banned repo-wide: the same integer
+ * arithmetic `IncomeStatementFigures.savingsRateBps` uses, so the two rates on
+ * this product round identically.
+ */
+export function savingsRateBps(savedMinor: number, incomeMinor: number): number | null {
+  if (incomeMinor <= 0) return null;
+  return Math.trunc((savedMinor * 10_000) / incomeMinor);
+}
+
+/** One month of the four figures, before the gaps are filled in. */
+export interface MonthlySavingsTotals extends MonthTotals {
+  savedMinor: number;
+  investedMinor: number;
+}
+
+/**
+ * A month on the সঞ্চয় trend: what came in, what went out, what was put away,
+ * and the two figures derived from them.
+ */
+export interface SavingsTrendPoint extends MonthlySavingsTotals {
+  /** Income less expenses — what was *not* spent, which is not what was saved. */
+  surplusMinor: number;
+  /** `savedMinor ÷ incomeMinor`. Null in a month with no income. */
+  savingsRateBps: number | null;
+}
+
+/**
+ * A contiguous series ending at `endMonth`, zero-filled.
+ *
+ * The sibling of `buildTrend` and gap-filled for the same reason: a chart that
+ * silently skips an empty month draws a straight line across it and invents a
+ * saving habit that never happened. Kept separate rather than widening
+ * `buildTrend`, because the income-and-expense chart is drawn from a query that
+ * knows nothing about savings accounts and must not start carrying null
+ * columns for them.
+ */
+export function buildSavingsTrend(
+  rows: readonly MonthlySavingsTotals[],
+  endMonth: string,
+  months: number,
+): SavingsTrendPoint[] {
+  const byMonth = new Map(rows.map((r) => [r.month, r]));
+  const out: SavingsTrendPoint[] = [];
+
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const month = shiftMonthKey(endMonth, -i);
+    const found = byMonth.get(month);
+    const incomeMinor = found?.incomeMinor ?? 0;
+    const expenseMinor = found?.expenseMinor ?? 0;
+    const savedMinor = found?.savedMinor ?? 0;
+    out.push({
+      month,
+      incomeMinor,
+      expenseMinor,
+      savedMinor,
+      investedMinor: found?.investedMinor ?? 0,
+      surplusMinor: incomeMinor - expenseMinor,
+      savingsRateBps: savingsRateBps(savedMinor, incomeMinor),
+    });
   }
 
   return out;
