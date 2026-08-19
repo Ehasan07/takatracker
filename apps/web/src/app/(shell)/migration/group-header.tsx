@@ -30,13 +30,20 @@ export function GroupHeader({
   onApply,
   onCreateNow,
   pending,
+  isCategory,
 }: {
   group: string;
   count: number;
   /** Top-level categories of the matching kind, for "all of these, under X". */
   parents: { id: string; name: string }[];
   disabled: boolean;
-  onApply: (patch: { decision?: MigrationDecision; targetId?: string | null }) => void;
+  onApply: (patch: {
+    decision?: MigrationDecision;
+    targetId?: string | null;
+    targetType?: string;
+  }) => void;
+  /** Categories only: accounts have a type, not a side of the books. */
+  isCategory?: boolean;
   /** Create this group's rows now and leave the rest of the batch open. */
   onCreateNow?: () => void;
   /** How many of them are still waiting to be created. */
@@ -52,7 +59,7 @@ export function GroupHeader({
         <span className="text-ink-muted">({count})</span>
       </p>
 
-      <div className="flex shrink-0 flex-col gap-2 sm:w-80 sm:flex-row">
+      <div className="flex shrink-0 flex-col gap-2 sm:w-[26rem] sm:flex-row">
         <Select
           aria-label={`${group} — সবগুলোতে`}
           value={decision}
@@ -75,6 +82,29 @@ export function GroupHeader({
             </option>
           ))}
         </Select>
+
+        {/* The whole group's side of the books, in one move.
+         *
+         * Wallet's "Investments" heading is eleven rows and every one of them
+         * arrives as spending, because that product does not sort its groups
+         * into income and expense the way a ledger has to. Flipping eleven
+         * selects one at a time is how somebody gives up and leaves them
+         * wrong. The parent is cleared with them for the same reason the row's
+         * own control clears it: a parent's kind has to match its children's. */}
+        {isCategory ? (
+          <Select
+            aria-label={`${group} — সবগুলো আয় না খরচ`}
+            defaultValue=""
+            disabled={disabled}
+            onChange={(e) =>
+              e.target.value && onApply({ targetType: e.target.value, targetId: null })
+            }
+          >
+            <option value="">সবগুলো আয় না খরচ?</option>
+            <option value="EXPENSE">সবগুলো খরচের খাত</option>
+            <option value="INCOME">সবগুলো আয়ের খাত</option>
+          </Select>
+        ) : null}
 
         {decision === 'CREATE' && parents.length > 0 ? (
           <Select

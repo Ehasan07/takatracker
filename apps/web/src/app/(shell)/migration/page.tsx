@@ -171,7 +171,7 @@ export default function MigrationPage() {
   const decideMany = useMutation({
     mutationFn: (input: {
       itemIds: string[];
-      patch: { decision?: MigrationDecision; targetId?: string | null };
+      patch: { decision?: MigrationDecision; targetId?: string | null; targetType?: string };
     }) =>
       api<{ updated: number; errors: string[] }>(`/migration/batches/${current?.id}/items`, {
         method: 'PATCH',
@@ -720,7 +720,7 @@ function ItemList({
   onAskDetail: (itemId: string) => void;
   onApplyGroup?: (
     itemIds: string[],
-    patch: { decision?: MigrationDecision; targetId?: string | null },
+    patch: { decision?: MigrationDecision; targetId?: string | null; targetType?: string },
   ) => void;
   onCreateGroup?: (itemIds: string[]) => void;
 }) {
@@ -758,6 +758,7 @@ function ItemList({
                 count={rows.length}
                 parents={parentsByKind[rows[0]?.targetType === 'INCOME' ? 'INCOME' : 'EXPENSE']}
                 disabled={busy}
+                isCategory={rows[0]?.kind === 'CATEGORY'}
                 onApply={(patch) =>
                   onApplyGroup(
                     rows.map((row) => row.id),

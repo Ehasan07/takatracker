@@ -181,7 +181,7 @@ export function DecisionRow({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 flex-col gap-2 sm:w-80 sm:flex-row">
+      <div className="flex shrink-0 flex-col gap-2 sm:w-[26rem] sm:flex-row">
         <Select
           aria-label={`${item.sourceName} — কী করা হবে`}
           value={item.decision}
@@ -229,6 +229,41 @@ export function DecisionRow({
                 <CategoryOptions categories={categoryTargets} kind={mergeKind} />
               </>
             )}
+          </Select>
+        ) : null}
+
+        {/* Which half of the books this category belongs to.
+         *
+         * It used to be read off the other product's own heading and never
+         * offered — the reasoning being that Wallet had already said which
+         * side a row was on, so asking again would be asking a question that
+         * was already answered. That holds for most groups and breaks on the
+         * ones that are not a side at all: everything under Wallet's
+         * "Investments" heading arrives as *spending*, so a dividend, a
+         * trading gain and a land share all land in the expense tree, where no
+         * report can ever show them as the income they are.
+         *
+         * The staged value stays the default — it is right far more often than
+         * not — but it is now a default rather than a verdict.
+         *
+         * Changing it clears the parent, because a parent's kind must match its
+         * children's: an income row left pointing at an expense heading is a
+         * merge the server refuses, and refusing it at apply time means
+         * discovering it after 300 other rows have already gone in. */}
+        {!isAccount && (item.decision === 'CREATE' || item.decision === 'MERGE') ? (
+          <Select
+            aria-label={`${item.sourceName} — আয় না খরচ`}
+            value={mergeKind}
+            disabled={frozen}
+            onChange={(e) =>
+              onChange({
+                targetType: e.target.value,
+                targetId: '',
+              })
+            }
+          >
+            <option value="EXPENSE">খরচের খাত</option>
+            <option value="INCOME">আয়ের খাত</option>
           </Select>
         ) : null}
 
