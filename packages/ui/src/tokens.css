@@ -44,11 +44,15 @@
   --hishab-rule: #d6ded0;
   /* Brand. Blue, because that is what a finance product is: every bank, every
      ledger app and every payment network the world over signals trust in blue,
-     and a green primary reads as "money in" rather than as the product. */
-  --hishab-brand: #045cb4;
-  --hishab-brand-strong: #034a92;
-  --hishab-brand-soft: #1c75bc;
-  --hishab-brand-tint: #eaf2fb;
+     and a green primary reads as "money in" rather than as the product.
+
+     Deepened to the royal blue the brand's own printed material uses, so the
+     app and the poster are the same product rather than two that share a name.
+     The orange that goes with it lives in `--hishab-brass` below. */
+  --hishab-brand: #1b3fa0;
+  --hishab-brand-strong: #12256a;
+  --hishab-brand-soft: #3457bd;
+  --hishab-brand-tint: #e9edfa;
   --hishab-brand-contrast: #ffffff;
 
   /* Money keeps its own two colours, and they are not the brand's.
@@ -57,11 +61,21 @@
      rather than the income colour moving onto blue. */
   --hishab-income: #1f6f4a;
   --hishab-expense: #d32029;
-  /* Two shades darker than the brass it shipped as, which read 4.41:1 against a
-     greenbar row and so missed AA on the one ground it is most often seen on —
-     `text-brass` labels sit in ledger rows. Nothing else about the default
-     palette moved. */
-  --hishab-brass: #8a6716;
+  /* The brand's second colour, and the one rule it has to obey.
+   *
+   * Orange, from the printed identity — but darkened until it clears AA on
+   * every ground it is set on. The poster's #f47b20 reads 2.8:1 against a
+   * greenbar row where `text-brass` labels actually sit; #b45f06 reads 4.15:1,
+   * which still fails. #a85805 is the lightest orange that clears 4.5:1 on
+   * paper, greenbar and surface alike — `theme.test.ts` is what found the two
+   * that did not, and it is the reason the printed orange cannot be used as
+   * text unchanged.
+   *
+   * It never touches an amount. Orange and red are neighbours and red already
+   * means *money gone* here, so an orange figure would read as bad news to
+   * somebody scanning. Orange is brand and chrome: an undrawn limit, a label,
+   * an accent — never a number's colour. */
+  --hishab-brass: #a85805;
 
   --hishab-radius-sm: 4px;
   --hishab-radius-md: 8px;
@@ -95,18 +109,21 @@
   --hishab-surface: #16201c;
   --hishab-greenbar: #1a241f;
   --hishab-rule: #2c3a33;
-  --hishab-brand: #4d9ae8;
-  --hishab-brand-strong: #7ab6f0;
-  --hishab-brand-soft: #4d9ae8;
+  /* The royal blue lifted for a dark ground. A hue this deep is unreadable at
+     its printed value here, so the dark face carries a lighter tint of the
+     same blue rather than a different one. */
+  --hishab-brand: #7d9cf5;
+  --hishab-brand-strong: #a8bdf9;
+  --hishab-brand-soft: #7d9cf5;
   /* A tint, not a wash: on a dark ground the brand block has to sit *above*
      the surface, so this is lighter than --hishab-surface rather than paler
      than white. */
-  --hishab-brand-tint: #14293f;
-  --hishab-brand-contrast: #071018;
+  --hishab-brand-tint: #17224a;
+  --hishab-brand-contrast: #0b1533;
 
   --hishab-income: #63c295;
   --hishab-expense: #f0827d;
-  --hishab-brass: #d6ac4e;
+  --hishab-brass: #ff9a4d;
 }
 
 /* ---- mono: no hue anywhere -----------------------------------------------
@@ -278,15 +295,15 @@
     --hishab-surface: #16201c;
     --hishab-greenbar: #1a241f;
     --hishab-rule: #2c3a33;
-    --hishab-brand: #4d9ae8;
-    --hishab-brand-strong: #7ab6f0;
-    --hishab-brand-soft: #4d9ae8;
-    --hishab-brand-tint: #14293f;
-    --hishab-brand-contrast: #071018;
+    --hishab-brand: #7d9cf5;
+    --hishab-brand-strong: #a8bdf9;
+    --hishab-brand-soft: #7d9cf5;
+    --hishab-brand-tint: #17224a;
+    --hishab-brand-contrast: #0b1533;
 
     --hishab-income: #63c295;
     --hishab-expense: #f0827d;
-    --hishab-brass: #d6ac4e;
+    --hishab-brass: #ff9a4d;
   }
 }
 
