@@ -159,9 +159,9 @@ export const EN: Record<string, string> = {
   'dashboard.assetCount': '{n} assets — land, vehicles, gold, shares',
   'dashboard.spendingPower': 'Could spend today',
   'dashboard.undrawn': 'of which card headroom',
+  'dashboard.netWorthHint': 'Land, savings and money owed to you — all of it, less what you owe.',
   'dashboard.undrawnHint':
-    'The card part is borrowing, not yours — spending it adds a liability and starts interest. It is not in net worth.',
-  'dashboard.netWorthHint': 'Land, savings and money owed to you, less what you owe',
+    'An undrawn limit is neither your money nor a debt — the bank can reduce it any day. It is not counted in your net worth.',
   /* Foreign currency, fenced off rather than converted. IAS 21.21 wants a spot
      rate per transaction date and IAS 21.23(a) a closing rate for monetary
      balances; the app stores neither, so these balances stay in their own
@@ -1805,4 +1805,7 @@ export const EN: Record<string, string> = {
   'entry.pickLoan': 'Choose which loan this repays',
   'entry.repayHint':
     'The outstanding balance goes down and the entry is written to your books. Paid off in full, the loan closes itself. Where there is interest, interest is settled before principal — the split is on the loans screen.',
+  'dashboard.cardsDrawn': 'Owed on cards',
+  'dashboard.cardsDrawnLabel': 'Drawn on cards — a liability',
+  'dashboard.undrawnLabel': 'Undrawn limit',
 };

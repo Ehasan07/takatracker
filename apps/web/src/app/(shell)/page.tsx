@@ -50,9 +50,28 @@ type BreakdownGroup = (typeof BREAKDOWN_GROUPS)[number]['key'];
  * twelve.
  */
 const GROUP_TINT: Record<BreakdownGroup, string> = {
-  liquid: 'bg-income/10 text-income',
+  liquid: 'bg-brand/10 text-brand',
   asset: 'bg-brass/10 text-brass',
   liability: 'bg-expense/10 text-expense',
+};
+
+/**
+ * The rail down the left of every account row, in its group's colour.
+ *
+ * The list is the tallest thing on this screen and it used to be a column of
+ * names with numbers beside them — a reader had to reach the subtotal header
+ * above a row to know which kind of thing it was. A 3px rail carries that up
+ * the whole column, so an overdrawn cash account reads as one at a glance
+ * rather than after a scroll.
+ *
+ * Liquid moved off green onto the brand colour. Green means *money in* in this
+ * app, and a green rail beside every bank account was quietly competing with
+ * the one place green has to mean something.
+ */
+const GROUP_RAIL: Record<BreakdownGroup, string> = {
+  liquid: 'bg-brand',
+  asset: 'bg-brass',
+  liability: 'bg-expense',
 };
 
 type AccountType = keyof typeof ACCOUNT_CLASS;
@@ -96,6 +115,73 @@ function splitByCurrency(
   };
 }
 
+/**
+ * The month as a proportion.
+ *
+ * Deliberately not a chart component: two divs and a total, so it costs
+ * nothing on a phone and keeps working with JavaScript still downloading.
+ * Colour is never the only signal — each row is labelled in words and the
+ * amounts keep their own income/expense colours, which is what carries the
+ * meaning for a reader who cannot separate red from green.
+ */
+function MonthBars({
+  incomeMinor,
+  expenseMinor,
+  netMinor,
+}: {
+  incomeMinor: number;
+  expenseMinor: number;
+  netMinor: number;
+}) {
+  /* Against the larger of the two, so one bar is always full and the other is
+     read against it. Against a fixed maximum instead, a quiet month would draw
+     two stubs and say nothing. */
+  const peak = Math.max(incomeMinor, expenseMinor, 1);
+  const width = (minor: number): string => `${Math.max(0, (minor / peak) * 100)}%`;
+
+  const rows = [
+    {
+      key: 'income',
+      label: t('dashboard.income', 'আয়'),
+      minor: incomeMinor,
+      bar: 'bg-income',
+      text: 'text-income',
+    },
+    {
+      key: 'expense',
+      label: t('dashboard.expense', 'খরচ'),
+      minor: expenseMinor,
+      bar: 'bg-expense',
+      text: 'text-expense',
+    },
+  ];
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {rows.map((row) => (
+        <div key={row.key} className="grid grid-cols-[3rem_1fr_auto] items-center gap-2">
+          <span className="text-ink-muted text-xs">{row.label}</span>
+          <span className="bg-greenbar h-2 overflow-hidden rounded-full">
+            <span
+              className={`block h-full rounded-full ${row.bar}`}
+              style={{ width: width(row.minor) }}
+            />
+          </span>
+          <Money
+            minor={row.minor}
+            className={`${row.text} shrink-0 text-sm font-medium`}
+            decimals={false}
+          />
+        </div>
+      ))}
+      <p className="bg-greenbar text-ink mt-1 flex items-baseline justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium">
+        <span>{t('dashboard.net', 'নিট')}</span>
+        <Money minor={netMinor} colored signed className="shrink-0" decimals={false} />
+      </p>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   /* An operator has no books, so this screen has nothing to tell them. They are
    * sent to the platform overview instead — `replace`, not `push`, so the back
@@ -133,6 +219,15 @@ export default function DashboardPage() {
      covers only those. A dollar card's headroom added to a taka total would be
      the same unconverted lie one level down. */
   const undrawn = homeAccounts.reduce((sum, account) => sum + (account.undrawnMinor ?? 0), 0);
+  /* What the cards actually owe. A card in credit contributes nothing rather
+     than netting against another card's debt: two cards, one ৳10,000 down and
+     one ৳10,000 up, owe ৳10,000 between them and not zero — the bank that is
+     owed will not accept the other card's balance as payment. */
+  const cardsDrawn = homeAccounts.reduce(
+    (sum, account) =>
+      account.type === 'CREDIT_CARD' && account.balanceMinor < 0 ? sum - account.balanceMinor : sum,
+    0,
+  );
 
   if (isOperator) return null;
 
@@ -219,40 +314,23 @@ export default function DashboardPage() {
             <p className="text-ink-muted mt-0.5 text-xs">
               {t('dashboard.thisMonthScope', 'চলতি মাসের পুরো হিসাব')}
             </p>
-            <dl className="mt-3 grid grid-cols-3 gap-2">
-              <div className="min-w-0">
-                <dt className="text-ink-muted text-xs">{t('dashboard.income', 'আয়')}</dt>
-                <dd>
-                  <Money
-                    minor={summary.data?.incomeMinor ?? 0}
-                    className="text-income block"
-                    decimals={false}
-                  />
-                </dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-ink-muted text-xs">{t('dashboard.expense', 'খরচ')}</dt>
-                <dd>
-                  <Money
-                    minor={summary.data?.expenseMinor ?? 0}
-                    className="text-expense block"
-                    decimals={false}
-                  />
-                </dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-ink-muted text-xs">{t('dashboard.net', 'নিট')}</dt>
-                <dd>
-                  <Money
-                    minor={summary.data?.netMinor ?? 0}
-                    colored
-                    signed
-                    className="block"
-                    decimals={false}
-                  />
-                </dd>
-              </div>
-            </dl>
+            {/* Two bars and a total, rather than three figures side by side.
+             *
+             * All three numbers were correct and the screen still could not
+             * answer the question people actually ask of it — "is that a lot?"
+             * — because comparing ৳3,54,046 against ৳14,71,010 means dividing
+             * one by the other in your head. The bars are that division, drawn:
+             * spending at a quarter of income is a quarter of the width.
+             *
+             * Widths come off the same integers `<Money>` prints, scaled to
+             * whichever figure is larger so the longer bar is always full. They
+             * are percentages of a container — a screenful of pixels, never
+             * money — and no rounding here can reach a printed amount. */}
+            <MonthBars
+              incomeMinor={summary.data?.incomeMinor ?? 0}
+              expenseMinor={summary.data?.expenseMinor ?? 0}
+              netMinor={summary.data?.netMinor ?? 0}
+            />
           </section>
 
           {/* The three panels that answer a question rather than fill a column,
@@ -312,16 +390,54 @@ export default function DashboardPage() {
             rather than a neighbour that had to match its height. */}
         <div data-testid="dashboard-side" className="contents md:flex md:flex-col md:gap-3">
           <section className="rounded-card border-rule bg-surface order-2 border p-4">
-            <Link
-              href="/accounts"
-              className="press text-ink-muted hover:text-ink flex items-center gap-1 text-sm font-medium"
-            >
-              {t('dashboard.liquid', 'হাতে ও ব্যাংকে')}
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </Link>
-            <p className="mt-1">
-              <Money minor={summary.data?.liquidMinor ?? 0} className="text-2xl font-semibold" />
-            </p>
+            {/* Net worth first, in the largest type on the screen.
+             *
+             * It used to be the other way round: ৳14,31,268 of liquid cash set
+             * at 2xl with net worth beneath it in body size. But the question
+             * somebody opens a finance app to answer is "what am I worth", and
+             * "what can I touch today" is the *second* question. The old order
+             * answered the second one loudest.
+             *
+             * On the brand ground rather than on paper, because there is one
+             * headline figure per screen and it should not have to compete with
+             * the four cards under it for the eye. */}
+            <div className="bg-brand text-brand-contrast -m-4 mb-0 flex flex-col gap-3 rounded-t-[inherit] p-4">
+              <Link href="/accounts" className="press flex items-center gap-1 text-sm opacity-85">
+                {t('dashboard.netWorth', 'নিট সম্পদ')}
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </Link>
+              {/* Poisha kept, and the type scaled instead.
+               *
+               * The first draft dropped the decimals to keep the headline
+               * short. But this is the figure a person quotes, and rounding
+               * ৳66,48,828.24 to ৳66,48,828 is a small lie told in the largest
+               * type on the screen — the one place this application cannot
+               * afford one. So the number stays exact and the size gives way on
+               * a narrow phone instead. */}
+              <Money
+                minor={summary.data?.netWorthMinor ?? 0}
+                colored={false}
+                signed
+                className="text-2xl font-semibold leading-none sm:text-3xl"
+              />
+              <p className="text-xs opacity-80">
+                {t('dashboard.netWorthHint', 'জমি, সঞ্চয়, পাওনা — সব ধরে, দায় বাদ দিয়ে')}
+              </p>
+              <dl className="border-current/20 grid grid-cols-2 gap-3 border-t pt-3">
+                <div className="min-w-0">
+                  <dt className="text-xs opacity-80">{t('dashboard.liquid', 'হাতে ও ব্যাংকে')}</dt>
+                  <dd>
+                    <Money minor={summary.data?.liquidMinor ?? 0} className="block font-semibold" />
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-xs opacity-80">{t('dashboard.cardsDrawn', 'কার্ডে দেনা')}</dt>
+                  <dd>
+                    <Money minor={cardsDrawn} className="block font-semibold" />
+                  </dd>
+                </div>
+              </dl>
+            </div>
 
             {/* Two figures, because they answer two different questions and the
               old screen answered neither. It added every account of every type
@@ -334,18 +450,6 @@ export default function DashboardPage() {
               split is the current/non-current distinction every balance sheet
               is required to make, and the reason it is required is exactly the
               mistake this screen was making. */}
-            <p className="text-ink-muted mt-3 flex items-baseline justify-between gap-3 text-sm">
-              <span>{t('dashboard.netWorth', 'নিট সম্পদ')}</span>
-              <Money
-                minor={summary.data?.netWorthMinor ?? 0}
-                colored
-                signed
-                className="shrink-0 font-medium"
-              />
-            </p>
-            <p className="text-ink-muted text-xs">
-              {t('dashboard.netWorthHint', 'জমি, সঞ্চয়, পাওনা — সব ধরে, দায় বাদ দিয়ে')}
-            </p>
 
             {/* Spending power, kept firmly outside net worth.
              *
@@ -362,22 +466,38 @@ export default function DashboardPage() {
              * nothing at all, which is what makes this a separate block with its
              * own warning rather than another line in the same list. */}
             {undrawn > 0 ? (
-              <div className="border-rule mt-3 border-t pt-2">
-                <p className="text-ink-muted flex items-baseline justify-between gap-3 text-sm">
-                  <span>{t('dashboard.spendingPower', 'খরচ করার সামর্থ্য')}</span>
-                  <Money
-                    minor={(summary.data?.liquidMinor ?? 0) + undrawn}
-                    className="text-ink shrink-0 font-medium"
-                  />
-                </p>
-                <p className="text-ink-muted mt-0.5 flex items-baseline justify-between gap-3 text-xs">
-                  <span>{t('dashboard.undrawn', 'এর মধ্যে কার্ডে তোলা যাবে')}</span>
-                  <Money minor={undrawn} className="shrink-0" />
-                </p>
-                <p className="text-ink-muted mt-1 text-xs">
+              <div className="border-rule mt-4 border-t pt-3">
+                {/* Two figures rather than their sum.
+                 *
+                 * It read "খরচ করার সামর্থ্য ৳22,51,983" with three lines
+                 * underneath explaining that ৳8,20,715 of it was not the
+                 * reader's money. A number that needs a paragraph of caveat is
+                 * two numbers that have been added together — so they are two
+                 * numbers again: what has been drawn, which is a liability, and
+                 * what has not, which is nothing at all. The caveat then fits
+                 * in one line and is about the second figure only. */}
+                <dl className="grid grid-cols-2 gap-3">
+                  <div className="min-w-0">
+                    <dt className="text-ink-muted text-xs">
+                      {t('dashboard.cardsDrawnLabel', 'কার্ডে তোলা — দায়')}
+                    </dt>
+                    <dd>
+                      <Money minor={cardsDrawn} className="text-expense block font-semibold" />
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-ink-muted text-xs">
+                      {t('dashboard.undrawnLabel', 'না-তোলা লিমিট')}
+                    </dt>
+                    <dd>
+                      <Money minor={undrawn} className="text-brass block font-semibold" />
+                    </dd>
+                  </div>
+                </dl>
+                <p className="text-ink-muted border-brass mt-2 border-l-2 pl-2 text-xs">
                   {t(
                     'dashboard.undrawnHint',
-                    'কার্ডের অংশটা আপনার টাকা নয়, ধার — খরচ করলে দায় বাড়বে আর সুদ শুরু হবে। নিট সম্পদে এটি ধরা হয়নি।',
+                    'না-তোলা লিমিট আপনার টাকাও নয়, দায়ও নয় — ব্যাংক যেকোনো দিন কমিয়ে দিতে পারে। নিট সম্পদে ধরা হয়নি।',
                   )}
                 </p>
               </div>
@@ -459,7 +579,20 @@ export default function DashboardPage() {
                       ]
                     : []),
                   ...rows.map((account) => (
-                    <li key={account.id} className="flex items-center justify-between gap-3 py-1.5">
+                    <li
+                      key={account.id}
+                      className="grid grid-cols-[3px_1fr_auto] items-center gap-2 py-1.5"
+                    >
+                      {/* The group's colour, except where the row is negative:
+                          an overdrawn account is the thing on this list most
+                          worth spotting, and it should not have to be read to
+                          be found. */}
+                      <span
+                        aria-hidden
+                        className={`h-full min-h-5 rounded-full ${
+                          account.balanceMinor < 0 ? 'bg-expense' : GROUP_RAIL[key]
+                        }`}
+                      />
                       <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
                       <Money
                         minor={account.balanceMinor}
