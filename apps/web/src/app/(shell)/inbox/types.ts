@@ -60,6 +60,14 @@ export interface DraftView {
   parserName: string | null;
   /** Which model proposed the category and account, when one did. */
   suggestedBy?: string | null;
+  /**
+   * The account number this accept taught the workspace, when it taught one.
+   *
+   * Only ever set on the response to an accept. The app changed a setting off
+   * the back of one tap, so it says so — somebody who does not know it happened
+   * cannot go and undo it.
+   */
+  learnedHint?: string | null;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;

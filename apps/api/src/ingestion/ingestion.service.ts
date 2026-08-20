@@ -8,6 +8,8 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import {
+  accountKnowsNumber,
+  accountTailOf,
   assertBalanced,
   bodyHashOf,
   createRegistry,
@@ -270,6 +272,15 @@ export interface DraftView {
    * presented as a reading is how people stop checking.
    */
   suggestedBy: string | null;
+  /**
+   * The account number this accept just taught the workspace, if it taught one.
+   *
+   * Said out loud rather than done quietly. The app has changed a setting on
+   * the owner's account off the back of one tap, and somebody who does not know
+   * that happened cannot undo it — so the review screen repeats it back and the
+   * accounts screen is where it can be removed.
+   */
+  learnedHint: string | null;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -308,6 +319,15 @@ export interface WebhookConfigView {
   /** Null when the server has no root secret configured. */
   secret: string | null;
 }
+
+/**
+ * How many hints one account may learn before this stops adding them.
+ *
+ * Past a dozen it is not learning, it is growing a column: a real account is
+ * known by its number, its card, and the shortcode that texts about it, and
+ * anything beyond that is a rule that fired on the wrong row.
+ */
+const MAX_LEARNED_HINTS = 12;
 
 // --- local helpers -----------------------------------------------------------
 
@@ -1276,7 +1296,77 @@ export class IngestionService {
       },
     });
 
-    return this.presentOne(ctx, draft.id);
+    /* Remember the account number, so this bank is never asked about again.
+       After the ledger write and outside it: a lesson is worth having and never
+       worth failing a transaction for. */
+    const learnedHint = isTransfer
+      ? null
+      : await this.learnAccountHint(ctx, draft, accountId).catch(() => null);
+
+    return { ...(await this.presentOne(ctx, draft.id)), learnedHint };
+  }
+
+  /**
+   * Teach the workspace the account number the reviewer just resolved by hand.
+   *
+   * The queue is fifty messages deep and a bank sends the same shape of alert
+   * every day. Somebody who picks the right account once has already answered
+   * the question for every message that bank will ever send, and asking again
+   * tomorrow is the app failing to listen rather than the person failing to
+   * configure it.
+   *
+   * Four things stop it, and each of them would otherwise make the books worse
+   * rather than better:
+   *
+   *  - **A transfer.** Two accounts, and the message named one of them. Which
+   *    one depends on which way the reviewer said the money went, and a lesson
+   *    learned from the wrong side is a wrong answer repeated daily.
+   *  - **Nothing to learn.** The account already answers to that number.
+   *  - **Somebody else's number.** If another account is already known by it,
+   *    teaching this one makes both ambiguous, and the matcher would then
+   *    correctly refuse to answer for either. A rule that silently disables a
+   *    rule that already worked is worse than no rule.
+   *  - **A full list.** Twelve hints is far past a real account's worth; past
+   *    that this is growing a column, not learning anything.
+   *
+   * Nothing here can throw into the accept path — see the call site. The
+   * ledger row is already written and correct.
+   */
+  private async learnAccountHint(
+    ctx: InboxContext,
+    draft: DraftRow,
+    accountId: string,
+  ): Promise<string | null> {
+    const quoted = IngestionService.evidenceOf(draft.evidence).accountHint;
+    const tail = accountTailOf(quoted);
+    if (!tail) return null;
+
+    const accounts = await this.matchableAccounts(ctx.workspaceId);
+    const chosen = accounts.find((account) => account.id === accountId);
+    /* Not in the list at all — a system control account, or one archived
+       between the parse and the accept. Nothing to teach it. */
+    if (!chosen) return null;
+    if (accountKnowsNumber(chosen, tail)) return null;
+    if (accounts.some((other) => other.id !== accountId && accountKnowsNumber(other, tail))) {
+      return null;
+    }
+    if ((chosen.matchHints ?? []).length >= MAX_LEARNED_HINTS) return null;
+
+    await this.prisma.account.update({
+      where: { id: accountId },
+      data: { matchHints: { push: tail } },
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'account.match_hint_learned',
+      entity: 'Account',
+      entityId: accountId,
+      after: { hint: tail, quoted, fromDraftId: draft.id },
+    });
+
+    return tail;
   }
 
   /**
@@ -1574,6 +1664,8 @@ export class IngestionService {
       confidence,
       needsReview: confidence < REVIEW_THRESHOLD,
       suggestedBy: row.suggestedBy,
+      /* Only an accept can teach one, and only it knows whether it did. */
+      learnedHint: null,
       evidence: quoted ? IngestionService.fxEvidence(evidence, quoted) : evidence,
       parserName: row.message?.parserName ?? null,
       transactionId: row.transactionId,

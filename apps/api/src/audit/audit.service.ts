@@ -29,6 +29,10 @@ export const AUDIT_ACTIONS = [
   'account.created',
   'account.updated',
   'account.archived',
+  /* An account number the app taught itself from an accepted draft. Recorded
+     because it changes how future messages are filed without anybody opening
+     the accounts screen, and the owner is entitled to see what changed it. */
+  'account.match_hint_learned',
   /* Marking land, gold or a vehicle to what it is worth now. Worth recording:
      it moves net worth without any income, and somebody will ask why. */
   'account.revalued',

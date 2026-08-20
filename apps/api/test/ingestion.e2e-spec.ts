@@ -1115,5 +1115,94 @@ describe('ingestion', () => {
         .expect(200);
       expect(ledger.body.accountId).toBe(ucb.body.id);
     });
+
+    it('remembers the number once somebody has answered for it', async () => {
+      /* The queue is fifty deep and the bank sends the same shape of alert
+         every day. Picking the right account once has already answered the
+         question for every message that bank will ever send. */
+      const ws = await workspace();
+      const ucb = await account(ws, { name: 'UCB Current', type: 'BANK' });
+      const first = await post(ws, UCB).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${first.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ucb.body.id, categoryId: ws.categoryId })
+        .expect(200);
+      expect(applied.body.learnedHint).toBe('6948');
+
+      const again = await post(
+        ws,
+        'Your A/C (***6948) has been debited BDT 750.00 for GROCERY. Avl Bal: BDT 8,84,590.17 @ 09:10 AM. For query: 16419',
+      ).expect(200);
+      const draft = (await drafts(ws)).find((d) => d.id === again.body.draftId);
+      expect(draft?.accountId).toBe(ucb.body.id);
+    });
+
+    it('says nothing when there was nothing to learn', async () => {
+      const ws = await workspace();
+      const ucb = await account(ws, {
+        name: 'UCB Current',
+        type: 'BANK',
+        accountNumberMasked: '****6948',
+      });
+      const received = await post(ws, UCB).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ucb.body.id, categoryId: ws.categoryId })
+        .expect(200);
+      expect(applied.body.learnedHint).toBeNull();
+    });
+
+    it('refuses to learn a number another account already answers to', async () => {
+      /* Teaching it here would make both ambiguous, and the matcher would then
+         correctly refuse to answer for either. A rule that silently disables a
+         rule that already worked is worse than no rule. */
+      const ws = await workspace();
+      await ctx
+        .http()
+        .patch(`/v1/accounts/${ws.cashId}`)
+        .set(auth(ws.user))
+        .send({ matchHints: ['6948'] })
+        .expect(200);
+      const other = await account(ws, { name: 'Other Bank', type: 'BANK' });
+      const received = await post(ws, UCB).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: other.body.id, categoryId: ws.categoryId })
+        .expect(200);
+      expect(applied.body.learnedHint).toBeNull();
+
+      const account_ = await ctx
+        .http()
+        .get(`/v1/accounts/${other.body.id as string}`)
+        .set(auth(ws.user))
+        .expect(200);
+      expect(account_.body.matchHints).toEqual([]);
+    });
+
+    it('learns nothing from a transfer, where the message named one of two accounts', async () => {
+      /* Which of the two the message was about depends on which way the
+         reviewer said the money went, and a lesson taken from the wrong side is
+         a wrong answer repeated daily. */
+      const ws = await workspace();
+      const ucb = await account(ws, { name: 'UCB Current', type: 'BANK' });
+      const received = await post(ws, UCB).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ucb.body.id, counterAccountId: ws.cashId })
+        .expect(200);
+      expect(applied.body.learnedHint).toBeNull();
+    });
   });
 });

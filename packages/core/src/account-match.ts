@@ -135,6 +135,27 @@ function numbersOf(account: AccountMatchCandidate): { text: string; digits: stri
 }
 
 /**
+ * The part of a quoted account number worth keeping: its last four digits.
+ *
+ * What a person writes down and what a bank prints. Anything shorter than four
+ * is kept whole — some wallets quote three — and anything under two is not an
+ * account number at all.
+ */
+export function accountTailOf(quoted: string | null | undefined): string | null {
+  if (!quoted) return null;
+  const digits = digitsOf(quoted);
+  if (digits.length < 2) return null;
+  return digits.length > 4 ? digits.slice(-4) : digits;
+}
+
+/** Is this account already known by that number — from its name, its masked number, or a hint? */
+export function accountKnowsNumber(account: AccountMatchCandidate, quoted: string): boolean {
+  const digits = digitsOf(quoted);
+  if (digits.length < 2) return false;
+  return numbersOf(account).some((entry) => sameAccountNumber(entry.digits, digits));
+}
+
+/**
  * The account a message is about, or null when the answer is not certain.
  *
  * Pass only accounts a draft could legitimately name — not archived, not

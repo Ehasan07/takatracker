@@ -104,7 +104,14 @@ export default function InboxPage() {
       setActiveId(next?.id ?? null);
       const done =
         outcome === 'accepted' ? 'খাতায় যোগ হয়েছে' : 'বাতিল হয়েছে — খাতায় কিছু লেখা হয়নি';
-      setToast(next ? `${done} — পরেরটি দেখুন` : `${done}। আপাতত আর কোনো খসড়া নেই।`);
+      /* The app has just changed a setting on an account. Said here rather than
+         left to be discovered, because the next message from that bank will
+         fill the picker in on its own and somebody who was not told will not
+         know where that came from — or where to go and remove it. */
+      const learned = saved.learnedHint
+        ? ` অ্যাকাউন্ট নম্বর ${saved.learnedHint} মনে রাখা হলো — এই ব্যাংকের পরের বার্তা নিজেই এই হিসাবে বসবে।`
+        : '';
+      setToast((next ? `${done} — পরেরটি দেখুন` : `${done}। আপাতত আর কোনো খসড়া নেই।`) + learned);
     },
     [rows],
   );
