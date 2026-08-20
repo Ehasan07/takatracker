@@ -1808,4 +1808,14 @@ export const EN: Record<string, string> = {
   'dashboard.cardsDrawn': 'Owed on cards',
   'dashboard.cardsDrawnLabel': 'Drawn on cards — a liability',
   'dashboard.undrawnLabel': 'Undrawn limit',
+  'cat.selectMany': 'Move several at once',
+  'cat.selectDone': 'Done selecting',
+  'cat.selectedN': '{n} selected',
+  'cat.changeParent': 'Change the head',
+  'cat.newParent': 'Which head they go under',
+  'cat.toTopLevel': 'No head — make them top-level',
+  'cat.hasSubs': 'Has sub-categories, so it cannot be moved',
+  'cat.reparentHint':
+    'The selected categories move under “{name}”. Their transactions go with them; nothing is lost.',
+  'cat.topLevelHint': 'Each one becomes a top-level category, with its transactions.',
 };

@@ -378,3 +378,74 @@ test.describe('বাংলা আর ইংরেজি নাম', () => {
     await expect(again.getByLabel('ইংরেজি নাম (ঐচ্ছিক)')).toHaveValue('In-laws');
   });
 });
+
+/**
+ * Moving several খাত under one head in a single decision.
+ *
+ * The editor has always been able to re-parent one category, and one at a time
+ * is fine for one. It is not fine for the ten sub-khat filed under the wrong
+ * head: ten sheets, ten pickers, ten saves, on a phone. This is the same job as
+ * one choice — and the reason it is asserted at 390px is that a 20px checkbox
+ * beside a 44px row is a target only a mouse can hit.
+ */
+test.describe('moving several categories at once', () => {
+  test('selects three sub-categories and gives them a new head', async ({ page }) => {
+    await signup(page);
+    await page.goto('/categories');
+
+    /* Two heads and three children under the first — built through the screen
+       itself, so the test exercises the same path a person takes. */
+    /* The header carries "নতুন" above md and the foot of the list carries
+       "নতুন খাত যোগ করুন" below it — one control, two labels, and only ever one
+       of them on screen. Matching either keeps the test honest at all four
+       widths rather than passing on a phone and timing out on a desktop. */
+    const addTop = async (name: string) => {
+      await page
+        .getByRole('button', { name: /^নতুন( খাত যোগ করুন)?$/ })
+        .first()
+        .click();
+      const sheet = page.getByRole('dialog');
+      await sheet.getByLabel('নাম', { exact: true }).fill(name);
+      await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+      await expect(sheet).toBeHidden({ timeout: 15_000 });
+    };
+    const addUnder = async (head: string, name: string) => {
+      await page.getByRole('button', { name: `${head}-এ উপ-খাত যোগ করুন` }).click();
+      const sheet = page.getByRole('dialog');
+      await sheet.getByLabel('নাম', { exact: true }).fill(name);
+      await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+      await expect(sheet).toBeHidden({ timeout: 15_000 });
+    };
+
+    await addTop('পুরনো ঘর');
+    await addTop('নতুন ঘর');
+    for (const name of ['বিদ্যুৎ', 'গ্যাস', 'পানি']) await addUnder('পুরনো ঘর', name);
+
+    // Nothing is a checkbox until the mode is on — the list stays a list.
+    await expect(page.getByRole('checkbox')).toHaveCount(0);
+    await page.getByRole('button', { name: 'একসাথে কয়েকটা সরান' }).click();
+
+    for (const name of ['বিদ্যুৎ', 'গ্যাস', 'পানি']) {
+      await page.getByRole('checkbox', { name: new RegExp(name) }).click();
+    }
+    /* A head with children of its own cannot go under anything — two levels is
+       the limit — so its row is present and refuses to be ticked. */
+    await expect(page.getByRole('checkbox', { name: /পুরনো ঘর/ })).toBeDisabled();
+
+    await expect(page.getByText('৩টি বাছাই করা')).toBeVisible();
+    await page.getByRole('button', { name: 'মূল খাত বদলান' }).click();
+
+    const sheet = page.getByRole('dialog');
+    await sheet.getByLabel('কোন খাতের নিচে যাবে').selectOption({ label: 'নতুন ঘর' });
+    await sheet.getByRole('button', { name: /সংরক্ষণ/ }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    // All three under the new head, and the old one left with none.
+    await expect(page.getByText('৩টি খাত সরানো হয়েছে')).toBeVisible();
+    const newHead = page
+      .getByRole('listitem')
+      .filter({ has: page.getByText('নতুন ঘর', { exact: true }) })
+      .first();
+    await expect(newHead).toContainText('৩টি উপ-খাত');
+  });
+});

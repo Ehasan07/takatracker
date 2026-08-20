@@ -3,8 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
+  Check,
   CornerDownRight,
   Info,
+  ListChecks,
   Merge,
   Pencil,
   Plus,
@@ -68,6 +70,20 @@ export default function CategoriesPage() {
   /** The খাত whose transactions are being re-filed. `null` closes the sheet. */
   const [moving, setMoving] = React.useState<CategoryRow | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
+  /* Bulk re-parenting.
+   *
+   * Moving one খাত under another is already a field in its own editor, and
+   * that is fine for one. It is not fine for the ten sub-khat under "Others"
+   * that all belong somewhere else: ten sheets, ten pickers, ten saves, on a
+   * phone. A selection mode costs one tap to enter and turns the whole job
+   * into one decision.
+   *
+   * Off by default. A list where every row is a checkbox reads as a form to be
+   * filled in rather than a list to be read, and reading is what this screen is
+   * mostly for. */
+  const [selecting, setSelecting] = React.useState(false);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [reparenting, setReparenting] = React.useState(false);
 
   const categories = useQuery({
     queryKey: ['categories'],
@@ -118,6 +134,31 @@ export default function CategoriesPage() {
     haptic('tap');
     setMoving(category);
   };
+
+  const toggle = (id: string): void => {
+    haptic('tap');
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const leaveSelecting = (): void => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+
+  /* Only rows the server would accept. A খাত with sub-khat of its own cannot be
+     moved under anything — the tree is two deep — so those stay untickable
+     rather than being offered and refused. */
+  const selectable = React.useMemo(() => {
+    const withKids = new Set(
+      (categories.data ?? []).map((c) => c.parentId).filter((id): id is string => Boolean(id)),
+    );
+    return (category: CategoryRow): boolean => !withKids.has(category.id);
+  }, [categories.data]);
 
   /**
    * Every khat of the same kind, in the order the list is already in.
@@ -185,6 +226,28 @@ export default function CategoriesPage() {
         </div>
       </div>
 
+      {/* One tap in, one tap out. Placed above the list rather than inside a
+          menu, because a mode nobody can find is a mode that does not exist. */}
+      <button
+        type="button"
+        onClick={() => {
+          haptic('tap');
+          if (selecting) leaveSelecting();
+          else setSelecting(true);
+        }}
+        className={cn(
+          'press flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium',
+          selecting
+            ? 'border-brand bg-brand-tint text-brand'
+            : 'border-rule text-ink hover:bg-greenbar',
+        )}
+      >
+        <ListChecks className="h-4 w-4 shrink-0" aria-hidden />
+        {selecting
+          ? t('cat.selectDone', 'বাছাই বন্ধ করুন')
+          : t('cat.selectMany', 'একসাথে কয়েকটা সরান')}
+      </button>
+
       {/* Said once, at the top: what the second level is for and why there is no
           third. Nobody who has not used sub-categories knows either. */}
       <div className="rounded-card border-rule bg-greenbar border p-3.5">
@@ -244,6 +307,10 @@ export default function CategoriesPage() {
                 childCount={children.length}
                 onEdit={() => openEdit(parent)}
                 onMove={() => openMove(parent)}
+                selecting={selecting}
+                selectable={selectable(parent)}
+                checked={selected.has(parent.id)}
+                onToggle={() => toggle(parent.id)}
               />
 
               {children.length > 0 ? (
@@ -258,6 +325,10 @@ export default function CategoriesPage() {
                         childCount={0}
                         onEdit={() => openEdit(child)}
                         onMove={() => openMove(child)}
+                        selecting={selecting}
+                        selectable
+                        checked={selected.has(child.id)}
+                        onToggle={() => toggle(child.id)}
                         nested
                       />
                     </li>
@@ -282,11 +353,48 @@ export default function CategoriesPage() {
         </ul>
       )}
 
+      {/* Sticky, because the selection is made by scrolling and the button that
+          acts on it must not be scrolled away from. Only while something is
+          picked: an empty bar is a permanent strip of chrome earning nothing. */}
+      {selecting && selected.size > 0 ? (
+        <div className="sticky bottom-2 z-20 flex items-center gap-2">
+          <div className="rounded-card border-brand bg-surface flex min-w-0 flex-1 items-center gap-2 border p-2 shadow-lg">
+            <span className="text-ink min-w-0 flex-1 truncate px-1 text-sm font-medium">
+              {t('cat.selectedN', '{n}টি বাছাই করা').replace('{n}', bn(selected.size))}
+            </span>
+            <Button
+              onClick={() => {
+                haptic('tap');
+                setReparenting(true);
+              }}
+            >
+              {t('cat.changeParent', 'মূল খাত বদলান')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* The phone has no header, so its way to a new top-level khat is here. */}
       <Button className="md:hidden" onClick={() => setAddOpen(true)}>
         <Plus className="h-4 w-4" aria-hidden />
         নতুন খাত যোগ করুন
       </Button>
+
+      <ReparentSheet
+        open={reparenting}
+        ids={[...selected]}
+        kind={kind}
+        categories={categories.data ?? []}
+        onOpenChange={(open) => {
+          if (!open) setReparenting(false);
+        }}
+        onDone={(message) => {
+          setReparenting(false);
+          leaveSelecting();
+          setToast(message);
+          void queryClient.invalidateQueries({ queryKey: ['categories'] });
+        }}
+      />
 
       <CategorySheet
         open={addOpen || editing !== null || addUnder !== null}
@@ -372,6 +480,10 @@ function CategoryLine({
   childCount,
   onEdit,
   onMove,
+  selecting = false,
+  selectable = true,
+  checked = false,
+  onToggle,
   nested = false,
 }: {
   category: CategoryRow;
@@ -380,10 +492,61 @@ function CategoryLine({
   childCount: number;
   onEdit: () => void;
   onMove: () => void;
+  /** Whether the screen is in bulk-selection mode. */
+  selecting?: boolean;
+  /** False for a খাত that already has sub-khat: two levels is the limit. */
+  selectable?: boolean;
+  checked?: boolean;
+  onToggle?: () => void;
   nested?: boolean;
 }) {
   const { name: nameOf } = useDisplayName();
   const canMove = category.usageCount > 0 && childCount === 0;
+
+  /* In selection mode the whole row is the checkbox. A 20px box beside a 44px
+     row is a target only a mouse can hit, and this screen is used on a phone —
+     so the row keeps its size and changes its job. */
+  if (selecting) {
+    return (
+      <div className={cn('flex items-center gap-2 px-2 py-1.5', nested && 'pl-1')}>
+        {nested ? (
+          <CornerDownRight className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
+        ) : null}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={checked}
+          disabled={!selectable}
+          onClick={onToggle}
+          className={cn(
+            'press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left',
+            selectable ? 'hover:bg-greenbar' : 'cursor-not-allowed opacity-45',
+          )}
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+              checked ? 'border-brand bg-brand text-brand-contrast' : 'border-rule',
+            )}
+          >
+            {checked ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span
+              className={cn('text-ink block truncate', nested ? 'text-sm' : 'text-sm font-medium')}
+            >
+              {nameOf(category)}
+            </span>
+            <span className="text-ink-muted block truncate text-xs">
+              {selectable ? meta : t('cat.hasSubs', 'উপ-খাত আছে বলে সরানো যাবে না')}
+            </span>
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={cn('flex items-center gap-1 px-2 py-1.5', nested && 'pl-1')}>
       {nested ? (
@@ -718,6 +881,131 @@ function MoveSheet({
 
         <Button variant="outline" size="block" onClick={() => onOpenChange(false)}>
           থাক
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Move several খাত under one head at once.
+ *
+ * The API takes one category per request, and that is left alone: each move has
+ * its own rules to check — the head must be the same side of the books, it must
+ * be top level, and the row being moved must have no sub-khat of its own — and a
+ * bulk endpoint would have to re-implement all three or skip them. So this sends
+ * them one at a time and is honest about the outcome: some can succeed while
+ * others are refused, and saying "৭টি সরেছে, ৩টি পারেনি" is the truth. A single
+ * "saved" over a partial failure is not.
+ */
+function ReparentSheet({
+  open,
+  ids,
+  kind,
+  categories,
+  onOpenChange,
+  onDone,
+}: {
+  open: boolean;
+  ids: string[];
+  kind: Kind;
+  categories: CategoryRow[];
+  onOpenChange: (open: boolean) => void;
+  onDone: (message: string) => void;
+}) {
+  const { name: nameOf } = useDisplayName();
+  const [parentId, setParentId] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (open) {
+      setParentId('');
+      setError(null);
+    }
+  }, [open]);
+
+  /* Heads of this side only, and never one of the rows being moved — a খাত
+     cannot become its own parent, and the server refuses it anyway. */
+  const heads = React.useMemo(
+    () =>
+      categories
+        .filter((c) => c.kind === kind && !c.parentId && !ids.includes(c.id))
+        .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'bn')),
+    [categories, kind, ids, nameOf],
+  );
+
+  const move = useMutation({
+    mutationFn: async () => {
+      let moved = 0;
+      const failed: string[] = [];
+      for (const id of ids) {
+        try {
+          await api(`/categories/${id}`, {
+            method: 'PATCH',
+            body: { parentId: parentId || null },
+          });
+          moved += 1;
+        } catch (err) {
+          const row = categories.find((c) => c.id === id);
+          failed.push(
+            `${row ? nameOf(row) : id} — ${err instanceof ApiError ? err.message : 'সরানো যায়নি'}`,
+          );
+        }
+      }
+      return { moved, failed };
+    },
+    onSuccess: ({ moved, failed }) => {
+      if (failed.length === 0) {
+        haptic('success');
+        onDone(`${bn(moved)}টি খাত সরানো হয়েছে`);
+        return;
+      }
+      /* The sheet stays open on a partial failure, listing what did not move.
+         Closing it would leave the reader believing all of them did. */
+      setError(`${bn(moved)}টি সরেছে, ${bn(failed.length)}টি পারেনি:\n` + failed.join('\n'));
+    },
+  });
+
+  const target = heads.find((h) => h.id === parentId);
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('cat.changeParent', 'মূল খাত বদলান')}
+      description={t('cat.selectedN', '{n}টি বাছাই করা').replace('{n}', bn(ids.length))}
+    >
+      <div className="flex flex-col gap-4">
+        <Field label={t('cat.newParent', 'কোন খাতের নিচে যাবে')} htmlFor="rp-parent">
+          <Select id="rp-parent" value={parentId} onChange={(e) => setParentId(e.target.value)}>
+            <option value="">{t('cat.toTopLevel', 'কারো নিচে নয় — নিজেরাই মূল খাত')}</option>
+            {heads.map((head) => (
+              <option key={head.id} value={head.id}>
+                {nameOf(head)}
+              </option>
+            ))}
+          </Select>
+          <p className="text-ink-muted mt-1 text-xs">
+            {target
+              ? t(
+                  'cat.reparentHint',
+                  'বাছাই করা খাতগুলো “{name}”-এর নিচে চলে যাবে। লেনদেনগুলো তার সঙ্গেই যাবে, কিছু হারাবে না।',
+                ).replace('{name}', nameOf(target))
+              : t('cat.topLevelHint', 'প্রতিটি খাত উপরের স্তরে উঠে আসবে, নিজের লেনদেনসহ।')}
+          </p>
+        </Field>
+
+        {error ? (
+          <p
+            role="alert"
+            className="bg-expense/10 text-expense whitespace-pre-line rounded-md px-3 py-2 text-sm"
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <Button size="block" disabled={move.isPending} onClick={() => move.mutate()}>
+          {move.isPending ? t('common.saving', 'সংরক্ষণ হচ্ছে…') : t('common.save', 'সংরক্ষণ করুন')}
         </Button>
       </div>
     </Sheet>
