@@ -1346,4 +1346,87 @@ describe('ingestion', () => {
       expect(res.body.message).toContain('ট্রান্সফার');
     });
   });
+
+  /**
+   * Marking a message as the shop's.
+   *
+   * A proprietorship run out of the household's own bKash is separated from it
+   * by the tag and by nothing else. A business message that could not be tagged
+   * at review either went into the books unmarked — and never reached the
+   * venture's own profit — or had to be found again in the khata afterwards and
+   * edited. Fifty drafts deep that is the segment report not working.
+   */
+  describe('tagging a message at review', () => {
+    const tagged = async (ws: Ws, name: string) => {
+      const res = await ctx
+        .http()
+        .post('/v1/tags')
+        .set(auth(ws.user))
+        .send({ name, nameBn: name })
+        .expect(201);
+      return res.body.id as string;
+    };
+
+    it('carries the tag onto the entry it becomes', async () => {
+      const ws = await workspace();
+      const shop = await tagged(ws, 'দোকান');
+      const received = await post(ws).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ws.cashId, categoryId: ws.categoryId, tagIds: [shop] })
+        .expect(200);
+
+      const entry = await ctx
+        .http()
+        .get(`/v1/transactions/${applied.body.transactionId as string}`)
+        .set(auth(ws.user))
+        .expect(200);
+      expect(entry.body.tags.map((t: { id: string }) => t.id)).toEqual([shop]);
+    });
+
+    it('reaches the business statement, which is the whole point', async () => {
+      const ws = await workspace();
+      const shop = await tagged(ws, 'দোকান');
+      await ctx
+        .http()
+        .patch('/v1/workspace/settings')
+        .set(auth(ws.user))
+        .send({ businessEnabled: true })
+        .expect(200);
+
+      const received = await post(ws).expect(200);
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ws.cashId, categoryId: ws.categoryId, tagIds: [shop] })
+        .expect(200);
+
+      const statement = await ctx
+        .http()
+        .get(`/v1/reports/income-statement?tagId=${shop}`)
+        .set(auth(ws.user))
+        .expect(200);
+      expect(statement.body.expenseMinor).toBe(125_050);
+    });
+
+    it('refuses a tag from another workspace', async () => {
+      /* `Tag` and `TransactionTag` both carry a workspace, so a foreign join
+         row would be internally consistent and still wrong. */
+      const ws = await workspace();
+      const stranger = await workspace();
+      const theirs = await tagged(stranger, 'অন্যের');
+      const received = await post(ws).expect(200);
+
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ws.cashId, categoryId: ws.categoryId, tagIds: [theirs] })
+        .expect(400);
+    });
+  });
 });

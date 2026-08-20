@@ -218,6 +218,16 @@ const acceptDraftSchema = z.object({
    * movement and the closing of the loan when it reaches zero, all in the one
    * place that already knows how.
    */
+  /**
+   * Tags for the entry this draft becomes.
+   *
+   * The one thing the review screen could not say. A shop's takings arriving by
+   * SMS had no way to be marked as the shop's, so every business message either
+   * went in untagged — and never reached the venture's own profit — or had to be
+   * found again in the khata afterwards and edited. Fifty drafts deep, that is
+   * the whole feature not working.
+   */
+  tagIds: z.array(cuid).max(20).optional(),
   loanId: cuid.optional(),
   /**
    * A loan being *made* from this message, rather than repaid.

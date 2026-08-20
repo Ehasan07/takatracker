@@ -42,7 +42,11 @@ export default function InboxPage() {
   const [view, setView] = React.useState<View>('drafts');
   const [status, setStatus] = React.useState('PENDING');
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [sticky, setSticky] = React.useState<StickyPick>({ accountId: '', categoryId: '' });
+  const [sticky, setSticky] = React.useState<StickyPick>({
+    accountId: '',
+    categoryId: '',
+    tagIds: [],
+  });
   const [toast, setToast] = React.useState<string | null>(null);
 
   const drafts = useInfiniteQuery({

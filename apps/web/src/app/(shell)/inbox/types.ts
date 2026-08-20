@@ -115,6 +115,8 @@ export interface AcceptDraftBody {
    * it is the money somebody borrowed coming back. Accepted as income it
    * invents earnings and leaves the debt at its full size.
    */
+  /** What the entry is *for* — the venture, the trip, the family. */
+  tagIds?: string[];
   loanId?: string;
   /** A loan being *made* from this message. Needs `personId` or `personName`. */
   loanDirection?: 'LENT' | 'BORROWED';

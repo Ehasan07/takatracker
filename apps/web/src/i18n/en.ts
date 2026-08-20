@@ -1913,6 +1913,7 @@ export const EN: Record<string, string> = {
   'entry.repayInHint': 'The money comes into your account and what you are owed goes down.',
   'entry.repayOutHint': 'The money leaves your account and what you owe goes down.',
   'entry.repayAccount': 'Into or out of which account',
+  'inbox.tags': 'Tags — who for, or what venture',
   'inbox.whichLoan': 'Which loan is being repaid',
   'inbox.loanOwedToMe': 'owed to me',
   'inbox.loanOwedByMe': 'owed by me',

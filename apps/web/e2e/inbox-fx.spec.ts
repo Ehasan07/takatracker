@@ -454,3 +454,57 @@ test.describe('choosing a খাত from a message', () => {
     });
   });
 });
+
+/**
+ * Marking a message as the shop's, and keeping it marked for the next fifty.
+ *
+ * The tag is the only thing separating a proprietorship from the household it
+ * runs inside, so a business message that cannot be tagged at review never
+ * reaches the venture's own profit. And messages arrive in runs — re-picking
+ * the same tag fifty times is the reason a queue does not get cleared.
+ */
+test.describe('tagging a message at review', () => {
+  test('carries the tag onto the entry, and offers it to the next draft', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    await page.goto('/tags');
+    await page.getByRole('button', { name: 'প্রথম ট্যাগ বানান' }).click();
+    const tagSheet = page.getByRole('dialog');
+    await tagSheet.getByLabel('নাম', { exact: true }).fill('দোকান');
+    await tagSheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(tagSheet).toBeHidden({ timeout: 15_000 });
+
+    await forward(
+      page,
+      'Your A/C **4521 is debited BDT 1,250.50 on 09-08-26. Avl Bal BDT 12,430.00',
+    );
+    await forward(page, 'Your A/C **4521 is debited BDT 400.00 on 10-08-26. Avl Bal BDT 12,030.00');
+
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+    await sheet.getByLabel('খাত খুঁজুন').fill('khabar');
+    await sheet
+      .getByRole('button', { name: /খাবার ও বাজার/ })
+      .first()
+      .click();
+
+    /* The control that did not exist. */
+    await sheet.getByRole('button', { name: 'দোকান', exact: true }).first().click();
+
+    await sheet.getByRole('button', { name: 'যোগ করে পরেরটি' }).click();
+
+    /* Straight on to the next draft, with the tag already on it — the whole
+       reason a fifty-deep queue is clearable. */
+    await expect(
+      sheet.getByText('গতবার বেছে নেওয়া অ্যাকাউন্ট, খাত ও ট্যাগ', { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    /* And the tag is on the entry, counted where the tag lives. */
+    await page.goto('/tags');
+    await expect(page.getByText('১টি লেনদেন').first()).toBeVisible({ timeout: 15_000 });
+  });
+});

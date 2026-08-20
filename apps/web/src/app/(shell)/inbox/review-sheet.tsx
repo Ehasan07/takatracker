@@ -13,6 +13,7 @@ import {
 import * as React from 'react';
 import { formatMinor, MoneyParseError, parseMoneyToMinor } from '@hishab/shared';
 import { CategoryPicker } from '@/components/category-picker';
+import { TagPicker } from '@/app/(shell)/tags/tag-picker';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
@@ -42,6 +43,15 @@ import type { AcceptDraftBody, Direction, DraftView, RejectReason } from './type
 export interface StickyPick {
   accountId: string;
   categoryId: string;
+  /**
+   * The tags the last accept carried, offered to the next draft.
+   *
+   * A shop's messages arrive in runs — fifty bKash alerts, all the same
+   * venture — and re-picking the tag on every one of them is the reason a
+   * queue does not get cleared. Carried like the account and the খাত are, and
+   * as visible as they are: the line under the pickers says so.
+   */
+  tagIds: readonly string[];
 }
 
 export type Outcome = 'accepted' | 'rejected';
@@ -112,6 +122,8 @@ interface FormState {
   categoryId: string;
   description: string;
   notes: string;
+  /** What this is *for* — the venture, the trip, the family. */
+  tagIds: string[];
   /** ধার ফেরত: which loan is being paid. */
   loanId: string;
   /** ধার দিয়েছি / ধার নিয়েছি: who with — an existing person, or `NEW_PERSON`. */
@@ -273,6 +285,10 @@ function ReviewForm({
     categoryId: draft.categoryId ?? sticky.categoryId,
     description: '',
     notes: '',
+    /* From the last accept. A draft carries no tags of its own — nothing in a
+       bank message says which venture it belongs to — so the only proposal
+       worth making is the one the person made a moment ago. */
+    tagIds: [...sticky.tagIds],
     loanId: '',
     personId: '',
     personName: '',
@@ -285,7 +301,8 @@ function ReviewForm({
   const [stickyApplied] = React.useState(
     () =>
       (!draft.accountId && Boolean(sticky.accountId)) ||
-      (!draft.categoryId && Boolean(sticky.categoryId)),
+      (!draft.categoryId && Boolean(sticky.categoryId)) ||
+      sticky.tagIds.length > 0,
   );
   const [error, setError] = React.useState<string | null>(null);
   const [rejecting, setRejecting] = React.useState(false);
@@ -383,7 +400,11 @@ function ReviewForm({
     mutationFn: (body: AcceptDraftBody) => acceptDraft(draft.id, body),
     onSuccess: (saved) => {
       haptic('success');
-      onSticky({ accountId: form.accountId, categoryId: form.categoryId });
+      onSticky({
+        accountId: form.accountId,
+        categoryId: form.categoryId,
+        tagIds: form.tagIds,
+      });
       invalidateAfterAccept(queryClient);
       onResolved(saved, 'accepted');
     },
@@ -521,6 +542,10 @@ function ReviewForm({
       ...(payee === draft.payee ? {} : { payee }),
       ...(description ? { description } : {}),
       ...(notes ? { notes } : {}),
+      /* Always sent, empty included: clearing the tags a previous draft stuck
+         on has to be a thing a person can do, and an omitted field would mean
+         "unchanged" rather than "none". */
+      tagIds: form.tagIds,
     });
   };
 
@@ -901,9 +926,30 @@ function ReviewForm({
           </>
         )}
 
+        {/* What this is *for*, beside what it was.
+ 
+            A shop run out of the household's own bKash is separated from it by
+            this and by nothing else, so a business message that cannot be
+            tagged here never reaches the venture's own profit — it either goes
+            in unmarked or has to be found again in the khata and edited. On a
+            ধার tab it is absent: a loan carries no tags, and offering a control
+            whose value would be dropped is worse than not offering it. */}
+        {loanKind ? null : (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-ink-muted text-xs font-medium">
+              {t('inbox.tags', 'ট্যাগ — কার জন্য বা কোন কাজে')}
+            </span>
+            <TagPicker
+              value={form.tagIds}
+              onChange={(tagIds) => setForm((f) => ({ ...f, tagIds }))}
+              idPrefix="dr"
+            />
+          </div>
+        )}
+
         {stickyApplied && pending ? (
           <p className="text-ink-muted -mt-2 text-xs">
-            গতবার বেছে নেওয়া অ্যাকাউন্ট ও খাত আগে থেকে বসানো আছে — না মিললে বদলে নিন।
+            গতবার বেছে নেওয়া অ্যাকাউন্ট, খাত ও ট্যাগ আগে থেকে বসানো আছে — না মিললে বদলে নিন।
           </p>
         ) : null}
 

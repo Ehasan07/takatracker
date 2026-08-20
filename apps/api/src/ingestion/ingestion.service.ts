@@ -1150,6 +1150,22 @@ export class IngestionService {
       categoryId,
     );
 
+    /* Checked before the write, and by id rather than by count: a tag from
+       another workspace would otherwise be attached to this one's entry, and a
+       join row is not something a foreign key alone can refuse — `Tag` and
+       `TransactionTag` both carry `workspaceId`, so the pair would be
+       internally consistent and still wrong. */
+    const tagIds = input.tagIds ?? [];
+    if (tagIds.length > 0) {
+      const mine = await this.prisma.tag.findMany({
+        where: { id: { in: tagIds }, workspaceId: ctx.workspaceId, deletedAt: null },
+        select: { id: true },
+      });
+      if (mine.length !== new Set(tagIds).size) {
+        throw new BadRequestException('ট্যাগটি পাওয়া যায়নি');
+      }
+    }
+
     const payee = input.payee === undefined ? draft.payee : input.payee;
     const type = isTransfer ? 'TRANSFER' : direction === 'IN' ? 'INCOME' : 'EXPENSE';
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
@@ -1210,6 +1226,20 @@ export class IngestionService {
             // The thread back to the text that proposed this entry.
             sourceDraftId: draft.id,
             entries: { create: entries.map((e) => entryData(e, ctx.workspaceId)) },
+            /* Written with the entry, in the same transaction. A tag applied
+               afterwards would leave a window in which the row exists untagged,
+               and the report that reads it would be right about a state nobody
+               intended. */
+            ...(tagIds.length > 0
+              ? {
+                  tags: {
+                    create: [...new Set(tagIds)].map((tagId) => ({
+                      tagId,
+                      workspaceId: ctx.workspaceId,
+                    })),
+                  },
+                }
+              : {}),
           },
           select: { id: true },
         });
