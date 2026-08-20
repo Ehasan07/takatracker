@@ -356,3 +356,57 @@ test.describe('a message that was really a transfer', () => {
     await expect(sheet.locator('#dr-category')).toBeVisible();
   });
 });
+
+/**
+ * The money somebody borrowed, coming back.
+ *
+ * ৳3,000 arrives in bKash and it is a repayment. Accepted as আয় it invents
+ * ৳3,000 of earnings *and* leaves the debt standing at its full size — the
+ * books wrong twice, and the one entry that mattered never made. Before this
+ * the review screen had three tabs and a repayment was none of them, so the
+ * message could only be filed wrongly or left in the queue forever.
+ */
+test.describe('a message that was a loan repayment', () => {
+  const CASH_IN =
+    'Cash In Tk 3,000.00 from 01322277399 successful. Fee Tk 0.00. ' +
+    'Balance Tk 5,005.04. TrxID DHK6N1NC3O at 20/08/2026 20:16';
+
+  test('pays the loan down instead of inventing income', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    /* Somebody owes ৳10,000. */
+    await page.goto('/loans');
+    await page.getByRole('button', { name: 'নতুন', exact: true }).first().click();
+    const loanSheet = page.getByRole('dialog');
+    await expect(loanSheet).toBeVisible();
+    await loanSheet.getByLabel('ধরন').selectOption('LENT');
+    await loanSheet.getByLabel('নাম', { exact: true }).fill('Rasel');
+    await loanSheet.getByLabel('মূল টাকা (৳)').fill('10000');
+    await loanSheet.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();
+    await expect(loanSheet).toBeHidden({ timeout: 15_000 });
+
+    await forward(page, CASH_IN);
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    /* The tab that did not exist. Choosing it takes the খাত box away — a
+       repayment is neither income nor spending — and asks the only question
+       an amount cannot answer: which loan. */
+    await sheet.getByRole('tab', { name: 'ধার ফেরত' }).click();
+    await expect(sheet.locator('#dr-category')).toHaveCount(0);
+    await expect(sheet.getByText('আয়ও নয়, খরচও নয়')).toBeVisible();
+
+    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+    await sheet.locator('#dr-loan').selectOption({ index: 1 });
+
+    await sheet.getByRole('button', { name: 'খাতায় যোগ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    /* ৳10,000 owed less ৳3,000 back is ৳7,000 — and it is the loan that moved,
+       not an income line. */
+    await page.goto('/loans');
+    await expect(page.getByText('৳7,000.00').first()).toBeVisible({ timeout: 15_000 });
+  });
+});

@@ -1912,6 +1912,17 @@ export const EN: Record<string, string> = {
   'entry.repayInHint': 'The money comes into your account and what you are owed goes down.',
   'entry.repayOutHint': 'The money leaves your account and what you owe goes down.',
   'entry.repayAccount': 'Into or out of which account',
+  'inbox.whichLoan': 'Which loan is being repaid',
+  'inbox.loanOwedToMe': 'owed to me',
+  'inbox.loanOwedByMe': 'owed by me',
+  'inbox.noOpenLoans': 'No open loan — record the loan on the loans page first',
+  'inbox.repayHint':
+    'Recorded as a loan instalment — neither income nor expense. The outstanding balance comes down, and the loan closes once it reaches nil.',
+  'inbox.withWhom': 'Who the loan is with',
+  'inbox.newPerson': 'Type a new name',
+  'inbox.personName': 'Name',
+  'inbox.newLoanHint':
+    'Opens a new loan — no interest, dated as above. Add interest or a due date from the loans page if you need them.',
   'entry.pickLoan': 'Choose which loan this repays',
   'entry.repayHint':
     'The outstanding balance goes down and the entry is written to your books. Paid off in full, the loan closes itself. Where there is interest, interest is settled before principal — the split is on the loans screen.',

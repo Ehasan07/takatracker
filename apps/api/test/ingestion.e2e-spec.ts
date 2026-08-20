@@ -1205,4 +1205,145 @@ describe('ingestion', () => {
       expect(applied.body.learnedHint).toBeNull();
     });
   });
+
+  /**
+   * ধার, from the inbox.
+   *
+   * ৳3,000 arrives in bKash and it is a borrower repaying. Booked as income it
+   * invents ৳3,000 of earnings and leaves the debt standing at its full size —
+   * the ledger wrong twice, and the entry that mattered never made. The review
+   * screen had three tabs and a repayment is none of them.
+   */
+  describe('a message that is ধার', () => {
+    const CASH_IN =
+      'Cash In Tk 3,000.00 from 01322277399 successful. Fee Tk 0.00. Balance Tk 5,005.04. TrxID DHK6N1NC3O at 20/08/2026 20:16';
+
+    const lend = async (ws: Ws, principalMinor: number) => {
+      const res = await ctx
+        .http()
+        .post('/v1/loans')
+        .set(auth(ws.user))
+        .send({
+          personName: 'Rasel',
+          direction: 'LENT',
+          principalMinor,
+          loanDate: '2026-08-01',
+          accountId: ws.cashId,
+        })
+        .expect(201);
+      return res.body as { loan: { id: string }; progress: { outstandingMinor: number } };
+    };
+
+    it('brings the outstanding balance down instead of inventing income', async () => {
+      const ws = await workspace();
+      const loan = await lend(ws, 1_000_000);
+      const received = await post(ws, CASH_IN).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ws.cashId, loanId: loan.loan.id, amountMinor: 300_000 })
+        .expect(200);
+
+      expect(applied.body.status).toBe('ACCEPTED');
+      expect(applied.body.transactionId).toBeTruthy();
+
+      const after = await ctx
+        .http()
+        .get(`/v1/loans/${loan.loan.id}`)
+        .set(auth(ws.user))
+        .expect(200);
+      expect(after.body.progress.outstandingMinor).toBe(700_000);
+      expect(after.body.payments).toHaveLength(1);
+    });
+
+    it('records a loan being made, from the message that paid it out', async () => {
+      const ws = await workspace();
+      const received = await post(ws, CASH_IN).expect(200);
+
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          loanDirection: 'LENT',
+          personName: 'Shuvo',
+          amountMinor: 300_000,
+        })
+        .expect(200);
+
+      const loans = await ctx.http().get('/v1/loans').set(auth(ws.user)).expect(200);
+      const made = loans.body.find((l: { personName: string }) => l.personName === 'Shuvo');
+      expect(made.principalMinor).toBe(300_000);
+      expect(made.direction).toBe('LENT');
+    });
+
+    it('never posts the same repayment twice', async () => {
+      /* Two taps a second apart must not halve somebody's outstanding balance.
+         The draft is claimed before the loan is written for exactly this. */
+      const ws = await workspace();
+      const loan = await lend(ws, 1_000_000);
+      const received = await post(ws, CASH_IN).expect(200);
+      const body = { accountId: ws.cashId, loanId: loan.loan.id, amountMinor: 300_000 };
+
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send(body)
+        .expect(200);
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send(body)
+        .expect(400);
+
+      const after = await ctx
+        .http()
+        .get(`/v1/loans/${loan.loan.id}`)
+        .set(auth(ws.user))
+        .expect(200);
+      expect(after.body.payments).toHaveLength(1);
+    });
+
+    it('leaves the draft answerable when the loan write is refused', async () => {
+      /* A loan that cannot take the payment must not leave a draft claiming it
+         was dealt with — the person still has a decision to make. */
+      const ws = await workspace();
+      const received = await post(ws, CASH_IN).expect(200);
+
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ accountId: ws.cashId, loanId: 'cly0000000000000000000000', amountMinor: 300_000 })
+        .expect(404);
+
+      const drafts = await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200);
+      const still = drafts.body.items.find((d: { id: string }) => d.id === received.body.draftId);
+      expect(still.status).toBe('PENDING');
+    });
+
+    it('refuses to be a loan and a transfer at once', async () => {
+      const ws = await workspace();
+      const loan = await lend(ws, 1_000_000);
+      const received = await post(ws, CASH_IN).expect(200);
+
+      const res = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          counterAccountId: ws.cashId,
+          loanId: loan.loan.id,
+          amountMinor: 300_000,
+        })
+        .expect(400);
+      expect(res.body.message).toContain('ট্রান্সফার');
+    });
+  });
 });

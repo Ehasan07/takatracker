@@ -30,6 +30,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { DraftStatus, IngestionChannel, TransactionSource } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
+import { LoansService } from '../loans/loans.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { AuditService } from '../audit/audit.service';
 import { looksFinancial, looksPromotional, ucblParser } from '@hishab/core';
@@ -386,6 +387,9 @@ export class IngestionService {
     /* For `claimInstalment`: a transfer into a DPS is that month's instalment,
        and the schedule has to hear about it however the money got there. */
     private readonly savings: SavingsService,
+    /* For ধার: a repayment arriving by SMS has to move the outstanding balance,
+       not merely the money, and `LoansService` is where that already lives. */
+    private readonly loans: LoansService,
   ) {}
 
   // --- webhook authentication ------------------------------------------------
@@ -1097,6 +1101,22 @@ export class IngestionService {
     const accountId = input.accountId ?? draft.accountId;
     if (!accountId) throw new BadRequestException('অ্যাকাউন্ট নির্বাচন করুন');
 
+    /* ধার, in either of its two shapes, goes through the loans module instead
+       of the ledger write below — see `acceptAsLoan`. */
+    if (input.loanId || input.loanDirection) {
+      return this.acceptAsLoan(ctx, draft, {
+        dateIso,
+        amountMinor,
+        accountId,
+        loanId: input.loanId,
+        loanDirection: input.loanDirection,
+        personId: input.personId,
+        personName: input.personName,
+        counterAccountId: input.counterAccountId,
+        note: input.notes ?? input.description,
+      });
+    }
+
     /**
      * The other side, when the reviewer says there is one.
      *
@@ -1367,6 +1387,165 @@ export class IngestionService {
     });
 
     return tail;
+  }
+
+  /**
+   * Accepting a message as ধার — money lent, money borrowed, or money coming
+   * back on a loan that already exists.
+   *
+   * ## Why this could not be an ordinary accept
+   *
+   * ৳3,000 arrives in bKash and it is a borrower repaying. Booked as income it
+   * invents ৳3,000 of earnings and leaves the debt standing at its full size —
+   * so the ledger is wrong twice, and the one entry that actually mattered, the
+   * outstanding balance coming down, never happens. The review screen had no
+   * way to say any of this: its three tabs were খরচ, আয় and ট্রান্সফার, and a
+   * repayment is none of them.
+   *
+   * Nothing here re-implements what a loan is. `LoansService` already knows how
+   * to disburse one, how to take an instalment against it, how to freeze the
+   * interest clock on the payment's own date and when to close it — so this
+   * calls that, and its whole job is to attach the resulting transaction to the
+   * draft so a message can never be applied twice.
+   *
+   * ## The order, and why the claim comes first
+   *
+   * The draft is marked ACCEPTED *before* the loan is written, and put back if
+   * the write fails. The other way round — write, then claim — would let two
+   * taps a second apart both reach the loans module and post two instalments,
+   * with only the second failing to claim. A duplicate repayment quietly halves
+   * somebody's outstanding balance; a draft briefly stuck in the wrong state is
+   * recoverable and visible. So the cheap failure is the one that is allowed to
+   * happen.
+   */
+  private async acceptAsLoan(
+    ctx: InboxContext,
+    draft: DraftRow,
+    input: {
+      dateIso: string;
+      amountMinor: number;
+      accountId: string;
+      loanId?: string;
+      loanDirection?: 'LENT' | 'BORROWED';
+      personId?: string;
+      personName?: string;
+      counterAccountId?: string;
+      note?: string;
+    },
+  ): Promise<DraftView> {
+    /* A loan already has two sides — the account and the person — and naming a
+       third would be a transfer and a loan at once, which is not a thing. */
+    if (input.counterAccountId) {
+      throw new BadRequestException('ধারের সাথে ট্রান্সফারের অ্যাকাউন্ট দেওয়া যায় না');
+    }
+    if (input.loanId && input.loanDirection) {
+      throw new BadRequestException('ধার ফেরত না নতুন ধার — একটি বেছে নিন');
+    }
+    if (input.loanDirection && !input.personId && !input.personName?.trim()) {
+      throw new BadRequestException('কার সাথে ধার — বেছে নিন বা নাম লিখুন');
+    }
+
+    const reviewedAt = new Date();
+    /* The lock, taken before anything is written. A second accept arriving now
+       no longer matches PENDING and is refused, which is what stops two
+       instalments landing on one loan. */
+    const claimed = await this.prisma.transactionDraft.updateMany({
+      where: {
+        id: draft.id,
+        workspaceId: ctx.workspaceId,
+        status: 'PENDING',
+        transactionId: null,
+      },
+      data: { status: 'ACCEPTED', reviewedAt, reviewedByUserId: ctx.id },
+    });
+    if (claimed.count !== 1) {
+      throw new BadRequestException('এই খসড়াটি ইতিমধ্যে যোগ করা হয়েছে');
+    }
+
+    let transactionId: string | null = null;
+    try {
+      if (input.loanId) {
+        await this.loans.addPayment(ctx, input.loanId, {
+          date: input.dateIso,
+          amountMinor: input.amountMinor,
+          method: 'CASH',
+          accountId: input.accountId,
+          attachmentIds: [],
+          ...(input.note ? { note: input.note } : {}),
+        });
+        /* The instalment just written. Read back rather than returned, because
+           `addPayment` answers with the whole loan — the shape the loan screen
+           needs — and this needs one id out of it. */
+        const payment = await this.prisma.loanPayment.findFirst({
+          where: { loanId: input.loanId, workspaceId: ctx.workspaceId },
+          orderBy: { createdAt: 'desc' },
+          select: { transactionId: true },
+        });
+        transactionId = payment?.transactionId ?? null;
+      } else {
+        const loan = await this.loans.create(ctx, {
+          direction: input.loanDirection as 'LENT' | 'BORROWED',
+          principalMinor: input.amountMinor,
+          loanDate: input.dateIso,
+          accountId: input.accountId,
+          interestType: 'NONE',
+          interestMinor: 0,
+          interestRateBps: 0,
+          attachmentIds: [],
+          ...(input.personId ? { personId: input.personId } : {}),
+          ...(input.personName ? { personName: input.personName.trim() } : {}),
+          ...(input.note ? { note: input.note } : {}),
+        });
+        transactionId = loan.loan.transactionId;
+      }
+    } catch (err) {
+      /* Put it back. The loan was not written, so a draft left saying it was
+         would hide a decision the person still has to make. */
+      await this.prisma.transactionDraft.updateMany({
+        where: {
+          id: draft.id,
+          workspaceId: ctx.workspaceId,
+          status: 'ACCEPTED',
+          transactionId: null,
+        },
+        data: { status: 'PENDING', reviewedAt: null, reviewedByUserId: null },
+      });
+      throw err;
+    }
+
+    /* The thread from the message to the entry it became. Null only if the loan
+       module booked no cash movement, which it does not for these two paths —
+       but the draft stays ACCEPTED either way, because the loan *was* written
+       and offering the message again would double it. */
+    if (transactionId) {
+      await this.prisma.transactionDraft.updateMany({
+        where: { id: draft.id, workspaceId: ctx.workspaceId, transactionId: null },
+        data: { transactionId },
+      });
+      await this.prisma.transaction.updateMany({
+        where: { id: transactionId, workspaceId: ctx.workspaceId },
+        data: { sourceDraftId: draft.id },
+      });
+    }
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'ingestion.draft_accepted',
+      entity: 'TransactionDraft',
+      entityId: draft.id,
+      after: {
+        as: input.loanId ? 'loan_payment' : 'loan',
+        loanId: input.loanId ?? null,
+        direction: input.loanDirection ?? null,
+        amountMinor: input.amountMinor,
+        date: input.dateIso,
+        accountId: input.accountId,
+        transactionId,
+      },
+    });
+
+    return this.presentOne(ctx, draft.id);
   }
 
   /**

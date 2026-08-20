@@ -108,6 +108,18 @@ export interface AcceptDraftBody {
    */
   fxCurrency?: string | null;
   fxAmountMinor?: number | null;
+  /**
+   * A repayment on a loan that already exists.
+   *
+   * The case this screen could not record at all: ৳3,000 arrives in bKash and
+   * it is the money somebody borrowed coming back. Accepted as income it
+   * invents earnings and leaves the debt at its full size.
+   */
+  loanId?: string;
+  /** A loan being *made* from this message. Needs `personId` or `personName`. */
+  loanDirection?: 'LENT' | 'BORROWED';
+  personId?: string;
+  personName?: string;
 }
 
 /** One row of "everything this phone sent me", from `GET /ingestion/messages`. */

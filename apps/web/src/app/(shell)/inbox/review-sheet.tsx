@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { useIsDesktop } from '@/hooks/use-device';
-import { ApiError, endpoints } from '@/lib/api';
+import { api, ApiError, endpoints } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
@@ -47,15 +47,24 @@ export interface StickyPick {
 export type Outcome = 'accepted' | 'rejected';
 
 /**
- * The three words this screen can say, matching the নতুন লেনদেন sheet.
+ * The six words this screen can say — the same six as the নতুন লেনদেন sheet.
  *
- * ধার is deliberately absent. A loan needs a person, a control account and a
- * repayment schedule, none of which an accept can create — so a fourth tab here
- * would be a tab that could only fail. A borrowed-money SMS is accepted as the
- * transfer or income it looks like and turned into a loan on the ঋণ screen.
+ * ধার used to be missing here, and the gap was not academic: ৳3,000 arrives in
+ * bKash and it is a borrower repaying. Accepted as আয় it invents ৳3,000 of
+ * earnings *and* leaves the debt standing at its full size, so the books are
+ * wrong twice and the one entry that mattered — the outstanding balance coming
+ * down — never happens. There was no third option: the message could only be
+ * filed wrongly or left in the queue forever.
+ *
+ * Nothing here creates a loan by itself. The two ধার tabs hand the accept a
+ * person or a loan and the server posts through the loans module, which is
+ * where disbursement, instalments, the interest clock and closing a settled
+ * loan already live.
  */
+type Kind = 'EXPENSE' | 'INCOME' | 'TRANSFER' | 'LENT' | 'BORROWED' | 'REPAY';
+
 const KINDS: {
-  kind: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  kind: Kind;
   direction: Direction;
   key: string;
   label: string;
@@ -63,11 +72,36 @@ const KINDS: {
   { kind: 'EXPENSE', direction: 'OUT', key: 'entry.tab.expense', label: 'খরচ' },
   { kind: 'INCOME', direction: 'IN', key: 'entry.tab.income', label: 'আয়' },
   { kind: 'TRANSFER', direction: 'OUT', key: 'entry.tab.transfer', label: 'ট্রান্সফার' },
+  { kind: 'LENT', direction: 'OUT', key: 'entry.tab.lent', label: 'ধার দিয়েছি' },
+  { kind: 'BORROWED', direction: 'IN', key: 'entry.tab.borrowed', label: 'ধার নিয়েছি' },
+  { kind: 'REPAY', direction: 'IN', key: 'entry.tab.repay', label: 'ধার ফেরত' },
 ];
 
+/** The two that create a loan, and the one that pays an existing one. */
+const isNewLoan = (kind: Kind): kind is 'LENT' | 'BORROWED' =>
+  kind === 'LENT' || kind === 'BORROWED';
+const isLoanKind = (kind: Kind): boolean => isNewLoan(kind) || kind === 'REPAY';
+
+/** A live loan, as much of it as this screen needs to label a row. */
+interface LoanOption {
+  id: string;
+  personName: string;
+  direction: 'LENT' | 'BORROWED';
+  status: string;
+  progress: { outstandingMinor: number };
+}
+
+interface PersonOption {
+  id: string;
+  name: string;
+}
+
+/** Whichever the reviewer types a new name under. */
+const NEW_PERSON = '__new__';
+
 interface FormState {
-  /** Which of the three this is. The two below are what the accept actually sends. */
-  kind: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  /** Which of the six this is. The two below are what the accept actually sends. */
+  kind: Kind;
   date: string;
   amount: string;
   direction: '' | Direction;
@@ -78,6 +112,11 @@ interface FormState {
   categoryId: string;
   description: string;
   notes: string;
+  /** ধার ফেরত: which loan is being paid. */
+  loanId: string;
+  /** ধার দিয়েছি / ধার নিয়েছি: who with — an existing person, or `NEW_PERSON`. */
+  personId: string;
+  personName: string;
 }
 
 function categoryKindFor(direction: '' | Direction): 'INCOME' | 'EXPENSE' | null {
@@ -234,6 +273,9 @@ function ReviewForm({
     categoryId: draft.categoryId ?? sticky.categoryId,
     description: '',
     notes: '',
+    loanId: '',
+    personId: '',
+    personName: '',
   }));
 
   /* The rate, as typed. Never sent and never stored: what reaches the server is
@@ -253,6 +295,30 @@ function ReviewForm({
 
   const liveAccounts = (accounts.data ?? []).filter((account) => !account.isArchived);
   const isTransfer = form.kind === 'TRANSFER';
+  const loanKind = isLoanKind(form.kind);
+
+  /* Fetched only once a ধার tab is open. Most drafts are not loans, and two
+     extra requests behind every message in a fifty-deep queue is a cost paid by
+     everybody for a case that applies to a few. */
+  const loans = useQuery({
+    queryKey: ['loans', 'open'],
+    queryFn: () => api<LoanOption[]>('/loans'),
+    enabled: form.kind === 'REPAY',
+    staleTime: 30_000,
+  });
+  const people = useQuery({
+    queryKey: ['loans', 'people'],
+    queryFn: () => api<PersonOption[]>('/loans/people'),
+    enabled: isNewLoan(form.kind),
+    staleTime: 30_000,
+  });
+
+  /* Settled and cancelled loans cannot take an instalment, and offering one is
+     offering a refusal. */
+  const openLoans = (loans.data ?? []).filter(
+    (loan) => loan.status !== 'SETTLED' && loan.status !== 'CANCELLED',
+  );
+  const chosenLoan = openLoans.find((loan) => loan.id === form.loanId);
   const wantedKind = isTransfer ? null : categoryKindFor(form.direction);
 
   /* A category carried over from an expense must not survive a switch to
@@ -274,6 +340,16 @@ function ReviewForm({
       setForm((f) => ({ ...f, counterAccountId: '' }));
     }
   }, [form.accountId, form.counterAccountId]);
+
+  /* Which way a repayment moves is the loan's answer, not the reviewer's:
+     money comes back *in* on something lent and goes *out* on something
+     borrowed. Set here so the field the accept sends agrees with the entry the
+     loans module is about to write. */
+  React.useEffect(() => {
+    if (form.kind !== 'REPAY' || !chosenLoan) return;
+    const direction: Direction = chosenLoan.direction === 'LENT' ? 'IN' : 'OUT';
+    setForm((f) => (f.direction === direction ? f : { ...f, direction }));
+  }, [form.kind, chosenLoan]);
 
   const set =
     (key: keyof FormState) =>
@@ -385,7 +461,19 @@ function ReviewForm({
       setError('কোন হিসাবে গেল বেছে নিন');
       return;
     }
-    if (!isTransfer && !form.categoryId) {
+    if (form.kind === 'REPAY' && !form.loanId) {
+      setError(t('entry.pickLoan', 'কোন ধারের ফেরত — বেছে নিন'));
+      return;
+    }
+    if (isNewLoan(form.kind) && !form.personId) {
+      setError(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'));
+      return;
+    }
+    if (isNewLoan(form.kind) && form.personId === NEW_PERSON && !form.personName.trim()) {
+      setError(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'));
+      return;
+    }
+    if (!isTransfer && !loanKind && !form.categoryId) {
       setError('ক্যাটাগরি নির্বাচন করুন');
       return;
     }
@@ -413,9 +501,19 @@ function ReviewForm({
       /* Sent together or not at all: a transfer has no খাত, and sending a
          leftover one would be asking the server to book two contradictory
          things. */
-      ...(isTransfer
-        ? { counterAccountId: form.counterAccountId }
-        : { categoryId: form.categoryId }),
+      /* One of three shapes, never two. A transfer has no খাত; a ধার has
+         neither, because the loans module owns both sides of it. */
+      ...(isTransfer ? { counterAccountId: form.counterAccountId } : {}),
+      ...(form.kind === 'REPAY' ? { loanId: form.loanId } : {}),
+      ...(isNewLoan(form.kind)
+        ? {
+            loanDirection: form.kind,
+            ...(form.personId === NEW_PERSON
+              ? { personName: form.personName.trim() }
+              : { personId: form.personId }),
+          }
+        : {}),
+      ...(isTransfer || loanKind ? {} : { categoryId: form.categoryId }),
       ...(form.date === draft.date ? {} : { date: form.date }),
       ...(amountMinor === draft.amountMinor ? {} : { amountMinor }),
       ...(form.direction === draft.direction ? {} : { direction: form.direction }),
@@ -563,6 +661,9 @@ function ReviewForm({
             id="dr-kind"
             role="tablist"
             aria-label={t('inbox.kind', 'ধরন')}
+            /* Two rows of three. Six across a 288px sheet gives each label
+               45px, and ট্রান্সফার does not fit in 45px at any weight — the
+               same arithmetic the নতুন লেনদেন sheet settled on. */
             className="bg-greenbar grid grid-cols-3 gap-1 rounded-lg p-1"
           >
             {KINDS.map((tab) => (
@@ -574,6 +675,23 @@ function ReviewForm({
                 onClick={() => {
                   haptic('tap');
                   setForm((f) => {
+                    if (isLoanKind(tab.kind)) {
+                      /* One account and a person or a loan; no খাত and no other
+                         side. `direction` is the tab's for a loan being made
+                         and the loan's own for a repayment — see the effect
+                         above, which corrects it once one is chosen. */
+                      return {
+                        ...f,
+                        kind: tab.kind,
+                        direction: tab.direction,
+                        accountId: f.accountId || f.counterAccountId,
+                        counterAccountId: '',
+                        categoryId: '',
+                        ...(tab.kind === 'REPAY'
+                          ? { personId: '', personName: '' }
+                          : { loanId: '' }),
+                      };
+                    }
                     if (tab.kind !== 'TRANSFER') {
                       /* Back to one account and one খাত. The other side goes,
                          because the accept reads that field and not the tab. */
@@ -583,6 +701,9 @@ function ReviewForm({
                         direction: tab.direction,
                         accountId: f.accountId || f.counterAccountId,
                         counterAccountId: '',
+                        loanId: '',
+                        personId: '',
+                        personName: '',
                       };
                     }
                     /* Two accounts now, and the message's own is already on one
@@ -599,6 +720,9 @@ function ReviewForm({
                       accountId: arrived ? '' : f.accountId,
                       counterAccountId: arrived ? f.accountId : f.counterAccountId,
                       categoryId: '',
+                      loanId: '',
+                      personId: '',
+                      personName: '',
                     };
                   });
                 }}
@@ -681,7 +805,72 @@ function ReviewForm({
           </EvidenceField>
         ) : null}
 
-        {isTransfer ? null : (
+        {/* ধার ফেরত: which loan. A person can owe on three at once and an
+            amount says nothing about which one it settles, so this is the
+            question and there is no guessing it. */}
+        {form.kind === 'REPAY' ? (
+          <EvidenceField label={t('inbox.whichLoan', 'কোন ধারের ফেরত')} htmlFor="dr-loan">
+            <Select id="dr-loan" value={form.loanId} onChange={set('loanId')}>
+              <option value="">{t('entry.pickLoan', 'কোন ধারের ফেরত — বেছে নিন')}</option>
+              {openLoans.map((loan) => (
+                <option key={loan.id} value={loan.id}>
+                  {`${loan.personName} — ${
+                    loan.direction === 'LENT'
+                      ? t('inbox.loanOwedToMe', 'পাবো')
+                      : t('inbox.loanOwedByMe', 'দেবো')
+                  } ${formatMinor(loan.progress.outstandingMinor, { currency })}`}
+                </option>
+              ))}
+            </Select>
+            {loans.isSuccess && openLoans.length === 0 ? (
+              <p className="text-ink-muted mt-1 text-xs">
+                {t('inbox.noOpenLoans', 'খোলা কোনো ধার নেই — আগে ঋণ পাতায় ধারটি লিখুন')}
+              </p>
+            ) : (
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'inbox.repayHint',
+                  'খাতায় ধারের কিস্তি হিসেবে বসবে — আয়ও নয়, খরচও নয়। বাকি টাকার অঙ্ক কমে যাবে, আর শোধ হয়ে গেলে ধারটি বন্ধ হয়ে যাবে।',
+                )}
+              </p>
+            )}
+          </EvidenceField>
+        ) : null}
+
+        {/* ধার দিয়েছি / ধার নিয়েছি: with whom. */}
+        {isNewLoan(form.kind) ? (
+          <EvidenceField label={t('inbox.withWhom', 'কার সাথে ধার')} htmlFor="dr-person">
+            <Select id="dr-person" value={form.personId} onChange={set('personId')}>
+              <option value="">
+                {t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন')}
+              </option>
+              {(people.data ?? []).map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+              <option value={NEW_PERSON}>{t('inbox.newPerson', 'নতুন নাম লিখি')}</option>
+            </Select>
+            {form.personId === NEW_PERSON ? (
+              <Input
+                className="mt-2"
+                value={form.personName}
+                onChange={set('personName')}
+                maxLength={120}
+                placeholder={t('inbox.personName', 'নাম')}
+                aria-label={t('inbox.personName', 'নাম')}
+              />
+            ) : null}
+            <p className="text-ink-muted mt-1 text-xs">
+              {t(
+                'inbox.newLoanHint',
+                'খাতায় নতুন একটি ধার খুলবে — সুদ ছাড়া, আজকের তারিখে। সুদ বা ফেরতের তারিখ লাগলে ঋণ পাতা থেকে যোগ করে নিন।',
+              )}
+            </p>
+          </EvidenceField>
+        ) : null}
+
+        {isTransfer || loanKind ? null : (
           <EvidenceField label="খাত" htmlFor="dr-category">
             <Select
               id="dr-category"

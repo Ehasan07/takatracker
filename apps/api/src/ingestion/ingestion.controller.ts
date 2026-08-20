@@ -207,6 +207,28 @@ const acceptDraftSchema = z.object({
     .refine(isSupportedCurrency, 'এই কারেন্সিটি সমর্থিত নয়')
     .nullish(),
   fxAmountMinor: positiveMinorAmount.nullish(),
+  /**
+   * A repayment on a loan that already exists.
+   *
+   * The case the review screen could not record at all: ৳3,000 arrives in
+   * bKash and it is the money somebody borrowed coming back. Booked as income
+   * it invents earnings and leaves the debt standing at its full size, so the
+   * one entry that was needed — the balance coming down — never happens. With
+   * this the accept posts through the loan itself: the instalment, the ledger
+   * movement and the closing of the loan when it reaches zero, all in the one
+   * place that already knows how.
+   */
+  loanId: cuid.optional(),
+  /**
+   * A loan being *made* from this message, rather than repaid.
+   *
+   * `LENT` for money going out to somebody, `BORROWED` for money arriving from
+   * them. Needs a counterparty — an existing `personId`, or a `personName` to
+   * create one from, exactly as `POST /loans` takes them.
+   */
+  loanDirection: z.enum(['LENT', 'BORROWED']).optional(),
+  personId: cuid.optional(),
+  personName: z.string().trim().min(1).max(120).optional(),
 });
 export type AcceptDraftInput = z.infer<typeof acceptDraftSchema>;
 
