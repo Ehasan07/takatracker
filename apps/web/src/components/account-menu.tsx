@@ -19,7 +19,24 @@ import { cn } from '@/lib/utils';
  * A person who wants to sign out looks for themselves first; if they cannot
  * find themselves, they cannot find the door.
  */
-export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
+export function AccountMenu({
+  collapsed = false,
+  /**
+   * Avatar only, with no box around it — for the phone's top bar, where there
+   * is room for a 44px target and none for a name and an email beside it.
+   */
+  compact = false,
+  /**
+   * Which way the menu opens. `up` suits the sidebar's footer; `down` is what
+   * a control in a header needs, and opening upward there would put the menu
+   * off the top of the screen.
+   */
+  placement = 'up',
+}: {
+  collapsed?: boolean;
+  compact?: boolean;
+  placement?: 'up' | 'down';
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
@@ -77,8 +94,12 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label={compact ? t('shell.account', 'অ্যাকাউন্ট') : undefined}
         className={cn(
-          'press border-rule hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-md border px-2 text-left',
+          'press hover:bg-greenbar flex min-h-11 items-center gap-2 text-left',
+          compact
+            ? 'touch-target justify-center rounded-md px-1'
+            : 'border-rule w-full rounded-md border px-2',
           collapsed && 'justify-center',
         )}
       >
@@ -88,7 +109,7 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
         >
           {initial}
         </span>
-        {!collapsed ? (
+        {!collapsed && !compact ? (
           <span className="min-w-0 flex-1">
             <span className="text-ink block truncate text-sm font-medium">
               {name || t('shell.account', 'অ্যাকাউন্ট')}
@@ -101,7 +122,10 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
       {open ? (
         <div
           role="menu"
-          className="border-rule bg-surface absolute bottom-full left-0 z-40 mb-2 w-full min-w-52 overflow-hidden rounded-md border shadow-lg"
+          className={cn(
+            'border-rule bg-surface absolute z-40 min-w-52 overflow-hidden rounded-md border shadow-lg',
+            placement === 'down' ? 'right-0 top-full mt-2' : 'bottom-full left-0 mb-2 w-full',
+          )}
         >
           <button
             type="button"

@@ -349,9 +349,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div
             className={cn(
               'relative flex h-12 items-center',
-              showBack ? 'justify-center px-12' : 'justify-start px-3',
+              /* The right inset is the account button's, in both layouts: it is
+                 positioned against the bar rather than flowing, so the centred
+                 title stays centred and the brand stays hard left. */
+              showBack ? 'justify-center px-12' : 'justify-start pl-3 pr-12',
             )}
           >
+            {/* The way out, on every screen a phone can reach.
+ 
+                It used to live only in the sidebar, which is `md:` and up, and
+                at the foot of /settings. An operator has neither: their tab bar
+                is five admin destinations with no সেটিংস and no আরও, and the
+                sidebar they would have used is not drawn on a phone — so a
+                super-admin signed in on a handset had no way to sign out at all
+                short of typing a URL. Putting it in the header fixes that and
+                gives everybody else the same control two taps closer. */}
+            <div className="absolute inset-y-0 right-0 flex items-center pr-1">
+              <AccountMenu compact placement="down" />
+            </div>
+
             {showBack ? (
               <>
                 <button
