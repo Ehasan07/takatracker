@@ -204,17 +204,38 @@ function Row({
   compareMinor?: number;
 }) {
   return (
+    /* `flex-wrap`, and the widths are minimums rather than widths.
+     *
+     * A crore is fifteen characters of tabular monospace, and the columns were
+     * sized for a household's numbers in `rem` — so they grow with the reader's
+     * text size while the card does not. At 24px root the pair alone is wider
+     * than a 390px card's content box, and because the amounts may not shrink
+     * they ran 25px past its edge with the last digits cut off. A balance sheet
+     * whose closing figure cannot be read in full is not a balance sheet.
+     *
+     * Now the label takes what is left and truncates, the amounts keep their
+     * alignment through `min-w-*` at ordinary sizes, and when even that will not
+     * fit the pair drops to its own line instead of leaving the card. */
     <div
-      className={`border-rule flex items-baseline justify-between gap-3 border-b py-1.5 last:border-0 ${
+      className={`border-rule flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b py-1.5 last:border-0 ${
         strong ? 'text-ink font-semibold' : 'text-ink'
       }`}
     >
-      <span className={`min-w-0 truncate text-sm ${indent ? 'pl-4' : ''}`}>{label}</span>
-      <span className="flex shrink-0 items-baseline gap-4">
+      <span className={`min-w-0 flex-1 truncate text-sm ${indent ? 'pl-4' : ''}`}>{label}</span>
+      {/* The floors are what align short amounts down the column, and they are
+          only floors: a crore is wider than any of them and sizes itself. Kept
+          small on purpose — a floor is measured in `rem`, so it grows with the
+          reader's text while the card does not, and two generous ones were
+          exactly what pushed this row past the card's edge. The pair wraps
+          rather than spills if even these will not fit. */}
+      <span className="ml-auto flex flex-wrap items-baseline justify-end gap-x-4">
         {compareMinor === undefined ? null : (
-          <Money minor={compareMinor} className="text-ink-muted w-24 text-right text-xs" />
+          <Money
+            minor={compareMinor}
+            className="text-ink-muted min-w-16 whitespace-nowrap text-right text-xs"
+          />
         )}
-        <Money minor={minor} className="w-28 text-right text-sm" />
+        <Money minor={minor} className="min-w-20 whitespace-nowrap text-right text-sm" />
       </span>
     </div>
   );

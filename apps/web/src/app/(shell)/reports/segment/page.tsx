@@ -526,13 +526,15 @@ function Result({ data }: { data: IncomeStatementDto }) {
 
 function Row({ label, minor, strong }: { label: string; minor: number; strong?: boolean }) {
   return (
+    /* Minimum width, not width, and the row wraps rather than spills — see the
+       note on the statements page's own `Row`. */
     <div
-      className={`border-rule flex items-baseline justify-between gap-3 border-b py-1.5 last:border-0 ${
+      className={`border-rule flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b py-1.5 last:border-0 ${
         strong ? 'text-ink font-semibold' : 'text-ink'
       }`}
     >
-      <span className={`min-w-0 truncate text-sm ${strong ? '' : 'pl-4'}`}>{label}</span>
-      <Money minor={minor} className="w-28 shrink-0 text-right text-sm" />
+      <span className={`min-w-0 flex-1 truncate text-sm ${strong ? '' : 'pl-4'}`}>{label}</span>
+      <Money minor={minor} className="ml-auto min-w-20 whitespace-nowrap text-right text-sm" />
     </div>
   );
 }
