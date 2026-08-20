@@ -247,6 +247,83 @@ the network for a typeface.
 
 ---
 
+## 5a. A personal business inside household books — August 2026
+
+Shipped 20 Aug 2026: `Workspace.businessEnabled`, a tag-defined segment, a
+one-press category tree, a month-end stock count, and a segment income
+statement at `/reports/segment`. This section is the honest ledger of what that
+does and does not honour, because a business raises standards a household never
+has to answer to.
+
+### What it honours
+
+| Principle                                                                                                            | How                                                                                                                                                  | Where                                            |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **Business entity** — the venture's books are separable from the owner's even where the law says they are one person | A tag on every business row; the income statement narrows to it. A sole proprietorship with no bank account of its own is the case this is built for | `reports.service.ts` `incomeStatement(…, tagId)` |
+| **Segment disclosure** (IFRS 8.5)                                                                                    | The statement carries the segment's name, so a printed page cannot be mistaken for the household's                                                   | `StatementSegment` on the response               |
+| **Inventory is an asset until it sells** (IAS 2.34)                                                                  | Buying stock is a transfer into an `ASSET` account; the month-end count posts the difference as `বিক্রীত পণ্যের ব্যয়`                               | `business.service.ts` `stockCount`               |
+| **Periodic inventory is a permitted method** (IAS 2, cost formulas)                                                  | Opening + purchases − closing, from one counted number, because the account already holds the first two terms                                        | same                                             |
+| **Owner contributions and distributions are not income** (IAS 1.109)                                                 | Capital and drawings are transfers, and a transfer carries no category, so neither can reach the income statement even by accident                   | ledger, by construction                          |
+| **A financial asset is not an expense** (IFRS 9.5.1.1)                                                               | A share purchase is a transfer into an `INVESTMENT` account; only the disposal difference reaches income                                             | `transactions.service.ts` `sell`                 |
+| **Prudence on a stock count**                                                                                        | Counting _more_ than the books hold is refused rather than written as income — a missing purchase must not become profit                             | `stockCount`, `cost < 0`                         |
+| **Disclosure of basis**                                                                                              | Cash basis stated on the segment screen and behind a ⓘ, not in a footnote elsewhere                                                                  | `note.cashBasis`                                 |
+
+### What it does not — and what each costs
+
+Ordered by what a real shopkeeper would feel first.
+
+1. **Accrual, which a business needs and a household does not** (IAS 1.27).
+   Credit sales and credit purchases stay out of the segment profit until the
+   cash moves. For a household that is the right simplification; for a shop that
+   sells বাকিতে it is the difference between a month that looks bad and a month
+   that was good. The receivable _is_ recorded — on the ধার screen — so nothing
+   is lost, but it does not reach the profit figure. **This is the largest gap.**
+
+2. **Depreciation on business fixed assets** (IAS 16.43). Omitting it is
+   defensible for a household — §3 argues exactly that — and is _not_ defensible
+   for a business: a shop's fridge, its vehicle and its shelving genuinely wear
+   out against the takings they help produce, and profit is overstated by
+   whatever that is worth. The household argument was "a depreciation figure
+   nobody can verify is an invention"; a business asset has a cost, a life and a
+   residual, and all three are knowable.
+
+3. **The segment has no balance sheet.** Only income and expense carry the tag,
+   so "what is the shop worth" and "how much is stuck in customer credit" cannot
+   be answered from it. Segment reporting normally covers assets too. The pieces
+   exist — the inventory account, the receivables — but nothing groups them.
+
+4. **Loans are not part of any segment.** `Loan` carries no tag, and interest
+   accruals post to auto-resolved categories with no tag either — so interest on
+   a shop's borrowing, which is a business cost, lands in the household's
+   income statement and not the shop's. Principal never reaches either
+   statement, so the gap is exactly the interest.
+
+5. **No quantity ledger.** `Transaction.quantityMilli` and `quantityUnit` exist
+   and `GET /reports/by-quantity` sums them, but that report has no tag filter
+   and does not separate what came in from what went out — so "how many did I
+   buy, how many did I sell, how many are left" is not answerable in units, only
+   in taka. There is no item or product model; the shop's stock is a single
+   money balance.
+
+6. **The share cost basis is the owner's arithmetic, not the software's.**
+   Weighted average is what the guide teaches, and nothing enforces it or carries
+   it between disposals, so consistency (IAS 2.25 in spirit) rests on the person.
+
+7. **No period close and no separation of owner equity from accumulated
+   profit.** Correct for a person — §3 — and a business that ever needs a
+   statutory year-end has outgrown one workspace.
+
+### The rule these all point at
+
+A workspace with a shop in it is still a household's book with a label on some
+of its rows. That is the right shape for a proprietor whose takings and whose
+family's groceries share one bKash, and it stops being the right shape the day
+the business gets its own bank account, its own VAT return and its own
+year-end — at which point the answer is a second workspace, not another column
+here. Worth saying out loud on the screen before somebody grows into it.
+
+---
+
 ## 6. The work order, and where it ended
 
 | #   | Work                                                     | Status                                           |
