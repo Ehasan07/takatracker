@@ -112,8 +112,10 @@ export class AiSuggestService {
       if (!draft?.message?.body) return;
       /* Already filled in — by the parser, or by a person who got there first.
          Overwriting somebody's choice with a guess is the one thing this must
-         never do. */
-      if (draft.categoryId || draft.accountId) return;
+         never do. Each field is guarded on its own: the account is now often
+         known from the message's own account number before this runs, and that
+         is no reason to leave the category blank. */
+      if (draft.categoryId && draft.accountId) return;
 
       const [categories, accounts] = await Promise.all([
         this.prisma.category.findMany({
@@ -152,13 +154,28 @@ export class AiSuggestService {
       const accountId = accounts.some((a) => a.id === suggestion.accountId)
         ? suggestion.accountId
         : null;
-      if (!categoryId && !accountId) return;
+
+      /* Only the fields that were empty when this started. A model asked for
+         both always answers both, and writing the account it chose over one
+         read from the message's own account number would replace a fact with
+         a guess. */
+      const data: { categoryId?: string; accountId?: string } = {};
+      if (!draft.categoryId && categoryId) data.categoryId = categoryId;
+      if (!draft.accountId && accountId) data.accountId = accountId;
+      if (data.categoryId === undefined && data.accountId === undefined) return;
 
       await this.prisma.transactionDraft.updateMany({
         /* `updateMany` with the same guards the read used: a person may have
-           accepted or edited this draft in the seconds the model took. */
-        where: { id: draftId, workspaceId, status: 'PENDING', categoryId: null, accountId: null },
-        data: { categoryId, accountId, suggestedBy: this.model },
+           accepted or edited this draft in the seconds the model took. Each
+           field is guarded only if it is one being written. */
+        where: {
+          id: draftId,
+          workspaceId,
+          status: 'PENDING',
+          ...(data.categoryId === undefined ? {} : { categoryId: null }),
+          ...(data.accountId === undefined ? {} : { accountId: null }),
+        },
+        data: { ...data, suggestedBy: this.model },
       });
 
       await this.meter(workspaceId, workspace.timezone, prompt);

@@ -12,7 +12,9 @@ import {
   bodyHashOf,
   createRegistry,
   expandSimpleTransaction,
+  matchAccount,
   REVIEW_THRESHOLD,
+  type AccountMatchCandidate,
   type EntryDraft,
 } from '@hishab/core';
 import { currencyForAmount, type CurrencyAmount } from '@hishab/parsers';
@@ -624,6 +626,19 @@ export class IngestionService {
      * behaves exactly as it did before this existed. */
     const foreign = IngestionService.foreignAmountIn(body, parsed.evidence, workspace.currency);
 
+    /* Which of the owner's accounts the message is about, decided before the
+     * draft is written so the review screen opens with the picker already on
+     * the right one. Null whenever the answer is not certain — see
+     * `matchAccount`, which would rather leave the field empty than fill it in
+     * wrongly. */
+    const matchedAccountId = financial
+      ? (matchAccount(await this.matchableAccounts(workspaceId), {
+          accountHint: parsed.fields.accountHint ?? null,
+          sender,
+          body,
+        })?.accountId ?? null)
+      : null;
+
     let created: { messageId: string; draftId: string | null };
     try {
       created = await this.prisma.$transaction(async (tx) => {
@@ -675,6 +690,7 @@ export class IngestionService {
                 fxAmountMinor: foreign ? BigInt(foreign.amountMinor) : null,
                 direction: parsed.fields.direction ?? null,
                 payee: parsed.fields.payee ?? null,
+                accountId: matchedAccountId,
                 confidence: foreign
                   ? Math.min(parsed.confidence, FX_CONFIDENCE_CEILING)
                   : parsed.confidence,
@@ -851,6 +867,27 @@ export class IngestionService {
 
   // --- the review inbox ------------------------------------------------------
 
+  /**
+   * The accounts a draft is allowed to name, with everything matching needs.
+   *
+   * Archived and deleted accounts are excluded because a message cannot be
+   * about an account the owner has put away, and the system control accounts
+   * because they are the ledger's own machinery — a person never picks one and
+   * neither may a match.
+   */
+  private async matchableAccounts(workspaceId: string): Promise<AccountMatchCandidate[]> {
+    return this.prisma.account.findMany({
+      where: { workspaceId, deletedAt: null, isArchived: false, systemKey: null },
+      select: {
+        id: true,
+        name: true,
+        institution: true,
+        accountNumberMasked: true,
+        matchHints: true,
+      },
+    });
+  }
+
   async listDrafts(
     ctx: InboxContext,
     query: ListDraftsQuery,
@@ -869,8 +906,14 @@ export class IngestionService {
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
 
+    /* Read once for the whole page, and only when a row on it still has no
+       account — a queue of already-answered drafts costs no query at all. */
+    const accounts = page.some(IngestionService.wantsAccount)
+      ? await this.matchableAccounts(ctx.workspaceId)
+      : [];
+
     return {
-      items: page.map((row) => IngestionService.present(row, ctx.timezone, ctx.currency)),
+      items: page.map((row) => IngestionService.present(row, ctx.timezone, ctx.currency, accounts)),
       nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
     };
   }
@@ -1336,7 +1379,10 @@ export class IngestionService {
 
   private async presentOne(ctx: InboxContext, id: string): Promise<DraftView> {
     const row = await this.requireDraft(ctx.workspaceId, id);
-    return IngestionService.present(row, ctx.timezone, ctx.currency);
+    const accounts = IngestionService.wantsAccount(row)
+      ? await this.matchableAccounts(ctx.workspaceId)
+      : [];
+    return IngestionService.present(row, ctx.timezone, ctx.currency, accounts);
   }
 
   /** The column is a free-text string; only the two values the ledger understands count. */
@@ -1454,7 +1500,52 @@ export class IngestionService {
     return { currency: found.currency, amountMinor: found.amountMinor, quoted: found.text };
   }
 
-  private static present(row: DraftRow, timezone: string, baseCurrency: string): DraftView {
+  /**
+   * Is this draft still waiting for somebody to say which account it was?
+   *
+   * Only a pending draft is. One that has been accepted or rejected is the
+   * record of a decision a person made, and re-reading it afterwards would
+   * change what the audit trail says they were shown.
+   */
+  private static wantsAccount(row: DraftRow): boolean {
+    return row.status === 'PENDING' && row.accountId === null;
+  }
+
+  /**
+   * The account this draft's message names, read at display time.
+   *
+   * The same reading the ingest path does, repeated here for the drafts that
+   * were parsed before it existed and for the ones whose account the owner has
+   * only just told the app about. A hint typed on the accounts screen today
+   * should light up the queue that is already sitting there, not just the next
+   * message to arrive — and nothing is written, so the screen and the accept
+   * path agree because they run the same function, not because a backfill kept
+   * them in step.
+   */
+  private static hintedAccount(
+    row: DraftRow,
+    accounts: readonly AccountMatchCandidate[],
+  ): string | null {
+    if (accounts.length === 0 || !IngestionService.wantsAccount(row)) return null;
+    const evidence = IngestionService.evidenceOf(row.evidence);
+    /* The quoted span, not the parsed digits: `A/C (***6948)` as the message
+       wrote it. `matchAccount` reduces both sides to digits, so the quotation
+       is as good a key as the parse and does not need the message re-parsed. */
+    return (
+      matchAccount(accounts, {
+        accountHint: evidence.accountHint ?? null,
+        sender: row.message?.sender ?? null,
+        body: row.message?.body ?? null,
+      })?.accountId ?? null
+    );
+  }
+
+  private static present(
+    row: DraftRow,
+    timezone: string,
+    baseCurrency: string,
+    accounts: readonly AccountMatchCandidate[] = [],
+  ): DraftView {
     const foreign = IngestionService.foreignOf(row, baseCurrency);
 
     /* A retro-read draft still carries `evidence.amountMinor` from the parse
@@ -1478,7 +1569,7 @@ export class IngestionService {
       fxAmountMinor: foreign?.amountMinor ?? null,
       direction: IngestionService.directionOf(row.direction),
       payee: row.payee,
-      accountId: row.accountId,
+      accountId: row.accountId ?? IngestionService.hintedAccount(row, accounts),
       categoryId: row.categoryId,
       confidence,
       needsReview: confidence < REVIEW_THRESHOLD,

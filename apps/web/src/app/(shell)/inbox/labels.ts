@@ -57,9 +57,11 @@ export const REJECT_REASONS: readonly (readonly [RejectReason, string])[] = [
 ];
 
 /**
- * The parser's field names in the user's language. `balanceMinor` and
- * `accountHint` are read out of the message but have nowhere to go on a draft —
- * they are shown as context, never as something to accept.
+ * The parser's field names in the user's language. `balanceMinor` is read out
+ * of the message but has nowhere to go on a draft — it is shown as context,
+ * never as something to accept. `accountHint` is different: it is what the
+ * account picker below is matched on, so the highlight and the pre-selected
+ * account are two views of the same reading.
  */
 export const FIELD_LABEL: Record<string, string> = {
   amountMinor: 'টাকার পরিমাণ',

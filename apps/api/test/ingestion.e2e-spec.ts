@@ -1001,4 +1001,119 @@ describe('ingestion', () => {
     const theirs = await ctx.http().get('/v1/ingestion/drafts').set(auth(stranger)).expect(200);
     expect(theirs.body.items).toHaveLength(0);
   });
+
+  /**
+   * Which account the message was about.
+   *
+   * The parsers have always read `A/C (***6948)` out of the text and the
+   * accounts screen has always had a box to type it into. Nothing compared the
+   * two, so the review sheet opened with an empty picker on every single
+   * message — including for an owner who had filled that box in.
+   */
+  describe('the account the message names', () => {
+    const UCB =
+      'Your A/C (***6948) has been debited BDT 4,000.00 for I Banking EFTN Transfer Debit Retail. Avl Bal: BDT 8,85,340.17 @ 08:24 AM. For query: 16419';
+
+    const account = (ws: Ws, body: Record<string, unknown>) =>
+      ctx.http().post('/v1/accounts').set(auth(ws.user)).send(body).expect(201);
+
+    const drafts = async (ws: Ws) =>
+      (await ctx.http().get('/v1/ingestion/drafts').set(auth(ws.user)).expect(200)).body.items as {
+        id: string;
+        accountId: string | null;
+      }[];
+
+    it('picks the account whose number the message quotes', async () => {
+      const ws = await workspace();
+      const ucb = await account(ws, {
+        name: 'UCB Current',
+        type: 'BANK',
+        accountNumberMasked: '****6948',
+      });
+
+      const received = await post(ws, UCB).expect(200);
+      const draft = (await drafts(ws)).find((d) => d.id === received.body.draftId);
+      expect(draft?.accountId).toBe(ucb.body.id);
+    });
+
+    it('matches a hint the owner typed with the punctuation still in it', async () => {
+      /* What a person actually types into "মেলানোর সংকেত" is the fragment they
+         can see in the message, brackets and stars and all. Anything that only
+         matched bare digits would leave them looking at a box they had already
+         filled in correctly. */
+      const ws = await workspace();
+      const ucb = await account(ws, {
+        name: 'UCB Current',
+        type: 'BANK',
+        matchHints: ['A/C (***6948)'],
+      });
+
+      const received = await post(ws, UCB).expect(200);
+      const draft = (await drafts(ws)).find((d) => d.id === received.body.draftId);
+      expect(draft?.accountId).toBe(ucb.body.id);
+    });
+
+    it('fills in drafts that arrived before the hint was ever typed', async () => {
+      /* The queue is fifty messages deep by the time somebody works out where
+         the setting is. A hint added now has to light up what is already
+         waiting, not only the next message to arrive. */
+      const ws = await workspace();
+      const received = await post(ws, UCB).expect(200);
+      expect((await drafts(ws)).find((d) => d.id === received.body.draftId)?.accountId).toBeNull();
+
+      const ucb = await account(ws, { name: 'UCB Current', type: 'BANK' });
+      await ctx
+        .http()
+        .patch(`/v1/accounts/${ucb.body.id as string}`)
+        .set(auth(ws.user))
+        .send({ matchHints: ['6948'] })
+        .expect(200);
+
+      const draft = (await drafts(ws)).find((d) => d.id === received.body.draftId);
+      expect(draft?.accountId).toBe(ucb.body.id);
+    });
+
+    it('leaves the picker empty when two accounts fit equally well', async () => {
+      /* A wrong account costs a ledger entry against the wrong balance, and
+         nobody re-checks a field the app filled in for them. Two candidates is
+         a question for the owner, not a coin toss. */
+      const ws = await workspace();
+      await ctx
+        .http()
+        .patch(`/v1/accounts/${ws.cashId}`)
+        .set(auth(ws.user))
+        .send({ matchHints: ['UCB'] })
+        .expect(200);
+      await account(ws, { name: 'UCB Two', type: 'BANK', matchHints: ['UCB'] });
+
+      const received = await post(ws, 'UCBL debit BDT 500.00 for groceries').expect(200);
+      const draft = (await drafts(ws)).find((d) => d.id === received.body.draftId);
+      expect(draft?.accountId).toBeNull();
+    });
+
+    it('accepts into the account it matched without being told again', async () => {
+      const ws = await workspace();
+      const ucb = await account(ws, {
+        name: 'UCB Current',
+        type: 'BANK',
+        accountNumberMasked: '****6948',
+      });
+      const received = await post(ws, UCB).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({ categoryId: ws.categoryId })
+        .expect(200);
+
+      expect(applied.body.transactionId).toBeTruthy();
+      const ledger = await ctx
+        .http()
+        .get(`/v1/transactions/${applied.body.transactionId as string}`)
+        .set(auth(ws.user))
+        .expect(200);
+      expect(ledger.body.accountId).toBe(ucb.body.id);
+    });
+  });
 });
