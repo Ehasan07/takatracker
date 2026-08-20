@@ -201,7 +201,7 @@ function ReportsBody({ today }: { today: Date }) {
             className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
           >
             <Briefcase className="h-4 w-4" aria-hidden />
-            {t('segment.title', 'ব্যবসার লাভ-লোকসান')}
+            {t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
           </Link>
           <Link
             href="/reports/statements"

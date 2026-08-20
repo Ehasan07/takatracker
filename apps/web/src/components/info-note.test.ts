@@ -33,9 +33,14 @@ describe('the accounting notes', () => {
 
   it('carries a standard reference on every note', () => {
     /* `IAS 1.27`, `IAS 16.39`, `IFRS 15` — the paragraph is optional, the
-       standard is not. A note with no citation cannot be checked. */
+       standard is not. A note with no citation cannot be checked.
+    
+       The paragraph part repeats because IFRS 9 numbers its own that way:
+       `IFRS 9.5.1.1` is one paragraph, not a typo, and a pattern that allowed
+       only a single dot would have forced a real citation to be truncated to
+       something a reader cannot look up. */
     const uncited = ACCOUNTING_NOTES.filter(
-      (note) => !/^(IAS|IFRS) \d+(\.\d+[a-z()]*)?$/.test(note.standard),
+      (note) => !/^(IAS|IFRS) \d+(\.\d+[a-z()]*)*$/.test(note.standard),
     );
     expect(uncited.map((note) => `${note.key}: ${note.standard}`)).toEqual([]);
   });

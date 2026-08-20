@@ -197,6 +197,46 @@ export const ACCOUNTING_NOTES: readonly AccountingNote[] = [
     standard: 'IAS 16.43',
   },
   {
+    /* True of: `ReportsService.incomeStatement(ctx, period, compareTo, tagId)`
+       at `reports.service.ts:1595` and the `tags: { some: { tagId } }` filter it
+       threads into `byCategory` — the segment is a tag on each row, never a set
+       of accounts, because the wallet the shop runs on is the household's own. */
+    key: 'note.segmentBooks',
+    label: 'ব্যবসা আলাদা করে দেখা',
+    body: 'ব্যবসার নিজের ব্যাংক অ্যাকাউন্ট না থাকলেও তার হিসাব আলাদা রাখা যায় — মালিক আর ব্যবসাকে হিসাবের খাতায় দুইজন ধরা হয়, আইনে এক হলেও। এখানে সেই ভাগটা করে ট্যাগ: ব্যবসার প্রতিটি আয় ও খরচে একই ট্যাগ লাগালে এই পাতা শুধু ওইটুকুর লাভ-লোকসান বের করে, আর সংসারের বিবরণী আগের মতোই পুরোটা দেখায়।',
+    standard: 'IFRS 8.5',
+  },
+  {
+    /* True of: nothing here books a transfer to income or expense — a transfer
+       has no category at all (`transactions.service.ts` expands TRANSFER into
+       two account legs), so money moved from a personal account into a shop's
+       cash box cannot reach the income statement even by accident. */
+    key: 'note.ownerCapital',
+    label: 'মূলধন ও উত্তোলন',
+    body: 'ব্যবসায় নিজের টাকা ঢাললেন, বা ব্যবসার টাকা নিজের সংসারে তুললেন — কোনোটাই আয় বা খরচ নয়। নিজের এক পকেট থেকে আরেক পকেটে গেল, ব্যবসা তাতে কিছু আয়ও করেনি, খরচও করেনি। এগুলো ট্রান্সফার হিসেবে লিখুন; ট্রান্সফারে কোনো খাত লাগে না বলেই ভুলে আয়ের ঘরে ওঠার উপায় নেই।',
+    standard: 'IAS 1.109',
+  },
+  {
+    /* True of: an ASSET account holds the stock and nothing computes cost of
+       goods sold automatically — the periodic adjustment is a transaction the
+       owner records, which is what this note tells them to do. Stated as their
+       step, not as the app's, on purpose. */
+    key: 'note.stockNotExpense',
+    label: 'দোকানের মাল',
+    body: 'দোকানের জন্য মাল কেনা মানেই খরচ নয় — না বেচা পর্যন্ত ওটা আপনার মজুদ, একটা সম্পদ। খরচ হয় বিক্রির সময়। ছোট দোকানে সহজ পথ: মাস শেষে একদিন মাল গুনে এক লাইনের সমন্বয় — খোলা মজুদ + মাসের ক্রয় − সমাপনী মজুদ = বিক্রীত পণ্যের ব্যয়। তাহলেই মাসের লাভটা সত্যি হয়।',
+    standard: 'IAS 2.34',
+  },
+  {
+    /* True of: `AssetKind.INVESTMENT` on `Account`, plus `revalue` (to equity)
+       and `sell` (difference to income) at `transactions.service.ts:794` and
+       `:889`. Buying is a transfer between two of the owner's own accounts, so
+       it never touches a category. */
+    key: 'note.investmentNotExpense',
+    label: 'শেয়ার কেনা',
+    body: 'শেয়ার কেনা খরচ নয় — টাকা খরচ হয়নি, রূপ বদলেছে: ব্যাংক থেকে বিনিয়োগে। তাই ব্যাংক থেকে বিও অ্যাকাউন্টে ট্রান্সফার লিখুন, খরচ নয়। ব্রোকারেজ কমিশনটুকু আলাদা খরচ। লাভ বা লোকসান ধরা হয় বেচার দিনে — বিক্রির টাকা আর কেনা দামের পার্থক্যটুকুই। বাজারদর বাড়লে সেটা আয় নয়, পুনর্মূল্যায়ন।',
+    standard: 'IFRS 9.5.1.1',
+  },
+  {
     /* True of: `TransactionsService.sell` at `transactions.service.ts:889` —
        three legs, with the gain credited to the income nominal or the loss
        debited to the expense nominal, and only the difference against the

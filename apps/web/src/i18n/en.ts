@@ -300,9 +300,54 @@ export const EN: Record<string, string> = {
     'The pot is everybody’s money, so your share is spending and the rest comes off what you owe the others.',
 
   // --- the four financial statements -----------------------------------------
-  'segment.title': 'Business profit or loss',
+  'segment.title': 'Your own business',
   'segment.blurb':
-    'One tag’s income and expenses on their own — even with no separate business account',
+    'Run the business through your own bank or bKash and still see its income and costs apart',
+  'segment.guide': 'How to keep your own business in here',
+  'segment.guideIntro':
+    'You do not need a separate bank account for the business. In the books the owner and the business are two different people, whatever the law says — and here the tag is what separates them.',
+  'segment.guideSetup': 'Setup — done once',
+  'segment.step1':
+    'On the tags page, create a tag named after the business — “Shop”, “Shares”. Two businesses, two tags.',
+  'segment.step2':
+    'On the categories page, add “Business income” under income and “Business costs” under expenses, with sub-categories beneath them — sales, stock purchased, shop rent, wages, brokerage.',
+  'segment.step3':
+    'If the shop has a cash box or the shares a BO account, make them accounts of their own. Money you move there from your own bank is a transfer, not a cost.',
+  'segment.guideDaily': 'Day to day',
+  'segment.step4':
+    'Put that tag on every business income and every business cost. Personal spending carries no tag.',
+  'segment.step5':
+    'Sales and purchases on credit belong on the loans page — they reach the books on the day the money moves.',
+  'segment.step6':
+    'At month end come back here, choose the tag and the dates. Profit or loss is at the top.',
+  'segment.guideMistakes': 'Three mistakes everybody makes',
+  'segment.mistake1':
+    'Recording a share purchase as an expense. The money was not spent, it changed form — bank into investment. Record a transfer.',
+  'segment.mistake2':
+    'Recording capital put in, or money taken out, as income or expense. One pocket to another — a transfer.',
+  'segment.mistake3':
+    'Recording stock bought for the shop as an immediate cost. Until it sells it is inventory, an asset.',
+  'segment.guideShares': 'Buying and selling shares',
+  'segment.shareBuy': 'You bought shares',
+  'segment.shareBuyDef': 'A transfer from the bank to the BO account',
+  'segment.shareFee': 'Commission, laga, howla',
+  'segment.shareFeeDef': 'Brokerage — an expense under business costs',
+  'segment.shareSell': 'You sold shares',
+  'segment.shareSellDef':
+    'A transfer from the BO account to the bank, and the difference against what you paid as income (gain) or expense (loss)',
+  'segment.shareDiv': 'You received a dividend',
+  'segment.shareDivDef':
+    'Income. If tax was deducted at source, the gross amount is the income and the tax deducted is a separate expense',
+  'segment.shareUp': 'The market price rose',
+  'segment.shareUpDef':
+    'Not income. Revalue from the assets page — net worth rises, income does not',
+  'segment.shareBonus': 'Bonus shares',
+  'segment.shareBonusDef': 'No entry — you hold more shares, no money moved',
+  'segment.guideShop': 'A shop or grocery business',
+  'segment.shopBody':
+    'Add stock you buy to the inventory account. At month end count the stock once and post a single adjusting line — opening stock + purchases − closing stock = cost of goods sold. That one line is what makes the month’s profit true. There is no need to cost every individual sale.',
+  'segment.guideLimit':
+    'One limit worth knowing — this is a cash basis. Money is counted on the day it moved. Sales and purchases on credit do not appear here; keep those on the loans page.',
   'segment.which': 'Which business or venture',
   'segment.choose': 'Choose a tag',
   'segment.profit': 'Profit',
@@ -1439,6 +1484,18 @@ export const EN: Record<string, string> = {
   'note.noDepreciation.label': 'Depreciation',
   'note.noDepreciation.body':
     'Depreciation on a household car or furniture is not computed here, and that is deliberate. In personal accounts it is an invented number nobody can check. When the price changes, the asset is revalued to what it is worth instead, which is closer to the truth.',
+  'note.segmentBooks.label': 'Keeping a business apart',
+  'note.segmentBooks.body':
+    'A business can be kept apart in the books even with no bank account of its own — the owner and the business are two people on paper, whatever the law says. The tag is what does the separating here: put one tag on every sale and every cost of the venture and this page draws the profit for that tag alone, while the household statement still shows everything.',
+  'note.ownerCapital.label': 'Capital and drawings',
+  'note.ownerCapital.body':
+    'Putting your own money into the business, or taking the business’s money home, is neither income nor expense. It moved from one of your pockets to another; the business neither earned nor spent anything. Record these as transfers — a transfer carries no category, so it cannot reach the income statement by accident.',
+  'note.stockNotExpense.label': 'Stock for the shop',
+  'note.stockNotExpense.body':
+    'Buying stock is not a cost yet — until it is sold it is inventory, an asset. The cost falls due when it sells. The simple way for a small shop: count the stock once at month end and post one adjusting line — opening stock + purchases during the month − closing stock = cost of goods sold. That is what makes the month’s profit true.',
+  'note.investmentNotExpense.label': 'Buying shares',
+  'note.investmentNotExpense.body':
+    'Buying shares is not an expense — the money was not spent, it changed form: bank into investment. So record it as a transfer from the bank to the BO account, not as a cost. Brokerage commission is a separate expense. Profit or loss is recognised on the day you sell, and it is only the difference between the proceeds and what you paid. A rise in market price is not income; it is a revaluation.',
   'note.disposalGain.label': 'Gain on a sale',
   'note.disposalGain.body':
     'Selling works the other way round. The difference between the price received and the amount on the books is a realised gain or loss, and it goes to the income statement — it does not sit in net worth the way a revaluation does. Whatever was already revalued is not counted as income a second time.',
