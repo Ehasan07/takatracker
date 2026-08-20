@@ -352,6 +352,7 @@ export const EN: Record<string, string> = {
   'segment.offBody':
     'If you run a shop, a small business or invest in shares, switch on “Your own business or share trading” in settings. If you do not, there is nothing here for you — it would only make the category list longer.',
   'segment.offGo': 'Go to settings',
+  'segment.addAnother': 'Add a business',
   'segment.setupTitle': 'Set the business up',
   'segment.setupBody':
     'A tag named after the business and eighteen categories — sales, cost of goods sold, shop rent, wages, brokerage — all created in one press. All you supply is the name.',

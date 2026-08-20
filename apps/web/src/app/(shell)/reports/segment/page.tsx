@@ -12,7 +12,7 @@ import { toLocalDateString } from '@hishab/shared';
 import { fmtDate } from '@/lib/format';
 import { t } from '@/lib/t';
 import { Button } from '@/components/ui/button';
-import { api } from '@/lib/api';
+import { api, endpoints } from '@/lib/api';
 import { fetchTags, tagKeys } from '../../tags/queries';
 import { fetchIncomeStatement, reportKeys } from '../queries';
 import { SetupCard } from './setup-card';
@@ -58,6 +58,11 @@ export default function SegmentPage() {
      empty state stops rendering. A confirmation that unmounts with the thing
      that produced it is a confirmation nobody sees. */
   const [built, setBuilt] = React.useState<{ count: number; name: string } | null>(null);
+  /* Open on its own for a workspace with no business categories, and openable
+     by hand for ever after — "দুইটা ব্যবসা থাকলে দুইবার, দুই নামে" is what the
+     guide says, so the button that does it cannot be a thing that appears once
+     and never again. */
+  const [setupOpen, setSetupOpen] = React.useState(false);
 
   const period = React.useMemo(() => ({ from, to }), [from, to]);
   /* The switch that says these books have a business in them. Everything below
@@ -76,6 +81,21 @@ export default function SegmentPage() {
     enabled,
   });
 
+  /* Whether this workspace has the business category tree, which is the real
+     question — and not, as this screen first asked, whether it has any tags at
+     all. Almost every workspace has tags: পারিবারিক, রমজান, a trip. Asking the
+     wrong question hid the setup card from everybody except a brand-new
+     account, so the one press this page exists to offer was unreachable for
+     the people most likely to want it. */
+  const categories = useQuery({
+    queryKey: ['categories'],
+    queryFn: endpoints.categories,
+    enabled,
+  });
+  const hasTree = (categories.data ?? []).some(
+    (category) => category.nameBn === 'ব্যবসার আয়' || category.name === 'Business income',
+  );
+
   /* Nothing is asked for until a venture is chosen. The whole-household answer
      is the statements page and already exists; an unfiltered figure here would
      be the same number under a heading that says শুধু এই ব্যবসার. */
@@ -86,6 +106,10 @@ export default function SegmentPage() {
   });
 
   const list = tags.data ?? [];
+
+  React.useEffect(() => {
+    if (enabled && categories.isSuccess && !hasTree) setSetupOpen(true);
+  }, [enabled, categories.isSuccess, hasTree]);
 
   return (
     <div className="statement mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -149,15 +173,24 @@ export default function SegmentPage() {
 
       {workspace.isSuccess && !enabled ? <NotEnabled /> : null}
 
-      <Guide openByDefault={enabled && !tags.isLoading && list.length === 0} />
+      <Guide openByDefault={enabled && categories.isSuccess && !hasTree} />
 
-      {!enabled || tags.isLoading ? null : list.length === 0 ? (
+      {enabled && setupOpen ? (
         <SetupCard
           onDone={(result) => {
             setTagId(result.tagId);
             setBuilt({ count: result.createdCategories, name: result.tagName });
+            setSetupOpen(false);
           }}
         />
+      ) : null}
+
+      {enabled && !setupOpen ? (
+        <div className="no-print">
+          <Button variant="outline" onClick={() => setSetupOpen(true)}>
+            {t('segment.addAnother', 'নতুন ব্যবসা যোগ করুন')}
+          </Button>
+        </div>
       ) : null}
 
       {built ? (

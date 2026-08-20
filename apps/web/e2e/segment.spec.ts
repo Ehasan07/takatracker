@@ -107,6 +107,29 @@ test.describe('a personal business', () => {
     await expect(page.getByText('IFRS 8.5')).toBeVisible();
   });
 
+  test('offers the one press to a workspace that already has tags', async ({ page }) => {
+    /* The bug this replaces: the setup card appeared only when the workspace
+       had *no tags at all*. Almost everybody has tags — পারিবারিক, রমজান, a
+       trip — so the one press this page exists to offer was unreachable for
+       exactly the people most likely to want it. The real question is whether
+       the business categories exist, not whether any tag does. */
+    await signup(page);
+    await enableBusiness(page);
+
+    await page.goto('/tags');
+    await page.getByRole('button', { name: 'প্রথম ট্যাগ বানান' }).click();
+    const tagSheet = page.getByRole('dialog');
+    await tagSheet.getByLabel('নাম', { exact: true }).fill('পারিবারিক');
+    await tagSheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(tagSheet).toBeHidden({ timeout: 15_000 });
+
+    await page.goto('/reports/segment');
+    await expect(page.getByRole('heading', { name: 'ব্যবসার হিসাব চালু করুন' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByLabel('ব্যবসার নাম')).toBeVisible();
+  });
+
   test('builds the whole tree in one press, then counts the stock', async ({ page }) => {
     await signup(page);
     await enableBusiness(page);
@@ -138,6 +161,10 @@ test.describe('a personal business', () => {
       timeout: 20_000,
     });
     await expect(page.getByLabel('কোন ব্যবসা বা কাজ')).toHaveValue(/.+/);
+
+    /* "দুইটা ব্যবসা থাকলে দুইবার, দুই নামে" — so the button that does it cannot
+       be a thing that appears once and never again. */
+    await expect(page.getByRole('button', { name: 'নতুন ব্যবসা যোগ করুন' })).toBeVisible();
 
     await page.getByRole('button', { name: 'মাস শেষে মজুদ গুনুন' }).click();
     const count = page.getByRole('dialog');
