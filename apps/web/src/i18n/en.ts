@@ -308,11 +308,11 @@ export const EN: Record<string, string> = {
     'You do not need a separate bank account for the business. In the books the owner and the business are two different people, whatever the law says — and here the tag is what separates them.',
   'segment.guideSetup': 'Setup — done once',
   'segment.step1':
-    'On the tags page, create a tag named after the business — “Shop”, “Shares”. Two businesses, two tags.',
+    'Type the name of the business and press “Create them” — the tag and eighteen categories (sales, cost of goods sold, shop rent, wages, brokerage) are made in one press. Two businesses, two presses, two names.',
   'segment.step2':
-    'On the categories page, add “Business income” under income and “Business costs” under expenses, with sub-categories beneath them — sales, stock purchased, shop rent, wages, brokerage.',
-  'segment.step3':
-    'If the shop has a cash box or the shares a BO account, make them accounts of their own. Money you move there from your own bank is a transfer, not a cost.',
+    'If the shop has stock, a cash box, or the shares a BO account, make them accounts of their own. Money you move there from your own bank is a transfer, not a cost.',
+  'segment.built':
+    '{n} categories and the “{name}” tag are ready — start putting the tag on every business income and cost.',
   'segment.guideDaily': 'Day to day',
   'segment.step4':
     'Put that tag on every business income and every business cost. Personal spending carries no tag.',
@@ -348,14 +348,38 @@ export const EN: Record<string, string> = {
     'Add stock you buy to the inventory account. At month end count the stock once and post a single adjusting line — opening stock + purchases − closing stock = cost of goods sold. That one line is what makes the month’s profit true. There is no need to cost every individual sale.',
   'segment.guideLimit':
     'One limit worth knowing — this is a cash basis. Money is counted on the day it moved. Sales and purchases on credit do not appear here; keep those on the loans page.',
+  'segment.offTitle': 'This is not switched on',
+  'segment.offBody':
+    'If you run a shop, a small business or invest in shares, switch on “Your own business or share trading” in settings. If you do not, there is nothing here for you — it would only make the category list longer.',
+  'segment.offGo': 'Go to settings',
+  'segment.setupTitle': 'Set the business up',
+  'segment.setupBody':
+    'A tag named after the business and eighteen categories — sales, cost of goods sold, shop rent, wages, brokerage — all created in one press. All you supply is the name.',
+  'segment.setupName': 'Name of the business',
+  'segment.setupPlaceholder': 'e.g. Shop, Shares',
+  'segment.setupGo': 'Create them',
+  'segment.setupWorking': 'Creating…',
+  'segment.setupDone': '{n} categories created. Start putting the tag on transactions.',
+  'segment.setupAlready': 'Already there — nothing new was created',
+  'segment.setupFailed': 'Could not create them — try again',
+  'segment.count': 'Count the stock at month end',
+  'segment.countTitle': 'Month-end stock count',
+  'segment.countBlurb': 'Count what is on the shelf; the rest is taken to have been sold',
+  'segment.countAccount': 'Inventory account',
+  'segment.countNoAccount': 'No asset account yet',
+  'segment.countDate': 'Date counted',
+  'segment.countLedger': 'What the books hold',
+  'segment.countLedgerHint': 'Opening stock + everything bought in this period',
+  'segment.countCounted': 'What you counted (৳)',
+  'segment.countCost': 'Cost of goods sold will be',
+  'segment.countGo': 'Post it',
+  'segment.countWorking': 'Posting…',
+  'segment.countDone': 'Done. Posted as cost of goods sold:',
+  'segment.countDoneHint': 'The inventory account now holds exactly what you counted.',
   'segment.which': 'Which business or venture',
   'segment.choose': 'Choose a tag',
   'segment.profit': 'Profit',
   'segment.loss': 'Loss',
-  'segment.noTagsTitle': 'Create a tag first',
-  'segment.noTagsBody':
-    'Make a tag named after the business and put it on every income and expense that belongs to it. One wallet can carry both sets of books; the tag is what keeps them apart.',
-  'segment.goToTags': 'Go to tags',
   'segment.nothing':
     'No transaction in this period carries this tag. Try another date range, or tag the transactions in the ledger.',
   'segment.basis':
@@ -1239,6 +1263,20 @@ export const EN: Record<string, string> = {
   'close.keepAccount': 'Keep my account',
 
   // --- letting a model help ---------------------------------------------------
+  'business.title': 'Your own business or share trading',
+  'business.blurb':
+    'Switch this on if you run a shop, a small business, or invest in shares. Even when the business runs through your own bank or bKash, its income and costs can be seen apart — profit or loss at the end of the day.',
+  'business.cost':
+    'Switching it on adds a set of business categories, a month-end stock count screen and a separate profit-and-loss. If you have no business, leave it off — it would only make the category list longer.',
+  'business.rules': 'How to keep it, and how not to',
+  'business.rule1': 'Buying shares is not an expense — it is an asset',
+  'business.rule2': 'Capital put in or money taken out is not income — it is a transfer',
+  'business.rule3': 'Stock is not a cost until it sells — it is inventory',
+  'business.rule4': 'The business and the household are kept apart by the tag',
+  'business.turnOn': 'Switch on',
+  'business.turnOff': 'Switch off',
+  'business.onNow': 'On. You will find “Your own business” on the reports page — ',
+  'business.open': 'open it now',
   'ai.title': 'Let AI pick the category',
   'ai.blurb':
     'It reads the message and fills in the category and account on the draft. It never changes an amount, a date or a direction, and nothing reaches your books until you say so.',

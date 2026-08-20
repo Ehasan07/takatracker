@@ -40,6 +40,7 @@ const patchSchema = z.object({
    * default nobody discovers afterwards.
    */
   aiSuggestEnabled: z.boolean().optional(),
+  businessEnabled: z.boolean().optional(),
 });
 
 @Controller('workspace')

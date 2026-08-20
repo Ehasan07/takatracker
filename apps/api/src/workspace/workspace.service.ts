@@ -31,6 +31,14 @@ export interface WorkspaceSettingsPatch {
   quantityUnits?: string[];
   aiSuggestEnabled?: boolean;
   /**
+   * Whether this workspace keeps a personal business or trades shares.
+   *
+   * Off by default. Most households have no business, and for them the whole
+   * apparatus — eighteen categories, an inventory account, a month-end count, a
+   * second profit-and-loss — is clutter. Whoever has a shop turns it on.
+   */
+  businessEnabled?: boolean;
+  /**
    * The books' language. Chosen at signup and, until now, frozen there — the
    * `Workspace` row had no write path at all.
    */
@@ -41,6 +49,7 @@ export interface WorkspaceSettingsView {
   quantityUnits: string[];
   locale: Locale;
   aiSuggestEnabled: boolean;
+  businessEnabled: boolean;
 }
 
 @Injectable()
@@ -53,12 +62,13 @@ export class WorkspaceService {
   async settings(workspaceId: string): Promise<WorkspaceSettingsView> {
     const workspace = await this.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true },
+      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true, businessEnabled: true },
     });
     return {
       quantityUnits: workspace.quantityUnits,
       locale: asLocale(workspace.locale),
       aiSuggestEnabled: workspace.aiSuggestEnabled,
+      businessEnabled: workspace.businessEnabled,
     };
   }
 
@@ -69,7 +79,7 @@ export class WorkspaceService {
   ): Promise<WorkspaceSettingsView> {
     const before = await this.prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true },
+      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true, businessEnabled: true },
     });
 
     /* Cleaned here and not only in the client: the cap, the de-duplication and
@@ -80,15 +90,22 @@ export class WorkspaceService {
       patch.quantityUnits === undefined ? undefined : normaliseUnitList(patch.quantityUnits);
     const locale = patch.locale;
     const aiSuggestEnabled = patch.aiSuggestEnabled;
+    const businessEnabled = patch.businessEnabled;
 
     /* A PATCH carrying neither field is a read. Writing anyway would put a
        no-op row in the audit log every time a screen saved a form it had not
        changed. */
-    if (quantityUnits === undefined && locale === undefined && aiSuggestEnabled === undefined) {
+    if (
+      quantityUnits === undefined &&
+      locale === undefined &&
+      aiSuggestEnabled === undefined &&
+      businessEnabled === undefined
+    ) {
       return {
         quantityUnits: before.quantityUnits,
         locale: asLocale(before.locale),
         aiSuggestEnabled: before.aiSuggestEnabled,
+        businessEnabled: before.businessEnabled,
       };
     }
 
@@ -98,8 +115,9 @@ export class WorkspaceService {
         ...(quantityUnits === undefined ? {} : { quantityUnits }),
         ...(locale === undefined ? {} : { locale }),
         ...(aiSuggestEnabled === undefined ? {} : { aiSuggestEnabled }),
+        ...(businessEnabled === undefined ? {} : { businessEnabled }),
       },
-      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true },
+      select: { quantityUnits: true, locale: true, aiSuggestEnabled: true, businessEnabled: true },
     });
 
     /* Emitted, not awaited. A settings change is worth a line in the log —
@@ -111,14 +129,23 @@ export class WorkspaceService {
       action: 'workspace.settings_updated',
       entity: 'Workspace',
       entityId: workspaceId,
-      before: { quantityUnits: before.quantityUnits, locale: before.locale },
-      after: { quantityUnits: updated.quantityUnits, locale: updated.locale },
+      before: {
+        quantityUnits: before.quantityUnits,
+        locale: before.locale,
+        businessEnabled: before.businessEnabled,
+      },
+      after: {
+        quantityUnits: updated.quantityUnits,
+        locale: updated.locale,
+        businessEnabled: updated.businessEnabled,
+      },
     });
 
     return {
       quantityUnits: updated.quantityUnits,
       locale: asLocale(updated.locale),
       aiSuggestEnabled: updated.aiSuggestEnabled,
+      businessEnabled: updated.businessEnabled,
     };
   }
 }

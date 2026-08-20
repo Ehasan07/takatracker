@@ -4,6 +4,7 @@ import { AccountsModule } from './accounts/accounts.module';
 import { AdminModule } from './admin/admin.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { AuditModule } from './audit/audit.module';
+import { BusinessModule } from './business/business.module';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ImportModule } from './import/import.module';
@@ -33,6 +34,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 
 @Module({
   imports: [
+    BusinessModule,
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../../.env', '.env'] }),
     /* Limits and the global guard, unchanged in size and now bucketed by
      * workspace rather than by address — see throttle/throttle.module.ts. */

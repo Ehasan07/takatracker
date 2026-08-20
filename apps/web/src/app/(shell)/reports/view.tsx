@@ -52,6 +52,7 @@ import { FlowBars } from '@/components/charts/flow-bars';
 import { Money } from '@/components/money';
 import { Skeleton, SkeletonCard } from '@/components/skeleton';
 import { Sheet } from '@/components/ui/sheet';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/t';
 import { BreakdownPanel } from './breakdown';
@@ -182,6 +183,15 @@ function ReportsBody({ today }: { today: Date }) {
 
   const trendPoints = withinWindow(trend.data ?? [], trendBounds);
 
+  /* Shared query key with the settings screen, so switching it on there and
+     coming back here does not need a reload. */
+  const workspace = useQuery({
+    queryKey: ['workspace', 'settings'],
+    queryFn: () => api<{ businessEnabled: boolean }>('/workspace/settings'),
+    staleTime: 60_000,
+  });
+  const businessEnabled = workspace.data?.businessEnabled ?? false;
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       <header className="flex items-baseline justify-between gap-2">
@@ -195,14 +205,20 @@ function ReportsBody({ today }: { today: Date }) {
           {/* A proprietor's question — "did the shop make money" — is not the
               household's, and no amount of category structure answers it when
               both run through one wallet. The tag does, so it gets its own
-              door rather than a filter buried on a statement. */}
-          <Link
-            href="/reports/segment"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
-          >
-            <Briefcase className="h-4 w-4" aria-hidden />
-            {t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
-          </Link>
+              door rather than a filter buried on a statement.
+
+              Only for a workspace that has said it has a business. Most have
+              not, and a report about a shop they do not run is one more thing
+              on a screen they came to for something else. */}
+          {businessEnabled ? (
+            <Link
+              href="/reports/segment"
+              className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            >
+              <Briefcase className="h-4 w-4" aria-hidden />
+              {t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
+            </Link>
+          ) : null}
           <Link
             href="/reports/statements"
             className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"

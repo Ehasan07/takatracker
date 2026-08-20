@@ -11,8 +11,12 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { toLocalDateString } from '@hishab/shared';
 import { fmtDate } from '@/lib/format';
 import { t } from '@/lib/t';
+import { Button } from '@/components/ui/button';
+import { api } from '@/lib/api';
 import { fetchTags, tagKeys } from '../../tags/queries';
 import { fetchIncomeStatement, reportKeys } from '../queries';
+import { SetupCard } from './setup-card';
+import { StockCountSheet } from './stock-count-sheet';
 import type { CategoryNode, IncomeStatementDto } from '../types';
 
 /**
@@ -48,9 +52,29 @@ export default function SegmentPage() {
   const [tagId, setTagId] = React.useState('');
   const [from, setFrom] = React.useState(firstOfMonth);
   const [to, setTo] = React.useState(today);
+  const [counting, setCounting] = React.useState(false);
+  /* Kept on the page rather than inside `SetupCard`, because the card is gone
+     the moment it succeeds — the tag list it was waiting for arrives and the
+     empty state stops rendering. A confirmation that unmounts with the thing
+     that produced it is a confirmation nobody sees. */
+  const [built, setBuilt] = React.useState<{ count: number; name: string } | null>(null);
 
   const period = React.useMemo(() => ({ from, to }), [from, to]);
-  const tags = useQuery({ queryKey: tagKeys.list(''), queryFn: () => fetchTags('') });
+  /* The switch that says these books have a business in them. Everything below
+     waits on it: a household that never asked for a shop should not be shown
+     one because it typed a URL. */
+  const workspace = useQuery({
+    queryKey: ['workspace', 'settings'],
+    queryFn: () => api<{ businessEnabled: boolean }>('/workspace/settings'),
+    staleTime: 60_000,
+  });
+  const enabled = workspace.data?.businessEnabled ?? false;
+
+  const tags = useQuery({
+    queryKey: tagKeys.list(''),
+    queryFn: () => fetchTags(''),
+    enabled,
+  });
 
   /* Nothing is asked for until a venture is chosen. The whole-household answer
      is the statements page and already exists; an unfiltered figure here would
@@ -58,7 +82,7 @@ export default function SegmentPage() {
   const statement = useQuery({
     queryKey: reportKeys.incomeStatement(period, undefined, tagId),
     queryFn: () => fetchIncomeStatement(period, undefined, tagId),
-    enabled: tagId !== '',
+    enabled: enabled && tagId !== '',
   });
 
   const list = tags.data ?? [];
@@ -97,7 +121,7 @@ export default function SegmentPage() {
         </p>
       </header>
 
-      <div className="no-print flex flex-col gap-3">
+      <div className={`no-print flex flex-col gap-3 ${enabled ? '' : 'hidden'}`}>
         <Field label={t('segment.which', 'কোন ব্যবসা বা কাজ')} htmlFor="sg-tag">
           <Select id="sg-tag" value={tagId} onChange={(e) => setTagId(e.target.value)}>
             <option value="">{t('segment.choose', 'ট্যাগ বেছে নিন')}</option>
@@ -123,9 +147,42 @@ export default function SegmentPage() {
         </div>
       </div>
 
-      <Guide openByDefault={!tags.isLoading && list.length === 0} />
+      {workspace.isSuccess && !enabled ? <NotEnabled /> : null}
 
-      {tags.isLoading ? null : list.length === 0 ? <NoTags /> : null}
+      <Guide openByDefault={enabled && !tags.isLoading && list.length === 0} />
+
+      {!enabled || tags.isLoading ? null : list.length === 0 ? (
+        <SetupCard
+          onDone={(result) => {
+            setTagId(result.tagId);
+            setBuilt({ count: result.createdCategories, name: result.tagName });
+          }}
+        />
+      ) : null}
+
+      {built ? (
+        <p className="text-income no-print text-sm">
+          {t(
+            'segment.built',
+            '{n}টি খাত আর “{name}” ট্যাগ তৈরি হয়েছে — এবার ব্যবসার প্রতিটা আয়-খরচে ট্যাগটা লাগাতে শুরু করুন।',
+          )
+            .replace('{n}', String(built.count))
+            .replace('{name}', built.name)}
+        </p>
+      ) : null}
+
+      {/* The month-end step, beside the figure it corrects. Offered only once a
+          venture is chosen: the entry it writes carries that tag, and a count
+          filed against nothing would land on the household's books alone. */}
+      {tagId ? (
+        <div className="no-print">
+          <Button variant="outline" onClick={() => setCounting(true)}>
+            {t('segment.count', 'মাস শেষে মজুদ গুনুন')}
+          </Button>
+        </div>
+      ) : null}
+
+      <StockCountSheet open={counting} onOpenChange={setCounting} tagId={tagId} />
 
       {tagId === '' ? null : statement.isLoading ? (
         <div className="rounded-card border-rule bg-surface overflow-hidden border">
@@ -135,6 +192,37 @@ export default function SegmentPage() {
         <Result data={statement.data} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The screen when the workspace has not asked for a business.
+ *
+ * Not a redirect and not a blank page. Somebody arriving here either followed
+ * an old link or is looking for exactly this and has not found the switch —
+ * both are answered by saying where the switch is. The guide below stays
+ * readable either way: deciding whether to turn it on is a reason to read how
+ * it works.
+ */
+function NotEnabled() {
+  return (
+    <section className="rounded-card border-rule bg-surface border p-4">
+      <h2 className="text-ink text-base font-semibold">
+        {t('segment.offTitle', 'এই হিসাবটি চালু করা নেই')}
+      </h2>
+      <p className="text-ink-muted mt-1 text-sm">
+        {t(
+          'segment.offBody',
+          'দোকান, ছোট ব্যবসা বা শেয়ার-বিনিয়োগ থাকলে সেটিংস থেকে “ব্যক্তিগত ব্যবসা বা শেয়ার ট্রেডিং” চালু করুন। ব্যবসা না থাকলে দরকার নেই — খাতের তালিকা অকারণে বড় হবে।',
+        )}
+      </p>
+      <Link
+        href="/settings"
+        className="press border-rule text-ink hover:bg-greenbar mt-3 inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
+      >
+        {t('segment.offGo', 'সেটিংসে যান')}
+      </Link>
+    </section>
   );
 }
 
@@ -198,15 +286,11 @@ function Guide({ openByDefault }: { openByDefault: boolean }) {
           items={[
             t(
               'segment.step1',
-              'ট্যাগ পাতায় ব্যবসার নামে একটা ট্যাগ বানান — যেমন “দোকান” বা “শেয়ার”। দুইটা ব্যবসা থাকলে দুইটা ট্যাগ।',
+              'ব্যবসার নাম লিখে “তৈরি করে দিন” চাপুন — ট্যাগ আর আঠারোটা খাত (বিক্রি, বিক্রীত পণ্যের ব্যয়, দোকান ভাড়া, বেতন, ব্রোকারেজ) এক চাপেই তৈরি হয়ে যাবে। দুইটা ব্যবসা থাকলে দুইবার, দুই নামে।',
             ),
             t(
               'segment.step2',
-              'খাত পাতায় আয়ের নিচে “ব্যবসার আয়” আর খরচের নিচে “ব্যবসার খরচ” নামে দুইটা মূল খাত বানান, তার নিচে উপ-খাত — বিক্রি, পণ্য ক্রয়, দোকান ভাড়া, কর্মচারী, ব্রোকারেজ।',
-            ),
-            t(
-              'segment.step3',
-              'দোকানের ক্যাশ বাক্স বা শেয়ারের বিও অ্যাকাউন্ট থাকলে সেগুলোকে আলাদা অ্যাকাউন্ট বানান। নিজের ব্যাংক থেকে ওখানে টাকা দিলে সেটা ট্রান্সফার — খরচ নয়।',
+              'দোকানের মজুদ, ক্যাশ বাক্স বা শেয়ারের বিও অ্যাকাউন্ট থাকলে সেগুলোকে আলাদা অ্যাকাউন্ট বানান। নিজের ব্যাংক থেকে ওখানে টাকা দিলে সেটা ট্রান্সফার — খরচ নয়।',
             ),
           ]}
         />
@@ -348,35 +432,6 @@ function Line({ term, def }: { term: string; def: string }) {
       <dt className="text-ink font-medium">{term} —</dt>
       <dd className="min-w-0">{def}</dd>
     </div>
-  );
-}
-
-/**
- * The screen before there is anything to draw.
- *
- * Not an error and not empty space: the person is one step short of an answer,
- * and the step is the same one every time. Saying it here is cheaper than
- * having them find the tags screen and work out what it is for.
- */
-function NoTags() {
-  return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink text-base font-semibold">
-        {t('segment.noTagsTitle', 'আগে একটা ট্যাগ বানান')}
-      </h2>
-      <p className="text-ink-muted mt-1 text-sm">
-        {t(
-          'segment.noTagsBody',
-          'ব্যবসার নামে একটা ট্যাগ বানিয়ে ওই ব্যবসার প্রতিটা আয় ও খরচে সেটি লাগান। একই বিকাশ বা ব্যাংক দিয়ে ব্যক্তিগত খরচ চললেও ট্যাগই দুইটাকে আলাদা রাখে।',
-        )}
-      </p>
-      <Link
-        href="/tags"
-        className="press border-rule text-ink hover:bg-greenbar mt-3 inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
-      >
-        {t('segment.goToTags', 'ট্যাগ পাতায় যান')}
-      </Link>
-    </section>
   );
 }
 

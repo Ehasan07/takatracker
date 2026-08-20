@@ -385,6 +385,15 @@ model Workspace {
   /// else's SMS leaves this server. That is a decision for the person whose
   /// messages they are, not a default somebody discovers later.
   aiSuggestEnabled Boolean @default(false)
+  /// Whether this workspace keeps a personal business or trades shares.
+  ///
+  /// Off by default, and deliberately not a thing somebody discovers by
+  /// accident. Most households have no business, and for them the whole
+  /// apparatus — eighteen categories, an inventory account, a month-end stock
+  /// count, a second profit-and-loss — is clutter that makes the app look like
+  /// something they have to learn. Whoever has a shop or a BO account turns it
+  /// on and gets all of it; everybody else never sees it exists.
+  businessEnabled Boolean @default(false)
   /// Units this workspace added to the quantity field's suggestions. The eight
   /// common ones ship in the client and are not stored here; this is only what
   /// somebody added themselves. Suggestions, never a constraint — the field

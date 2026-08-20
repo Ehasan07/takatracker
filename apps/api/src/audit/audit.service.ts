@@ -33,6 +33,13 @@ export const AUDIT_ACTIONS = [
      because it changes how future messages are filed without anybody opening
      the accounts screen, and the owner is entitled to see what changed it. */
   'account.match_hint_learned',
+  /* A personal business was set up — the tag and the category tree that make
+     its takings separable from the household's. */
+  'business.setup',
+  /* The month-end stock count, and the cost of goods sold it produced. Kept
+     because it is the one entry a shop's profit turns on and it was written by
+     the app rather than typed. */
+  'business.stock_counted',
   /* Marking land, gold or a vehicle to what it is worth now. Worth recording:
      it moves net worth without any income, and somebody will ask why. */
   'account.revalued',

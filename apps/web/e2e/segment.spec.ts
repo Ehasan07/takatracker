@@ -31,9 +31,39 @@ async function signup(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Opt-in, from settings. Most households have no shop, and for them the whole
+ * apparatus is clutter — so nothing about it exists until somebody says it does.
+ */
+async function enableBusiness(page: Page): Promise<void> {
+  await page.goto('/settings');
+  /* `section` and not `getByRole('region')`: a section only takes that role
+     when it carries an accessible name, and this one is titled by a plain
+     heading. */
+  const card = page.locator('section').filter({ hasText: 'ব্যক্তিগত ব্যবসা বা শেয়ার ট্রেডিং' });
+  await card.getByRole('button', { name: 'চালু করুন' }).click();
+  await expect(card.getByRole('button', { name: 'বন্ধ করুন' })).toBeVisible({ timeout: 15_000 });
+}
+
 test.describe('a personal business', () => {
+  test('stays out of the way until somebody asks for it', async ({ page }) => {
+    await signup(page);
+
+    /* No link on the reports screen, and the page itself says where the switch
+       is rather than showing a report for a shop nobody runs. */
+    await page.goto('/reports');
+    await expect(page.getByRole('link', { name: 'ব্যক্তিগত ব্যবসার হিসাব' })).toBeHidden();
+
+    await page.goto('/reports/segment');
+    await expect(page.getByRole('heading', { name: 'এই হিসাবটি চালু করা নেই' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('link', { name: 'সেটিংসে যান' })).toBeVisible();
+  });
+
   test('is reachable from the reports screen and explains itself', async ({ page }) => {
     await signup(page);
+    await enableBusiness(page);
 
     await page.goto('/reports');
     await page.getByRole('link', { name: 'ব্যক্তিগত ব্যবসার হিসাব' }).click();
@@ -52,9 +82,10 @@ test.describe('a personal business', () => {
     await expect(page.getByRole('heading', { name: 'শেয়ার কেনাবেচা' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'দোকান বা মুদির ব্যবসা' })).toBeVisible();
 
-    /* And the step that has to be taken before any of it is worth reading. */
-    await expect(page.getByRole('heading', { name: 'আগে একটা ট্যাগ বানান' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'ট্যাগ পাতায় যান' })).toBeVisible();
+    /* And the step that has to be taken before any of it is worth reading —
+       which the app does itself, given a name. */
+    await expect(page.getByRole('heading', { name: 'ব্যবসার হিসাব চালু করুন' })).toBeVisible();
+    await expect(page.getByLabel('ব্যবসার নাম')).toBeVisible();
 
     await guide.click();
     await expect(guide).toHaveAttribute('aria-expanded', 'false');
@@ -63,6 +94,7 @@ test.describe('a personal business', () => {
 
   test('says under which rule, for whoever wants to check', async ({ page }) => {
     await signup(page);
+    await enableBusiness(page);
     await page.goto('/reports/segment');
 
     /* The ⓘ beside the title. Its accessible name says which note it is,
@@ -73,5 +105,53 @@ test.describe('a personal business', () => {
     await note.click();
     await expect(note).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByText('IFRS 8.5')).toBeVisible();
+  });
+
+  test('builds the whole tree in one press, then counts the stock', async ({ page }) => {
+    await signup(page);
+    await enableBusiness(page);
+
+    /* The stock sits in an asset account, and buying into it is a transfer —
+       so ৳40,000 of opening stock is a balance, not a cost. */
+    await page.goto('/accounts');
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('নাম', { exact: true })).toBeVisible();
+    await sheet.getByLabel('নাম', { exact: true }).fill('মজুদ পণ্য');
+    await sheet.getByLabel('ধরন').selectOption('ASSET');
+    await sheet.getByLabel('কী ধরনের সম্পদ').selectOption('OTHER');
+    await sheet.getByLabel('প্রারম্ভিক জের (৳)').fill('40000');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await page.goto('/reports/segment');
+
+    /* Eighteen categories and a tag, and the only thing asked for is the name.
+       Typing them by hand is twenty minutes and a dozen chances to file a
+       share purchase under খরচ. */
+    await page.getByLabel('ব্যবসার নাম').fill('দোকান');
+    await page.getByRole('button', { name: 'তৈরি করে দিন' }).click();
+    /* The confirmation has to outlive the card that produced it: the card is
+       gone the moment it succeeds, because the tag list it was waiting for
+       arrives and the empty state stops rendering. */
+    await expect(page.getByText('ট্যাগ তৈরি হয়েছে', { exact: false })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByLabel('কোন ব্যবসা বা কাজ')).toHaveValue(/.+/);
+
+    await page.getByRole('button', { name: 'মাস শেষে মজুদ গুনুন' }).click();
+    const count = page.getByRole('dialog');
+    await expect(count.getByText('খাতা অনুযায়ী মজুদ')).toBeVisible({ timeout: 15_000 });
+    /* The figure being contradicted, shown before the box that contradicts it. */
+    await expect(count.getByText('৳40,000.00', { exact: false })).toBeVisible();
+
+    await count.getByLabel('গুনে যা পেলেন (৳)').fill('25000');
+    await expect(count.getByText('বিক্রীত পণ্যের ব্যয় হবে')).toBeVisible();
+
+    await count.getByRole('button', { name: 'হিসাবে বসিয়ে দিন' }).click();
+    await expect(count.getByText('বিক্রীত পণ্যের ব্যয় হিসেবে বসেছে')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(count.getByText('৳15,000.00', { exact: false })).toBeVisible();
   });
 });
