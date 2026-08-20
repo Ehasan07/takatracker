@@ -73,6 +73,18 @@ describe('generic parser — an English credit alert', () => {
     expect(result.evidence.accountHint).toBe('A/C **4521');
   });
 
+  it('takes the tail of a number masked in the middle, not its head', () => {
+    /* City Bank writes `A/C: 1422***8001`. Stopping at the first star read
+       `1422` — the head of the number — and reported it as the tail, which
+       against an account filed under 8001 is not a near miss but a different
+       account. */
+    const masked = genericParser.parse({
+      body: '18-Aug-2026 Tk. 19,950 Deposit Tk. 42,603 Balance A/C: 1422***8001',
+    });
+    expect(masked.fields.accountHint).toBe('8001');
+    expect(masked.evidence.accountHint).toBe('A/C: 1422***8001');
+  });
+
   it('is confident, because it guessed nothing', () => {
     expect(result.confidence).toBe(98);
     expect(result.confidence).toBeGreaterThanOrEqual(REVIEW_THRESHOLD);

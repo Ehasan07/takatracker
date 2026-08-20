@@ -431,9 +431,18 @@ const BALANCE_RE = new RegExp(
 /** `**4521`, `xxxx1234` — a masked tail on its own. */
 const MASKED_TAIL_RE = /[xX*]{2,}[\s-]?\d{2,6}/;
 
-/** `A/C no. 1234`, `Card ending 4521`, `অ্যাকাউন্ট 1234`. */
+/**
+ * `A/C no. 1234`, `Card ending 4521`, `অ্যাকাউন্ট 1234`, `A/C: 1422***8001`.
+ *
+ * The last shape is why the trailing group exists. City Bank masks the middle
+ * of the number rather than the front, and a pattern that stopped at the first
+ * `*` read `1422` — the *head* of the number — and reported it as the tail.
+ * Against an account filed under its real tail that is not a near miss, it is
+ * a different number entirely, and it made every City Bank alert look like it
+ * belonged to an account nobody owns.
+ */
 const LABELLED_ACCOUNT_RE =
-  /(?:A\/C|Acct?|Account|Card|Wallet|অ্যাকাউন্ট|হিসাব)\.?\s*(?:no\.?|number|ending|ends?|#)?\s*[:-]?\s*((?:[xX*]{2,}[\s-]?)?\d{3,20})/i;
+  /(?:A\/C|Acct?|Account|Card|Wallet|অ্যাকাউন্ট|হিসাব)\.?\s*(?:no\.?|number|ending|ends?|#)?\s*[:-]?\s*((?:[xX*]{2,}[\s-]?)?\d{3,20}(?:[\s-]?[xX*]{2,}[\s-]?\d{2,20})?)/i;
 
 /**
  * Money moving in and money moving out, longest spelling first so `credited`

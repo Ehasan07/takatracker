@@ -35,6 +35,8 @@
  * that is either right or absent.
  */
 
+import { toAsciiDigits } from '@hishab/shared';
+
 /** An account as far as matching is concerned. */
 export interface AccountMatchCandidate {
   id: string;
@@ -66,12 +68,30 @@ export interface AccountMatch {
 
 /** Everything that is not a digit, gone: `A/C (***6948)` and `6948` are one hint. */
 function digitsOf(text: string): string {
-  return text.replace(/\D+/g, '');
+  return toAsciiDigits(text).replace(/\D+/g, '');
+}
+
+/**
+ * The account numbers buried in an account's *name*.
+ *
+ * People name accounts after them — `UCB SALARY- 1043204000006948`,
+ * `THE CITY BANK-2101696107001`, `৩০কে ডিপিএস — ব্র্যাক ব্যাংক ৩০১১৯৫২১৫০০০৪`.
+ * That is the number the bank quotes, already typed in, and refusing to read it
+ * would have every one of those accounts fail to match its own alerts.
+ *
+ * Runs of six digits or more, and each run on its own — never the digits of the
+ * name concatenated. `CBL-Term Loan 2019 (900k)` concatenates to `2019900`,
+ * whose last four are `9900`, which is a number that appears nowhere and would
+ * match somebody's card by coincidence. A real account number is long and
+ * unbroken; a year and a round figure are neither.
+ */
+function numbersInName(name: string): string[] {
+  return toAsciiDigits(name).match(/\d{6,}/g) ?? [];
 }
 
 /** Lowercased, punctuation dropped: `UCB.` and `ucb` are one word. */
 function foldOf(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9ঀ-৿]+/g, '');
+  return text.toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/g, '');
 }
 
 /**
@@ -98,25 +118,51 @@ function mentions(haystack: string, needle: string): boolean {
   return needle.length >= 2 && haystack.includes(needle);
 }
 
-/** The single candidate at this tier, or nothing if the tier is empty or split. */
+/** The single candidate, or nothing if there are none or several. */
 function only(matches: readonly AccountMatch[]): AccountMatch | null {
   return matches.length === 1 ? (matches[0] as AccountMatch) : null;
+}
+
+/** Every number this account is known by: its masked number, its hints, its name. */
+function numbersOf(account: AccountMatchCandidate): { text: string; digits: string }[] {
+  const typed = [account.accountNumberMasked ?? '', ...(account.matchHints ?? [])]
+    .map((text) => ({ text, digits: digitsOf(text) }))
+    .filter((entry) => entry.digits.length >= 2);
+  return [
+    ...typed,
+    ...numbersInName(account.name).map((digits) => ({ text: account.name, digits })),
+  ];
 }
 
 /**
  * The account a message is about, or null when the answer is not certain.
  *
  * Pass only accounts a draft could legitimately name — not archived, not
- * deleted, not a system control account. Ranked in three tiers, and the first
- * tier with exactly one candidate wins; a tier with several is abandoned
- * rather than resolved, and so is the whole match, because a lower tier
- * agreeing with one of two equally-good numbers is not evidence.
+ * deleted, not a system control account.
+ *
+ * ## How the three signals combine
+ *
+ * The number decides. When the message quotes an account number, every account
+ * whose own number is known and different is *out* — not ranked lower, out.
+ * That is the rule that stops a City Bank alert for `1422***8001` landing on
+ * the City Bank current account just because the sender said "CITY BANK": the
+ * app knows that account's number and it is not this one. An account with no
+ * number on file is not excluded, because nothing is known about it to
+ * contradict the message — a workspace whose accounts are named `বিকাশ` and
+ * `নগদ` still matches on its sender exactly as it did before.
+ *
+ * Several accounts sharing a number tail — three wallets on one phone number is
+ * the ordinary case — are then separated by the word hints and the sender, and
+ * only by those. If that still leaves more than one, the answer is nothing: an
+ * empty picker costs one tap, and a wrong pre-selection costs a ledger entry
+ * against the wrong balance that nobody will re-check.
  */
 export function matchAccount(
   candidates: readonly AccountMatchCandidate[],
   input: AccountMatchInput,
 ): AccountMatch | null {
   const hintDigits = input.accountHint ? digitsOf(input.accountHint) : '';
+  const quoted = hintDigits.length >= 2;
   const haystack = foldOf(`${input.sender ?? ''} ${input.body ?? ''}`);
   const senderFold = foldOf(input.sender ?? '');
 
@@ -125,40 +171,50 @@ export function matchAccount(
   const bySender: AccountMatch[] = [];
 
   for (const account of candidates) {
-    const hints = account.matchHints ?? [];
-
-    if (hintDigits.length >= 2) {
-      const numbers = [account.accountNumberMasked ?? '', ...hints]
-        .map((text) => ({ text, digits: digitsOf(text) }))
-        .filter((entry) => entry.digits.length >= 2);
-      const hit = numbers.find((entry) => sameAccountNumber(entry.digits, hintDigits));
-      if (hit) {
-        byNumber.push({ accountId: account.id, by: 'number', matchedOn: hit.text });
-        continue;
-      }
-    }
+    const numbers = numbersOf(account);
+    const hit = quoted
+      ? numbers.find((entry) => sameAccountNumber(entry.digits, hintDigits))
+      : undefined;
+    if (hit) byNumber.push({ accountId: account.id, by: 'number', matchedOn: hit.text });
 
     /* Word hints, against the sender *and* the body. A bKash alert comes from
        `bKash` and an EFTN alert names the bank inside the text; the owner
        should not have to know which. */
-    const word = hints.map(foldOf).find((hint) => mentions(haystack, hint));
-    if (word) {
-      const original = hints.find((hint) => foldOf(hint) === word) ?? word;
-      byHint.push({ accountId: account.id, by: 'hint', matchedOn: original });
+    const word = (account.matchHints ?? []).find((hint) => mentions(haystack, foldOf(hint)));
+    if (word !== undefined) {
+      byHint.push({ accountId: account.id, by: 'hint', matchedOn: word });
       continue;
     }
+
+    /* Known number, and it is not the one the message quoted — so this account
+       is out, and the sender below is not allowed to argue.
+       
+       Checked *after* the word hints on purpose. Not every number on file is
+       the number a bank quotes: a card is filed under the customer id printed
+       in its own alerts, and excluding it for failing a comparison against a
+       card number would throw away the strongest evidence there is — the
+       owner's own hint, appearing verbatim in the message. */
+    if (!hit && quoted && numbers.length > 0) continue;
 
     /* The account's own name or its institution, against the sender only.
        Against the body this would be a trap: "I Banking EFTN Transfer" is a
        payee, and an account called `Transfer Account` would swallow it. */
     if (senderFold.length >= 3) {
-      const labels = [account.institution ?? '', account.name].filter(Boolean);
-      const label = labels.find(
-        (text) => mentions(foldOf(text), senderFold) || mentions(senderFold, foldOf(text)),
-      );
+      const label = [account.institution ?? '', account.name]
+        .filter(Boolean)
+        .find((text) => mentions(foldOf(text), senderFold) || mentions(senderFold, foldOf(text)));
       if (label) bySender.push({ accountId: account.id, by: 'sender', matchedOn: label });
     }
   }
 
-  return only(byNumber) ?? only(byHint) ?? only(bySender);
+  if (byNumber.length === 1) return byNumber[0] as AccountMatch;
+  if (byNumber.length > 1) {
+    /* One number, several accounts — three wallets registered to one phone
+       number. The tie is broken by the other two signals or not at all. */
+    const ids = new Set(byNumber.map((m) => m.accountId));
+    const narrow = (tier: readonly AccountMatch[]) => tier.filter((m) => ids.has(m.accountId));
+    return only(narrow(byHint)) ?? only(narrow(bySender));
+  }
+
+  return only(byHint) ?? only(bySender);
 }
