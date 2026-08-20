@@ -44,7 +44,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { FileText } from 'lucide-react';
+import { Briefcase, FileText } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';
@@ -191,13 +191,26 @@ function ReportsBody({ today }: { today: Date }) {
         {/* These screens answer "where did the money go"; the statements answer
             "what is my position". Different questions, both wanted, so the one
             is a link from the other rather than a replacement for it. */}
-        <Link
-          href="/reports/statements"
-          className="press border-rule text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
-        >
-          <FileText className="h-4 w-4" aria-hidden />
-          {t('statements.title', 'আর্থিক বিবৃতি')}
-        </Link>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* A proprietor's question — "did the shop make money" — is not the
+              household's, and no amount of category structure answers it when
+              both run through one wallet. The tag does, so it gets its own
+              door rather than a filter buried on a statement. */}
+          <Link
+            href="/reports/segment"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+          >
+            <Briefcase className="h-4 w-4" aria-hidden />
+            {t('segment.title', 'ব্যবসার লাভ-লোকসান')}
+          </Link>
+          <Link
+            href="/reports/statements"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+          >
+            <FileText className="h-4 w-4" aria-hidden />
+            {t('statements.title', 'আর্থিক বিবৃতি')}
+          </Link>
+        </div>
       </header>
 
       <RangeBar range={range} onChange={(next) => navigate(next, slicing)} today={today} />

@@ -221,9 +221,23 @@ export interface IncomeStatementFigures {
   expenses: CategoryNode[];
 }
 
+/** Which slice of the books a statement was drawn for. Null means all of them. */
+export interface StatementSegment {
+  tagId: string;
+  name: string;
+}
+
 export interface IncomeStatement extends IncomeStatementFigures {
   from: string;
   to: string;
+  /**
+   * The tag this statement was narrowed to, when it was narrowed to one.
+   *
+   * On the response rather than left to the caller, because a printed page has
+   * to say whose figures it carries. A profit-and-loss for a shop and one for a
+   * whole household look identical on paper and mean entirely different things.
+   */
+  segment: StatementSegment | null;
   /**
    * Cash basis, always, and said out loud.
    *
@@ -467,6 +481,7 @@ export class ReportsService {
     ctx: TenantContext,
     kind: 'INCOME' | 'EXPENSE',
     period: PeriodQuery,
+    tagId?: string,
   ): Promise<{ total: number; rows: ReturnType<typeof withShares> }> {
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
     const nominalId = kind === 'INCOME' ? system.incomeAccountId : system.expenseAccountId;
@@ -477,7 +492,15 @@ export class ReportsService {
       where: {
         workspaceId: ctx.workspaceId,
         accountId: nominalId,
-        transaction: { deletedAt: null, date },
+        transaction: {
+          deletedAt: null,
+          date,
+          /* One tag, and the whole segment. A shop run out of the household's
+             own wallet has no account of its own to sum — what makes it a
+             separate set of books is the label on each row, so that label is
+             what the filter is. */
+          ...(tagId ? { tags: { some: { tagId } } } : {}),
+        },
       },
       _sum: { amountMinor: true },
     });
@@ -515,8 +538,9 @@ export class ReportsService {
     ctx: TenantContext,
     kind: 'INCOME' | 'EXPENSE',
     period: PeriodQuery,
+    tagId?: string,
   ): Promise<{ total: number; nodes: CategoryNode[] }> {
-    const { rows, total } = await this.byCategory(ctx, kind, period);
+    const { rows, total } = await this.byCategory(ctx, kind, period, tagId);
     const cats = await this.prisma.category.findMany({
       where: { workspaceId: ctx.workspaceId, deletedAt: null },
       select: { id: true, parentId: true },
@@ -1559,16 +1583,24 @@ export class ReportsService {
     ctx: TenantContext,
     period: PeriodQuery,
     compareTo?: PeriodQuery,
+    tagId?: string,
   ): Promise<IncomeStatement> {
+    /* Read before anything is summed, and a miss is a 404 rather than an empty
+       statement. A tag that does not exist and a tag nothing was filed under
+       both produce zero rows, and a screen showing ৳0 profit cannot tell the
+       owner which of the two happened. */
+    const segment = tagId ? await this.requireTag(ctx.workspaceId, tagId, ctx.locale) : null;
+
     const [current, previous] = await Promise.all([
-      this.incomeStatementLines(ctx, period),
-      compareTo ? this.incomeStatementLines(ctx, compareTo) : Promise.resolve(null),
+      this.incomeStatementLines(ctx, period, tagId),
+      compareTo ? this.incomeStatementLines(ctx, compareTo, tagId) : Promise.resolve(null),
     ]);
 
     return {
       from: period.from,
       to: period.to,
       basis: BASIS,
+      segment,
       ...current,
       comparison: previous
         ? { from: compareTo?.from ?? '', to: compareTo?.to ?? '', ...previous }
@@ -1576,13 +1608,28 @@ export class ReportsService {
     };
   }
 
+  /** The tag a segment statement is for, or a 404 naming what was asked for. */
+  private async requireTag(
+    workspaceId: string,
+    tagId: string,
+    locale: Locale,
+  ): Promise<StatementSegment> {
+    const tag = await this.prisma.tag.findFirst({
+      where: { id: tagId, workspaceId, deletedAt: null },
+      select: { id: true, name: true, nameBn: true },
+    });
+    if (!tag) throw new NotFoundException('ট্যাগটি পাওয়া যায়নি');
+    return { tagId: tag.id, name: displayName(tag, locale) };
+  }
+
   private async incomeStatementLines(
     ctx: TenantContext,
     period: PeriodQuery,
+    tagId?: string,
   ): Promise<IncomeStatementFigures> {
     const [income, expense] = await Promise.all([
-      this.byParentCategory(ctx, 'INCOME', period),
-      this.byParentCategory(ctx, 'EXPENSE', period),
+      this.byParentCategory(ctx, 'INCOME', period, tagId),
+      this.byParentCategory(ctx, 'EXPENSE', period, tagId),
     ]);
 
     const incomeMinor = income.total;

@@ -164,6 +164,13 @@ export interface IncomeStatementDto extends IncomeStatementFiguresDto {
   from: string;
   to: string;
   basis: 'CASH';
+  /**
+   * The tag this statement was narrowed to, when it was narrowed to one.
+   *
+   * Printed on the page: a profit-and-loss for a shop and one for a whole
+   * household look identical on paper and mean entirely different things.
+   */
+  segment: { tagId: string; name: string } | null;
   comparison?: IncomeStatementFiguresDto & { from: string; to: string };
 }
 

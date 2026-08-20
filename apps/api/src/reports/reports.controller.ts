@@ -176,6 +176,13 @@ export class ReportsController {
    * period" flag: a reader comparing this quarter with the same quarter last
    * year and a reader comparing it with last quarter both have a real question,
    * and the server should not be guessing which.
+   *
+   * `tagId` narrows every figure to one slice of the books — the shop, the
+   * share trading, whatever the owner tagged it. A sole proprietorship run out
+   * of the household's own bKash has no account of its own to sum, so the label
+   * on each row is what separates its takings from the family's, and this is
+   * the parameter that reads that label. Absent, the statement is the whole
+   * household exactly as before.
    */
   @Get('income-statement')
   incomeStatement(
@@ -184,10 +191,11 @@ export class ReportsController {
     @Query('to') to?: string,
     @Query('compareFrom') compareFrom?: string,
     @Query('compareTo') compareTo?: string,
+    @Query('tagId') tagId?: string,
   ) {
     const comparison =
       compareFrom && compareTo ? this.period(user, compareFrom, compareTo) : undefined;
-    return this.reports.incomeStatement(user, this.period(user, from, to), comparison);
+    return this.reports.incomeStatement(user, this.period(user, from, to), comparison, tagId);
   }
 
   /**

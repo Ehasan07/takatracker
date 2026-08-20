@@ -1347,3 +1347,131 @@ describe('what was put away this month', () => {
     expect(res.body.savings).toEqual([]);
   });
 });
+
+/**
+ * A shop run out of the household's own wallet.
+ *
+ * The common shape here: a proprietor with no business bank account, whose
+ * takings and whose family's groceries pass through the same bKash. What makes
+ * them two sets of books is the label on each row — so the income statement can
+ * be drawn for one label and answer the only question the owner actually has,
+ * which is whether the shop made money.
+ */
+describe('a segment income statement', () => {
+  let ctx: TestContext;
+  let user: SignedUpUser;
+  let shopId: string;
+  let walletId: string;
+  let salaryId: string;
+  let foodId: string;
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await resetDatabase(ctx.prisma);
+    user = await signup(ctx);
+    await unlimit(ctx, user.workspaceId);
+
+    const post = (path: string, body: Record<string, unknown>) =>
+      ctx.http().post(path).set(auth(user)).send(body).expect(201);
+
+    walletId = (await post('/v1/accounts', { name: 'বিকাশ', type: 'MOBILE_WALLET' })).body.id;
+    shopId = (await post('/v1/tags', { name: 'দোকান', nameBn: 'দোকান' })).body.id;
+
+    const cats = await ctx.http().get('/v1/categories').set(auth(user)).expect(200);
+    const byName = (n: string) => cats.body.find((c: { nameBn: string }) => c.nameBn === n).id;
+    salaryId = byName('বেতন');
+    foodId = byName('খাবার ও বাজার');
+
+    /* The shop: ৳60,000 taken, ৳45,000 spent on stock. Profit ৳15,000. */
+    await post('/v1/transactions', {
+      date: day('04'),
+      type: 'INCOME',
+      amountMinor: 6_000_000,
+      accountId: walletId,
+      categoryId: salaryId,
+      tagIds: [shopId],
+    });
+    await post('/v1/transactions', {
+      date: day('05'),
+      type: 'EXPENSE',
+      amountMinor: 4_500_000,
+      accountId: walletId,
+      categoryId: foodId,
+      tagIds: [shopId],
+    });
+    /* The family, through the same wallet and carrying no tag at all. */
+    await post('/v1/transactions', {
+      date: day('06'),
+      type: 'INCOME',
+      amountMinor: 3_000_000,
+      accountId: walletId,
+      categoryId: salaryId,
+    });
+    await post('/v1/transactions', {
+      date: day('07'),
+      type: 'EXPENSE',
+      amountMinor: 1_000_000,
+      accountId: walletId,
+      categoryId: foodId,
+    });
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  const statement = (query = '') =>
+    ctx
+      .http()
+      .get(`/v1/reports/income-statement?from=${day('01')}&to=${day('28')}${query}`)
+      .set(auth(user));
+
+  it('answers whether the shop made money, out of a wallet it shares', async () => {
+    const res = await statement(`&tagId=${shopId}`).expect(200);
+
+    expect(res.body.incomeMinor).toBe(6_000_000);
+    expect(res.body.expenseMinor).toBe(4_500_000);
+    expect(res.body.surplusMinor).toBe(1_500_000);
+  });
+
+  it('says which slice of the books it drew, so a printed page can be read', async () => {
+    /* A profit-and-loss for a shop and one for a whole household look identical
+       on paper and mean entirely different things. */
+    const res = await statement(`&tagId=${shopId}`).expect(200);
+    expect(res.body.segment).toEqual({ tagId: shopId, name: 'দোকান' });
+
+    const whole = await statement().expect(200);
+    expect(whole.body.segment).toBeNull();
+  });
+
+  it('leaves the household statement whole', async () => {
+    /* The segment is a view, not a division: the shop's takings are still the
+       owner's income, and the statement that says so must not have changed. */
+    const res = await statement().expect(200);
+    expect(res.body.incomeMinor).toBe(9_000_000);
+    expect(res.body.expenseMinor).toBe(5_500_000);
+  });
+
+  it('narrows the comparative column to the same slice', async () => {
+    /* A comparison against the whole household would read as the shop
+       collapsing between the two periods. */
+    const res = await statement(
+      `&tagId=${shopId}&compareFrom=${day('01')}&compareTo=${day('04')}`,
+    ).expect(200);
+    expect(res.body.comparison.incomeMinor).toBe(6_000_000);
+    expect(res.body.comparison.expenseMinor).toBe(0);
+  });
+
+  it('refuses a tag that is not there rather than reporting zero profit', async () => {
+    /* A tag that does not exist and a tag nothing was filed under both sum to
+       nothing, and a screen showing ৳0 cannot tell the owner which happened. */
+    await statement('&tagId=cly0000000000000000000000').expect(404);
+
+    const stranger = await signup(ctx);
+    await ctx
+      .http()
+      .get(`/v1/reports/income-statement?tagId=${shopId}`)
+      .set(auth(stranger))
+      .expect(404);
+  });
+});

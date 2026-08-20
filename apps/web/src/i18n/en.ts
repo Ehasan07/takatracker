@@ -300,6 +300,21 @@ export const EN: Record<string, string> = {
     'The pot is everybody’s money, so your share is spending and the rest comes off what you owe the others.',
 
   // --- the four financial statements -----------------------------------------
+  'segment.title': 'Business profit or loss',
+  'segment.blurb':
+    'One tag’s income and expenses on their own — even with no separate business account',
+  'segment.which': 'Which business or venture',
+  'segment.choose': 'Choose a tag',
+  'segment.profit': 'Profit',
+  'segment.loss': 'Loss',
+  'segment.noTagsTitle': 'Create a tag first',
+  'segment.noTagsBody':
+    'Make a tag named after the business and put it on every income and expense that belongs to it. One wallet can carry both sets of books; the tag is what keeps them apart.',
+  'segment.goToTags': 'Go to tags',
+  'segment.nothing':
+    'No transaction in this period carries this tag. Try another date range, or tag the transactions in the ledger.',
+  'segment.basis':
+    'Cash basis — counted on the day the money moved. Sales and purchases on credit do not appear here.',
   'statements.title': 'Financial statements',
   'statements.blurb': 'Income, position, cash flow and how net worth moved',
   'statements.print': 'Print or save as PDF',
