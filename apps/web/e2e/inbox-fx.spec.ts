@@ -410,3 +410,47 @@ test.describe('a message that was a loan repayment', () => {
     await expect(page.getByText('৳7,000.00').first()).toBeVisible({ timeout: 15_000 });
   });
 });
+
+/**
+ * Finding a খাত among a hundred of them.
+ *
+ * The review screen had a bare `<select>`, which on a phone is the native
+ * wheel: a list you scroll blind, with no way to type. A workspace with a
+ * hundred categories and fifty drafts in the queue makes that the slowest
+ * control on the screen — and the entry sheet had a better one already built,
+ * search box and all, which this screen simply was not using.
+ */
+test.describe('choosing a খাত from a message', () => {
+  test('can be typed rather than scrolled, in Banglish too', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    await forward(
+      page,
+      'Your A/C **4521 is debited BDT 1,250.50 on 09-08-26. Avl Bal BDT 12,430.00',
+    );
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    /* `khabar` is the same word as খাবার in another script, and the matcher
+       transliterates — which is the whole reason a text box beats a wheel. */
+    await sheet.getByLabel('খাত খুঁজুন').fill('khabar');
+    await sheet
+      .getByRole('button', { name: /খাবার ও বাজার/ })
+      .first()
+      .click();
+
+    /* The two boxes below agree with what was picked, rather than competing. */
+    await expect(sheet.locator('#dr-category')).not.toHaveValue('');
+
+    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+    await sheet.getByRole('button', { name: 'খাতায় যোগ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await page.goto('/transactions');
+    await expect(page.getByTestId('ledger-list').getByText('খাবার ও বাজার').first()).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+});

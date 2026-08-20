@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, MoneyParseError, parseMoneyToMinor } from '@hishab/shared';
-import { CategoryOptions } from '@/components/category-options';
+import { CategoryPicker } from '@/components/category-picker';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
@@ -871,23 +871,34 @@ function ReviewForm({
         ) : null}
 
         {isTransfer || loanKind ? null : (
-          <EvidenceField label="খাত" htmlFor="dr-category">
-            <Select
-              id="dr-category"
-              value={form.categoryId}
-              onChange={set('categoryId')}
-              disabled={!pending || busy || wantedKind === null}
-            >
-              <option value="">{wantedKind === null ? 'আগে দিক বেছে নিন' : 'খাত বেছে নিন'}</option>
-              {/* Nothing at all until the direction says which half of the tree
-                  this is. The box is disabled in that state anyway; listing both
-                  kinds behind the disable would only mean the wrong one flashes
-                  past on the way to the right one. */}
-              {wantedKind === null ? null : (
-                <CategoryOptions categories={categories.data} kind={wantedKind} />
-              )}
-            </Select>
-          </EvidenceField>
+          <>
+            {/* Nothing at all until the direction says which half of the tree
+                this is. Listing both kinds behind a disable would only mean the
+                wrong one flashes past on the way to the right one. */}
+            {wantedKind === null ? (
+              <EvidenceField label="খাত" htmlFor="dr-category">
+                <Select id="dr-category" value="" disabled>
+                  <option value="">আগে দিক বেছে নিন</option>
+                </Select>
+              </EvidenceField>
+            ) : (
+              /* The same picker the নতুন লেনদেন sheet uses, search box and all.
+ 
+                 This screen had a bare `<select>`, and a workspace with a
+                 hundred categories turns that into the phone's native wheel —
+                 a list you scroll blind, with no way to type "bua" and land on
+                 বুয়া. Fifty drafts deep that is the slowest thing on the
+                 screen, and it was the one control here that had a better
+                 version already built. */
+              <CategoryPicker
+                categories={categories.data ?? []}
+                kind={wantedKind}
+                value={form.categoryId}
+                onChange={(categoryId) => setForm((f) => ({ ...f, categoryId }))}
+                idPrefix="dr"
+              />
+            )}
+          </>
         )}
 
         {stickyApplied && pending ? (
