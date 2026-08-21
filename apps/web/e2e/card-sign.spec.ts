@@ -165,3 +165,44 @@ test.describe('a card the books say is in credit', () => {
     await expect(row.getByText('অ্যাভেইলেবল')).toHaveCount(0);
   });
 });
+
+/**
+ * The accounts list on a phone.
+ *
+ * Four icon buttons at 44px each plus a figure left a card's name about 60px on
+ * a 390px screen, so the list read `S…`, `C..`, `UCBL-BD…` — four rows nobody
+ * can tell apart, on the screen whose whole job is telling accounts apart. And
+ * the card's own line truncated to `লিমিট ৳1,9…`, which answers nothing.
+ */
+test.describe('the accounts list on a phone', () => {
+  test('shows the whole name and all three card figures', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'w390', 'the squeeze is a phone-width problem');
+
+    await signup(page);
+
+    await page.goto('/accounts');
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('নাম', { exact: true })).toBeVisible();
+    await sheet.getByLabel('নাম', { exact: true }).fill('UCBL-BDT-Master Card-714043');
+    await sheet.getByLabel('ধরন').selectOption('CREDIT_CARD');
+    await sheet.getByLabel('কার্ডের লিমিট (৳)').fill('192000');
+    await sheet.getByLabel('পেমেন্টের শেষ তারিখ (মাসের কত তারিখ)').fill('15');
+    await sheet.getByLabel('প্রারম্ভিক জের (৳)').fill('-18014.20');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    const row = page.locator('li').filter({ hasText: 'UCBL-BDT-Master Card-714043' }).first();
+
+    /* The name in full, not clipped to a stub. */
+    const name = row.getByText('UCBL-BDT-Master Card-714043', { exact: true });
+    await expect(name).toBeVisible();
+    const nameBox = await name.boundingBox();
+    expect(nameBox!.width).toBeGreaterThan(180);
+
+    /* All three figures, in the dashboard's words. */
+    await expect(row.getByText('অ্যাভেইলেবল', { exact: false })).toBeVisible();
+    await expect(row.getByText('বকেয়া', { exact: false })).toBeVisible();
+    await expect(row.getByText('৳1,73,985.80', { exact: false })).toBeVisible();
+  });
+});

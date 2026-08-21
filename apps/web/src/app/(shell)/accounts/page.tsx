@@ -443,7 +443,15 @@ export default function AccountsPage() {
             ...rows.map((account) => (
               <li
                 key={account.id}
-                className="ledger-row border-rule flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
+                /* `flex-wrap`, and the name is `basis-full` below md.
+ 
+                   Four icon buttons at 44px each plus a figure left a card's
+                   name 60px on a 390px screen, so the list read `S…`, `C..`,
+                   `UCBL-BD…` — four rows of nothing anybody can tell apart. The
+                   name takes its own line on a phone and the icons and the
+                   figure share the one below it; from md up the row is what it
+                   always was. */
+                className="ledger-row border-rule flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-2 last:border-b-0"
               >
                 {/* The whole name block opens the editor: a fourth icon button
                   would leave nothing of the name at 320px. */}
@@ -454,7 +462,7 @@ export default function AccountsPage() {
                     haptic('tap');
                     setEditing(account);
                   }}
-                  className="press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
+                  className="press flex min-h-11 min-w-0 flex-1 basis-full items-center gap-2 rounded-md text-left md:basis-0"
                 >
                   <AccountAvatar account={account} />
                   <span className="min-w-0 flex-1">
@@ -478,16 +486,39 @@ export default function AccountsPage() {
                          `formatMinor` falls back to taka when it is not told,
                          which printed ৳ on a dollar card's limit — and on every
                          card in a workspace that does not keep its books in
-                         taka at all. */
-                      <span className="text-ink-muted block truncate text-xs">
+                         taka at all.
+ 
+                         The same three figures the dashboard prints, in the same
+                         words and the same order: the limit they are measured
+                         against, what is left, what is owed. Wrapping rather
+                         than truncating — on one line at 390px this read
+                         `লিমিট ৳1,9…` and answered nothing. */
+                      <span className="text-ink-muted block text-xs">
                         {t('account.limit', 'লিমিট')}{' '}
-                        {formatMinor(account.creditLimitMinor, { currency: account.currency })} ·{' '}
-                        {t('account.drawn', 'খরচ')}{' '}
-                        {formatMinor(account.drawnMinor, { currency: account.currency })} ·{' '}
-                        <span className="text-income">
-                          {t('account.undrawn', 'অ্যাভেইলেবল')}{' '}
-                          {formatMinor(account.undrawnMinor, { currency: account.currency })}
-                        </span>
+                        {formatMinor(account.creditLimitMinor, { currency: account.currency })}
+                        {account.balanceMinor > 0 ? (
+                          /* Nothing derived from a balance that cannot be right:
+                             `undrawnMinor` is `limit − drawn` and `drawn` is zero
+                             for a card the ledger thinks is in credit, so this
+                             line would report the whole limit as available. */
+                          <>
+                            {' · '}
+                            <span className="text-expense">
+                              {t('dashboard.cardCheck', 'খাতা মিলিয়ে নিন')}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            {' · '}
+                            {t('account.undrawn', 'অ্যাভেইলেবল')}{' '}
+                            {formatMinor(account.undrawnMinor, { currency: account.currency })}
+                            {' · '}
+                            <span className="text-expense">
+                              {t('dashboard.cardOwed', 'বকেয়া')}{' '}
+                              {formatMinor(account.drawnMinor, { currency: account.currency })}
+                            </span>
+                          </>
+                        )}
                       </span>
                     ) : null}
                   </span>
@@ -574,7 +605,7 @@ export default function AccountsPage() {
                  * screen whose totals are in taka is exactly the ambiguity that
                  * has to go. */}
                 {group === 'foreign' ? (
-                  <span className="amount-col shrink-0 pl-2 text-right text-sm">
+                  <span className="amount-col ml-auto shrink-0 pl-2 text-right text-sm">
                     <Money minor={account.balanceMinor} currency={account.currency} />
                     <span className="text-ink-muted ml-1 text-xs">
                       {account.currency.toUpperCase()}
@@ -583,7 +614,7 @@ export default function AccountsPage() {
                 ) : (
                   <Money
                     minor={account.balanceMinor}
-                    className="amount-col shrink-0 pl-2 text-sm"
+                    className="amount-col ml-auto shrink-0 pl-2 text-sm"
                   />
                 )}
               </li>
