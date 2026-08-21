@@ -30,6 +30,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { DraftStatus, IngestionChannel, TransactionSource } from '@prisma/client';
 import { AccountsService } from '../accounts/accounts.service';
+import { InsuranceService } from '../insurance/insurance.service';
 import { LoansService } from '../loans/loans.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { AuditService } from '../audit/audit.service';
@@ -296,6 +297,14 @@ export interface DraftView {
    * who was not told would eventually wonder why a sender went quiet.
    */
   learnedRule: boolean;
+  /**
+   * The insurer whose premium this accept just ticked, when it ticked one.
+   *
+   * Said back for the same reason the learned hint is: the app did something on
+   * the owner's behalf beyond writing the entry they asked for, and a schedule
+   * that quietly changes state is one nobody can audit.
+   */
+  claimedPremium: string | null;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -406,6 +415,9 @@ export class IngestionService {
     /* For ধার: a repayment arriving by SMS has to move the outstanding balance,
        not merely the money, and `LoansService` is where that already lives. */
     private readonly loans: LoansService,
+    /* For premiums: a receipt from an insurer settles an instalment, and the
+       schedule has to hear about it however the money was recorded. */
+    private readonly insurance: InsuranceService,
   ) {}
 
   // --- webhook authentication ------------------------------------------------
@@ -1336,6 +1348,22 @@ export class IngestionService {
      * tick; it cannot throw, and it declines whenever the match is not exact.
      * The destination is the account that was debited: `direction` is which way
      * the money went for the account the *message* was about. */
+    /* A premium receipt is an expense and books perfectly well as one. What it
+     * also is, and what booking it as an expense does not say, is that one
+     * instalment of a policy is settled — so the বীমা screen goes on asking for
+     * a premium paid three weeks ago unless somebody says so. This is the same
+     * tick `claimInstalment` does for a DPS, for policies, and it declines
+     * unless exactly one policy and exactly one due premium fit. */
+    const claimedPremium =
+      isTransfer || direction === 'IN'
+        ? null
+        : await this.insurance.claimPremium(ctx.workspaceId, {
+            policyHint: IngestionService.evidenceOf(draft.evidence).accountHint ?? null,
+            amountMinor,
+            date,
+            transactionId,
+          });
+
     if (isTransfer) {
       await this.savings.claimInstalment(ctx.workspaceId, {
         toAccountId: direction === 'IN' ? accountId : counterAccountId,
@@ -1387,7 +1415,11 @@ export class IngestionService {
       ? null
       : await this.learnAccountHint(ctx, draft, accountId).catch(() => null);
 
-    return { ...(await this.presentOne(ctx, draft.id)), learnedHint };
+    return {
+      ...(await this.presentOne(ctx, draft.id)),
+      learnedHint,
+      claimedPremium: claimedPremium?.insurer ?? null,
+    };
   }
 
   /**
@@ -2060,6 +2092,7 @@ export class IngestionService {
          each says so on its own response. */
       learnedHint: null,
       learnedRule: false,
+      claimedPremium: null,
       evidence: quoted ? IngestionService.fxEvidence(evidence, quoted) : evidence,
       parserName: row.message?.parserName ?? null,
       transactionId: row.transactionId,

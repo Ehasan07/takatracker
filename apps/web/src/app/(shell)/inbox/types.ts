@@ -70,6 +70,8 @@ export interface DraftView {
   learnedHint?: string | null;
   /** True when saying no taught the inbox to stop asking about this shape. */
   learnedRule?: boolean;
+  /** The insurer whose premium this accept ticked, when it ticked one. */
+  claimedPremium?: string | null;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;

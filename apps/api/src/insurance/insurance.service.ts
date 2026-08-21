@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { MONTHS_PER_PERIOD, clampDayToMonth } from '@hishab/core';
+import { MONTHS_PER_PERIOD, accountTailOf, clampDayToMonth } from '@hishab/core';
 import { fromLocalDateString, sumMinor, toLocalDateString } from '@hishab/shared';
 import type {
   InstalmentStatus,
@@ -221,6 +221,114 @@ export class InsuranceService {
     });
 
     return this.findOne(workspaceId, existing.id, timezone);
+  }
+
+  /**
+   * Tick the premium an accepted message just paid.
+   *
+   * ## Why the inbox cannot do this itself
+   *
+   * A premium receipt — `৳3,578.00 গৃহীত, পলিসি **9806, প্রিমিয়াম 91` — is an
+   * expense and books perfectly well as one. What it also is, and what booking
+   * it as an expense does not say, is that instalment 91 of that policy is
+   * settled. Leave that out and the বীমা screen goes on asking for a premium
+   * that was paid three weeks ago, so one event ends up with two records that
+   * disagree — the same failure a DPS instalment had before `claimInstalment`,
+   * and this is that function for policies.
+   *
+   * ## What it refuses to do
+   *
+   * Everything except the one unambiguous case. The policy has to be named by
+   * the message and match exactly one on file; the premium has to be `DUE`, and
+   * for exactly the amount received. Anything else — two policies ending 9806,
+   * two instalments of ৳3,578 outstanding, an amount that is off by a taka —
+   * and it does nothing at all, leaving the বীমা screen to be answered by hand.
+   *
+   * A wrong tick is worse than no tick: it marks a premium paid that was not,
+   * and the next thing anybody hears about it is a lapse notice.
+   *
+   * Never throws. The ledger entry is already written and correct, and a
+   * schedule failing to tick must not fail an accept.
+   */
+  async claimPremium(
+    workspaceId: string,
+    paid: { policyHint: string | null; amountMinor: number; date: Date; transactionId: string },
+  ): Promise<{ policyId: string; insurer: string; premiumId: string } | null> {
+    try {
+      const tail = accountTailOf(paid.policyHint);
+      if (!tail) return null;
+
+      const policies = await this.prisma.insurancePolicy.findMany({
+        where: { workspaceId, deletedAt: null, status: 'ACTIVE' },
+        select: { id: true, insurer: true, policyNumberMasked: true },
+      });
+      /* Matched on the policy's own number, and on nothing else. An insurer's
+         name is not an identity — somebody can hold three MetLife policies. */
+      /* Both sides through the same fold, so `**৯৮০৬` in a Bengali-numeral
+         message and `9806` typed on the policy are one number. */
+      const named = policies.filter(
+        (policy) =>
+          policy.policyNumberMasked !== null && accountTailOf(policy.policyNumberMasked) === tail,
+      );
+      if (named.length !== 1) return null;
+      const policy = named[0]!;
+
+      /* The oldest one still owed, never "the only one".
+       *
+       * A monthly policy has twelve identical instalments outstanding on the
+       * day it is written, so an exactly-one rule would decline every premium
+       * anybody ever pays. Insurers apply a payment to the earliest arrear and
+       * so does this.
+       *
+       * Bounded by the payment's own month, which is what stops it running
+       * ahead: a receipt dated August settles August or something before it,
+       * never September. Paying early is a real thing and it is not a thing
+       * this can recognise — the amount alone cannot say which future month was
+       * meant — so it declines and leaves the বীমা screen to be answered by
+       * hand. */
+      const endOfMonth = new Date(paid.date);
+      endOfMonth.setUTCMonth(endOfMonth.getUTCMonth() + 1, 1);
+
+      const due = await this.prisma.premiumPayment.findFirst({
+        where: {
+          workspaceId,
+          policyId: policy.id,
+          status: 'DUE',
+          transactionId: null,
+          amountMinor: BigInt(paid.amountMinor),
+          dueDate: { lt: endOfMonth },
+        },
+        orderBy: { dueDate: 'asc' },
+        select: { id: true },
+      });
+      if (!due) return null;
+
+      const claimed = await this.prisma.premiumPayment.updateMany({
+        /* Compare-and-set: two accepts racing must not both claim it. */
+        where: { id: due.id, workspaceId, status: 'DUE', transactionId: null },
+        data: { status: 'PAID', paidDate: paid.date, transactionId: paid.transactionId },
+      });
+      if (claimed.count !== 1) return null;
+
+      this.audit.emit({
+        workspaceId,
+        actorType: 'SYSTEM',
+        action: 'insurance.premium_paid',
+        entity: 'PremiumPayment',
+        entityId: due.id,
+        after: {
+          policyId: policy.id,
+          amountMinor: paid.amountMinor,
+          transactionId: paid.transactionId,
+          via: 'ingestion',
+        },
+      });
+
+      return { policyId: policy.id, insurer: policy.insurer, premiumId: due.id };
+    } catch {
+      /* Deliberately swallowed — see the note above. */
+      return null;
+    }
   }
 
   async payPremium(

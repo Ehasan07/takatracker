@@ -108,6 +108,13 @@ export default function InboxPage() {
       setActiveId(next?.id ?? null);
       const done =
         outcome === 'accepted' ? 'খাতায় যোগ হয়েছে' : 'বাতিল হয়েছে — খাতায় কিছু লেখা হয়নি';
+      /* Two things can have happened besides the entry, and both are the app
+         acting beyond what was asked. The premium tick comes first: a schedule
+         changing state on its own is the one somebody would otherwise find out
+         about from a lapse notice. */
+      const claimed = saved.claimedPremium
+        ? ` ${saved.claimedPremium}-এর কিস্তিটি পরিশোধিত হিসেবে টিক দেওয়া হলো।`
+        : '';
       /* The app has just changed a setting on an account. Said here rather than
          left to be discovered, because the next message from that bank will
          fill the picker in on its own and somebody who was not told will not
@@ -120,7 +127,9 @@ export default function InboxPage() {
                quiet. */
             ' এরকম বার্তা আর জিজ্ঞেস করা হবে না — সেটিংস থেকে নিয়মটি সরানো যায়।'
           : '';
-      setToast((next ? `${done} — পরেরটি দেখুন` : `${done}। আপাতত আর কোনো খসড়া নেই।`) + learned);
+      setToast(
+        (next ? `${done} — পরেরটি দেখুন` : `${done}। আপাতত আর কোনো খসড়া নেই।`) + claimed + learned,
+      );
     },
     [rows],
   );

@@ -1572,4 +1572,160 @@ describe('ingestion', () => {
       expect(theirs.body).toHaveLength(0);
     });
   });
+
+  /**
+   * A premium receipt from an insurer.
+   *
+   *     ৳3,578.00 গৃহীত, পলিসি **9806, 18/08/2026, প্রিমিয়াম 91
+   *
+   * It is an expense and books perfectly well as one. What it also is — and
+   * what booking it as an expense does not say — is that instalment 91 of that
+   * policy is settled. Left out, the বীমা screen goes on asking for a premium
+   * paid three weeks ago: one event, two records, disagreeing.
+   */
+  describe('a premium receipt', () => {
+    const RECEIPT = '৳৩৫৭৮.০০ গৃহীত পলিসি **৯৮০৬ ১৮/০৮/২০২৬ প্রিমিয়াম ৯১ um.pe/zvIZiU';
+
+    const policyFor = async (
+      ws: Ws,
+      masked: string,
+      premiumMinor: number,
+      startDate = '2026-08-18',
+    ) => {
+      const res = await ctx
+        .http()
+        .post('/v1/insurance')
+        .set(auth(ws.user))
+        .send({
+          insurer: 'MetLife',
+          policyNumberMasked: masked,
+          premiumMinor,
+          frequency: 'MONTHLY',
+          startDate,
+          termMonths: 12,
+          sumAssuredMinor: 100_000_00,
+        })
+        .expect(201);
+      return res.body as { id: string; premiums: { id: string; status: string }[] };
+    };
+
+    it('ticks the instalment the message paid', async () => {
+      const ws = await workspace();
+      const policy = await policyFor(ws, '**9806', 357_800);
+      const received = await post(ws, RECEIPT).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          amountMinor: 357_800,
+          /* The receipt says গৃহীত, which no parser reads as a direction — the
+             review sheet always sends one. */
+          direction: 'OUT',
+        })
+        .expect(200);
+      expect(applied.body.claimedPremium).toBe('MetLife');
+
+      const after = await ctx
+        .http()
+        .get(`/v1/insurance/${policy.id}`)
+        .set(auth(ws.user))
+        .expect(200);
+      const paid = after.body.premiums.filter((p: { status: string }) => p.status === 'PAID');
+      expect(paid).toHaveLength(1);
+      expect(paid[0].transactionId).toBe(applied.body.transactionId);
+    });
+
+    it('does nothing when two policies end in the same digits', async () => {
+      /* A wrong tick marks a premium paid that was not, and the next thing
+         anybody hears about it is a lapse notice. */
+      const ws = await workspace();
+      await policyFor(ws, '**9806', 357_800);
+      await policyFor(ws, '****9806', 357_800);
+
+      const received = await post(ws, RECEIPT).expect(200);
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          amountMinor: 357_800,
+          /* The receipt says গৃহীত, which no parser reads as a direction — the
+             review sheet always sends one. */
+          direction: 'OUT',
+        })
+        .expect(200);
+
+      expect(applied.body.claimedPremium).toBeNull();
+      expect(applied.body.transactionId).toBeTruthy();
+    });
+
+    it('does nothing when the amount is not the premium', async () => {
+      const ws = await workspace();
+      await policyFor(ws, '**9806', 357_800);
+      const received = await post(ws, RECEIPT).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          amountMinor: 357_900,
+          direction: 'OUT',
+        })
+        .expect(200);
+      expect(applied.body.claimedPremium).toBeNull();
+    });
+
+    it('will not run ahead of the month the receipt is dated', async () => {
+      /* Paying early is real and the amount alone cannot say which future month
+         was meant, so it declines rather than guessing at September. */
+      const ws = await workspace();
+      await policyFor(ws, '**9806', 357_800, '2026-09-18');
+      const received = await post(ws, RECEIPT).expect(200);
+
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          amountMinor: 357_800,
+          date: '2026-08-18',
+          direction: 'OUT',
+        })
+        .expect(200);
+      expect(applied.body.claimedPremium).toBeNull();
+    });
+
+    it('never ticks a policy in another workspace', async () => {
+      const stranger = await workspace();
+      await policyFor(stranger, '**9806', 357_800);
+
+      const ws = await workspace();
+      const received = await post(ws, RECEIPT).expect(200);
+      const applied = await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${received.body.draftId as string}/accept`)
+        .set(auth(ws.user))
+        .send({
+          accountId: ws.cashId,
+          categoryId: ws.categoryId,
+          amountMinor: 357_800,
+          /* The receipt says গৃহীত, which no parser reads as a direction — the
+             review sheet always sends one. */
+          direction: 'OUT',
+        })
+        .expect(200);
+      expect(applied.body.claimedPremium).toBeNull();
+    });
+  });
 });

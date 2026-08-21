@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
+import { InsuranceModule } from '../insurance/insurance.module';
 import { LoansModule } from '../loans/loans.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SavingsModule } from '../savings/savings.module';
@@ -37,8 +38,12 @@ import { IngestionService } from './ingestion.service';
      outstanding balance and close the loan when it reaches zero, and that is
      the loans module's job — the inbox only decides that this message is one.
      One-way, so no forwardRef. */
+  /* InsuranceModule for premiums: an accepted receipt settles an instalment of
+     a policy, and leaving that to be noticed by hand is how the বীমা screen
+     ends up asking for money that was paid weeks ago. One-way, like savings. */
   imports: [
     AccountsModule,
+    InsuranceModule,
     LoansModule,
     NotificationsModule,
     SavingsModule,
