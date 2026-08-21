@@ -124,6 +124,52 @@ function splitByCurrency(
  * amounts keep their own income/expense colours, which is what carries the
  * meaning for a reader who cannot separate red from green.
  */
+/**
+ * A credit card's balance, with the word that says which way it points.
+ *
+ * ## Why the word and not just the sign
+ *
+ * A card is a liability, so this ledger holds it negative when money is owed —
+ * correct, and unreadable at a glance. The owner looked at `+৳1,66,867.64` in
+ * green on four cards and asked whether it meant due or available, which is
+ * exactly the question a minus sign in front of a number does not answer for
+ * anybody who is not an accountant. It is also the question worth getting right:
+ * a card is the one account where the two readings are opposites.
+ *
+ * So the sign is dropped and the word carries the direction — বকেয়া when it is
+ * owed, জমা when the card is genuinely in credit — with the colour behind it
+ * rather than instead of it. Zero says nothing, because nothing is the answer.
+ *
+ * ## What it is not
+ *
+ * Not a conversion, and not a correction. The figure is whatever the books hold;
+ * if that figure is wrong — and the imported card history made several of them
+ * wrong — this makes the wrongness legible rather than hiding it. A card
+ * reading জমা ৳23 lakh against a ৳4 lakh limit is now obviously a thing to go
+ * and fix, which it was not when it read `+৳23,15,603.43`.
+ */
+function CardAmount({ minor, className = '' }: { minor: number; className?: string }) {
+  const owed = minor < 0;
+  const word = owed
+    ? t('dashboard.cardOwed', 'বকেয়া')
+    : minor > 0
+      ? t('dashboard.cardCredit', 'জমা')
+      : '';
+  return (
+    <span className={`flex shrink-0 items-baseline gap-1.5 ${className}`}>
+      {word ? (
+        <span className={`text-xs ${owed ? 'text-expense' : 'text-income'}`}>{word}</span>
+      ) : null}
+      {/* The magnitude: the word above already says which way it points, and a
+          minus beside বকেয়া reads as a double negative. */}
+      <Money
+        minor={Math.abs(minor)}
+        className={`text-sm ${owed ? 'text-expense' : minor > 0 ? 'text-income' : ''}`}
+      />
+    </span>
+  );
+}
+
 function MonthBars({
   incomeMinor,
   expenseMinor,
@@ -574,7 +620,7 @@ export default function DashboardPage() {
                           <span>
                             {t('dashboard.ofWhichCards', 'এর মধ্যে ক্রেডিট কার্ড')} ({cards.length})
                           </span>
-                          <Money minor={cardTotal} signed colored className="shrink-0" />
+                          <CardAmount minor={cardTotal} className="text-xs" />
                         </li>,
                       ]
                     : []),
@@ -594,12 +640,16 @@ export default function DashboardPage() {
                         }`}
                       />
                       <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
-                      <Money
-                        minor={account.balanceMinor}
-                        signed
-                        colored
-                        className="shrink-0 text-sm"
-                      />
+                      {account.type === 'CREDIT_CARD' ? (
+                        <CardAmount minor={account.balanceMinor} />
+                      ) : (
+                        <Money
+                          minor={account.balanceMinor}
+                          signed
+                          colored
+                          className="shrink-0 text-sm"
+                        />
+                      )}
                     </li>
                   )),
                 ];

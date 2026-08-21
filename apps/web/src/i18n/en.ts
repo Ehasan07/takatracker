@@ -153,6 +153,8 @@ export const EN: Record<string, string> = {
   'dashboard.group.liquid': 'Cash & bank',
   'dashboard.group.asset': 'Assets',
   'dashboard.group.liability': 'Liabilities',
+  'dashboard.cardOwed': 'Owed',
+  'dashboard.cardCredit': 'In credit',
   'dashboard.ofWhichCards': 'of which credit cards',
   /* IAS 1.60: current and non-current apart, so a reader can tell what turns
      into cash soon from what does not. */
