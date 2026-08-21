@@ -952,6 +952,16 @@ export const EN: Record<string, string> = {
   'account.muteReminder': 'Mute this month’s reminder',
   'account.reconcile': 'Reconcile',
   'account.reconcileTitle': 'Reconcile the balance',
+  'account.cardLedgerNow': 'The books say',
+  'account.cardWhichFigure': 'Which figure are you typing?',
+  'account.cardModeOwed': 'What is owed now',
+  'account.cardModeAvailable': 'The balance in the SMS',
+  'account.cardAvailableHint':
+    'On many bank card alerts “A/C balance” is the room left under the limit, not what is owed. It will be subtracted from the limit to get what is owed.',
+  'account.cardAvailableLabel': 'Balance as the message states it',
+  'account.cardOwedLabel': 'What is owed now',
+  'account.cardNoLimit':
+    'This card has no limit on file — edit the card and set it, or type what is owed instead.',
   'account.realBalance': 'Actual balance',
   'account.alreadyMatched': 'It already matched.',
   'account.adjusted': 'The difference has been added as an adjustment.',

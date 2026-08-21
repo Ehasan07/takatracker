@@ -1629,11 +1629,48 @@ function ReconcileSheet({
   const { currency, currencyInfo } = useWorkspaceSettings();
   const [actual, setActual] = React.useState('');
   const [result, setResult] = React.useState<string | null>(null);
+  /**
+   * What the number in the box means, for a credit card.
+   *
+   * `owed` is what the statement says is outstanding. `available` is what the
+   * bank's SMS calls the balance — and on a card that is the room left under
+   * the limit, not money. Reading one as the other is a whole limit's worth of
+   * error in the books, and it is not hypothetical: it put ৳3,00,000 on the
+   * wrong side of one of the owner's cards, twice, once through the Wallet
+   * import and once through this very screen.
+   */
+  const [mode, setMode] = React.useState<'owed' | 'available'>('owed');
+
+  const isCard = account?.type === 'CREDIT_CARD';
+  const limitMinor = account?.creditLimitMinor ?? 0;
 
   React.useEffect(() => {
     setActual('');
     setResult(null);
+    setMode('owed');
   }, [account]);
+
+  /* What was typed, in minor units, or null while it is not a number yet. */
+  const typedMinor = React.useMemo(() => {
+    const text = actual.trim();
+    if (!text) return null;
+    try {
+      return parseMoneyToMinor(text, currency);
+    } catch {
+      return null;
+    }
+  }, [actual, currency]);
+
+  /**
+   * The figure the ledger has to end at.
+   *
+   * A card is credit-normal: what is owed is negative. So an amount typed as
+   * বকেয়া flips its sign, and one typed as the SMS's balance is turned into
+   * what is owed first — limit less the room left — and then flipped.
+   */
+  const owedMinor =
+    typedMinor === null ? null : mode === 'available' ? limitMinor - typedMinor : typedMinor;
+  const targetMinor = typedMinor === null ? null : isCard ? -(owedMinor ?? 0) : typedMinor;
 
   const save = useMutation({
     mutationFn: () =>
@@ -1641,7 +1678,7 @@ function ReconcileSheet({
         method: 'POST',
         body: {
           date: toLocalDateString(new Date()),
-          actualBalanceMinor: parseMoneyToMinor(actual, currency),
+          actualBalanceMinor: targetMinor ?? parseMoneyToMinor(actual, currency),
         },
       }),
     onSuccess: (data) => {
@@ -1668,12 +1705,79 @@ function ReconcileSheet({
           save.mutate();
         }}
       >
-        <p className="text-ink-muted text-sm">
-          খাতা অনুযায়ী এখন <Money minor={account?.balanceMinor ?? 0} className="inline" />। আসল
-          ব্যালেন্স লিখুন — পার্থক্যটি সমন্বয় হিসেবে যোগ হবে।
-        </p>
+        {isCard ? (
+          <p className="text-ink-muted text-sm">
+            {t('account.cardLedgerNow', 'খাতা অনুযায়ী এখন')}{' '}
+            <span className={(account?.balanceMinor ?? 0) < 0 ? 'text-expense' : 'text-income'}>
+              {(account?.balanceMinor ?? 0) < 0
+                ? t('dashboard.cardOwed', 'বকেয়া')
+                : t('dashboard.cardCredit', 'জমা')}{' '}
+              <Money minor={Math.abs(account?.balanceMinor ?? 0)} className="inline" />
+            </span>
+            ।
+          </p>
+        ) : (
+          <p className="text-ink-muted text-sm">
+            খাতা অনুযায়ী এখন <Money minor={account?.balanceMinor ?? 0} className="inline" />। আসল
+            ব্যালেন্স লিখুন — পার্থক্যটি সমন্বয় হিসেবে যোগ হবে।
+          </p>
+        )}
+
+        {/* Which of the two numbers a card can quote is being typed.
+ 
+            A card statement says what is owed; a card SMS says "A/C balance"
+            and means the room left under the limit. They are not the same
+            quantity and they are not even the same sign — mistaking one for the
+            other puts a whole credit limit on the wrong side of the books, and
+            that is exactly what happened here twice. So the screen asks rather
+            than assuming, and shows its arithmetic. */}
+        {isCard ? (
+          <div className="flex flex-col gap-2">
+            <span className="text-ink-muted text-xs font-medium">
+              {t('account.cardWhichFigure', 'কোন অঙ্কটা লিখছেন?')}
+            </span>
+            <div role="tablist" className="bg-greenbar grid grid-cols-2 gap-1 rounded-lg p-1">
+              {(
+                [
+                  ['owed', t('account.cardModeOwed', 'এখন কত বকেয়া')],
+                  ['available', t('account.cardModeAvailable', 'SMS-এর balance')],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === key}
+                  onClick={() => setMode(key)}
+                  className={
+                    mode === key
+                      ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
+                      : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm'
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {mode === 'available' ? (
+              <p className="text-ink-muted text-xs">
+                {t(
+                  'account.cardAvailableHint',
+                  'অনেক ব্যাংকের কার্ড-বার্তায় “A/C balance” মানে বাকি লিমিট — বকেয়া নয়। লিমিট থেকে বাদ দিয়ে বকেয়া বের করা হবে।',
+                )}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <Field
-          label={`${t('account.realBalance', 'আসল ব্যালেন্স')} (${currencyInfo.symbol})`}
+          label={`${
+            isCard
+              ? mode === 'available'
+                ? t('account.cardAvailableLabel', 'বার্তায় লেখা balance')
+                : t('account.cardOwedLabel', 'এখন কত বকেয়া')
+              : t('account.realBalance', 'আসল ব্যালেন্স')
+          } (${currencyInfo.symbol})`}
           htmlFor="rec-actual"
         >
           <Input
@@ -1685,8 +1789,35 @@ function ReconcileSheet({
             className="money text-xl"
           />
         </Field>
+
+        {/* The arithmetic, on screen, before it is written. Somebody who can
+            see ৩,০০,০০০ − ১,৬৬,৮৬৭.৬৪ = ১,৩৩,১৩২.৩৬ can also see when the
+            limit on file is the wrong one. */}
+        {isCard && mode === 'available' ? (
+          limitMinor > 0 ? (
+            <p className="text-ink-muted text-sm">
+              {t('account.limit', 'লিমিট')} <Money minor={limitMinor} className="inline" /> −{' '}
+              <Money minor={typedMinor ?? 0} className="inline" /> ={' '}
+              <span className="text-expense">
+                {t('dashboard.cardOwed', 'বকেয়া')}{' '}
+                <Money minor={Math.abs(owedMinor ?? 0)} className="inline" />
+              </span>
+            </p>
+          ) : (
+            <p className="text-expense text-sm">
+              {t(
+                'account.cardNoLimit',
+                'এই কার্ডের লিমিট লেখা নেই — আগে সম্পাদনা করে লিমিটটি বসান, নয়তো “এখন কত বকেয়া” লিখুন।',
+              )}
+            </p>
+          )
+        ) : null}
         {result ? <p className="text-income text-sm">{result}</p> : null}
-        <Button type="submit" size="block" disabled={save.isPending}>
+        <Button
+          type="submit"
+          size="block"
+          disabled={save.isPending || (isCard && mode === 'available' && limitMinor <= 0)}
+        >
           মেলান
         </Button>
       </form>

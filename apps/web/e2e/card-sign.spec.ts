@@ -72,3 +72,54 @@ test.describe('a credit card on the dashboard', () => {
     await expect(row.getByText('বকেয়া')).toHaveCount(0);
   });
 });
+
+/**
+ * Putting a card's real figure into the books.
+ *
+ * A card statement says what is owed; a card SMS says "A/C balance" and means
+ * the room left under the limit. They are different quantities and not even the
+ * same sign, and reading one as the other puts a whole credit limit on the
+ * wrong side of the ledger. It happened to the owner twice — once through the
+ * Wallet import, and once through this very screen, which asked for "আসল
+ * ব্যালেন্স" and was handed ৳1,66,867.64 off an SMS for a card that was
+ * ৳1,33,132.36 in debt.
+ */
+test.describe('reconciling a credit card', () => {
+  test('turns the balance an SMS quotes into what is owed', async ({ page }) => {
+    await signup(page);
+
+    await page.goto('/accounts');
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('নাম', { exact: true })).toBeVisible();
+    await sheet.getByLabel('নাম', { exact: true }).fill('শিমান্ত ভিসা');
+    await sheet.getByLabel('ধরন').selectOption('CREDIT_CARD');
+    await sheet.getByLabel('কার্ডের লিমিট (৳)').fill('300000');
+    await sheet.getByLabel('প্রারম্ভিক জের (৳)').fill('0');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'শিমান্ত ভিসা — মেলান' }).click();
+    const rec = page.getByRole('dialog');
+    await expect(rec.getByRole('tab', { name: 'SMS-এর balance' })).toBeVisible();
+
+    await rec.getByRole('tab', { name: 'SMS-এর balance' }).click();
+    await rec.getByLabel(/বার্তায় লেখা balance/).fill('166867.64');
+
+    /* The arithmetic on screen, before anything is written. */
+    await expect(rec.getByText('৳1,33,132.36')).toBeVisible();
+
+    await rec.getByRole('button', { name: 'মেলান', exact: true }).click();
+    await expect(rec.getByText('সমন্বয়', { exact: false })).toBeVisible({ timeout: 15_000 });
+    await rec
+      .getByRole('button', { name: 'বন্ধ করুন' })
+      .click()
+      .catch(() => undefined);
+
+    /* And the card is in debt by that much, not in credit by the other number. */
+    await page.goto('/');
+    const row = page.locator('li').filter({ hasText: 'শিমান্ত ভিসা' }).first();
+    await expect(row.getByText('বকেয়া')).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText('৳1,33,132.36')).toBeVisible();
+  });
+});
