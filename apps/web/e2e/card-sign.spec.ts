@@ -122,10 +122,46 @@ test.describe('reconciling a credit card', () => {
     await expect(row.getByText('বকেয়া')).toBeVisible({ timeout: 15_000 });
     await expect(row.getByText('৳1,33,132.36')).toBeVisible();
 
-    /* Both questions a card raises, answered on the one row: what is left to
-       spend, and — underneath, in the weight the liability subtotal is made of
-       — what is owed. */
+    /* All three figures a card has, in the order a cardholder reads them: the
+       limit it is measured against, what is left to spend, and what is owed. */
+    await expect(row.getByText('লিমিট')).toBeVisible();
+    await expect(row.getByText('৳3,00,000.00')).toBeVisible();
     await expect(row.getByText('বাকি')).toBeVisible();
     await expect(row.getByText('৳1,66,867.64')).toBeVisible();
+  });
+});
+
+/**
+ * A card the books say is in credit.
+ *
+ * `undrawnMinor` is `limit − drawn`, and `drawn` is zero for a card the ledger
+ * thinks holds money — so a wrongly-positive balance reports the *whole limit*
+ * as available. That is a true statement about a false balance: the owner's
+ * Shimanto card read "বাকি ৳3,00,000.00" while ৳1,33,132.36 was outstanding.
+ * Printing it as though it were an answer is worse than saying nothing.
+ */
+test.describe('a card the books say is in credit', () => {
+  test('does not report the whole limit as available', async ({ page }) => {
+    await signup(page);
+
+    await page.goto('/accounts');
+    await page.getByRole('main').getByRole('button', { name: 'নতুন', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('নাম', { exact: true })).toBeVisible();
+    await sheet.getByLabel('নাম', { exact: true }).fill('উল্টো কার্ড');
+    await sheet.getByLabel('ধরন').selectOption('CREDIT_CARD');
+    await sheet.getByLabel('কার্ডের লিমিট (৳)').fill('300000');
+    await sheet.getByLabel('প্রারম্ভিক জের (৳)').fill('166867.64');
+    await sheet.getByRole('button', { name: 'সংরক্ষণ করুন', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+
+    await page.goto('/');
+    const row = page.locator('li').filter({ hasText: 'উল্টো কার্ড' }).first();
+    await expect(row.getByText('লিমিট')).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByText('জমা')).toBeVisible();
+    /* It asks to be checked instead of deriving two more figures from a number
+       that cannot be right. */
+    await expect(row.getByText('খাতা মিলিয়ে নিন')).toBeVisible();
+    await expect(row.getByText('বাকি')).toHaveCount(0);
   });
 });

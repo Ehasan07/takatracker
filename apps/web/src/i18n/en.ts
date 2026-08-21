@@ -154,6 +154,7 @@ export const EN: Record<string, string> = {
   'dashboard.group.asset': 'Assets',
   'dashboard.group.liability': 'Liabilities',
   'dashboard.cardAvailable': 'Left',
+  'dashboard.cardCheck': 'Check this card',
   'dashboard.cardOwed': 'Owed',
   'dashboard.cardCredit': 'In credit',
   'dashboard.ofWhichCards': 'of which credit cards',
