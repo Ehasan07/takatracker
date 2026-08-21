@@ -1927,6 +1927,13 @@ export const EN: Record<string, string> = {
   'entry.repayInHint': 'The money comes into your account and what you are owed goes down.',
   'entry.repayOutHint': 'The money leaves your account and what you owe goes down.',
   'entry.repayAccount': 'Into or out of which account',
+  'inbox.suppressed':
+    'You rejected a message like this before, so no draft was raised — the rule can be removed in settings',
+  'rules.title': 'Messages that will not be asked about again',
+  'rules.blurb':
+    'Messages you called “not mine” or “read wrongly” no longer raise a draft when one like them arrives. Nothing is deleted — they stay on the messages tab.',
+  'rules.kept': '{n} kept out',
+  'rules.remove': 'Remove this rule',
   'inbox.tags': 'Tags — who for, or what venture',
   'inbox.whichLoan': 'Which loan is being repaid',
   'inbox.loanOwedToMe': 'owed to me',

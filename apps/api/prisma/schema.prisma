@@ -420,6 +420,7 @@ model Workspace {
   importBatches ImportBatch[]
   attachments   Attachment[]
   ingestionMessages IngestionMessage[]
+  ingestionRules    IngestionRule[]
   transactionDrafts TransactionDraft[]
   mailMessages      MailMessage[]
   tags              Tag[]
@@ -1495,6 +1496,12 @@ model IngestionMessage {
   /// Whatever the parser produced, kept for debugging a bad parse.
   parsed      Json?
   parserName  String?
+  /// Set when an `IngestionRule` kept this message out of the review queue.
+  ///
+  /// The message is still stored — it always is — and this is what lets the
+  /// screen say *why* it raised no decision, rather than leaving it looking
+  /// like one more thing the parser could not read.
+  suppressedByRuleId String?
   createdAt   DateTime         @default(now())
 
   workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1502,6 +1509,42 @@ model IngestionMessage {
 
   @@unique([workspaceId, bodyHash])
   @@index([workspaceId, receivedAt(sort: Desc)])
+}
+
+/// A shape of message the owner has already said no to.
+///
+/// A phone forwards the same handful of shapes forever — twenty-four one-time
+/// codes from one shortcode, an alert for somebody else's card on a shared
+/// number. Every one raises a draft, the owner rejects it, and the next arrives
+/// identical but for a figure. Rejecting the same shape a hundred times is not
+/// review; it is the app failing to listen.
+///
+/// So a rejection for "not mine" or "read wrongly" is remembered against the
+/// *shape* of the message — see `messageShape` in @hishab/core — and the next
+/// message of that shape from that sender is stored without raising a decision.
+/// Never deleted, never hidden: the message is kept and the messages screen says
+/// why no draft was made, and the rule can be removed.
+model IngestionRule {
+  id          String   @id @default(cuid())
+  workspaceId String
+  /// The sender the shape was learned from. A shape is only suppressed for it.
+  sender      String
+  /// `messageShape(body)`: the sentence with its numbers folded to `#`.
+  shape       String
+  /// Which reject reason taught it — NOT_MINE or BAD_PARSE.
+  reason      String
+  /// One line of the message it was learned from, for a screen to show.
+  sample      String
+  /// How many messages it has kept out of the queue since.
+  matchCount  Int      @default(0)
+  lastMatchAt DateTime?
+  createdAt   DateTime @default(now())
+  createdByUserId String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sender, shape])
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 /// A proposed transaction awaiting a human.

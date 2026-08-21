@@ -14,6 +14,7 @@ export * from './tax.js';
 export * from './parsers/ucbl.js';
 export * from './account-match.js';
 export * from './business.js';
+export * from './message-shape.js';
 export * from './migration.js';
 export * from './renewals.js';
 export * from './migration-detail.js';

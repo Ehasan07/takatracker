@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -427,6 +428,28 @@ export class IngestionController {
     @Query(zodPipe(listMessagesQuerySchema)) query: ListMessagesQuery,
   ) {
     return this.ingestion.listMessages(user, query);
+  }
+
+  /**
+   * `GET /v1/ingestion/rules` — the shapes this inbox has been taught to stop
+   * asking about.
+   *
+   * A rejection for "not mine" or "read wrongly" is remembered against the
+   * shape of the message, so the next one like it is stored without raising a
+   * decision. That is a thing done on the owner's behalf, so it has a list, it
+   * says how many messages each rule has kept out, and every one of them can be
+   * removed.
+   */
+  @Get('rules')
+  rules(@CurrentUser() user: AuthUser) {
+    return this.ingestion.listRules(user);
+  }
+
+  /** `DELETE /v1/ingestion/rules/:id` — ask about that shape again. */
+  @Delete('rules/:id')
+  @HttpCode(204)
+  removeRule(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.ingestion.removeRule(user, id);
   }
 
   @Get('webhook-config')

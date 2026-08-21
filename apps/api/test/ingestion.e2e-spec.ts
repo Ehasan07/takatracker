@@ -1429,4 +1429,147 @@ describe('ingestion', () => {
         .expect(400);
     });
   });
+
+  /**
+   * Saying no once, about a shape.
+   *
+   * A phone forwards the same handful of shapes forever — twenty-four one-time
+   * codes from one shortcode, an alert for somebody else's card on a shared
+   * number. Every one raised a draft, the owner rejected it, and the next
+   * arrived identical but for a figure. Rejecting the same shape a hundred
+   * times is not review; it is the app failing to listen.
+   */
+  describe('learning from a rejection', () => {
+    const otp = (code: string) =>
+      `${code} is your One Time Password (OTP) for SIVR service. Validity 120 seconds.`;
+
+    it('stops raising the same shape once it has been called not mine', async () => {
+      const ws = await workspace();
+      const first = await post(ws, otp('7940')).expect(200);
+      expect(first.body.draftId).toBeTruthy();
+
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${first.body.draftId as string}/reject`)
+        .set(auth(ws.user))
+        .send({ reason: 'NOT_MINE' })
+        .expect(200);
+
+      /* A different code, the same sentence. */
+      const next = await post(ws, otp('1123')).expect(200);
+      expect(next.body.draftId).toBeNull();
+
+      /* Stored, not swallowed — and the screen can say why it raised nothing. */
+      const messages = await ctx
+        .http()
+        .get('/v1/ingestion/messages')
+        .set(auth(ws.user))
+        .expect(200);
+      const row = messages.body.items.find((m: { id: string }) => m.id === next.body.id);
+      expect(row.suppressed).toBe(true);
+      expect(row.body).toContain('1123');
+    });
+
+    it('learns nothing from a duplicate or an unexplained no', async () => {
+      /* DUPLICATE is a fact about one entry already in the books, and OTHER is
+         whatever the person had no word for. Suppressing a shape on either
+         would silence messages nobody asked to silence. */
+      const ws = await workspace();
+      for (const reason of ['DUPLICATE', 'OTHER']) {
+        const received = await post(ws, `Paid BDT 500.00 to SHOP ${reason} ref 8891`).expect(200);
+        await ctx
+          .http()
+          .post(`/v1/ingestion/drafts/${received.body.draftId as string}/reject`)
+          .set(auth(ws.user))
+          .send({ reason })
+          .expect(200);
+      }
+
+      const rules = await ctx.http().get('/v1/ingestion/rules').set(auth(ws.user)).expect(200);
+      expect(rules.body).toHaveLength(0);
+    });
+
+    it('keeps one sender’s no from silencing another’s', async () => {
+      /* "Your OTP is #" is a sentence half the country's shortcodes send. */
+      const ws = await workspace();
+      const mine = await post(ws, otp('7940')).expect(200);
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${mine.body.draftId as string}/reject`)
+        .set(auth(ws.user))
+        .send({ reason: 'BAD_PARSE' })
+        .expect(200);
+
+      const other = await ctx
+        .http()
+        .post('/v1/ingestion/webhook')
+        .set(ws.workspaceHeader, ws.user.workspaceId)
+        .set(ws.secretHeader, ws.secret)
+        .send({ channel: 'SMS', sender: 'OTHER-BANK', body: otp('1123') })
+        .expect(200);
+      expect(other.body.draftId).toBeTruthy();
+    });
+
+    it('lists what it has learned, with what each rule has kept out', async () => {
+      const ws = await workspace();
+      const first = await post(ws, otp('7940')).expect(200);
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${first.body.draftId as string}/reject`)
+        .set(auth(ws.user))
+        .send({ reason: 'NOT_MINE' })
+        .expect(200);
+      await post(ws, otp('1123')).expect(200);
+      await post(ws, otp('4457')).expect(200);
+
+      const rules = await ctx.http().get('/v1/ingestion/rules').set(auth(ws.user)).expect(200);
+      expect(rules.body).toHaveLength(1);
+      expect(rules.body[0].sender).toBe('BRAC-BANK');
+      expect(rules.body[0].reason).toBe('NOT_MINE');
+      expect(rules.body[0].matchCount).toBe(2);
+      /* A rule is a fold of a sentence and unreadable on its own. */
+      expect(rules.body[0].sample).toContain('One Time Password');
+    });
+
+    it('asks again once the rule is removed', async () => {
+      const ws = await workspace();
+      const first = await post(ws, otp('7940')).expect(200);
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${first.body.draftId as string}/reject`)
+        .set(auth(ws.user))
+        .send({ reason: 'NOT_MINE' })
+        .expect(200);
+      expect((await post(ws, otp('1123')).expect(200)).body.draftId).toBeNull();
+
+      const rules = await ctx.http().get('/v1/ingestion/rules').set(auth(ws.user)).expect(200);
+      await ctx
+        .http()
+        .delete(`/v1/ingestion/rules/${rules.body[0].id as string}`)
+        .set(auth(ws.user))
+        .expect(204);
+
+      expect((await post(ws, otp('4457')).expect(200)).body.draftId).toBeTruthy();
+    });
+
+    it('never lets one workspace’s rule reach another', async () => {
+      const mine = await workspace();
+      const stranger = await workspace();
+      const first = await post(mine, otp('7940')).expect(200);
+      await ctx
+        .http()
+        .post(`/v1/ingestion/drafts/${first.body.draftId as string}/reject`)
+        .set(auth(mine.user))
+        .send({ reason: 'NOT_MINE' })
+        .expect(200);
+
+      expect((await post(stranger, otp('1123')).expect(200)).body.draftId).toBeTruthy();
+      const theirs = await ctx
+        .http()
+        .get('/v1/ingestion/rules')
+        .set(auth(stranger.user))
+        .expect(200);
+      expect(theirs.body).toHaveLength(0);
+    });
+  });
 });

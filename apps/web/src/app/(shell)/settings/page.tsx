@@ -10,6 +10,7 @@ import { resetSessionForSignOut } from '@/lib/session-reset';
 import { UsageMeter } from '@/components/usage-meter';
 import { AiSettings } from '@/components/ai-settings';
 import { BusinessSettings } from '@/components/business-settings';
+import { InboxRules } from '@/components/inbox-rules';
 import { CloseAccount } from '@/components/close-account';
 import { SessionsList } from '@/components/sessions-list';
 import { IngestionSettings } from '@/components/ingestion-settings';
@@ -165,6 +166,8 @@ export default function SettingsPage() {
       <TelegramSettings />
 
       <IngestionSettings />
+
+      <InboxRules />
 
       <BusinessSettings />
 

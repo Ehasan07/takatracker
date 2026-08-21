@@ -35,6 +35,11 @@ export const AUDIT_ACTIONS = [
   'account.match_hint_learned',
   /* A personal business was set up — the tag and the category tree that make
      its takings separable from the household's. */
+  /* A shape of message the owner rejected as not theirs or misread, and which
+     the inbox will stop raising decisions about. Recorded because it changes
+     what the queue shows without anybody opening a settings screen. */
+  'ingestion.rule_learned',
+  'ingestion.rule_removed',
   'business.setup',
   /* The month-end stock count, and the cost of goods sold it produced. Kept
      because it is the one entry a shop's profit turns on and it was written by

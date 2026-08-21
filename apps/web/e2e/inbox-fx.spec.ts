@@ -552,3 +552,61 @@ test.describe('a message with no direction in it', () => {
     await expect(sheet).toBeHidden({ timeout: 15_000 });
   });
 });
+
+/**
+ * Saying no once, about a shape.
+ *
+ * A phone forwards the same handful of shapes forever — twenty-four one-time
+ * codes from one shortcode, an alert for somebody else's card on a shared
+ * number. Every one raised a draft, the owner rejected it, and the next arrived
+ * identical but for a figure. Rejecting the same shape a hundred times is not
+ * review; it is the app failing to listen.
+ */
+test.describe('a shape that has been rejected once', () => {
+  const otp = (code: string) =>
+    `${code} is your One Time Password (OTP) for SIVR service. Validity 120 seconds.`;
+
+  test('stops asking, says so, and can be undone from settings', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    await forward(page, otp('7940'));
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    await sheet.getByRole('button', { name: 'বাতিল — খাতায় কিছু লেখা হবে না' }).click();
+    await sheet.getByLabel('এটি আমার লেনদেন নয়').check();
+    await sheet.getByRole('button', { name: 'বাতিল করুন', exact: true }).click();
+
+    /* A thing done on their behalf, said out loud. */
+    await expect(page.getByText('এরকম বার্তা আর জিজ্ঞেস করা হবে না', { exact: false })).toBeVisible(
+      {
+        timeout: 15_000,
+      },
+    );
+
+    /* The next one of that shape is stored and raises nothing, and the messages
+       tab says which of the two reasons that is. */
+    await forward(page, otp('1123'));
+    await page.goto('/inbox');
+    await page.getByRole('button', { name: 'সব বার্তা' }).click();
+    await expect(
+      page.getByText('আগে এরকম বার্তা বাতিল করেছিলেন', { exact: false }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    /* And it is listed where it can be undone. */
+    await page.goto('/settings');
+    const card = page.locator('section').filter({ hasText: 'যেসব বার্তা আর জিজ্ঞেস করা হবে না' });
+    await expect(card.getByText('One Time Password', { exact: false })).toBeVisible({
+      timeout: 15_000,
+    });
+    await card
+      .getByRole('button', { name: /নিয়মটি সরান/ })
+      .first()
+      .click();
+    await expect(card.getByText('One Time Password', { exact: false })).toHaveCount(0, {
+      timeout: 15_000,
+    });
+  });
+});

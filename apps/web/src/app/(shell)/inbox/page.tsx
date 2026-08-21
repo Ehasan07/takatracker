@@ -114,7 +114,12 @@ export default function InboxPage() {
          know where that came from — or where to go and remove it. */
       const learned = saved.learnedHint
         ? ` অ্যাকাউন্ট নম্বর ${saved.learnedHint} মনে রাখা হলো — এই ব্যাংকের পরের বার্তা নিজেই এই হিসাবে বসবে।`
-        : '';
+        : saved.learnedRule
+          ? /* A thing done on their behalf, so it is said out loud. Somebody
+               who was not told would eventually wonder why a sender went
+               quiet. */
+            ' এরকম বার্তা আর জিজ্ঞেস করা হবে না — সেটিংস থেকে নিয়মটি সরানো যায়।'
+          : '';
       setToast((next ? `${done} — পরেরটি দেখুন` : `${done}। আপাতত আর কোনো খসড়া নেই।`) + learned);
     },
     [rows],
@@ -415,7 +420,16 @@ function MessageLog({
             <p className="text-ink-muted mt-1.5 text-xs">
               {row.draftId
                 ? t('inbox.becameDraft', 'খসড়া হয়েছে — খসড়া ট্যাবে দেখুন')
-                : t('inbox.notMoney', 'টাকার বার্তা নয়, তাই খসড়া হয়নি')}
+                : row.suppressed
+                  ? /* Not "could not read it": the app was told to leave this
+                       shape alone and is doing what it was told. Saying which
+                       is the difference between a rule working and the parser
+                       failing. */
+                    t(
+                      'inbox.suppressed',
+                      'আগে এরকম বার্তা বাতিল করেছিলেন, তাই খসড়া হয়নি — সেটিংস থেকে নিয়মটি সরানো যায়',
+                    )
+                  : t('inbox.notMoney', 'টাকার বার্তা নয়, তাই খসড়া হয়নি')}
             </p>
           </li>
         ))}

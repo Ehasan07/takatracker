@@ -33,7 +33,13 @@ import { AccountsService } from '../accounts/accounts.service';
 import { LoansService } from '../loans/loans.service';
 import { AiSuggestService } from './ai-suggest.service';
 import { AuditService } from '../audit/audit.service';
-import { looksFinancial, looksPromotional, ucblParser } from '@hishab/core';
+import {
+  isUsableShape,
+  looksFinancial,
+  looksPromotional,
+  messageShape,
+  ucblParser,
+} from '@hishab/core';
 import { minorToNumber } from '../common/bigint-json';
 import {
   INGEST_SECRET_HEADER,
@@ -282,6 +288,14 @@ export interface DraftView {
    * accounts screen is where it can be removed.
    */
   learnedHint: string | null;
+  /**
+   * True when saying no to this draft taught the inbox a shape.
+   *
+   * Said back, because it is a thing done on somebody's behalf: from now on
+   * messages of that shape are stored without raising a decision, and a person
+   * who was not told would eventually wonder why a sender went quiet.
+   */
+  learnedRule: boolean;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -299,6 +313,8 @@ export interface MessageListView {
   /** Null when the message was never about money, so no decision was raised. */
   draftId: string | null;
   draftStatus: string | null;
+  /** True when a rule the owner taught kept this message out of the queue. */
+  suppressed: boolean;
 }
 
 export interface MessageDetailView extends DraftMessageView {
@@ -633,6 +649,16 @@ export class IngestionService {
       );
     }
 
+    /* A shape the owner has already said no to.
+     *
+     * Looked up before anything is parsed, because the answer changes what the
+     * message is for: a match means this is the twenty-fifth one-time code from
+     * a shortcode that has never once been a transaction, and raising a
+     * twenty-fifth decision about it is the app failing to listen. The message
+     * is still stored — it always is — and the screen says why it raised
+     * nothing. */
+    const rule = financial ? await this.matchingRule(workspaceId, sender, body) : null;
+
     const parsed = REGISTRY.parse({
       channel: input.channel,
       sender: sender ?? undefined,
@@ -676,6 +702,7 @@ export class IngestionService {
             bodyHash,
             parsed: toJson(parsed),
             parserName: parsed.parserName,
+            suppressedByRuleId: rule?.id ?? null,
           },
           select: { id: true },
         });
@@ -686,47 +713,48 @@ export class IngestionService {
          * that was never about money in the first place; that message is still
          * stored and the owner still sees it under every message this phone
          * forwarded, it simply does not join a queue of decisions. */
-        const draft = financial
-          ? await tx.transactionDraft.create({
-              data: {
-                workspaceId,
-                messageId: message.id,
-                status: 'PENDING',
-                date: parsed.fields.date
-                  ? fromLocalDateString(parsed.fields.date, workspace.timezone)
-                  : null,
-                /* Null the moment the message turns out to be in another
-                 * currency, and this is the whole fix.
-                 *
-                 * The parser read "4.6" out of "USD 4.6" and reported 460
-                 * minor units, which is 460 poisha — ৳4.60 — for a charge of
-                 * about ৳560. Storing that number in a column that means taka
-                 * is how the figure reached a screen labelled ৳ and how it
-                 * would have reached the ledger. There is no taka figure in
-                 * that message to store, so none is stored; `fxAmountMinor`
-                 * below keeps what the message did say, and a person supplies
-                 * the rest. */
-                amountMinor:
-                  foreign || parsed.fields.amountMinor === undefined
-                    ? null
-                    : BigInt(parsed.fields.amountMinor),
-                fxCurrency: foreign?.currency ?? null,
-                fxAmountMinor: foreign ? BigInt(foreign.amountMinor) : null,
-                direction: parsed.fields.direction ?? null,
-                payee: parsed.fields.payee ?? null,
-                accountId: matchedAccountId,
-                confidence: foreign
-                  ? Math.min(parsed.confidence, FX_CONFIDENCE_CEILING)
-                  : parsed.confidence,
-                evidence: toJson(
-                  foreign
-                    ? IngestionService.fxEvidence(parsed.evidence, foreign.text)
-                    : parsed.evidence,
-                ),
-              },
-              select: { id: true },
-            })
-          : null;
+        const draft =
+          financial && !rule
+            ? await tx.transactionDraft.create({
+                data: {
+                  workspaceId,
+                  messageId: message.id,
+                  status: 'PENDING',
+                  date: parsed.fields.date
+                    ? fromLocalDateString(parsed.fields.date, workspace.timezone)
+                    : null,
+                  /* Null the moment the message turns out to be in another
+                   * currency, and this is the whole fix.
+                   *
+                   * The parser read "4.6" out of "USD 4.6" and reported 460
+                   * minor units, which is 460 poisha — ৳4.60 — for a charge of
+                   * about ৳560. Storing that number in a column that means taka
+                   * is how the figure reached a screen labelled ৳ and how it
+                   * would have reached the ledger. There is no taka figure in
+                   * that message to store, so none is stored; `fxAmountMinor`
+                   * below keeps what the message did say, and a person supplies
+                   * the rest. */
+                  amountMinor:
+                    foreign || parsed.fields.amountMinor === undefined
+                      ? null
+                      : BigInt(parsed.fields.amountMinor),
+                  fxCurrency: foreign?.currency ?? null,
+                  fxAmountMinor: foreign ? BigInt(foreign.amountMinor) : null,
+                  direction: parsed.fields.direction ?? null,
+                  payee: parsed.fields.payee ?? null,
+                  accountId: matchedAccountId,
+                  confidence: foreign
+                    ? Math.min(parsed.confidence, FX_CONFIDENCE_CEILING)
+                    : parsed.confidence,
+                  evidence: toJson(
+                    foreign
+                      ? IngestionService.fxEvidence(parsed.evidence, foreign.text)
+                      : parsed.evidence,
+                  ),
+                },
+                select: { id: true },
+              })
+            : null;
 
         /* Counted here, inside the same transaction as the message, and not
          * afterwards. `ingest.messages.monthly.max` is the one intake limit
@@ -969,6 +997,7 @@ export class IngestionService {
         body: true,
         parserName: true,
         createdAt: true,
+        suppressedByRuleId: true,
         drafts: { select: { id: true, status: true }, take: 1 },
       },
       orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
@@ -989,6 +1018,11 @@ export class IngestionService {
         parserName: row.parserName,
         draftId: row.drafts[0]?.id ?? null,
         draftStatus: row.drafts[0]?.status ?? null,
+        /* Why this one raised no decision. Without it a suppressed message is
+           indistinguishable on screen from one the parser could make nothing
+           of, and the owner would have no way to know the inbox is quietly
+           acting on a rule they taught it. */
+        suppressed: row.suppressedByRuleId !== null,
       })),
       nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
     };
@@ -1579,6 +1613,151 @@ export class IngestionService {
   }
 
   /**
+   * The rule that says this message has been answered before, if there is one.
+   *
+   * Matched on the sender *and* the shape, never on the shape alone. "Your OTP
+   * is #" is a sentence half the country's shortcodes send, and a rejection of
+   * one sender's version is not a statement about another's — the owner said no
+   * to a message, not to a form of words.
+   *
+   * The count is bumped here rather than in a job, so the screen that offers to
+   * remove a rule can say what removing it would let back in.
+   */
+  private async matchingRule(
+    workspaceId: string,
+    sender: string | null,
+    body: string,
+  ): Promise<{ id: string } | null> {
+    if (!sender) return null;
+    const shape = messageShape(body);
+    if (!isUsableShape(shape)) return null;
+
+    const rule = await this.prisma.ingestionRule.findFirst({
+      where: { workspaceId, sender, shape },
+      select: { id: true },
+    });
+    if (!rule) return null;
+
+    await this.prisma.ingestionRule.update({
+      where: { id: rule.id },
+      data: { matchCount: { increment: 1 }, lastMatchAt: new Date() },
+    });
+    return rule;
+  }
+
+  /**
+   * Remember a shape the owner has just said no to.
+   *
+   * Only for the two reasons that are about the message rather than about this
+   * copy of it. `NOT_MINE` and `BAD_PARSE` describe a kind of message that will
+   * arrive again unchanged; `DUPLICATE` is a fact about one entry already in
+   * the books, and `OTHER` is whatever the person did not have a word for.
+   * Learning from either of those would suppress messages nobody asked to
+   * suppress.
+   *
+   * Idempotent by (workspace, sender, shape): rejecting the same shape twice
+   * teaches nothing new, and the count is the rule's own, not a tally of how
+   * often it was taught.
+   */
+  private async learnRejection(
+    ctx: InboxContext,
+    draft: DraftRow,
+    reason: string,
+  ): Promise<{ id: string; shape: string } | null> {
+    if (reason !== 'NOT_MINE' && reason !== 'BAD_PARSE') return null;
+    const message = draft.message;
+    if (!message?.sender || !message.body) return null;
+
+    const shape = messageShape(message.body);
+    /* A shape that folds to almost nothing is every message from that sender,
+       and one rejection is not permission to silence a bank. */
+    if (!isUsableShape(shape)) return null;
+
+    const existing = await this.prisma.ingestionRule.findFirst({
+      where: { workspaceId: ctx.workspaceId, sender: message.sender, shape },
+      select: { id: true },
+    });
+    if (existing) return { id: existing.id, shape };
+
+    const rule = await this.prisma.ingestionRule.create({
+      data: {
+        workspaceId: ctx.workspaceId,
+        sender: message.sender,
+        shape,
+        reason,
+        /* One line of the message it was learned from. A rule is a fold of a
+           sentence and unreadable on its own; the screen offering to remove one
+           has to show what it was taught by. */
+        sample: message.body.replace(/\s+/g, ' ').trim().slice(0, 200),
+        createdByUserId: ctx.id,
+      },
+      select: { id: true },
+    });
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'ingestion.rule_learned',
+      entity: 'IngestionRule',
+      entityId: rule.id,
+      after: { sender: message.sender, reason, shape },
+    });
+
+    return { id: rule.id, shape };
+  }
+
+  /** Every shape this workspace has taught the inbox, newest first. */
+  async listRules(ctx: TenantContext): Promise<
+    {
+      id: string;
+      sender: string;
+      reason: string;
+      sample: string;
+      matchCount: number;
+      lastMatchAt: string | null;
+      createdAt: string;
+    }[]
+  > {
+    const rows = await this.prisma.ingestionRule.findMany({
+      where: { workspaceId: ctx.workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      sender: row.sender,
+      reason: row.reason,
+      sample: row.sample,
+      matchCount: row.matchCount,
+      lastMatchAt: row.lastMatchAt ? row.lastMatchAt.toISOString() : null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * Forget a shape.
+   *
+   * The messages it suppressed are not revisited: they are stored, they are on
+   * the messages screen, and re-raising decisions about mail from last month
+   * because a rule was removed today would be a surprise nobody asked for. From
+   * now on, that shape asks again.
+   */
+  async removeRule(ctx: TenantContext, id: string): Promise<void> {
+    const gone = await this.prisma.ingestionRule.deleteMany({
+      where: { id, workspaceId: ctx.workspaceId },
+    });
+    if (gone.count !== 1) throw new NotFoundException('নিয়মটি পাওয়া যায়নি');
+
+    this.audit.emit({
+      workspaceId: ctx.workspaceId,
+      actorUserId: ctx.id,
+      action: 'ingestion.rule_removed',
+      entity: 'IngestionRule',
+      entityId: id,
+    });
+  }
+
+  /**
    * Say no. Nothing is written to the ledger and the raw message stays, so the
    * parse that produced the draft can still be looked at.
    */
@@ -1601,6 +1780,9 @@ export class IngestionService {
     /* The reason has no column, and the audit log is the right home for it
      * anyway: it is a fact about a decision somebody made, and it is what a
      * rule-quality report is later built from. */
+    /* Before the audit line, so the log says whether it taught anything. */
+    const learned = await this.learnRejection(ctx, draft, input.reason).catch(() => null);
+
     this.audit.emit({
       workspaceId: ctx.workspaceId,
       actorUserId: ctx.id,
@@ -1609,13 +1791,14 @@ export class IngestionService {
       entityId: draft.id,
       after: {
         reason: input.reason,
+        learnedRuleId: learned?.id ?? null,
         confidence: draft.confidence,
         parserName: draft.message?.parserName ?? null,
         messageId: draft.messageId,
       },
     });
 
-    return this.presentOne(ctx, draft.id);
+    return { ...(await this.presentOne(ctx, draft.id)), learnedRule: learned !== null };
   }
 
   // --- guards ----------------------------------------------------------------
@@ -1873,8 +2056,10 @@ export class IngestionService {
       confidence,
       needsReview: confidence < REVIEW_THRESHOLD,
       suggestedBy: row.suggestedBy,
-      /* Only an accept can teach one, and only it knows whether it did. */
+      /* Only an accept can teach a hint, and only a reject can teach a rule;
+         each says so on its own response. */
       learnedHint: null,
+      learnedRule: false,
       evidence: quoted ? IngestionService.fxEvidence(evidence, quoted) : evidence,
       parserName: row.message?.parserName ?? null,
       transactionId: row.transactionId,

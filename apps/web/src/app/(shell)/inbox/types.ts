@@ -68,6 +68,8 @@ export interface DraftView {
    * cannot go and undo it.
    */
   learnedHint?: string | null;
+  /** True when saying no taught the inbox to stop asking about this shape. */
+  learnedRule?: boolean;
   transactionId: string | null;
   reviewedAt: string | null;
   createdAt: string;
@@ -133,6 +135,14 @@ export interface MessageRow {
   body: string;
   parserName: string | null;
   /** Null when the message was never about money, so no decision was raised. */
+  /**
+   * True when a rule the owner taught kept this message out of the queue.
+   *
+   * Without it a suppressed message is indistinguishable on screen from one the
+   * parser could make nothing of, and somebody would have no way to know the
+   * inbox is acting on a rule they taught it.
+   */
+  suppressed?: boolean;
   draftId: string | null;
   draftStatus: string | null;
 }
