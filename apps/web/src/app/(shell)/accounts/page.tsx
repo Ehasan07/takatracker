@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
+import { CardAmount } from '@/components/card-amount';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { CategoryOptions, type CategoryScope } from '@/components/category-options';
@@ -481,46 +482,6 @@ export default function AccountsPage() {
                         one of the questions a card raises. The room left is
                         never added to anything: it is the bank's money until it
                         is spent, and spending it starts interest. */}
-                    {account.creditLimitMinor > 0 ? (
-                      /* The card's own currency, not the default.
-                         `formatMinor` falls back to taka when it is not told,
-                         which printed ৳ on a dollar card's limit — and on every
-                         card in a workspace that does not keep its books in
-                         taka at all.
- 
-                         The same three figures the dashboard prints, in the same
-                         words and the same order: the limit they are measured
-                         against, what is left, what is owed. Wrapping rather
-                         than truncating — on one line at 390px this read
-                         `লিমিট ৳1,9…` and answered nothing. */
-                      <span className="text-ink-muted block text-xs">
-                        {t('account.limit', 'লিমিট')}{' '}
-                        {formatMinor(account.creditLimitMinor, { currency: account.currency })}
-                        {account.balanceMinor > 0 ? (
-                          /* Nothing derived from a balance that cannot be right:
-                             `undrawnMinor` is `limit − drawn` and `drawn` is zero
-                             for a card the ledger thinks is in credit, so this
-                             line would report the whole limit as available. */
-                          <>
-                            {' · '}
-                            <span className="text-expense">
-                              {t('dashboard.cardCheck', 'খাতা মিলিয়ে নিন')}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            {' · '}
-                            {t('account.undrawn', 'অ্যাভেইলেবল')}{' '}
-                            {formatMinor(account.undrawnMinor, { currency: account.currency })}
-                            {' · '}
-                            <span className="text-expense">
-                              {t('dashboard.cardOwed', 'বকেয়া')}{' '}
-                              {formatMinor(account.drawnMinor, { currency: account.currency })}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                    ) : null}
                   </span>
                   <Pencil className="text-ink-muted h-3.5 w-3.5 shrink-0" aria-hidden />
                 </button>
@@ -611,6 +572,20 @@ export default function AccountsPage() {
                       {account.currency.toUpperCase()}
                     </span>
                   </span>
+                ) : account.type === 'CREDIT_CARD' && account.creditLimitMinor > 0 ? (
+                  /* The same block the dashboard draws, from the same component:
+                     limit, what is left, what is owed, stacked and flush right.
+                     It replaces the balance rather than sitting beside it —
+                     বকেয়া and the balance are one number twice, and a row that
+                     prints it in two places invites somebody to add them. */
+                  <CardAmount
+                    minor={account.balanceMinor}
+                    undrawnMinor={account.undrawnMinor}
+                    drawnMinor={account.drawnMinor}
+                    limitMinor={account.creditLimitMinor}
+                    currency={account.currency}
+                    className="ml-auto pl-2"
+                  />
                 ) : (
                   <Money
                     minor={account.balanceMinor}

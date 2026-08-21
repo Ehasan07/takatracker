@@ -200,9 +200,16 @@ test.describe('the accounts list on a phone', () => {
     const nameBox = await name.boundingBox();
     expect(nameBox!.width).toBeGreaterThan(180);
 
-    /* All three figures, in the dashboard's words. */
+    /* The dashboard's own block, stacked and flush right: the limit, what is
+       left, what is owed. */
+    await expect(row.getByText('লিমিট', { exact: false })).toBeVisible();
+    await expect(row.getByText('৳1,92,000.00', { exact: false })).toBeVisible();
     await expect(row.getByText('অ্যাভেইলেবল', { exact: false })).toBeVisible();
-    await expect(row.getByText('বকেয়া', { exact: false })).toBeVisible();
     await expect(row.getByText('৳1,73,985.80', { exact: false })).toBeVisible();
+    await expect(row.getByText('বকেয়া', { exact: false })).toBeVisible();
+
+    /* And once, not twice: বকেয়া and the balance are the same number, and a row
+       printing it in two places invites somebody to add them. */
+    await expect(row.getByText('৳18,014.20', { exact: false })).toHaveCount(1);
   });
 });
