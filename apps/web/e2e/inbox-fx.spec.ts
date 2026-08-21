@@ -508,3 +508,47 @@ test.describe('tagging a message at review', () => {
     await expect(page.getByText('১টি লেনদেন').first()).toBeVisible({ timeout: 15_000 });
   });
 });
+
+/**
+ * A message whose direction the parser could not read.
+ *
+ * The খরচ tab is drawn selected on every draft, and the form used to start with
+ * *no* direction whenever the message did not say one — so the খাত box refused
+ * with "আগে দিক বেছে নিন" about a tab that was already blue, and the only way
+ * out was to press another tab and press খরচ again. The screen was telling the
+ * truth about its state and lying about it in the same breath.
+ */
+test.describe('a message with no direction in it', () => {
+  /* A card alert with no verb in it: an amount, a merchant, a limit. Nothing
+     that says whether money came or went. */
+  const NO_VERB =
+    'Your Card 714043 at DOMINOS PIZZA Bangladesh L for BDT 437.77 on 19:50 21.08.26. Avl limit BDT 70453.73';
+
+  test('lets the খাত be chosen without touching the tabs first', async ({ page }) => {
+    await signup(page);
+    await addCashAccount(page);
+
+    await forward(page, NO_VERB);
+    await page.goto('/inbox');
+    await page.getByRole('button').filter({ hasText: 'UCB-ALERT' }).first().click();
+    const sheet = page.getByRole('dialog');
+
+    /* The tab the sheet opens on. */
+    await expect(sheet.getByRole('tab', { name: 'খরচ' })).toHaveAttribute('aria-selected', 'true');
+
+    /* And the খাত picker works straight away, rather than refusing about a
+       direction the blue tab already claims. */
+    await expect(sheet.getByLabel('খাত খুঁজুন')).toBeVisible();
+    await expect(sheet.getByText('আগে দিক বেছে নিন')).toHaveCount(0);
+
+    await sheet.getByLabel('খাত খুঁজুন').fill('khabar');
+    await sheet
+      .getByRole('button', { name: /খাবার ও বাজার/ })
+      .first()
+      .click();
+    await sheet.locator('#dr-account').selectOption({ label: 'নগদ' });
+
+    await sheet.getByRole('button', { name: 'খাতায় যোগ করুন' }).click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+  });
+});

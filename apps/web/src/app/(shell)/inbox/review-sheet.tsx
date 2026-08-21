@@ -114,7 +114,18 @@ interface FormState {
   kind: Kind;
   date: string;
   amount: string;
-  direction: '' | Direction;
+  /**
+   * Which way the money went. Never empty.
+   *
+   * It used to start as `''` whenever the parser could not read a direction —
+   * while `kind` still started at `EXPENSE`, so the খরচ tab was drawn selected
+   * over a form that held no direction at all. The খাত box then refused with
+   * "আগে দিক বেছে নিন" about a tab that was already blue, and the only way out
+   * was to press another tab and press খরচ again. The screen was telling the
+   * truth about its state and lying about it in the same breath; this is the
+   * half that was wrong.
+   */
+  direction: Direction;
   payee: string;
   accountId: string;
   /** Set only when this was a move between two of the reviewer's own accounts. */
@@ -131,10 +142,8 @@ interface FormState {
   personName: string;
 }
 
-function categoryKindFor(direction: '' | Direction): 'INCOME' | 'EXPENSE' | null {
-  if (direction === 'IN') return 'INCOME';
-  if (direction === 'OUT') return 'EXPENSE';
-  return null;
+function categoryKindFor(direction: Direction): 'INCOME' | 'EXPENSE' {
+  return direction === 'IN' ? 'INCOME' : 'EXPENSE';
 }
 
 /** Bengali for whatever went wrong, whoever it came from. */
@@ -275,7 +284,12 @@ function ReviewForm({
        reason: 4.6 dollars is not 4.60 taka and the box must not pretend it is. */
     amount:
       draft.amountMinor === null ? '' : formatMinor(draft.amountMinor, { symbol: false, currency }),
-    direction: draft.direction ?? '',
+    /* Whatever the tab above starts on, and the tab starts on খরচ. A message
+       whose direction could not be read is still going to be one or the other,
+       and the evidence line above the tabs says outright that this one was not
+       read — so the person is told it is a default and one tap changes it. What
+       cannot stand is a selected tab over an empty field. */
+    direction: draft.direction === 'IN' ? 'IN' : 'OUT',
     payee: draft.payee ?? '',
     accountId: draft.accountId ?? sticky.accountId,
     /* Never carried over and never guessed. The parser has no way to know it,
@@ -336,13 +350,17 @@ function ReviewForm({
     (loan) => loan.status !== 'SETTLED' && loan.status !== 'CANCELLED',
   );
   const chosenLoan = openLoans.find((loan) => loan.id === form.loanId);
-  const wantedKind = isTransfer ? null : categoryKindFor(form.direction);
+  /* Which half of the category tree this entry belongs to. Always one of the
+     two now, because the direction always is — the transfer and ধার tabs have
+     no খাত at all, and clear the one they were carrying rather than asking this
+     for a kind it cannot have. */
+  const wantedKind = categoryKindFor(form.direction);
 
   /* A category carried over from an expense must not survive a switch to
      income: the server would refuse it, and leaving it on screen would make
      the refusal look like a bug rather than a mismatch. */
   React.useEffect(() => {
-    if (!form.categoryId || wantedKind === null || categories.data === undefined) return;
+    if (!form.categoryId || categories.data === undefined) return;
     const chosen = categories.data.find((category) => category.id === form.categoryId);
     if (chosen && chosen.kind !== wantedKind) setForm((f) => ({ ...f, categoryId: '' }));
   }, [form.categoryId, wantedKind, categories.data]);
@@ -468,10 +486,6 @@ function ReviewForm({
           ? t('inbox.fxNeedAmount', 'রেট দিন, নয়তো কত টাকা কাটা হয়েছে সেটি লিখুন')
           : 'টাকার পরিমাণ দিন',
       );
-      return;
-    }
-    if (form.direction !== 'IN' && form.direction !== 'OUT') {
-      setError('টাকা ঢুকেছে না বেরিয়েছে — সেটি বেছে নিন');
       return;
     }
     if (!form.accountId) {
@@ -896,34 +910,20 @@ function ReviewForm({
         ) : null}
 
         {isTransfer || loanKind ? null : (
-          <>
-            {/* Nothing at all until the direction says which half of the tree
-                this is. Listing both kinds behind a disable would only mean the
-                wrong one flashes past on the way to the right one. */}
-            {wantedKind === null ? (
-              <EvidenceField label="খাত" htmlFor="dr-category">
-                <Select id="dr-category" value="" disabled>
-                  <option value="">আগে দিক বেছে নিন</option>
-                </Select>
-              </EvidenceField>
-            ) : (
-              /* The same picker the নতুন লেনদেন sheet uses, search box and all.
+          /* The same picker the নতুন লেনদেন sheet uses, search box and all.
  
-                 This screen had a bare `<select>`, and a workspace with a
-                 hundred categories turns that into the phone's native wheel —
-                 a list you scroll blind, with no way to type "bua" and land on
-                 বুয়া. Fifty drafts deep that is the slowest thing on the
-                 screen, and it was the one control here that had a better
-                 version already built. */
-              <CategoryPicker
-                categories={categories.data ?? []}
-                kind={wantedKind}
-                value={form.categoryId}
-                onChange={(categoryId) => setForm((f) => ({ ...f, categoryId }))}
-                idPrefix="dr"
-              />
-            )}
-          </>
+             This screen had a bare `<select>`, and a workspace with a hundred
+             categories turns that into the phone's native wheel — a list you
+             scroll blind, with no way to type "bua" and land on বুয়া. Fifty
+             drafts deep that is the slowest thing on the screen, and it was the
+             one control here that had a better version already built. */
+          <CategoryPicker
+            categories={categories.data ?? []}
+            kind={wantedKind}
+            value={form.categoryId}
+            onChange={(categoryId) => setForm((f) => ({ ...f, categoryId }))}
+            idPrefix="dr"
+          />
         )}
 
         {/* What this is *for*, beside what it was.
