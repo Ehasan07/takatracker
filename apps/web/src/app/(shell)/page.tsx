@@ -240,7 +240,7 @@ function CardAmount({
         </>
       ) : (
         <>
-          {line(t('dashboard.cardAvailable', 'বাকি'), undrawnMinor ?? 0)}
+          {line(t('dashboard.cardAvailable', 'অ্যাভেইলেবল'), undrawnMinor ?? 0)}
           {/* `drawnMinor` and not the balance's magnitude: they are the same
               number here, and the one that is named for what it means is the one
               that will still be right if the other ever changes meaning. */}

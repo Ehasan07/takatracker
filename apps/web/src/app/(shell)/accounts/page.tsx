@@ -485,7 +485,7 @@ export default function AccountsPage() {
                         {t('account.drawn', 'খরচ')}{' '}
                         {formatMinor(account.drawnMinor, { currency: account.currency })} ·{' '}
                         <span className="text-income">
-                          {t('account.undrawn', 'বাকি')}{' '}
+                          {t('account.undrawn', 'অ্যাভেইলেবল')}{' '}
                           {formatMinor(account.undrawnMinor, { currency: account.currency })}
                         </span>
                       </span>

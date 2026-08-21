@@ -153,7 +153,7 @@ export const EN: Record<string, string> = {
   'dashboard.group.liquid': 'Cash & bank',
   'dashboard.group.asset': 'Assets',
   'dashboard.group.liability': 'Liabilities',
-  'dashboard.cardAvailable': 'Left',
+  'dashboard.cardAvailable': 'Available',
   'dashboard.cardCheck': 'Check this card',
   'dashboard.cardOwed': 'Owed',
   'dashboard.cardCredit': 'In credit',
@@ -836,7 +836,7 @@ export const EN: Record<string, string> = {
     'A limit is not your money, and not a liability until it is spent. It is left out of net worth.',
   'account.limit': 'Limit',
   'account.drawn': 'Used',
-  'account.undrawn': 'Left',
+  'account.undrawn': 'Available',
   'savings.moveMoney': 'Move the money',
   'savings.profitPrefilled':
     'Filled in with what the rate says is owed. Write what the bank actually handed over \u2014 less if tax was deducted, more if there was a bonus.',
@@ -1826,7 +1826,7 @@ export const EN: Record<string, string> = {
     '{n} cards have no statement day set, so they are not in the statement total above.',
   'reports.cards.notReconciled': 'This card does not add up — please get in touch.',
   'reports.cards.limit': 'Card limit',
-  'reports.cards.undrawn': 'Left to draw',
+  'reports.cards.undrawn': 'Available',
   'reports.cards.undrawnNote':
     'An undrawn limit is not your money — the bank can withdraw it at any time, so it is never added to your assets or to what you can spend.',
   'reports.cards.caveat':

@@ -514,7 +514,7 @@ function CardRow({ card }: { card: CardStatementDto }) {
         <p className="text-ink-muted mt-2 text-xs">
           {t('reports.cards.limit', 'কার্ডের সীমা')}{' '}
           <Money minor={card.creditLimitMinor} className="text-ink" decimals={false} /> ·{' '}
-          {t('reports.cards.undrawn', 'বাকি আছে')}{' '}
+          {t('reports.cards.undrawn', 'অ্যাভেইলেবল')}{' '}
           <Money minor={card.undrawnMinor} className="text-ink" decimals={false} />
           <span className="block">
             {t(

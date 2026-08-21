@@ -126,7 +126,7 @@ test.describe('reconciling a credit card', () => {
        limit it is measured against, what is left to spend, and what is owed. */
     await expect(row.getByText('লিমিট')).toBeVisible();
     await expect(row.getByText('৳3,00,000.00')).toBeVisible();
-    await expect(row.getByText('বাকি')).toBeVisible();
+    await expect(row.getByText('অ্যাভেইলেবল')).toBeVisible();
     await expect(row.getByText('৳1,66,867.64')).toBeVisible();
   });
 });
@@ -162,6 +162,6 @@ test.describe('a card the books say is in credit', () => {
     /* It asks to be checked instead of deriving two more figures from a number
        that cannot be right. */
     await expect(row.getByText('খাতা মিলিয়ে নিন')).toBeVisible();
-    await expect(row.getByText('বাকি')).toHaveCount(0);
+    await expect(row.getByText('অ্যাভেইলেবল')).toHaveCount(0);
   });
 });
