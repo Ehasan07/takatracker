@@ -148,15 +148,25 @@ function splitByCurrency(
  * reading জমা ৳23 lakh against a ৳4 lakh limit is now obviously a thing to go
  * and fix, which it was not when it read `+৳23,15,603.43`.
  */
-function CardAmount({ minor, className = '' }: { minor: number; className?: string }) {
+function CardAmount({
+  minor,
+  /** The room left under the limit. Absent, or zero limit, and only one line is drawn. */
+  undrawnMinor,
+  className = '',
+}: {
+  minor: number;
+  undrawnMinor?: number;
+  className?: string;
+}) {
   const owed = minor < 0;
   const word = owed
     ? t('dashboard.cardOwed', 'বকেয়া')
     : minor > 0
       ? t('dashboard.cardCredit', 'জমা')
       : '';
-  return (
-    <span className={`flex shrink-0 items-baseline gap-1.5 ${className}`}>
+
+  const amount = (
+    <span className="flex items-baseline justify-end gap-1.5">
       {word ? (
         <span className={`text-xs ${owed ? 'text-expense' : 'text-income'}`}>{word}</span>
       ) : null}
@@ -166,6 +176,26 @@ function CardAmount({ minor, className = '' }: { minor: number; className?: stri
         minor={Math.abs(minor)}
         className={`text-sm ${owed ? 'text-expense' : minor > 0 ? 'text-income' : ''}`}
       />
+    </span>
+  );
+
+  if (undrawnMinor === undefined) {
+    return <span className={`flex shrink-0 items-baseline gap-1.5 ${className}`}>{amount}</span>;
+  }
+
+  /* Two figures, because a card raises two questions and the answers point
+     opposite ways. What is left to spend is the one somebody standing at a till
+     wants; what is owed is the one that belongs on this list, because this list
+     is the liabilities and the room under a limit is the bank's money until it
+     is spent. So the spendable figure sits first and quiet, and the debt sits
+     under it in the weight the group's own subtotal is made of. */
+  return (
+    <span className={`flex shrink-0 flex-col items-end ${className}`}>
+      <span className="text-ink-muted flex items-baseline gap-1.5 text-xs">
+        {t('dashboard.cardAvailable', 'বাকি')}
+        <Money minor={undrawnMinor} />
+      </span>
+      {amount}
     </span>
   );
 }
@@ -575,6 +605,11 @@ export default function DashboardPage() {
                 const subtotal = rows.reduce((sum, account) => sum + account.balanceMinor, 0);
                 const cards = rows.filter((account) => account.type === 'CREDIT_CARD');
                 const cardTotal = cards.reduce((sum, account) => sum + account.balanceMinor, 0);
+                /* Only the cards that carry a limit have room to report, and a
+                   set of cards with none has nothing to say here. */
+                const cardUndrawn = cards.some((account) => account.creditLimitMinor > 0)
+                  ? cards.reduce((sum, account) => sum + account.undrawnMinor, 0)
+                  : undefined;
 
                 const header = (
                   <li
@@ -620,7 +655,7 @@ export default function DashboardPage() {
                           <span>
                             {t('dashboard.ofWhichCards', 'এর মধ্যে ক্রেডিট কার্ড')} ({cards.length})
                           </span>
-                          <CardAmount minor={cardTotal} className="text-xs" />
+                          <CardAmount minor={cardTotal} undrawnMinor={cardUndrawn} />
                         </li>,
                       ]
                     : []),
@@ -641,7 +676,12 @@ export default function DashboardPage() {
                       />
                       <span className="text-ink min-w-0 truncate text-sm">{account.name}</span>
                       {account.type === 'CREDIT_CARD' ? (
-                        <CardAmount minor={account.balanceMinor} />
+                        <CardAmount
+                          minor={account.balanceMinor}
+                          undrawnMinor={
+                            account.creditLimitMinor > 0 ? account.undrawnMinor : undefined
+                          }
+                        />
                       ) : (
                         <Money
                           minor={account.balanceMinor}

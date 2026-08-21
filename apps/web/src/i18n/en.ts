@@ -153,6 +153,7 @@ export const EN: Record<string, string> = {
   'dashboard.group.liquid': 'Cash & bank',
   'dashboard.group.asset': 'Assets',
   'dashboard.group.liability': 'Liabilities',
+  'dashboard.cardAvailable': 'Left',
   'dashboard.cardOwed': 'Owed',
   'dashboard.cardCredit': 'In credit',
   'dashboard.ofWhichCards': 'of which credit cards',

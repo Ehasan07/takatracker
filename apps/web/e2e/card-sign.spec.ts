@@ -121,5 +121,11 @@ test.describe('reconciling a credit card', () => {
     const row = page.locator('li').filter({ hasText: 'শিমান্ত ভিসা' }).first();
     await expect(row.getByText('বকেয়া')).toBeVisible({ timeout: 15_000 });
     await expect(row.getByText('৳1,33,132.36')).toBeVisible();
+
+    /* Both questions a card raises, answered on the one row: what is left to
+       spend, and — underneath, in the weight the liability subtotal is made of
+       — what is owed. */
+    await expect(row.getByText('বাকি')).toBeVisible();
+    await expect(row.getByText('৳1,66,867.64')).toBeVisible();
   });
 });
