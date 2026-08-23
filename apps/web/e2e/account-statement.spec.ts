@@ -65,7 +65,7 @@ async function spend(page: Page, amount: string, note: string): Promise<void> {
   await page.goto('/');
   await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
   await page.getByLabel('পরিমাণ (৳)').fill(amount);
-  await page.getByLabel('অ্যাকাউন্ট').selectOption({ label: 'নগদ' });
+  await page.getByLabel('অ্যাকাউন্ট', { exact: true }).selectOption({ label: 'নগদ' });
   await page.getByLabel('ক্যাটাগরি').selectOption({ label: 'খাবার ও বাজার' });
   await page.getByLabel('বিবরণ').fill(note);
   await page.getByRole('button', { name: 'সংরক্ষণ করুন' }).click();

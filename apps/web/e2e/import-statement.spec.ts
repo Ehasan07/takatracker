@@ -83,7 +83,7 @@ async function recordRickshaw(page: Page, account: string): Promise<void> {
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('পরিমাণ (৳)').fill('60');
   await sheet.getByLabel('তারিখ').fill('2026-07-05');
-  await sheet.getByLabel('অ্যাকাউন্ট').selectOption({ label: account });
+  await sheet.getByLabel('অ্যাকাউন্ট', { exact: true }).selectOption({ label: account });
   // Required by the form, and irrelevant to the match: a possible duplicate is
   // decided on the amount, the day and the account, never on the category.
   await sheet.getByLabel('ক্যাটাগরি').selectOption({ label: 'যাতায়াত' });

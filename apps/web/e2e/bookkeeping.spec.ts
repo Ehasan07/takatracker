@@ -64,7 +64,7 @@ test.describe('bookkeeping', () => {
     await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
     await page.getByRole('tab', { name: 'আয়' }).click();
     await page.getByLabel('পরিমাণ (৳)').fill('50000');
-    await page.getByLabel('অ্যাকাউন্ট').selectOption({ label: 'ব্যাংক' });
+    await page.getByLabel('অ্যাকাউন্ট', { exact: true }).selectOption({ label: 'ব্যাংক' });
     await page.getByLabel('ক্যাটাগরি').selectOption({ label: 'বেতন' });
     await page.getByLabel('বিবরণ').fill('মাসের বেতন');
     await saveSheet(page);
@@ -74,7 +74,7 @@ test.describe('bookkeeping', () => {
     // Expense
     await page.getByRole('button', { name: 'নতুন লেনদেন' }).first().click();
     await page.getByLabel('পরিমাণ (৳)').fill('250.50');
-    await page.getByLabel('অ্যাকাউন্ট').selectOption({ label: 'নগদ' });
+    await page.getByLabel('অ্যাকাউন্ট', { exact: true }).selectOption({ label: 'নগদ' });
     await page.getByLabel('ক্যাটাগরি').selectOption({ label: 'খাবার ও বাজার' });
     await page.getByLabel('বিবরণ').fill('বাজার');
     await saveSheet(page);

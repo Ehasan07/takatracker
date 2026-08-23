@@ -94,7 +94,13 @@ export function AccountMenu({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={compact ? t('shell.account', 'অ্যাকাউন্ট') : undefined}
+        /* Its own name, not the settings heading's. On a phone this button is
+           the only thing carrying a label, and "অ্যাকাউন্ট" is also what every
+           money-account picker on the app is called — two controls with one
+           accessible name on the same screen is a screen reader reading the
+           same word for the profile menu and for the field asking which bank
+           account an entry came out of. */
+        aria-label={compact ? t('shell.accountMenu', 'আমার অ্যাকাউন্ট') : undefined}
         className={cn(
           'press hover:bg-greenbar flex min-h-11 items-center gap-2 text-left',
           compact

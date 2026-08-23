@@ -126,6 +126,7 @@ export const EN: Record<string, string> = {
      a Bengali letter on otherwise English chrome reads as a rendering bug. */
   'shell.avatarFallback': 'T',
   'shell.account': 'Account',
+  'shell.accountMenu': 'Your account',
   'shell.signOut': 'Sign out',
   'shell.signingOut': 'Signing out…',
   'shell.newTransaction': 'New transaction',
