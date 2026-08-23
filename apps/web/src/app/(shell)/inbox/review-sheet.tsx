@@ -43,15 +43,6 @@ import type { AcceptDraftBody, Direction, DraftView, RejectReason } from './type
 export interface StickyPick {
   accountId: string;
   categoryId: string;
-  /**
-   * The tags the last accept carried, offered to the next draft.
-   *
-   * A shop's messages arrive in runs — fifty bKash alerts, all the same
-   * venture — and re-picking the tag on every one of them is the reason a
-   * queue does not get cleared. Carried like the account and the খাত are, and
-   * as visible as they are: the line under the pickers says so.
-   */
-  tagIds: readonly string[];
 }
 
 export type Outcome = 'accepted' | 'rejected';
@@ -299,10 +290,16 @@ function ReviewForm({
     categoryId: draft.categoryId ?? sticky.categoryId,
     description: '',
     notes: '',
-    /* From the last accept. A draft carries no tags of its own — nothing in a
-       bank message says which venture it belongs to — so the only proposal
-       worth making is the one the person made a moment ago. */
-    tagIds: [...sticky.tagIds],
+    /* Never carried, unlike the account and the খাত.
+     *
+     * Those two are a bank's own repetition: fifty alerts from one bank land
+     * in one account and one or two খাত, so proposing the last answer saves
+     * fifty confirmations and proposes nothing that is usually wrong. A tag is
+     * not that — it says which venture a taka belongs to, and the message it
+     * came in has nothing to say about that. Carried forward it marks the next
+     * message with the last one's venture silently, and a tag nobody noticed is
+     * money in somebody else's profit. So every draft starts with none. */
+    tagIds: [],
     loanId: '',
     personId: '',
     personName: '',
@@ -315,8 +312,7 @@ function ReviewForm({
   const [stickyApplied] = React.useState(
     () =>
       (!draft.accountId && Boolean(sticky.accountId)) ||
-      (!draft.categoryId && Boolean(sticky.categoryId)) ||
-      sticky.tagIds.length > 0,
+      (!draft.categoryId && Boolean(sticky.categoryId)),
   );
   const [error, setError] = React.useState<string | null>(null);
   const [rejecting, setRejecting] = React.useState(false);
@@ -423,11 +419,7 @@ function ReviewForm({
     mutationFn: (body: AcceptDraftBody) => acceptDraft(draft.id, body),
     onSuccess: (saved) => {
       haptic('success');
-      onSticky({
-        accountId: form.accountId,
-        categoryId: form.categoryId,
-        tagIds: form.tagIds,
-      });
+      onSticky({ accountId: form.accountId, categoryId: form.categoryId });
       invalidateAfterAccept(queryClient);
       onResolved(saved, 'accepted');
     },
@@ -982,7 +974,7 @@ function ReviewForm({
 
         {stickyApplied && pending ? (
           <p className="text-ink-muted -mt-2 text-xs">
-            গতবার বেছে নেওয়া অ্যাকাউন্ট, খাত ও ট্যাগ আগে থেকে বসানো আছে — না মিললে বদলে নিন।
+            গতবার বেছে নেওয়া অ্যাকাউন্ট ও খাত আগে থেকে বসানো আছে — না মিললে বদলে নিন।
           </p>
         ) : null}
 

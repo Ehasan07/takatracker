@@ -456,15 +456,19 @@ test.describe('choosing a খাত from a message', () => {
 });
 
 /**
- * Marking a message as the shop's, and keeping it marked for the next fifty.
+ * Marking a message as the shop's — and only that message.
  *
  * The tag is the only thing separating a proprietorship from the household it
  * runs inside, so a business message that cannot be tagged at review never
- * reaches the venture's own profit. And messages arrive in runs — re-picking
- * the same tag fifty times is the reason a queue does not get cleared.
+ * reaches the venture's own profit. It used to be carried to the next draft
+ * the way the account and the খাত are, and that is the one of the three that
+ * cannot be: those two are the bank repeating itself, while a tag is a
+ * statement about whose money this is, and a message says nothing about that.
+ * Carried, it marked the next alert with the last one's venture quietly — and
+ * a tag nobody noticed is household money inside a business's profit.
  */
 test.describe('tagging a message at review', () => {
-  test('carries the tag onto the entry, and offers it to the next draft', async ({ page }) => {
+  test('puts the tag on the entry, and offers it to nothing else', async ({ page }) => {
     await signup(page);
     await addCashAccount(page);
 
@@ -497,11 +501,17 @@ test.describe('tagging a message at review', () => {
 
     await sheet.getByRole('button', { name: 'যোগ করে পরেরটি' }).click();
 
-    /* Straight on to the next draft, with the tag already on it — the whole
-       reason a fifty-deep queue is clearable. */
+    /* Straight on to the next draft. The account and the খাত are proposed
+       again — they are the bank repeating itself — and the line says so
+       without claiming the tag among them. */
     await expect(
-      sheet.getByText('গতবার বেছে নেওয়া অ্যাকাউন্ট, খাত ও ট্যাগ', { exact: false }),
+      sheet.getByText('গতবার বেছে নেওয়া অ্যাকাউন্ট ও খাত', { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
+
+    /* And this draft carries no tag at all: nothing selected, and no way for
+       the last message's venture to reach this one without somebody saying so. */
+    await expect(sheet.getByLabel('বেছে নেওয়া ট্যাগ')).toHaveCount(0);
+    await expect(sheet.getByRole('button', { name: /দোকান ট্যাগটি সরান/ })).toHaveCount(0);
 
     /* And the tag is on the entry, counted where the tag lives. */
     await page.goto('/tags');
