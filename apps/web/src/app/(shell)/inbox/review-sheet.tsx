@@ -337,9 +337,14 @@ function ReviewForm({
     enabled: form.kind === 'REPAY',
     staleTime: 30_000,
   });
+  /* `/loans/people` answers with an envelope — `{ filtered, people }` — because
+     the same route serves the search box on the ঋণ screen and has to say
+     whether `q` filtered anything. Read as a bare array it is an object, and
+     the `.map` below throws where the tab opens, which takes the whole page to
+     the error boundary. So the envelope is opened here, once. */
   const people = useQuery({
     queryKey: ['loans', 'people'],
-    queryFn: () => api<PersonOption[]>('/loans/people'),
+    queryFn: async () => (await api<{ people: PersonOption[] }>('/loans/people')).people,
     enabled: isNewLoan(form.kind),
     staleTime: 30_000,
   });
