@@ -1761,6 +1761,7 @@ export const EN: Record<string, string> = {
   'entry.personNameHint': 'e.g. Rahim Uddin',
   'entry.personPhoneLater': 'A phone number can be added later, on the People screen.',
   'entry.pickPerson': 'Who the loan is with — choose somebody or type a name',
+  'entry.typePersonName': 'Type the new name',
   'entry.loanFromAccount': 'Which account it came out of',
   'entry.loanToAccount': 'Which account it went into',
   'entry.loanHint':

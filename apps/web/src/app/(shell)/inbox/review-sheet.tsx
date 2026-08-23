@@ -449,12 +449,34 @@ function ReviewForm({
 
   const busy = accept.isPending || reject.isPending;
 
+  /**
+   * A refusal, put where the eye already is.
+   *
+   * Every check below used to only `setError`, and the message rendered at the
+   * bottom of a sheet that is taller than a phone. Somebody on the ধার tab with
+   * no counterparty chosen tapped যোগ করে পরেরটি and watched nothing happen:
+   * the sentence telling them what was missing was two screens below the
+   * button they had just pressed. The message now lives in the sticky footer,
+   * and this scrolls the field it is about into view and puts the cursor in
+   * it — a refusal nobody can see is a button that does not work.
+   */
+  const fail = (message: string, fieldId?: string): void => {
+    setError(message);
+    if (!fieldId) return;
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    field.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    /* After the scroll, and without a second one: focus() would jump the sheet
+       again on its own and land somewhere else. */
+    field.focus({ preventScroll: true });
+  };
+
   const submit = (e: React.FormEvent): void => {
     e.preventDefault();
     setError(null);
 
     if (!form.date) {
-      setError('তারিখ দিন');
+      fail('তারিখ দিন', 'dr-date');
       return;
     }
 
@@ -464,10 +486,11 @@ function ReviewForm({
        fix a number they never typed. On a foreign-currency draft it is *the*
        question, so it gets the sentence that says how to answer it. */
     if (!form.amount.trim()) {
-      setError(
+      fail(
         fx
           ? t('inbox.fxNeedAmount', 'রেট দিন, নয়তো কত টাকা কাটা হয়েছে সেটি লিখুন')
           : 'টাকার পরিমাণ দিন',
+        'dr-amount',
       );
       return;
     }
@@ -480,45 +503,49 @@ function ReviewForm({
          own money, and `fxCurrency`/`fxAmountMinor` record what it really was. */
       amountMinor = parseMoneyToMinor(form.amount, currency);
     } catch (err) {
-      setError(err instanceof MoneyParseError ? 'টাকার পরিমাণ বোঝা গেল না' : 'টাকার পরিমাণ দিন');
+      fail(
+        err instanceof MoneyParseError ? 'টাকার পরিমাণ বোঝা গেল না' : 'টাকার পরিমাণ দিন',
+        'dr-amount',
+      );
       return;
     }
     if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
       /* A foreign draft brings no figure of its own, so an empty box here is
          not a slip — it is the one question this screen was opened to ask. */
-      setError(
+      fail(
         fx
           ? t('inbox.fxNeedAmount', 'রেট দিন, নয়তো কত টাকা কাটা হয়েছে সেটি লিখুন')
           : 'টাকার পরিমাণ দিন',
+        'dr-amount',
       );
       return;
     }
     if (!form.accountId) {
-      setError(isTransfer ? 'কোন হিসাব থেকে গেল বেছে নিন' : 'অ্যাকাউন্ট নির্বাচন করুন');
+      fail(isTransfer ? 'কোন হিসাব থেকে গেল বেছে নিন' : 'অ্যাকাউন্ট নির্বাচন করুন', 'dr-account');
       return;
     }
     if (isTransfer && !form.counterAccountId) {
-      setError('কোন হিসাবে গেল বেছে নিন');
+      fail('কোন হিসাবে গেল বেছে নিন', 'dr-counter');
       return;
     }
     if (form.kind === 'REPAY' && !form.loanId) {
-      setError(t('entry.pickLoan', 'কোন ধারের ফেরত — বেছে নিন'));
+      fail(t('entry.pickLoan', 'কোন ধারের ফেরত — বেছে নিন'), 'dr-loan');
       return;
     }
     if (isNewLoan(form.kind) && !form.personId) {
-      setError(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'));
+      fail(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'), 'dr-person');
       return;
     }
     if (isNewLoan(form.kind) && form.personId === NEW_PERSON && !form.personName.trim()) {
-      setError(t('entry.pickPerson', 'কার সাথে ধার — বেছে নিন বা নাম লিখুন'));
+      fail(t('entry.typePersonName', 'নতুন নামটি লিখুন'), 'dr-person-name');
       return;
     }
     if (!isTransfer && !loanKind && !form.categoryId) {
-      setError('ক্যাটাগরি নির্বাচন করুন');
+      fail('ক্যাটাগরি নির্বাচন করুন', 'dr-category');
       return;
     }
     if (isTransfer && form.counterAccountId === form.accountId) {
-      setError('একই অ্যাকাউন্টে সরানো যায় না — অন্য একটি বেছে নিন');
+      fail('একই অ্যাকাউন্টে সরানো যায় না — অন্য একটি বেছে নিন', 'dr-counter');
       return;
     }
 
@@ -897,6 +924,7 @@ function ReviewForm({
             </Select>
             {form.personId === NEW_PERSON ? (
               <Input
+                id="dr-person-name"
                 className="mt-2"
                 value={form.personName}
                 onChange={set('personName')}
@@ -1002,7 +1030,9 @@ function ReviewForm({
         </p>
       )}
 
-      {error ? (
+      {/* A draft that is no longer pending has no footer to carry this, so the
+          message it gets back from a failed reject stays here. */}
+      {error && !pending ? (
         <p role="alert" className="text-expense text-sm">
           {error}
         </p>
@@ -1011,6 +1041,14 @@ function ReviewForm({
       {/* --- the decision -------------------------------------------------- */}
       {pending ? (
         <div className="bg-surface border-rule sticky bottom-0 -mx-4 flex flex-col gap-2 border-t px-4 pb-2 pt-3">
+          {/* Inside the sticky bar, above the button that produced it: the
+              sheet is longer than a phone screen, and a message rendered in
+              the flow above sat below the fold exactly when it was needed. */}
+          {error ? (
+            <p role="alert" className="text-expense text-sm">
+              {error}
+            </p>
+          ) : null}
           <div className="flex items-center gap-2">
             <Button
               type="button"
