@@ -113,9 +113,65 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
         </div>
       </section>
 
+      {/* Worked examples, and the section people actually come back for.
+          Deliberately after the mistakes: that one says why a DPS instalment is
+          not an expense, and somebody who has just read it wants to know which
+          box to press. The message is rendered as the message — monospaced, in
+          a tinted block — because recognising it is the first step; a reader
+          matches the SMS on their own phone against the block, then reads down. */}
+      <section
+        id="sms"
+        className="mx-auto w-full max-w-6xl scroll-mt-16 px-4 py-12 sm:px-6 sm:py-16"
+      >
+        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.smsHeading}</h2>
+        <p className="text-ink-muted mt-2 max-w-3xl">{content.smsBlurb}</p>
+
+        <ul className="mt-8 grid gap-4 lg:grid-cols-2">
+          {content.smsExamples.map((example) => (
+            <li key={example.sms} className="rounded-card border-rule bg-surface border p-4 sm:p-5">
+              <p className="bg-greenbar text-ink-muted rounded-md p-3 font-mono text-xs leading-relaxed">
+                {example.sms}
+              </p>
+
+              <p className="mt-4 flex items-center gap-2 text-sm">
+                <span className="text-ink-muted text-xs">{content.smsLabels.kind}</span>
+                <span className="bg-brand-tint text-brand rounded-full px-2.5 py-0.5 text-xs font-medium">
+                  {example.kind}
+                </span>
+              </p>
+
+              <p className="text-ink-muted mt-3 text-xs">{content.smsLabels.fields}</p>
+              <ul className="mt-1 space-y-1">
+                {example.fields.map((field) => (
+                  <li key={field} className="text-ink flex items-start gap-2 text-sm">
+                    <ArrowRight className="text-brand mt-1 h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span>{field}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="border-rule mt-3 border-t pt-3">
+                <span className="text-ink-muted block text-xs">{content.smsLabels.result}</span>
+                <span className="text-ink text-sm">{example.result}</span>
+              </p>
+
+              {example.trap ? (
+                <p className="mt-3 flex items-start gap-2">
+                  <X className="text-expense mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>
+                    <span className="text-ink-muted block text-xs">{content.smsLabels.trap}</span>
+                    <span className="text-ink-muted text-sm">{example.trap}</span>
+                  </span>
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section
         id="features"
-        className="mx-auto w-full max-w-6xl scroll-mt-16 px-4 py-12 sm:px-6 sm:py-16"
+        className="border-rule mx-auto w-full max-w-6xl scroll-mt-16 border-t px-4 py-12 sm:px-6 sm:py-16"
       >
         <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.featuresHeading}</h2>
         <p className="text-ink-muted mt-2 max-w-3xl">{content.featuresBlurb}</p>

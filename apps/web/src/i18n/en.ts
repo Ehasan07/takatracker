@@ -1407,6 +1407,38 @@ export const EN: Record<string, string> = {
     'Land worth more this year? Enter what it is worth now. The history stays.',
   'guide.revaluation.n':
     'This is not income and it does not reach the cash flow — only net worth moves. Nothing was sold.',
+  'guide.instalments.h': 'How to enter an instalment',
+  'guide.instalments.s': "From the bank's SMS into the books — which instalment is which kind",
+  'guide.inboxDraft.t': 'A message waits as a draft',
+  'guide.inboxDraft.w': 'Inbox',
+  'guide.inboxDraft.b':
+    'Money messages forwarded from your phone or mailbox wait as drafts. The date, the amount and the account are read for you; you settle the kind and the category, and it goes in.',
+  'guide.inboxDraft.n':
+    'A message only ever sees its own account. Where the money came from, or went to, is the one thing only you know — and that box is what separates an expense from a transfer.',
+  'guide.dpsInstalment.t': 'A DPS instalment is a transfer',
+  'guide.dpsInstalment.w': 'Inbox → kind: Transfer',
+  'guide.dpsInstalment.b':
+    '"Monthly DPS account 1783060406070 — instalment BDT 10,000 deposited" — choose Transfer, then the account it leaves and the DPS account it lands in. No category: a transfer has none.',
+  'guide.dpsInstalment.n':
+    'The message says "deposited", so the app reads it as money in. Left as income it invents BDT 10,000 of earnings every month. Entered as a transfer, the savings schedule ticks that month off by itself.',
+  'guide.premiumInstalment.t': 'An insurance premium is an expense',
+  'guide.premiumInstalment.w': 'Inbox → kind: Expense',
+  'guide.premiumInstalment.b':
+    '"Your A/C (***6948) has been debited BDT 11,331.00" — choose Expense, the bank it left, and the insurance category. Leave the destination box empty; filling it makes the entry a transfer.',
+  'guide.premiumInstalment.n':
+    'The opposite of a DPS: premium money leaves your hands for good, so it really is spending. Then press "Paid" on that premium on the insurance screen — the button only ticks the schedule, it moves no money.',
+  'guide.loanInstalment.t': 'A bank loan instalment is a transfer',
+  'guide.loanInstalment.w': 'Inbox → kind: Transfer',
+  'guide.loanInstalment.b':
+    'Keep the loan as a liability account, then transfer the instalment from the bank into it. The debt falls by exactly what you paid.',
+  'guide.loanInstalment.n':
+    'When the message splits out interest, make two entries: the principal as a transfer, the interest as an expense. Repaying a loan is not spending — only the interest is.',
+  'guide.personInstalment.t': 'Repaying a person is a loan repayment',
+  'guide.personInstalment.w': 'Inbox → kind: Loan repaid',
+  'guide.personInstalment.b':
+    'Pick "Loan repaid", then name which loan it settles. What is still owed on the loans screen comes down on its own.',
+  'guide.personInstalment.n':
+    'Lending and being repaid are not income or spending — the money changed hands, not owners. A repayment with no loan named reduces nothing.',
   'guide.savings.t': 'Savings and DPS',
   'guide.savings.w': 'More → Savings & DPS',
   'guide.savings.b': 'Instalment, term and profit rate — it works out what the plan matures to.',

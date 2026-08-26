@@ -64,6 +64,29 @@ export interface Mistake {
   standard?: string;
 }
 
+/**
+ * A bank message, and the entry it turns into.
+ *
+ * The mistakes section above says what is wrong with an entry; this says what
+ * to press. Both are needed, and the second is the one people ask for: an SMS
+ * arrives saying ten thousand taka moved, and every kind of instalment in
+ * Bangladesh — DPS, premium, EMI, a friend being repaid — arrives looking
+ * exactly the same. What separates them is one box on the review screen, so
+ * each example leads with that box and shows what the books end up saying.
+ */
+export interface SmsExample {
+  /** The message as it lands, cut to the part that matters. */
+  sms: string;
+  /** Which of the six tabs on the review screen. */
+  kind: string;
+  /** The boxes to fill, already in "label — value" form. */
+  fields: string[];
+  /** What the ledger says afterwards, in one line. */
+  result: string;
+  /** The wrong turning this particular message invites. */
+  trap?: string;
+}
+
 export interface TutorialContent {
   eyebrow: string;
   title: string;
@@ -75,6 +98,11 @@ export interface TutorialContent {
   mistakesBlurb: string;
   mistakeLabels: { wrong: string; right: string };
   mistakes: Mistake[];
+  smsHeading: string;
+  smsBlurb: string;
+  /** Column headings inside an example card. */
+  smsLabels: { kind: string; fields: string; result: string; trap: string };
+  smsExamples: SmsExample[];
   featuresHeading: string;
   featuresBlurb: string;
   /** Prefix on every citation chip, e.g. "যে নিয়মে" / "Treatment per". */
@@ -182,6 +210,64 @@ export const TUTORIAL_BN: TutorialContent = {
       right: 'নিজের ভাগ ৳৭৫০, বাকি ৳২,২৫০ প্রাপ্য',
       standard: 'IFRS 15 — মুখ্য বনাম প্রতিনিধি',
       why: 'আপনি বিল দিয়েছেন, কিন্তু খরচ করেছেন এক-চতুর্থাংশ। বাকিটা তিনজনের কাছে আপনার পাওনা। পুরোটা খরচ লিখলে আপনার মাসিক খরচ চারগুণ দেখায়।',
+    },
+  ],
+
+  smsHeading: 'ব্যাংকের এসএমএস থেকে কিস্তি',
+  smsBlurb:
+    'ডিপিএসের কিস্তি, বীমার প্রিমিয়াম, ঋণের কিস্তি — তিনটি বার্তাই দেখতে এক রকম, কিন্তু খাতায় তিন রকম বসে। কোন ঘরে কী দিতে হয়, উদাহরণসহ।',
+  smsLabels: {
+    kind: 'ধরন',
+    fields: 'যা বসাবেন',
+    result: 'খাতায় যা দাঁড়াবে',
+    trap: 'যে ভুলটা হয়',
+  },
+  smsExamples: [
+    {
+      sms: 'আপনার মাসিক ইসলামী ডিপিএস অ্যাকাউন্ট ১৭৮৩০৬০৪০৬০৭০ — মাসিক কিস্তি ১০,০০০ টাকা জমা হয়েছে।',
+      kind: 'ট্রান্সফার',
+      fields: [
+        'কোন হিসাব থেকে — বিকাশ (যেখান থেকে প্রতি মাসে কাটে)',
+        'কোন হিসাবে — ইসলামী ডিপিএস',
+        'খাত — লাগবে না, ট্রান্সফারে খাত চাওয়াই হয় না',
+      ],
+      result:
+        'বিকাশ ১০,০০০ কমল, ডিপিএস ১০,০০০ বাড়ল। নিট সম্পদ একই, আর সঞ্চয় পাতায় ওই মাসের কিস্তিতে টিক নিজে পড়ে যায়।',
+      trap: 'বার্তায় “জমা হয়েছে” আছে বলে আয় রেখে দেওয়া। তাহলে প্রতি মাসে ১০,০০০ টাকা ভুয়া আয় বসে, পাঁচ বছরে ছয় লাখ।',
+    },
+    {
+      sms: 'Your A/C (***৬৯৪৮) has been debited BDT ১১,৩৩১.০০ for Beftn Inward. Avl Bal: BDT ৮,৫৪,০০৯.১৭',
+      kind: 'খরচ',
+      fields: [
+        'অ্যাকাউন্ট — যে ব্যাংক থেকে কাটল',
+        'খাত — বীমা',
+        'কোন হিসাবে — খালি রাখুন, ভরলে ট্রান্সফার হয়ে যাবে',
+      ],
+      result:
+        'ব্যাংক ১১,৩৩১ কমল, বীমার খরচ ১১,৩৩১ বাড়ল। এরপর বীমা পাতায় ওই কিস্তিতে “দিলাম” চাপলে তালিকাটাও মিলে যায়।',
+      trap: 'ডিপিএসের মতো ট্রান্সফার করা। প্রিমিয়ামের টাকা আপনার হাত ছাড়া হয়ে গেছে — ওটা সত্যিকারের খরচ, সরানো নয়।',
+    },
+    {
+      sms: 'Tk ১২,৫০০.০০ debited from A/C ২১০১***৭০০১ for Loan Installment, Loan A/C ৭৭৯১৬৯৬১০৭০০১',
+      kind: 'ট্রান্সফার',
+      fields: [
+        'কোন হিসাব থেকে — যে ব্যাংক থেকে কিস্তি কাটে',
+        'কোন হিসাবে — ঋণের হিসাব (দেনা ধরনের অ্যাকাউন্ট)',
+        'সুদ আলাদা লেখা থাকলে — সুদটুকুর জন্য আলাদা একটি খরচ',
+      ],
+      result: 'ব্যাংক ১২,৫০০ কমল, দেনা ১২,৫০০ কমল। খরচ বেড়েছে কেবল সুদের অংশটুকু।',
+      trap: 'পুরো কিস্তিকে খরচ লেখা। তাহলে দেনা কাগজে-কলমে রয়েই যায়, আর মাসের খরচ যা নয় তা-ই দেখায়।',
+    },
+    {
+      sms: 'You have sent Tk ৫,০০০.০০ to 01XXXXXXXXX. Ref: kisti. Balance Tk ৩,২১০.৫০',
+      kind: 'ধার ফেরত',
+      fields: [
+        'কোন ধারের ফেরত — তালিকা থেকে ধারটি বেছে নিন',
+        'অ্যাকাউন্ট — যে বিকাশ বা ব্যাংক থেকে পাঠালেন',
+      ],
+      result:
+        'ওই ধারের বাকি টাকা ৫,০০০ কমল। আয়-ব্যয়ের কোথাও কিছু বসল না — টাকা হাতবদল হয়েছে, মালিক বদলায়নি।',
+      trap: 'ধারটির নাম না বলা। তাহলে খাতায় টাকা কমে, কিন্তু ধার পাতায় বাকির অঙ্ক আগের জায়গাতেই দাঁড়িয়ে থাকে।',
     },
   ],
 
@@ -319,6 +405,62 @@ export const TUTORIAL_EN: TutorialContent = {
       right: 'Your share ৳750; ৳2,250 is receivable',
       standard: 'IFRS 15 — principal versus agent',
       why: 'You paid the bill but consumed a quarter of it. The rest is owed to you by three people. Book the lot and your monthly spending reads four times what it was.',
+    },
+  ],
+
+  smsHeading: 'An instalment, from the bank SMS',
+  smsBlurb:
+    'A DPS instalment, an insurance premium and a loan instalment all arrive as the same kind of message, and all three land differently in the books. Here is which box decides it.',
+  smsLabels: {
+    kind: 'Kind',
+    fields: 'What you fill in',
+    result: 'What the books then say',
+    trap: 'The wrong turning',
+  },
+  smsExamples: [
+    {
+      sms: 'Your monthly DPS account 1783060406070 — monthly instalment BDT 10,000 deposited.',
+      kind: 'Transfer',
+      fields: [
+        'From — the wallet or account it is taken from each month',
+        'To — the DPS account',
+        'Category — none: a transfer has nothing to file',
+      ],
+      result:
+        'The wallet falls by 10,000 and the DPS rises by 10,000. Net worth is unchanged, and the savings schedule ticks that month off by itself.',
+      trap: 'Leaving it as income because the message says "deposited". That invents BDT 10,000 of earnings a month — six lakh over a five-year plan.',
+    },
+    {
+      sms: 'Your A/C (***6948) has been debited BDT 11,331.00 for Beftn Inward. Avl Bal: BDT 854,009.17',
+      kind: 'Expense',
+      fields: [
+        'Account — the bank it was taken from',
+        'Category — insurance',
+        'To — leave it empty; filling it turns the entry into a transfer',
+      ],
+      result:
+        'The bank falls by 11,331 and insurance spending rises by the same. Pressing "Paid" on that premium afterwards lines the schedule up with it.',
+      trap: 'Treating it like a DPS and making it a transfer. Premium money has left your hands for good — it is spending, not moving.',
+    },
+    {
+      sms: 'Tk 12,500.00 debited from A/C 2101***7001 for Loan Installment, Loan A/C 7791696107001',
+      kind: 'Transfer',
+      fields: [
+        'From — the bank the instalment leaves',
+        'To — the loan, kept as a liability account',
+        'If the message splits out interest — a second entry, as an expense',
+      ],
+      result:
+        'The bank falls by 12,500 and the debt falls by 12,500. Only the interest portion is spending.',
+      trap: 'Booking the whole instalment as an expense. The debt then stays on the books for ever, and the month shows spending that never happened.',
+    },
+    {
+      sms: 'You have sent Tk 5,000.00 to 01XXXXXXXXX. Ref: kisti. Balance Tk 3,210.50',
+      kind: 'Loan repaid',
+      fields: ['Which loan — pick it from the list', 'Account — the wallet or bank it went from'],
+      result:
+        'What is still owed on that loan falls by 5,000. Nothing reaches income or expenses: the money changed hands, not owners.',
+      trap: 'Not naming the loan. The cash goes down and the outstanding balance stays exactly where it was.',
     },
   ],
 
