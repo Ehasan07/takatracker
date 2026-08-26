@@ -1254,6 +1254,39 @@ model InsurancePolicy {
   startDate           DateTime
   maturityDate        DateTime?
   nomineeName         String?
+
+  /// What the insurer's own statement says the policy is worth today, and what
+  /// is owed against it.
+  ///
+  /// **None of these post to the ledger.** A whole-life policy accumulates a
+  /// cash value the holder can borrow against or surrender for, and the insurer
+  /// is the only party who can say what it is — it comes out of their reserving,
+  /// not out of the premiums this app can add up. So these are a transcription
+  /// of the policy portal, dated by `valuedOn`, and nothing computes from them.
+  /// A holder who wants that money in his net worth records the cash value as an
+  /// ASSET account and the borrowing as a LIABILITY, the same way every other
+  /// balance the ledger did not generate gets in: through an account. Storing it
+  /// twice — here and in an account — is deliberate and is why these say
+  /// nothing about the balance sheet.
+  cashValueMinor      BigInt        @default(0)
+  /// What the insurer would pay to close the policy today. Usually the cash
+  /// value and not always: some products deduct a surrender charge, so the two
+  /// are separate columns rather than one with a comment.
+  surrenderValueMinor BigInt        @default(0)
+  /// Borrowed against the policy, and the automatic premium loan the insurer
+  /// raises when a premium goes unpaid. Both reduce what a surrender pays out,
+  /// and the second is the one that surprises people — it is a loan nobody
+  /// applied for.
+  policyLoanMinor     BigInt        @default(0)
+  aplMinor            BigInt        @default(0)
+  /// How much more the insurer will lend against it. Their figure, not a
+  /// percentage of the cash value this could derive.
+  loanLimitMinor      BigInt        @default(0)
+  /// The day the five figures above were read off the statement. Without it a
+  /// cash value is a number with no date, which is worse than no number: it
+  /// looks current forever.
+  valuedOn            DateTime?
+
   status              PolicyStatus  @default(ACTIVE)
   note                String?
   createdAt           DateTime      @default(now())

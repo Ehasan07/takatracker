@@ -34,6 +34,15 @@ interface Policy {
   startDate: string;
   maturityDate: string | null;
   nomineeName: string | null;
+  /* What the insurer says the policy is worth, transcribed off their statement
+     and dated by `valuedOn`. Nothing here is in the ledger. */
+  cashValueMinor: number;
+  surrenderValueMinor: number;
+  policyLoanMinor: number;
+  aplMinor: number;
+  loanLimitMinor: number;
+  valuedOn: string | null;
+  netSurrenderMinor: number;
   status: string;
   nextDue?: Premium | null;
   premiums?: Premium[];
@@ -218,6 +227,76 @@ export default function InsurancePage() {
               </div>
             </dl>
 
+            {/* What the insurer says the policy is worth. Shown only once a
+                valuation has been typed, and always under its own date: these
+                figures go stale — a cash value grows every year and a loan
+                grows every month it is not repaid — and an undated one would
+                be read as today's. Nothing here is in the ledger, which the
+                last line says out loud rather than leaving to be discovered. */}
+            {detail.data.valuedOn ? (
+              <section className="border-rule rounded-md border p-3">
+                <h3 className="text-ink-muted mb-2 text-xs">
+                  {t('insurance.valuation', 'বীমা প্রতিষ্ঠানের হিসাব')}
+                  {' · '}
+                  {detail.data.valuedOn}
+                </h3>
+                <dl className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <dt className="text-ink-muted">
+                      {t('insurance.cashValueShort', 'ক্যাশ ভ্যালু')}
+                    </dt>
+                    <dd>
+                      <Money minor={detail.data.cashValueMinor} className="block" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-muted">
+                      {t('insurance.surrenderShort', 'সারেন্ডার মূল্য')}
+                    </dt>
+                    <dd>
+                      <Money minor={detail.data.surrenderValueMinor} className="block" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-muted">
+                      {t('insurance.policyLoanShort', 'পলিসির ঋণ')}
+                    </dt>
+                    <dd>
+                      <Money minor={detail.data.policyLoanMinor} className="text-expense block" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-muted">{t('insurance.aplShort', 'APL ঋণ')}</dt>
+                    <dd>
+                      <Money minor={detail.data.aplMinor} className="text-expense block" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-muted">
+                      {t('insurance.loanLimitShort', 'আরও ঋণ নেওয়া যাবে')}
+                    </dt>
+                    <dd>
+                      <Money minor={detail.data.loanLimitMinor} className="block" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-muted">
+                      {t('insurance.netSurrender', 'এখন ছেড়ে দিলে হাতে আসবে')}
+                    </dt>
+                    <dd>
+                      <Money minor={detail.data.netSurrenderMinor} className="block font-medium" />
+                    </dd>
+                  </div>
+                </dl>
+                <p className="text-ink-muted mt-2 text-[11px]">
+                  {t(
+                    'insurance.valuationNote',
+                    'অঙ্কগুলো বীমা প্রতিষ্ঠানের কাগজ থেকে লেখা — খাতায় বসে না, তাই সম্পদ-দেনার হিসাবেও ধরা পড়ে না।',
+                  )}
+                </p>
+              </section>
+            ) : null}
+
             {/* The premium calendar: what is due, and what has been paid. */}
             <ul className="divide-rule divide-y">
               {(detail.data.premiums ?? []).map((row, i) => (
@@ -399,6 +478,12 @@ interface PolicyForm {
   termMonths: string;
   maturityDate: string;
   nomineeName: string;
+  cashValue: string;
+  surrenderValue: string;
+  policyLoan: string;
+  apl: string;
+  loanLimit: string;
+  valuedOn: string;
   status: string;
 }
 
@@ -413,6 +498,12 @@ const emptyPolicyForm = (): PolicyForm => ({
   termMonths: '240',
   maturityDate: '',
   nomineeName: '',
+  cashValue: '',
+  surrenderValue: '',
+  policyLoan: '',
+  apl: '',
+  loanLimit: '',
+  valuedOn: '',
   status: 'ACTIVE',
 });
 
@@ -428,6 +519,15 @@ const policyToForm = (policy: Policy): PolicyForm => ({
   termMonths: '',
   maturityDate: policy.maturityDate ?? '',
   nomineeName: policy.nomineeName ?? '',
+  /* Blank rather than "0.00" when nothing was ever typed: an untouched policy
+     should look untouched, and a zero the user did not write invites them to
+     leave it there. */
+  cashValue: policy.valuedOn ? formatMinor(policy.cashValueMinor, { symbol: false }) : '',
+  surrenderValue: policy.valuedOn ? formatMinor(policy.surrenderValueMinor, { symbol: false }) : '',
+  policyLoan: policy.valuedOn ? formatMinor(policy.policyLoanMinor, { symbol: false }) : '',
+  apl: policy.valuedOn ? formatMinor(policy.aplMinor, { symbol: false }) : '',
+  loanLimit: policy.valuedOn ? formatMinor(policy.loanLimitMinor, { symbol: false }) : '',
+  valuedOn: policy.valuedOn ?? '',
   status: policy.status,
 });
 
@@ -491,6 +591,21 @@ function PolicySheet({
             return;
           }
 
+          /* The insurer's valuation. Every one of the five reads as zero when
+             the box is empty, which is what an untyped figure means here — the
+             date beside them is what says whether a valuation exists at all. */
+          const valuation = {
+            cashValueMinor: toMinor(form.cashValue, currency),
+            surrenderValueMinor: toMinor(form.surrenderValue, currency),
+            policyLoanMinor: toMinor(form.policyLoan, currency),
+            aplMinor: toMinor(form.apl, currency),
+            loanLimitMinor: toMinor(form.loanLimit, currency),
+          };
+          if (Object.values(valuation).some((v) => v === null)) {
+            setError('বীমা প্রতিষ্ঠানের হিসাবের কোনো একটি অঙ্ক বোঝা যায়নি।');
+            return;
+          }
+
           if (!policy) {
             save.mutate({
               insurer: form.insurer.trim(),
@@ -503,6 +618,7 @@ function PolicySheet({
               startDate: form.startDate,
               termMonths: Number(form.termMonths || '0'),
               nomineeName: form.nomineeName.trim() || undefined,
+              ...(form.valuedOn ? { ...valuation, valuedOn: form.valuedOn } : {}),
             });
             return;
           }
@@ -522,6 +638,12 @@ function PolicySheet({
               startDate: policy.startDate,
               maturityDate: existingMaturity,
               nomineeName: policy.nomineeName ?? '',
+              cashValueMinor: policy.cashValueMinor,
+              surrenderValueMinor: policy.surrenderValueMinor,
+              policyLoanMinor: policy.policyLoanMinor,
+              aplMinor: policy.aplMinor,
+              loanLimitMinor: policy.loanLimitMinor,
+              valuedOn: policy.valuedOn ?? '',
               status: policy.status,
             },
             {
@@ -534,6 +656,12 @@ function PolicySheet({
               startDate: form.startDate,
               maturityDate: form.maturityDate || existingMaturity,
               nomineeName: form.nomineeName.trim(),
+              cashValueMinor: valuation.cashValueMinor as number,
+              surrenderValueMinor: valuation.surrenderValueMinor as number,
+              policyLoanMinor: valuation.policyLoanMinor as number,
+              aplMinor: valuation.aplMinor as number,
+              loanLimitMinor: valuation.loanLimitMinor as number,
+              valuedOn: form.valuedOn,
               status: form.status,
             },
           );
@@ -541,6 +669,11 @@ function PolicySheet({
             onOpenChange(false);
             return;
           }
+          /* An emptied date means "there is no valuation any more", and the API
+             spells that `null`; the empty string this form holds is neither a
+             date nor null and would be refused. Every other field on this body
+             treats blank as a value, so this is the one that needs saying. */
+          if (body.valuedOn === '') body.valuedOn = null as unknown as string;
           save.mutate(body);
         }}
       >
@@ -640,6 +773,74 @@ function PolicySheet({
         <Field label="নমিনি" htmlFor="ip-nominee">
           <Input id="ip-nominee" value={form.nomineeName} onChange={set('nomineeName')} />
         </Field>
+
+        {/* The insurer's own valuation, and last on purpose: a term policy has
+            none at all, and asking for a cash value before the premium would
+            suggest every policy ought to have one. The date leads the group
+            because it is the field that makes the rest mean anything — without
+            it a cash value read two years ago still reads as today's. */}
+        <fieldset className="border-rule flex flex-col gap-4 rounded-md border p-3">
+          <legend className="text-ink-muted px-1 text-xs">
+            {t('insurance.valuation', 'বীমা প্রতিষ্ঠানের হিসাব')}
+          </legend>
+          <p className="text-ink-muted text-xs">
+            {t(
+              'insurance.valuationHint',
+              'পলিসির কাগজ বা অ্যাপে যা লেখা আছে, হুবহু বসান। এগুলো শুধু দেখানোর জন্য — খাতায় বা সম্পদ-দেনার হিসাবে কিছু বসে না। নেট ওয়ার্থে ধরতে চাইলে ক্যাশ ভ্যালুর জন্য একটি সম্পদ হিসাব আর ঋণের জন্য একটি দেনার হিসাব খুলুন।',
+            )}
+          </p>
+          <Field label={t('insurance.valuedOn', 'কোন তারিখের হিসাব')} htmlFor="ip-valued">
+            <Input id="ip-valued" type="date" value={form.valuedOn} onChange={set('valuedOn')} />
+          </Field>
+          <Field label={t('insurance.cashValue', 'ক্যাশ ভ্যালু (৳)')} htmlFor="ip-cash">
+            <Input
+              id="ip-cash"
+              inputMode="decimal"
+              value={form.cashValue}
+              onChange={set('cashValue')}
+              placeholder="০.০০"
+            />
+          </Field>
+          <Field label={t('insurance.surrenderValue', 'সারেন্ডার মূল্য (৳)')} htmlFor="ip-surr">
+            <Input
+              id="ip-surr"
+              inputMode="decimal"
+              value={form.surrenderValue}
+              onChange={set('surrenderValue')}
+              placeholder="০.০০"
+            />
+          </Field>
+          <Field label={t('insurance.policyLoan', 'পলিসির বিপরীতে ঋণ (৳)')} htmlFor="ip-loan">
+            <Input
+              id="ip-loan"
+              inputMode="decimal"
+              value={form.policyLoan}
+              onChange={set('policyLoan')}
+              placeholder="০.০০"
+            />
+          </Field>
+          <Field
+            label={t('insurance.apl', 'স্বয়ংক্রিয় প্রিমিয়াম ঋণ — APL (৳)')}
+            htmlFor="ip-apl"
+          >
+            <Input
+              id="ip-apl"
+              inputMode="decimal"
+              value={form.apl}
+              onChange={set('apl')}
+              placeholder="০.০০"
+            />
+          </Field>
+          <Field label={t('insurance.loanLimit', 'আরও ঋণ নেওয়া যাবে (৳)')} htmlFor="ip-limit">
+            <Input
+              id="ip-limit"
+              inputMode="decimal"
+              value={form.loanLimit}
+              onChange={set('loanLimit')}
+              placeholder="০.০০"
+            />
+          </Field>
+        </fieldset>
         {policy ? (
           <Field label="অবস্থা" htmlFor="ip-status">
             <Select id="ip-status" value={form.status} onChange={set('status')}>

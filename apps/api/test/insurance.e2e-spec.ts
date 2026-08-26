@@ -56,6 +56,60 @@ describe('insurance', () => {
     ...over,
   });
 
+  it("carries the insurer's own valuation, nets it, and can take it back", async () => {
+    const user = await signup(ctx);
+
+    /* A policy recorded with no valuation says so with a null date, and the
+       five figures sit at zero — which is "never asked", not "worth nothing".
+       The two are told apart by the date and by nothing else. */
+    const plain = (await create(user, policy()).expect(201)).body;
+    expect(plain.valuedOn).toBeNull();
+    expect(plain.cashValueMinor).toBe(0);
+    expect(plain.netSurrenderMinor).toBe(0);
+
+    const valued = (
+      await create(
+        user,
+        policy({
+          cashValueMinor: 11_910_879,
+          surrenderValueMinor: 11_910_879,
+          policyLoanMinor: 6_540_782,
+          aplMinor: 1_206_577,
+          loanLimitMinor: 3_538_992,
+          valuedOn: '2026-08-26',
+        }),
+      ).expect(201)
+    ).body;
+    expect(valued.valuedOn).toBe('2026-08-26');
+    // 119,108.79 − 65,407.82 − 12,065.77, to the poisha.
+    expect(valued.netSurrenderMinor).toBe(4_163_520);
+
+    /* Borrowed past what the policy is worth. The holder does not owe that on
+       surrender — the policy lapses instead — so the figure floors at zero
+       rather than going negative. */
+    const drained = (
+      await ctx
+        .http()
+        .patch(`/v1/insurance/${valued.id}`)
+        .set(auth(user))
+        .send({ policyLoanMinor: 20_000_000 })
+        .expect(200)
+    ).body;
+    expect(drained.netSurrenderMinor).toBe(0);
+    // Untouched fields keep their figures through an unrelated edit.
+    expect(drained.cashValueMinor).toBe(11_910_879);
+
+    const cleared = (
+      await ctx
+        .http()
+        .patch(`/v1/insurance/${valued.id}`)
+        .set(auth(user))
+        .send({ valuedOn: null })
+        .expect(200)
+    ).body;
+    expect(cleared.valuedOn).toBeNull();
+  });
+
   it('derives maturity from the term, keeps a maturity typed off the document, and insists on one of the two', async () => {
     const user = await signup(ctx);
 

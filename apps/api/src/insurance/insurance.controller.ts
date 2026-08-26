@@ -36,6 +36,18 @@ const policyFields = z.object({
   termMonths: z.number().int().min(1).max(1200).optional(),
   maturityDate: isoDate.optional(),
   nomineeName: z.string().max(120).optional(),
+  /* The insurer's own valuation, transcribed. Optional every one of them: most
+     policies are recorded for their schedule alone, and a form that demanded a
+     cash value would have people typing zero to get past it — which reads as
+     "worth nothing" rather than "never asked". */
+  cashValueMinor: minorAmount.nonnegative().optional(),
+  surrenderValueMinor: minorAmount.nonnegative().optional(),
+  policyLoanMinor: minorAmount.nonnegative().optional(),
+  aplMinor: minorAmount.nonnegative().optional(),
+  loanLimitMinor: minorAmount.nonnegative().optional(),
+  /* The day those figures were read. `nullable` so an edit can take back a
+     valuation as well as give one. */
+  valuedOn: isoDate.nullable().optional(),
   note: z.string().max(2000).optional(),
 });
 

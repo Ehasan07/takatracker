@@ -35,6 +35,17 @@ export interface InsurancePolicyView {
   startDate: string;
   maturityDate: string | null;
   nomineeName: string | null;
+  /* The insurer's valuation, as transcribed. `valuedOn` is null until somebody
+     types one, and every screen reading these has to say the date out loud —
+     a cash value with no date looks current forever. */
+  cashValueMinor: number;
+  surrenderValueMinor: number;
+  policyLoanMinor: number;
+  aplMinor: number;
+  loanLimitMinor: number;
+  valuedOn: string | null;
+  /** Cash value less everything owed against it: what a surrender would pay. */
+  netSurrenderMinor: number;
   status: PolicyStatus;
   note: string | null;
   premiumCount: number;
@@ -129,6 +140,12 @@ export class InsuranceService {
         startDate: fromLocalDateString(input.startDate, timezone),
         maturityDate: fromLocalDateString(maturityDate, timezone),
         nomineeName: input.nomineeName,
+        cashValueMinor: BigInt(input.cashValueMinor ?? 0),
+        surrenderValueMinor: BigInt(input.surrenderValueMinor ?? 0),
+        policyLoanMinor: BigInt(input.policyLoanMinor ?? 0),
+        aplMinor: BigInt(input.aplMinor ?? 0),
+        loanLimitMinor: BigInt(input.loanLimitMinor ?? 0),
+        valuedOn: input.valuedOn ? fromLocalDateString(input.valuedOn, timezone) : null,
         note: input.note,
         premiums: {
           create: Array.from({ length: count }, (_, i) => ({
@@ -202,6 +219,24 @@ export class InsuranceService {
         startDate: input.startDate ? fromLocalDateString(input.startDate, timezone) : undefined,
         maturityDate: maturityDate ? fromLocalDateString(maturityDate, timezone) : undefined,
         nomineeName: input.nomineeName,
+        /* Absent leaves the figure alone, which is what an edit that only
+           renamed the insurer has to do. `valuedOn: null` takes the valuation
+           back — the one case where a caller means "there is no date now". */
+        cashValueMinor:
+          input.cashValueMinor === undefined ? undefined : BigInt(input.cashValueMinor),
+        surrenderValueMinor:
+          input.surrenderValueMinor === undefined ? undefined : BigInt(input.surrenderValueMinor),
+        policyLoanMinor:
+          input.policyLoanMinor === undefined ? undefined : BigInt(input.policyLoanMinor),
+        aplMinor: input.aplMinor === undefined ? undefined : BigInt(input.aplMinor),
+        loanLimitMinor:
+          input.loanLimitMinor === undefined ? undefined : BigInt(input.loanLimitMinor),
+        valuedOn:
+          input.valuedOn === undefined
+            ? undefined
+            : input.valuedOn === null
+              ? null
+              : fromLocalDateString(input.valuedOn, timezone),
         status: input.status,
         note: input.note,
       },
@@ -494,6 +529,22 @@ export class InsuranceService {
       startDate: toLocalDateString(policy.startDate, timezone),
       maturityDate: maturityOf(policy, timezone),
       nomineeName: policy.nomineeName,
+      cashValueMinor: minorToNumber(policy.cashValueMinor),
+      surrenderValueMinor: minorToNumber(policy.surrenderValueMinor),
+      policyLoanMinor: minorToNumber(policy.policyLoanMinor),
+      aplMinor: minorToNumber(policy.aplMinor),
+      loanLimitMinor: minorToNumber(policy.loanLimitMinor),
+      valuedOn: policy.valuedOn ? toLocalDateString(policy.valuedOn, timezone) : null,
+      /* Never below zero. A loan larger than the cash value means the policy is
+         about to be eaten by its own borrowing, and a negative "you would
+         receive" reads as money the holder owes on surrender — which is not
+         what happens; the policy lapses instead. */
+      netSurrenderMinor: Math.max(
+        0,
+        minorToNumber(policy.surrenderValueMinor) -
+          minorToNumber(policy.policyLoanMinor) -
+          minorToNumber(policy.aplMinor),
+      ),
       status: policy.status,
       note: policy.note,
       premiumCount: premiums.length,
