@@ -240,6 +240,20 @@ const acceptDraftSchema = z.object({
   loanDirection: z.enum(['LENT', 'BORROWED']).optional(),
   personId: cuid.optional(),
   personName: z.string().trim().min(1).max(120).optional(),
+  /**
+   * The policy whose premium this message paid.
+   *
+   * The inbox already ticks a premium on its own when the message names the
+   * policy number — an insurer's own receipt does. A bank's does not: `BDT
+   * 11,331.00 debited for Beftn Inward` carries the *bank* account and nothing
+   * about the policy, so the guess declines and the বীমা screen goes on asking
+   * for money that left the account weeks ago. This is the reviewer saying
+   * which policy it was, in the same tap that books the expense.
+   *
+   * Only ever an expense: money moving *to* an insurer is a premium, money
+   * arriving from one is a claim or a maturity and settles no instalment.
+   */
+  policyId: cuid.optional(),
 });
 export type AcceptDraftInput = z.infer<typeof acceptDraftSchema>;
 

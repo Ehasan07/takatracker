@@ -122,6 +122,14 @@ export interface AcceptDraftBody {
   /** What the entry is *for* — the venture, the trip, the family. */
   tagIds?: string[];
   loanId?: string;
+  /**
+   * The policy whose premium this expense pays.
+   *
+   * The server settles that policy's oldest outstanding instalment against the
+   * entry this accept creates. Expenses only — money arriving *from* an insurer
+   * is a claim or a maturity and settles nothing.
+   */
+  policyId?: string;
   /** A loan being *made* from this message. Needs `personId` or `personName`. */
   loanDirection?: 'LENT' | 'BORROWED';
   personId?: string;

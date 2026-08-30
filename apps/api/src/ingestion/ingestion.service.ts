@@ -1212,6 +1212,20 @@ export class IngestionService {
       }
     }
 
+    /* The policy the reviewer named, checked while refusing is still free.
+     *
+     * `claimChosenPremium` runs after the ledger write and cannot throw, so a
+     * policy that is gone or has nothing left owing would be swallowed there
+     * and the accept would report a premium it never ticked. Money going the
+     * other way is not a premium at all: a claim or a maturity payout arrives
+     * *from* an insurer and settles no instalment. */
+    if (input.policyId) {
+      if (isTransfer || direction === 'IN') {
+        throw new BadRequestException('বীমার প্রিমিয়াম খরচ হিসেবেই বসে');
+      }
+      await this.insurance.assertClaimable(ctx.workspaceId, input.policyId);
+    }
+
     const payee = input.payee === undefined ? draft.payee : input.payee;
     const type = isTransfer ? 'TRANSFER' : direction === 'IN' ? 'INCOME' : 'EXPENSE';
     const system = await this.accounts.systemAccounts(ctx.workspaceId);
@@ -1354,15 +1368,26 @@ export class IngestionService {
      * a premium paid three weeks ago unless somebody says so. This is the same
      * tick `claimInstalment` does for a DPS, for policies, and it declines
      * unless exactly one policy and exactly one due premium fit. */
+    /* A named policy is not a guess, so it does not go through the guessing
+     * path at all: `claimPremium` refuses anything but an exact policy-number
+     * and amount match, which is right when it is reading a message and wrong
+     * when a person has pointed at the policy themselves. */
     const claimedPremium =
       isTransfer || direction === 'IN'
         ? null
-        : await this.insurance.claimPremium(ctx.workspaceId, {
-            policyHint: IngestionService.evidenceOf(draft.evidence).accountHint ?? null,
-            amountMinor,
-            date,
-            transactionId,
-          });
+        : input.policyId
+          ? await this.insurance.claimChosenPremium(ctx.workspaceId, ctx.id, {
+              policyId: input.policyId,
+              amountMinor,
+              date,
+              transactionId,
+            })
+          : await this.insurance.claimPremium(ctx.workspaceId, {
+              policyHint: IngestionService.evidenceOf(draft.evidence).accountHint ?? null,
+              amountMinor,
+              date,
+              transactionId,
+            });
 
     if (isTransfer) {
       await this.savings.claimInstalment(ctx.workspaceId, {

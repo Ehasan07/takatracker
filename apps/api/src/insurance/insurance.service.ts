@@ -366,6 +366,111 @@ export class InsuranceService {
     }
   }
 
+  /**
+   * The instalment somebody pointed at, rather than one a number matched.
+   *
+   * `claimPremium` above guesses: it reads a policy number out of the message
+   * and refuses unless exactly one policy and exactly one instalment fit. This
+   * is the other door. A person has chosen the policy on the entry screen, so
+   * there is nothing left to guess — the oldest instalment still owed is
+   * settled, the way an insurer applies a payment to the earliest arrear.
+   *
+   * No month bound, unlike the guessing path. A premium paid in July for August
+   * is a real thing that the amount alone could never identify, which is why
+   * the parser declines it; a person naming the policy is not guessing, and
+   * refusing them would leave the one case the picker exists for unanswerable.
+   *
+   * Never throws, for the reason `claimPremium` never throws: the ledger entry
+   * is already written and correct by the time this runs. `assertClaimable`
+   * below is the half that says no, and it runs *before* the write.
+   */
+  async claimChosenPremium(
+    workspaceId: string,
+    actorUserId: string,
+    paid: { policyId: string; amountMinor: number; date: Date; transactionId: string },
+  ): Promise<{ policyId: string; insurer: string; premiumId: string } | null> {
+    try {
+      const policy = await this.prisma.insurancePolicy.findFirst({
+        where: { id: paid.policyId, workspaceId, deletedAt: null },
+        select: { id: true, insurer: true },
+      });
+      if (!policy) return null;
+
+      const due = await this.nextUnpaid(workspaceId, policy.id);
+      if (!due) return null;
+
+      const claimed = await this.prisma.premiumPayment.updateMany({
+        /* Compare-and-set, so two entries saved at the same moment cannot both
+           take the same instalment. */
+        where: { id: due.id, workspaceId, status: { in: ['DUE', 'MISSED'] }, transactionId: null },
+        data: {
+          status: 'PAID',
+          paidDate: paid.date,
+          /* What was actually handed over, not what the schedule expected — the
+             same rule `payPremium` follows for a premium paid short or late. */
+          amountMinor: BigInt(paid.amountMinor),
+          transactionId: paid.transactionId,
+        },
+      });
+      if (claimed.count !== 1) return null;
+
+      this.audit.emit({
+        workspaceId,
+        actorUserId,
+        action: 'insurance.premium_paid' as never,
+        entity: 'PremiumPayment',
+        entityId: due.id,
+        after: {
+          policyId: policy.id,
+          amountMinor: paid.amountMinor,
+          transactionId: paid.transactionId,
+          via: 'entry',
+        },
+      });
+
+      return { policyId: policy.id, insurer: policy.insurer, premiumId: due.id };
+    } catch {
+      /* Deliberately swallowed — see the note above. */
+      return null;
+    }
+  }
+
+  /**
+   * Say no before the money is written, not after.
+   *
+   * `claimChosenPremium` runs after the ledger write and cannot throw, so on
+   * its own a policy with nothing left owing would take the choice silently and
+   * the person would be told the premium was recorded when no instalment
+   * moved. An entry screen offering the picker calls this first, while
+   * refusing still costs nothing.
+   */
+  async assertClaimable(workspaceId: string, policyId: string): Promise<void> {
+    const policy = await this.prisma.insurancePolicy.findFirst({
+      where: { id: policyId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!policy) throw new NotFoundException('পলিসি পাওয়া যায়নি');
+    if (!(await this.nextUnpaid(workspaceId, policy.id))) {
+      throw new BadRequestException('এই পলিসির আর কোনো প্রিমিয়াম বাকি নেই');
+    }
+  }
+
+  /**
+   * The earliest instalment still owed and unclaimed.
+   *
+   * `DUE` or `MISSED`, which is the same pair the বীমা screen calls "পরের
+   * প্রিমিয়াম": a premium nobody paid last month is still owed and is still the
+   * next one. `SKIPPED` is excluded because somebody said out loud that it was
+   * never going to be paid, and a payment should not resurrect it.
+   */
+  private nextUnpaid(workspaceId: string, policyId: string) {
+    return this.prisma.premiumPayment.findFirst({
+      where: { workspaceId, policyId, status: { in: ['DUE', 'MISSED'] }, transactionId: null },
+      orderBy: { dueDate: 'asc' },
+      select: { id: true },
+    });
+  }
+
   async payPremium(
     workspaceId: string,
     actorUserId: string,

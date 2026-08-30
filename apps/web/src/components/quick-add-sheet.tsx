@@ -8,7 +8,7 @@ import { fetchPeople } from '@/app/(shell)/people/queries';
 import { TagPicker } from '@/app/(shell)/tags/tag-picker';
 import { useCoarsePointer } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
-import { fmtNumber } from '@/lib/format';
+import { fmtDate, fmtNumber } from '@/lib/format';
 import { t } from '@/lib/t';
 import { invalidateAfterWrite } from '@/lib/invalidate';
 import { cn } from '@/lib/utils';
@@ -139,6 +139,11 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
      to another screen to record money that landed in their bank account is
      asking them to remember a place, not a fact. */
   const [savingsPlanId, setSavingsPlanId] = React.useState('');
+  /* Which policy's premium this expense pays, and which instalment of it.
+     Null on almost every entry. Creates only: re-ticking an instalment because
+     somebody fixed a typo on a row would settle a second premium nobody
+     paid. */
+  const [premium, setPremium] = React.useState<PremiumPick | null>(null);
   /* Null for the overwhelming majority of entries, which are in the
      workspace's own money and never open the section. */
   const [fx, setFx] = React.useState<FxValue | null>(null);
@@ -198,6 +203,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setPersonId(editing.personId ?? '');
       setPersonName('');
       setSavingsPlanId(editing.savingsPlanId ?? '');
+      /* Not offered on an edit and so never restored: the instalment was
+         settled when the row was created, and a second tick would mark a
+         premium paid that nobody paid. */
+      setPremium(null);
       setFx(
         editing.fxCurrency && editing.fxAmountMinor
           ? { currency: editing.fxCurrency, amountMinor: editing.fxAmountMinor }
@@ -228,6 +237,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
       setTagsKnown(true);
       setPersonId('');
       setPersonName('');
+      setPremium(null);
       setFx(null);
       setFxRate('');
       setQuantity(null);
@@ -410,11 +420,35 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         quantityUnit: quantity && quantity.milli > 0 ? quantity.unit.trim() || null : null,
       };
 
-      return api<TransactionDto>(editing ? `/transactions/${editing.id}` : '/transactions', {
-        method: editing ? 'PATCH' : 'POST',
-        body,
-        queueWhenOffline: true,
-      });
+      const saved = await api<TransactionDto>(
+        editing ? `/transactions/${editing.id}` : '/transactions',
+        {
+          method: editing ? 'PATCH' : 'POST',
+          body,
+          /* Parked offline for every ordinary entry — and never when a premium
+             is riding on it. A queued write comes back with no id, so the tick
+             below could not name the transaction that paid it; the instalment
+             would stay owed with nothing on any screen saying why. Better to
+             refuse the save while the person is still looking at it. */
+          queueWhenOffline: premium === null,
+        },
+      );
+
+      /* The instalment, settled against the entry that paid it.
+       *
+       * A second request rather than a field on the first, because a policy
+       * holds no money: the ledger row and the premium schedule are two
+       * records of one event and `/insurance/:id/premiums/:id/pay` is the door
+       * built for the second. The inbox does the same thing server-side, where
+       * it has a draft to hang it on. */
+      if (premium && saved?.id) {
+        await api(`/insurance/${premium.policyId}/premiums/${premium.premiumId}/pay`, {
+          method: 'POST',
+          body: { transactionId: saved.id, paidDate: date, amountMinor },
+        });
+      }
+
+      return saved;
     },
     onSuccess: () => {
       haptic('success');
@@ -431,6 +465,10 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
        * the refresh needs to block the person who made it. */
       onOpenChange(false);
       invalidateAfterWrite(queryClient);
+      /* Only when one was settled. An ordinary expense cannot change a policy,
+         and refetching বীমা behind every entry is a request that can only
+         return the same answer. */
+      if (premium) void queryClient.invalidateQueries({ queryKey: ['insurance'] });
     },
     onError: async (err) => {
       if (err instanceof QueuedOfflineError) {
@@ -730,6 +768,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
 
             <PersonField value={personId} onChange={setPersonId} />
             <InvestmentField kind={kind} value={savingsPlanId} onChange={setSavingsPlanId} />
+            {editing ? null : <PremiumField kind={kind} value={premium} onChange={setPremium} />}
 
             <QuantityField value={quantity} onChange={setQuantity} />
 
@@ -985,6 +1024,116 @@ function LoanPersonField({
  * Optional, always. Most entries have no counterparty worth naming, and a field
  * that nags for one teaches people to put something meaningless in it.
  */
+/** The policy and the instalment a premium entry settles. */
+interface PremiumPick {
+  policyId: string;
+  premiumId: string;
+  insurer: string;
+  dueDate: string;
+  amountMinor: number;
+}
+
+/** A policy the picker can offer, from `GET /insurance`. */
+interface PolicyOption {
+  id: string;
+  insurer: string;
+  policyNumberMasked: string | null;
+  status: string;
+  nextDue: { id: string; dueDate: string; amountMinor: number } | null;
+}
+
+/**
+ * "কোন বীমার প্রিমিয়াম" — the policy an expense pays into.
+ *
+ * ## Why it is here and not on the বীমা screen
+ *
+ * The same reason `InvestmentField` above is here. A premium leaves the bank
+ * account like any other expense, and the person recording it is already on
+ * this form with the amount in front of them. What the books were missing was
+ * *which policy it settled* — so the schedule went on asking for money that had
+ * already gone, and the only way to answer it was to remember another screen
+ * and press দিলাম there. Two records of one event, kept in step by somebody's
+ * memory.
+ *
+ * The tick is a second request, made after the entry saves: a policy holds no
+ * money of its own, so nothing about the ledger row changes — what changes is
+ * that one instalment now names the transaction that paid it.
+ *
+ * ## Expenses only, and only what can still be paid
+ *
+ * Money arriving *from* an insurer is a claim or a maturity and settles no
+ * instalment. A lapsed policy and one whose schedule is finished are both
+ * refused by the server, so neither is offered — an enabled dropdown whose only
+ * outcome is an error is worse than no dropdown.
+ */
+function PremiumField({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: Kind;
+  value: PremiumPick | null;
+  onChange: (pick: PremiumPick | null) => void;
+}) {
+  const { currency } = useWorkspaceSettings();
+  const policies = useQuery({
+    queryKey: ['insurance'],
+    queryFn: () => api<PolicyOption[]>('/insurance'),
+    staleTime: 60_000,
+    enabled: kind === 'EXPENSE',
+  });
+
+  if (kind !== 'EXPENSE') return null;
+  const rows = (policies.data ?? []).filter(
+    (policy) => policy.status === 'ACTIVE' && policy.nextDue !== null,
+  );
+  if (rows.length === 0) return null;
+
+  return (
+    <Field label={t('entry.whichPolicy', 'কোন বীমার প্রিমিয়াম')} htmlFor="qa-policy">
+      <Select
+        id="qa-policy"
+        name="policyId"
+        value={value?.policyId ?? ''}
+        onChange={(e) => {
+          const policy = rows.find((row) => row.id === e.target.value);
+          onChange(
+            policy?.nextDue
+              ? {
+                  policyId: policy.id,
+                  premiumId: policy.nextDue.id,
+                  insurer: policy.insurer,
+                  dueDate: policy.nextDue.dueDate,
+                  amountMinor: policy.nextDue.amountMinor,
+                }
+              : null,
+          );
+        }}
+      >
+        <option value="">{t('entry.notAPremium', 'বীমার প্রিমিয়াম নয়')}</option>
+        {rows.map((policy) => (
+          <option key={policy.id} value={policy.id}>
+            {[policy.insurer, policy.policyNumberMasked].filter(Boolean).join(' ')}
+          </option>
+        ))}
+      </Select>
+      <p className="text-ink-muted mt-1 text-xs">
+        {value
+          ? t(
+              'entry.premiumWillTick',
+              '{date} তারিখের কিস্তিটি ({amount}) পরিশোধিত হিসেবে টিক পড়বে।',
+            )
+              .replace('{date}', fmtDate(value.dueDate))
+              .replace('{amount}', formatMinor(value.amountMinor, { currency }))
+          : t(
+              'entry.whichPolicyHint',
+              'ঐচ্ছিক। বীমার প্রিমিয়াম দিলে পলিসিটি বেছে দিন — বীমা পাতায় ওই কিস্তিটি নিজে থেকেই পরিশোধিত হয়ে যাবে।',
+            )}
+      </p>
+    </Field>
+  );
+}
+
 /**
  * "কোন সঞ্চয় থেকে" — the investment an income row came out of.
  *

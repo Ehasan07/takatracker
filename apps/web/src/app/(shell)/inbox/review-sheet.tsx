@@ -24,7 +24,7 @@ import { useWorkspaceSettings } from '@/lib/workspace-settings';
 import { cn } from '@/lib/utils';
 import { originOf, type FieldOrigin } from './evidence';
 import { convertedAmountText, FxReviewField } from './fx-review';
-import { bnDateTime, bnNum, channelLabel, REJECT_REASONS, statusLabel } from './labels';
+import { bnDate, bnDateTime, bnNum, channelLabel, REJECT_REASONS, statusLabel } from './labels';
 import { Sparkles } from 'lucide-react';
 import { t } from '@/lib/t';
 import { ConfidenceMeter, OriginBadge, StatusPill } from './parts';
@@ -100,6 +100,25 @@ interface PersonOption {
 /** Whichever the reviewer types a new name under. */
 const NEW_PERSON = '__new__';
 
+/** What the server's `notes` column takes, mirrored so the box cannot overrun it. */
+const NOTES_MAX = 2000;
+
+/**
+ * A policy the reviewer can point a premium at, from `GET /insurance`.
+ *
+ * Only the fields the picker reads. `nextDue` is the instalment the server will
+ * settle — the earliest one still owed — so the row can say which month is
+ * about to be ticked instead of asking somebody to trust that something
+ * happened.
+ */
+interface PolicyOption {
+  id: string;
+  insurer: string;
+  policyNumberMasked: string | null;
+  status: string;
+  nextDue: { id: string; dueDate: string; amountMinor: number } | null;
+}
+
 interface FormState {
   /** Which of the six this is. The two below are what the accept actually sends. */
   kind: Kind;
@@ -122,6 +141,8 @@ interface FormState {
   /** Set only when this was a move between two of the reviewer's own accounts. */
   counterAccountId: string;
   categoryId: string;
+  /** Set when this expense is a premium, and which policy's. */
+  policyId: string;
   description: string;
   notes: string;
   /** What this is *for* — the venture, the trip, the family. */
@@ -288,8 +309,24 @@ function ReviewForm({
        message into a transfer. */
     counterAccountId: '',
     categoryId: draft.categoryId ?? sticky.categoryId,
+    /* Never carried forward and never guessed, for the reason a tag is not:
+       the last message being a premium says nothing about this one, and a
+       policy left ticked from the previous draft would settle an instalment
+       nobody paid — which is the one mistake the বীমা screen cannot recover
+       from on its own. */
+    policyId: '',
     description: '',
-    notes: '',
+    /* The message itself, already in the box.
+     *
+     * The parser keeps what it could read — an amount, a date, four digits of
+     * an account — and throws the sentence away. Six months later the entry
+     * says ৳১৮০ and খাবার and nothing about AJWAH LTD TAJMAHAL ROA. So the note
+     * starts as the SMS exactly as it arrived: it is the only copy of what
+     * actually happened that survives into the ledger, and anybody who does not
+     * want it there can clear the box before accepting. Cut to the column's own
+     * limit, because a forwarded email body runs past it and the server would
+     * refuse the whole accept over the tail. */
+    notes: draft.message?.body.slice(0, NOTES_MAX) ?? '',
     /* Never carried, unlike the account and the খাত.
      *
      * Those two are a bank's own repetition: fifty alerts from one bank land
@@ -345,6 +382,26 @@ function ReviewForm({
     staleTime: 30_000,
   });
 
+  /* Fetched on the খরচ tab, and cached under the same key the বীমা screen
+     uses: one request a minute for the whole queue rather than one per draft,
+     and a premium ticked here refreshes that screen without a second fetch. A
+     workspace with no policies gets an empty list and the field never draws. */
+  const policies = useQuery({
+    queryKey: ['insurance'],
+    queryFn: () => api<PolicyOption[]>('/insurance'),
+    enabled: form.kind === 'EXPENSE',
+    staleTime: 60_000,
+  });
+
+  /* A lapsed policy takes no premium, and one whose schedule is finished has no
+     instalment left to settle — the server refuses both, so neither is offered.
+     Offering a control whose only outcome is a refusal is worse than not
+     offering it. */
+  const payablePolicies = (policies.data ?? []).filter(
+    (policy) => policy.status === 'ACTIVE' && policy.nextDue !== null,
+  );
+  const chosenPolicy = payablePolicies.find((policy) => policy.id === form.policyId);
+
   /* Settled and cancelled loans cannot take an instalment, and offering one is
      offering a refusal. */
   const openLoans = (loans.data ?? []).filter(
@@ -356,6 +413,13 @@ function ReviewForm({
      no খাত at all, and clear the one they were carrying rather than asking this
      for a kind it cannot have. */
   const wantedKind = categoryKindFor(form.direction);
+
+  /* The same rule the category follows, for the same reason: the server
+     refuses a policy on anything but an expense, and a picker left set behind a
+     tab that no longer shows it would turn that refusal into a mystery. */
+  React.useEffect(() => {
+    if (form.kind !== 'EXPENSE') setForm((f) => (f.policyId ? { ...f, policyId: '' } : f));
+  }, [form.kind]);
 
   /* A category carried over from an expense must not survive a switch to
      income: the server would refuse it, and leaving it on screen would make
@@ -579,7 +643,16 @@ function ReviewForm({
       // null clears a payee the parser guessed; '' would store an empty string.
       ...(payee === draft.payee ? {} : { payee }),
       ...(description ? { description } : {}),
-      ...(notes ? { notes } : {}),
+      /* Sent only when it is the reviewer's own words. The box opens holding
+         the message, and the server already writes exactly that when no note
+         comes with the accept — so echoing it back would change nothing on the
+         entry and would tell the accept audit, which records the keys of this
+         object as *what the parser got wrong*, that somebody had to correct a
+         field they never touched. */
+      ...(notes && notes !== (draft.message?.body ?? '').trim() ? { notes } : {}),
+      /* Only on an expense. The server refuses it anywhere else, and the field
+         is not drawn there. */
+      ...(form.kind === 'EXPENSE' && form.policyId ? { policyId: form.policyId } : {}),
       /* Always sent, empty included: clearing the tags a previous draft stuck
          on has to be a thing a person can do, and an omitted field would mean
          "unchanged" rather than "none". */
@@ -951,6 +1024,50 @@ function ReviewForm({
           />
         )}
 
+        {/* The policy this premium belongs to.
+ 
+            The inbox ticks an instalment on its own when the message names the
+            policy number, which an insurer's own receipt does. A bank's does
+            not — “BDT 11,331.00 debited for Beftn Inward” carries the bank
+            account and nothing else — so the guess declines and the বীমা screen
+            goes on asking for money that left the account weeks ago. This is
+            the reviewer answering that question in the tap that books the
+            expense, instead of finding the policy afterwards and marking it by
+            hand.
+ 
+            Drawn only when there is something to choose: no policies, or none
+            with an instalment outstanding, and the field is absent rather than
+            empty. */}
+        {form.kind === 'EXPENSE' && payablePolicies.length > 0 ? (
+          <EvidenceField label={t('inbox.whichPolicy', 'বীমার প্রিমিয়াম')} htmlFor="dr-policy">
+            <Select id="dr-policy" value={form.policyId} onChange={set('policyId')}>
+              <option value="">{t('inbox.notAPremium', 'বীমার প্রিমিয়াম নয়')}</option>
+              {payablePolicies.map((policy) => (
+                <option key={policy.id} value={policy.id}>
+                  {[policy.insurer, policy.policyNumberMasked].filter(Boolean).join(' ')}
+                </option>
+              ))}
+            </Select>
+            {chosenPolicy?.nextDue ? (
+              <p className="text-ink-muted mt-1 text-xs">
+                {t(
+                  'inbox.premiumWillTick',
+                  '{date} তারিখের কিস্তিটি ({amount}) পরিশোধিত হিসেবে টিক পড়বে।',
+                )
+                  .replace('{date}', bnDate(chosenPolicy.nextDue.dueDate))
+                  .replace(
+                    '{amount}',
+                    formatMinor(chosenPolicy.nextDue.amountMinor, { currency }),
+                  )}{' '}
+                {t(
+                  'inbox.premiumStillExpense',
+                  'খাতায় এটি খরচ হিসেবেই বসবে — পলিসি নিজে কোনো টাকা ধরে রাখে না।',
+                )}
+              </p>
+            ) : null}
+          </EvidenceField>
+        ) : null}
+
         {/* What this is *for*, beside what it was.
  
             A shop run out of the household's own bKash is separated from it by
@@ -1003,8 +1120,11 @@ function ReviewForm({
                 id="dr-notes"
                 value={form.notes}
                 onChange={set('notes')}
-                rows={2}
-                maxLength={2000}
+                /* Four, not two: the box now opens with the whole message in
+                   it, and a two-line window onto a five-line SMS reads as
+                   truncation rather than as something you can edit. */
+                rows={4}
+                maxLength={NOTES_MAX}
               />
             </div>
           </div>

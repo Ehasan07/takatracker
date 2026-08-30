@@ -88,6 +88,9 @@ export function invalidateAfterAccept(queryClient: QueryClient): void {
     ['accounts'],
     ['reports'],
     ['entitlements'],
+    /* An accept can settle a premium, and the বীমা screen would otherwise go on
+       showing the instalment as owed until something else refetched it. */
+    ['insurance'],
   ]) {
     void queryClient.invalidateQueries({ queryKey: key });
   }

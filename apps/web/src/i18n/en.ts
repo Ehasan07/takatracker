@@ -1269,6 +1269,16 @@ export const EN: Record<string, string> = {
   'inbox.noMessagesHint':
     'Check the forwarder on your phone — the setup button has everything it needs.',
   'inbox.messageCount': '{n} messages · newest first',
+  'inbox.messageMatches': '{n} messages matched',
+  /* The search box over both inbox lists. It filters what has been fetched, so
+     it says so rather than letting an older message look deleted. */
+  'inbox.searchPlaceholder': 'Search by sender or message text',
+  'inbox.searchLabel': 'Search messages',
+  'inbox.searchClear': 'Clear the search',
+  'inbox.searchScope':
+    'Searching only what has been loaded — press “Show more” below to search older messages.',
+  'inbox.noMatch': 'nothing matched.',
+  'inbox.noMatchHint': 'Try another word, or clear the search.',
   'inbox.becameDraft': 'Became a draft — see the Drafts tab',
   'inbox.notMoney': 'Not about money, so no draft was raised',
   'common.loading': 'Loading…',
@@ -1789,6 +1799,13 @@ export const EN: Record<string, string> = {
   'entry.noInvestment': 'None',
   'entry.fromInvestmentHint':
     'Optional. Pick it for profit from a Sanchayapatra or a DPS \u2014 then the app can say how much each one has paid you.',
+  /* Pointing an expense at the policy it pays, so the premium schedule is
+     settled in the same tap that records the money leaving. */
+  'entry.whichPolicy': 'Which policy this premium pays',
+  'entry.notAPremium': 'Not an insurance premium',
+  'entry.whichPolicyHint':
+    'Optional. Pick the policy when this is a premium \u2014 the instalment is ticked off on the insurance page for you.',
+  'entry.premiumWillTick': 'The instalment due {date} ({amount}) will be marked paid.',
 
   /* A message that named a foreign currency, and the rate the person confirms. */
   'inbox.amount': 'Amount',
@@ -1987,6 +2004,10 @@ export const EN: Record<string, string> = {
   'rules.remove': 'Remove this rule',
   'inbox.tags': 'Tags — who for, or what venture',
   'inbox.whichLoan': 'Which loan is being repaid',
+  'inbox.whichPolicy': 'Insurance premium',
+  'inbox.notAPremium': 'Not an insurance premium',
+  'inbox.premiumWillTick': 'The instalment due {date} ({amount}) will be marked paid.',
+  'inbox.premiumStillExpense': 'It still books as an expense — a policy holds no money of its own.',
   'inbox.loanOwedToMe': 'owed to me',
   'inbox.loanOwedByMe': 'owed by me',
   'inbox.noOpenLoans': 'No open loan — record the loan on the loans page first',

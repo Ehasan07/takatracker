@@ -1,11 +1,20 @@
 'use client';
 
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, CircleHelp, Settings } from 'lucide-react';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ChevronRight,
+  CircleHelp,
+  Search,
+  Settings,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/field';
 import { haptic } from '@/lib/haptics';
 import { t } from '@/lib/t';
 import { cn } from '@/lib/utils';
@@ -38,9 +47,97 @@ import type { DraftPage, DraftView, MessagePage, MessageRow } from './types';
  */
 type View = 'drafts' | 'messages';
 
+/**
+ * Does this row contain what was typed?
+ *
+ * Case-folded substring against whatever the row can be recognised by — who it
+ * came from, what it said, who it was paid to. Nothing cleverer: somebody
+ * looking for a charge types "ajwah" or "3211" or "2,200", and all three are
+ * literally in the message body.
+ */
+function matches(needle: string, ...fields: (string | null | undefined)[]): boolean {
+  const q = needle.trim().toLowerCase();
+  if (!q) return true;
+  return fields.some((value) => value?.toLowerCase().includes(q));
+}
+
+/**
+ * The search box, over both lists.
+ *
+ * It filters what has been fetched rather than asking the server, because the
+ * page already holds fifty rows and a round trip per keystroke would buy
+ * nothing on them. The cost is real though — a message older than the last
+ * "আরও দেখুন" is not in memory and so cannot match — so the box says so out
+ * loud instead of letting somebody conclude the message is gone.
+ */
+function SearchBox({
+  value,
+  onChange,
+  hasMore,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  hasMore: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="relative min-w-0">
+        <Search
+          className="text-ink-muted pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+          aria-hidden
+        />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          maxLength={200}
+          type="search"
+          autoComplete="off"
+          placeholder={t('inbox.searchPlaceholder', 'প্রেরক বা বার্তার লেখা দিয়ে খুঁজুন')}
+          aria-label={t('inbox.searchLabel', 'বার্তা খুঁজুন')}
+          className="ps-9"
+        />
+        {value ? (
+          <button
+            type="button"
+            aria-label={t('inbox.searchClear', 'খোঁজা বাতিল')}
+            onClick={() => onChange('')}
+            className="press text-ink-muted absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        ) : null}
+      </div>
+      {value.trim() && hasMore ? (
+        <p className="text-ink-muted text-xs">
+          {t(
+            'inbox.searchScope',
+            'যতটুকু আনা হয়েছে তার মধ্যেই খোঁজা হচ্ছে — পুরনো বার্তায় খুঁজতে নিচে “আরও দেখুন” চাপুন।',
+          )}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Typed something, matched nothing. Separate from an empty inbox: the pile is
+    not empty, this word is not in it. */
+function NoMatch({ query }: { query: string }) {
+  return (
+    <div className="rounded-card border-rule border border-dashed p-8 text-center">
+      <p className="text-ink text-sm">
+        “{query.trim()}” — {t('inbox.noMatch', 'এরকম কিছু পাওয়া যায়নি।')}
+      </p>
+      <p className="text-ink-muted mt-1 text-sm">
+        {t('inbox.noMatchHint', 'অন্য শব্দ লিখে দেখুন, বা খোঁজা বাতিল করুন।')}
+      </p>
+    </div>
+  );
+}
+
 export default function InboxPage() {
   const [view, setView] = React.useState<View>('drafts');
   const [status, setStatus] = React.useState('PENDING');
+  const [query, setQuery] = React.useState('');
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [sticky, setSticky] = React.useState<StickyPick>({ accountId: '', categoryId: '' });
   const [toast, setToast] = React.useState<string | null>(null);
@@ -60,15 +157,36 @@ export default function InboxPage() {
     enabled: view === 'messages',
   });
 
-  const rows = React.useMemo(
+  const allRows = React.useMemo(
     () => (drafts.data?.pages ?? []).flatMap((page) => page.items),
     [drafts.data],
   );
 
-  const messageRows = React.useMemo(
+  const allMessageRows = React.useMemo(
     () => (messages.data?.pages ?? []).flatMap((page) => page.items),
     [messages.data],
   );
+
+  /* The filtered list *is* the queue, not a view onto it. The sheet steps
+     through what is on screen, so searching "ajwah" and pressing next walks the
+     three AJWAH charges rather than the fifty rows behind them. */
+  const rows = React.useMemo(
+    () =>
+      query.trim()
+        ? allRows.filter((row) => matches(query, row.message?.sender, row.message?.body, row.payee))
+        : allRows,
+    [allRows, query],
+  );
+
+  const messageRows = React.useMemo(
+    () =>
+      query.trim()
+        ? allMessageRows.filter((row) => matches(query, row.sender, row.body))
+        : allMessageRows,
+    [allMessageRows, query],
+  );
+
+  const searching = query.trim().length > 0;
 
   const activeIndex = activeId === null ? -1 : rows.findIndex((row) => row.id === activeId);
   const active = activeIndex === -1 ? null : (rows[activeIndex] ?? null);
@@ -169,9 +287,16 @@ export default function InboxPage() {
         </Chip>
       </div>
 
+      <SearchBox
+        value={query}
+        onChange={setQuery}
+        hasMore={Boolean(view === 'messages' ? messages.hasNextPage : drafts.hasNextPage)}
+      />
+
       {view === 'messages' ? (
         <MessageLog
           rows={messageRows}
+          query={query}
           isLoading={messages.isLoading}
           isError={messages.isError}
           onRetry={() => void messages.refetch()}
@@ -203,11 +328,17 @@ export default function InboxPage() {
               <SkeletonRows rows={5} />
             </div>
           ) : rows.length === 0 ? (
-            <EmptyInbox unfiltered={unfiltered} />
+            searching ? (
+              <NoMatch query={query} />
+            ) : (
+              <EmptyInbox unfiltered={unfiltered} />
+            )
           ) : (
             <>
               <p className="text-ink-muted text-xs">
-                {bnNum(rows.length)}টি খসড়া{drafts.hasNextPage ? '+' : ''} · নতুনটি উপরে
+                {searching
+                  ? `${bnNum(rows.length)}টি খসড়া মিলেছে`
+                  : `${bnNum(rows.length)}টি খসড়া${drafts.hasNextPage ? '+' : ''} · নতুনটি উপরে`}
               </p>
               <ul className="flex flex-col gap-2">
                 {rows.map((draft) => (
@@ -356,6 +487,7 @@ function EmptyInbox({ unfiltered }: { unfiltered: boolean }) {
  */
 function MessageLog({
   rows,
+  query,
   isLoading,
   isError,
   onRetry,
@@ -364,6 +496,7 @@ function MessageLog({
   loadingMore,
 }: {
   rows: MessageRow[];
+  query: string;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -386,6 +519,9 @@ function MessageLog({
       </div>
     );
   }
+  if (rows.length === 0 && query.trim()) {
+    return <NoMatch query={query} />;
+  }
   if (rows.length === 0) {
     return (
       <div className="rounded-card border-rule bg-surface border p-6 text-center">
@@ -405,7 +541,12 @@ function MessageLog({
   return (
     <>
       <p className="text-ink-muted text-xs">
-        {t('inbox.messageCount', '{n}টি বার্তা · নতুনটি উপরে').replace('{n}', bnNum(rows.length))}
+        {query.trim()
+          ? t('inbox.messageMatches', '{n}টি বার্তা মিলেছে').replace('{n}', bnNum(rows.length))
+          : t('inbox.messageCount', '{n}টি বার্তা · নতুনটি উপরে').replace(
+              '{n}',
+              bnNum(rows.length),
+            )}
       </p>
       <ul className="flex flex-col gap-2">
         {rows.map((row) => (
