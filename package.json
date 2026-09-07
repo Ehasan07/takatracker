@@ -17,8 +17,9 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml}\"",
     "db:up": "docker compose -f infra/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker-compose.yml down",
-    "db:migrate": "pnpm --filter @hishab/api exec prisma migrate dev",
-    "db:seed": "pnpm --filter @hishab/api run seed",
+    "db:roles": "docker compose -f infra/docker-compose.yml exec -T -u postgres postgres sh /docker-entrypoint-initdb.d/10-roles.sh",
+    "db:migrate": "infra/db/prisma.sh prisma migrate dev",
+    "db:seed": "infra/db/prisma.sh prisma db seed",
     "prepare": "husky"
   },
   "devDependencies": {

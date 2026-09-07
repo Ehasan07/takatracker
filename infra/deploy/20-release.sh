@@ -128,7 +128,12 @@ fi
 ls -lh "\$DUMP"
 
 echo '--- prisma migrate deploy'
-pnpm --filter @hishab/api exec prisma migrate deploy
+# As the schema owner, not as the API's role. DATABASE_URL names hishab_app,
+# which has no DDL by design — see the roles block in 10-provision.sh. The
+# fallback keeps an install provisioned before those roles existed working
+# unchanged rather than failing a deploy on a variable it has never had.
+DATABASE_URL="\${MIGRATE_DATABASE_URL:-\$DATABASE_URL}" \
+  pnpm --filter @hishab/api exec prisma migrate deploy
 
 # --- make the service worker's bytes change ------------------------------------
 # A browser installs a new service worker only when sw.js differs byte for byte.

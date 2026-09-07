@@ -12,10 +12,17 @@
 -- variable safely on every request today — and the answer is no. Three things
 -- were measured rather than assumed:
 --
---   1. The API connects to Postgres as a SUPERUSER in both the dev compose file
---      and the production provisioner. Superusers bypass row security
---      unconditionally, FORCE included. Applied as-is, every policy here is
---      decoration.
+--   1. DONE. The API connected to Postgres as a SUPERUSER in both the dev
+--      compose file and the production provisioner; superusers bypass row
+--      security unconditionally, FORCE included, so applied as it stood every
+--      policy here was decoration. `infra/db/roles.sh` and the roles block in
+--      `infra/deploy/10-provision.sh` now create `hishab_app` (the runtime
+--      role: no DDL, no TRUNCATE, NOBYPASSRLS) and `hishab_admin` (BYPASSRLS,
+--      created and not yet read by anything), and `DATABASE_URL` names the
+--      first. Migrations and the seed run as the owner through
+--      `MIGRATE_DATABASE_URL`. See PART 1, which this implements — with the
+--      existing owner standing in for `hishab_migrator` rather than a fourth
+--      role being introduced for the same job.
 --   2. A non-LOCAL `SET` through Prisma leaks exactly as feared: after one
 --      `SET app.workspace_id`, 19 of the next 40 unrelated queries landed on a
 --      pooled connection that was still bound to that workspace.
@@ -47,14 +54,18 @@
 -- ---------------------------------------------------------------------------
 --
 -- 0.1  THE API MUST STOP CONNECTING AS A SUPERUSER.
---      `infra/docker-compose.yml` and `infra/deploy/10-provision.sh` both set
---      POSTGRES_USER to the application's own user, which makes it the
---      container's bootstrap superuser. A superuser bypasses row security
---      unconditionally — FORCE included, no policy consulted, no error. Applied
---      to the deployment as it stands today, everything below is inert and the
---      dashboard would show it as "RLS: enabled". That is the exact failure
---      mode this work is supposed to prevent, so it has to be fixed first.
---      Part 1 creates the roles that fix it.
+--      DONE — see the note on finding 1 above. `POSTGRES_USER` is still the
+--      bootstrap superuser and still owns every table, which is what
+--      migrations and the seed need; what changed is that nothing serving an
+--      HTTP request connects as it. `DATABASE_URL` names `hishab_app`, which
+--      has no DDL, no TRUNCATE and NOBYPASSRLS, so the policies below will
+--      apply to it with no exceptions once they are enabled.
+--
+--      Two things this does NOT do, and they are the remaining Part 0:
+--      nothing binds `app.workspace_id` yet (0.2), and the paths that
+--      legitimately have no workspace still run on the same connection as
+--      everything else (0.3). Enabling the policies before both are done takes
+--      the API down.
 --
 -- 0.2  EVERY TENANT QUERY MUST RUN INSIDE A TRANSACTION THAT SETS THE VARIABLE.
 --      `SET LOCAL` only holds inside a transaction. Prisma hands out a pooled

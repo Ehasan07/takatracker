@@ -8,10 +8,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-hishab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hishab}
       POSTGRES_DB: ${POSTGRES_DB:-hishab}
+      # Read by the init script below. POSTGRES_USER stays the bootstrap
+      # superuser and stays the owner of every table; these are the roles the
+      # API and, later, the admin module actually connect as. See infra/db/roles.sh.
+      HISHAB_APP_PASSWORD: ${HISHAB_APP_PASSWORD:-hishab_app}
+      HISHAB_ADMIN_PASSWORD: ${HISHAB_ADMIN_PASSWORD:-hishab_admin}
     ports:
       - '${POSTGRES_PORT:-5433}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # initdb runs this once, on a volume that does not exist yet. A checkout
+      # whose volume predates it runs the same script with `pnpm db:roles`.
+      - ./db/roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hishab}']
       interval: 5s

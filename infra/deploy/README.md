@@ -17,27 +17,53 @@ wrong vhost takes all three down along with ours.
 
 ## What gets created (and nothing else)
 
-| Resource           | Value                                                                           | Why it cannot collide                                                                  |
-| ------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Unix user          | `hishab`                                                                        | new, unprivileged, owns only its own directory                                         |
-| Directory          | `/opt/hishab`                                                                   | new                                                                                    |
-| Postgres role + DB | `hishab` / `hishab`                                                             | new role and database inside the existing cluster; other databases untouched           |
-| Redis              | logical DB `9` on the existing Redis, or a private instance on `127.0.0.1:6390` | see `redis` note below                                                                 |
-| Node runtime       | private Node 22 at `/opt/hishab/node` — the system Node is never touched        |
-| API port           | `127.0.0.1:4600`                                                                | loopback only, non-standard                                                            |
-| Web port           | `127.0.0.1:3600`                                                                | loopback only, non-standard                                                            |
-| systemd units      | `hishab-api.service`, `hishab-web.service`                                      | new unit names                                                                         |
-| Backup unit+timer  | `hishab-backup.service`, `hishab-backup.timer`                                  | new unit names; dumps the `hishab` database only                                       |
-| Backup files       | `/var/backups/hishab/`                                                          | new directory, `0700 root`                                                             |
-| Backup script      | `/opt/hishab/bin/hishab-backup`                                                 | new file, root-owned (a root timer must not run an app-writable script)                |
-| Release stamp      | `/etc/hishab/release.env` + `hishab-*.service.d/10-release-env.conf`            | new files; drop-ins attach only to the two hishab units                                |
-| nginx site         | `/etc/nginx/sites-available/takatracker.com`                                    | new file, `server_name takatracker.com www.takatracker.com` only                       |
-| TLS cert           | `certbot --nginx -d takatracker.com -d www.takatracker.com`                     | issues one new certificate; existing certificates are not renewed, replaced or touched |
-| Subdomain sites    | `sites-available/{api,sms,mail}.takatracker.com` (see below)                    | new files, one exact `server_name` each                                                |
-| Subdomain certs    | `certbot --cert-name api.takatracker.com` and the same for `sms`/`mail`         | three new independent lineages; the apex certificate is not expanded or reissued       |
+| Resource            | Value                                                                           | Why it cannot collide                                                                  |
+| ------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Unix user           | `hishab`                                                                        | new, unprivileged, owns only its own directory                                         |
+| Directory           | `/opt/hishab`                                                                   | new                                                                                    |
+| Postgres roles + DB | `hishab` / `hishab`, plus `hishab_app` and `hishab_admin`                       | new roles and database inside the existing cluster; other databases untouched          |
+| Redis               | logical DB `9` on the existing Redis, or a private instance on `127.0.0.1:6390` | see `redis` note below                                                                 |
+| Node runtime        | private Node 22 at `/opt/hishab/node` — the system Node is never touched        |
+| API port            | `127.0.0.1:4600`                                                                | loopback only, non-standard                                                            |
+| Web port            | `127.0.0.1:3600`                                                                | loopback only, non-standard                                                            |
+| systemd units       | `hishab-api.service`, `hishab-web.service`                                      | new unit names                                                                         |
+| Backup unit+timer   | `hishab-backup.service`, `hishab-backup.timer`                                  | new unit names; dumps the `hishab` database only                                       |
+| Backup files        | `/var/backups/hishab/`                                                          | new directory, `0700 root`                                                             |
+| Backup script       | `/opt/hishab/bin/hishab-backup`                                                 | new file, root-owned (a root timer must not run an app-writable script)                |
+| Release stamp       | `/etc/hishab/release.env` + `hishab-*.service.d/10-release-env.conf`            | new files; drop-ins attach only to the two hishab units                                |
+| nginx site          | `/etc/nginx/sites-available/takatracker.com`                                    | new file, `server_name takatracker.com www.takatracker.com` only                       |
+| TLS cert            | `certbot --nginx -d takatracker.com -d www.takatracker.com`                     | issues one new certificate; existing certificates are not renewed, replaced or touched |
+| Subdomain sites     | `sites-available/{api,sms,mail}.takatracker.com` (see below)                    | new files, one exact `server_name` each                                                |
+| Subdomain certs     | `certbot --cert-name api.takatracker.com` and the same for `sms`/`mail`         | three new independent lineages; the apex certificate is not expanded or reissued       |
 
 The default nginx site and every other vhost keep working: nginx picks our
 server block only for the two hostnames above.
+
+### The three database roles
+
+`hishab` owns every table and runs `prisma migrate deploy` and the seed; under
+Docker it is also the cluster's bootstrap superuser. Nothing serving an HTTP
+request connects as it. The API connects as **`hishab_app`**, which has
+`SELECT`/`INSERT`/`UPDATE`/`DELETE` and nothing else — no DDL, no `TRUNCATE`, no
+`BYPASSRLS` — so the process handling requests cannot alter a table or switch
+off a protection it is meant to be subject to. **`hishab_admin`** exists and is
+read by nothing: the super-admin module crosses tenants by design, so when the
+row-level security policies in `apps/api/prisma/rls/` are eventually applied it
+will need its own credential, and making the role now keeps that a
+configuration change rather than a database migration.
+
+Passwords live in `/etc/hishab/db_password`, `db_app_password` and
+`db_admin_password`, `0600 root`. The connection strings are
+`DATABASE_URL` (app), `MIGRATE_DATABASE_URL` (owner, read by `20-release.sh`)
+and `ADMIN_DATABASE_URL`.
+
+**An install provisioned before these roles existed keeps working and keeps
+connecting as the owner.** `10-provision.sh` creates the roles on any re-run,
+but it never rewrites `/etc/hishab/hishab.env` — that file holds the JWT
+secrets, and replacing them signs every live session out. So it prints the three
+lines to paste in instead. Do that, then `systemctl restart hishab-api
+hishab-web`. Locally the same split is `pnpm db:roles` (a volume that predates
+it; a fresh one gets the roles from `initdb`).
 
 ## Order of operations
 

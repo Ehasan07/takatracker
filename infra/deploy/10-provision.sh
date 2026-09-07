@@ -115,6 +115,28 @@ if [ ! -f "$DB_PASSWORD_FILE" ]; then
 fi
 DB_PASSWORD=$(cat "$DB_PASSWORD_FILE")
 
+# The role the API actually connects as, and the one the super-admin module will
+# connect as once the row-level security policies in apps/api/prisma/rls/ are
+# applied. ${DB_USER} above owns every table and, under Docker, is the cluster's
+# bootstrap superuser — which bypasses row security unconditionally, so a
+# process serving HTTP requests must not be it. Alphanumeric by construction:
+# these end up inside SQL string literals below and a quote would end them.
+# The readable original of what this provisions is infra/db/roles.sh; it is
+# restated here because provisioning runs before any release exists on disk.
+DB_APP_PASSWORD_FILE=/etc/hishab/db_app_password
+if [ ! -f "$DB_APP_PASSWORD_FILE" ]; then
+  head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32 > "$DB_APP_PASSWORD_FILE"
+  chmod 600 "$DB_APP_PASSWORD_FILE"
+fi
+DB_APP_PASSWORD=$(cat "$DB_APP_PASSWORD_FILE")
+
+DB_ADMIN_PASSWORD_FILE=/etc/hishab/db_admin_password
+if [ ! -f "$DB_ADMIN_PASSWORD_FILE" ]; then
+  head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32 > "$DB_ADMIN_PASSWORD_FILE"
+  chmod 600 "$DB_ADMIN_PASSWORD_FILE"
+fi
+DB_ADMIN_PASSWORD=$(cat "$DB_ADMIN_PASSWORD_FILE")
+
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   say "Starting Postgres 16 + Redis 7 as the private compose project 'hishab'"
   mkdir -p "${APP_DIR}/stack"
@@ -172,7 +194,11 @@ COMPOSE
   [ "$(docker inspect -f '{{.State.Health.Status}}' hishab-postgres)" = 'healthy' ] \
     || die 'hishab-postgres did not become healthy'
 
-  DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${PG_PORT}/${DB_NAME}?schema=public"
+  PG_HOST_PORT="${PG_PORT}"
+  # Over the container's unix socket as the postgres OS user, which the image's
+  # pg_hba trusts locally — so no password has to cross a command line.
+  psql_owner() { docker exec -i -u postgres hishab-postgres psql -v ON_ERROR_STOP=1 -qtAX -U "$DB_USER" -d "$DB_NAME"; }
+  psql_super() { psql_owner; }
   REDIS_URL="redis://127.0.0.1:${REDIS_PORT}"
 else
   say 'Docker unavailable — falling back to host Postgres and Redis'
@@ -188,9 +214,70 @@ else
   fi
   DB_EXISTS=$(su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'\"")
   [ "$DB_EXISTS" = '1' ] || su - postgres -c "createdb -O ${DB_USER} ${DB_NAME}"
-  DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:5432/${DB_NAME}?schema=public"
+  PG_HOST_PORT=5432
+  # ${DB_USER} owns the database here but is not a superuser, so CREATE ROLE has
+  # to go through the cluster's own. The grants afterwards are the owner's to make.
+  psql_super() { su postgres -c "psql -v ON_ERROR_STOP=1 -qtAX -d '${DB_NAME}'"; }
+  psql_owner() { PGPASSWORD="$DB_PASSWORD" psql -v ON_ERROR_STOP=1 -qtAX -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME"; }
   REDIS_URL='redis://127.0.0.1:6379/9'
 fi
+
+# --- database roles ---------------------------------------------------------
+# Three roles, because the difference between them has to be a credential rather
+# than a runtime value: a bug cannot promote hishab_app into hishab_admin, it
+# would have to be handed a different connection string.
+#
+#   ${DB_USER}     owns every table, runs `prisma migrate deploy` and the seed.
+#                  Under Docker it is also the cluster's bootstrap superuser.
+#                  Nothing serving an HTTP request connects as it.
+#   hishab_app     what the API connects as. No DDL, no TRUNCATE, no BYPASSRLS.
+#   hishab_admin   created and not yet read by anything. The super-admin module
+#                  crosses tenants by design, so once the policies in
+#                  apps/api/prisma/rls/ are applied it needs its own credential.
+#
+# Idempotent: create-or-alter throughout, so re-provisioning changes nothing and
+# picks up the grants any migration since the last run needs.
+say 'Provisioning the hishab_app and hishab_admin database roles'
+for ROLE in hishab_app hishab_admin; do
+  if [ "$ROLE" = 'hishab_app' ]; then
+    ROLE_PASSWORD="$DB_APP_PASSWORD"
+    ROLE_BYPASS='NOBYPASSRLS'
+  else
+    ROLE_PASSWORD="$DB_ADMIN_PASSWORD"
+    ROLE_BYPASS='BYPASSRLS'
+  fi
+  ROLE_EXISTS=$(printf "SELECT 1 FROM pg_roles WHERE rolname = '%s'\n" "$ROLE" | psql_super)
+  if [ "$ROLE_EXISTS" = '1' ]; then ROLE_VERB='ALTER'; else ROLE_VERB='CREATE'; fi
+  printf "%s ROLE %s WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE %s PASSWORD '%s';\n" \
+    "$ROLE_VERB" "$ROLE" "$ROLE_BYPASS" "$ROLE_PASSWORD" | psql_super >/dev/null
+  say "  ${ROLE}: ${ROLE_VERB}"
+done
+
+psql_owner >/dev/null <<GRANTS
+GRANT CONNECT ON DATABASE "${DB_NAME}" TO hishab_app, hishab_admin;
+GRANT USAGE ON SCHEMA public TO hishab_app, hishab_admin;
+
+-- On a first provision the schema is still empty — migrations run later, in
+-- 20-release.sh — so this matches nothing and the default privileges below are
+-- what carry the grant to every table the migrator is about to create.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+  TO hishab_app, hishab_admin;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO hishab_app, hishab_admin;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_USER} IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hishab_app, hishab_admin;
+ALTER DEFAULT PRIVILEGES FOR ROLE ${DB_USER} IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO hishab_app, hishab_admin;
+
+-- Not granted, on purpose: CREATE on schema public, TRUNCATE, REFERENCES, DDL.
+-- A role that can \`ALTER TABLE ... DISABLE ROW LEVEL SECURITY\` is not
+-- constrained by row-level security.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANTS
+
+DATABASE_URL="postgresql://hishab_app:${DB_APP_PASSWORD}@127.0.0.1:${PG_HOST_PORT}/${DB_NAME}?schema=public"
+MIGRATE_DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${PG_HOST_PORT}/${DB_NAME}?schema=public"
+ADMIN_DATABASE_URL="postgresql://hishab_admin:${DB_ADMIN_PASSWORD}@127.0.0.1:${PG_HOST_PORT}/${DB_NAME}?schema=public"
 
 # --- attachment storage -----------------------------------------------------
 # Receipt photos live on this disk, not in the database and not in the release
@@ -207,6 +294,21 @@ chmod 700 /var/lib/hishab "$ATTACHMENTS_DIR"
 ENV_FILE=/etc/hishab/hishab.env
 if [ -f "$ENV_FILE" ]; then
   say 'Environment file already exists — keeping the existing secrets'
+  # The roles above were just created or refreshed, but this file is never
+  # rewritten — it holds JWT secrets that would sign every live session out.
+  # So an install provisioned before the roles existed is still pointing
+  # DATABASE_URL at the owner, and only a human can decide when to move it.
+  if ! grep -q '^MIGRATE_DATABASE_URL=' "$ENV_FILE"; then
+    say 'NOTE: this install still connects to Postgres as the schema owner.'
+    say '      To move it onto the restricted role, add these three lines to'
+    say "      ${ENV_FILE}, replacing the existing DATABASE_URL, then restart"
+    say '      hishab-api and hishab-web:'
+    say ''
+    say "      DATABASE_URL=${DATABASE_URL}"
+    say "      MIGRATE_DATABASE_URL=${MIGRATE_DATABASE_URL}"
+    say "      ADMIN_DATABASE_URL=${ADMIN_DATABASE_URL}"
+    say ''
+  fi
 else
   say "Writing ${ENV_FILE}"
   cat > "$ENV_FILE" <<ENV
@@ -216,7 +318,15 @@ NODE_ENV=production
 # after this file and which therefore wins. See 20-release.sh / 50-rollback.sh.
 APP_VERSION=0.1.0
 
+# What the API connects as: not the owner, no DDL, no BYPASSRLS.
 DATABASE_URL=${DATABASE_URL}
+# `prisma migrate deploy` and the seed only — the two things that need exactly
+# what DATABASE_URL deliberately lacks. Read by 20-release.sh.
+MIGRATE_DATABASE_URL=${MIGRATE_DATABASE_URL}
+# Nothing reads this yet. It exists so that applying the row-level security
+# policies in apps/api/prisma/rls/ is a configuration change for the super-admin
+# module rather than a database migration.
+ADMIN_DATABASE_URL=${ADMIN_DATABASE_URL}
 REDIS_URL=${REDIS_URL}
 
 API_PORT=${API_PORT}
