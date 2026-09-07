@@ -161,6 +161,11 @@ export const AUDIT_ACTIONS = [
   'mail.account_disconnected',
   'mail.sync_failed',
   'admin.tenant_list_viewed',
+  /* Its own name rather than `tenant_list_viewed`. Searching people by email or
+   * phone answers a different question from browsing workspaces — it is how an
+   * operator finds one named human across every tenant — and "who looked me
+   * up?" has to be answerable without reading every list row. */
+  'admin.user_list_viewed',
   'admin.tenant_viewed',
   /* Distinct from `tenant_viewed` on purpose: reading somebody's balances and
    * account list is wider than opening their plan page, and one name for both

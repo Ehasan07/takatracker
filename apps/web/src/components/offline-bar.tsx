@@ -16,6 +16,7 @@ import {
   type QueueCounts,
   type QueuedMutation,
 } from '@/lib/offline-queue';
+import { isImpersonating } from '@/lib/support-session';
 import { cn } from '@/lib/utils';
 
 /**
@@ -85,6 +86,12 @@ export function OfflineBar() {
    * signed-in identity rather than reaching for a hook it cannot use. Every
    * row written from here on is stamped with it. */
   React.useEffect(() => {
+    /* Skipped during a support session. `/auth/me` answers as the customer
+     * then, and stamping the browser with their id would leave the operator's
+     * own parked rows unmatched — held as orphans on their own machine until
+     * something restamped it. Nothing can be queued during a session anyway:
+     * it is read-only, and `flushQueue` holds every row for its duration. */
+    if (isImpersonating()) return;
     if (userId && workspaceId) setSessionOwner({ userId, workspaceId });
   }, [userId, workspaceId]);
 

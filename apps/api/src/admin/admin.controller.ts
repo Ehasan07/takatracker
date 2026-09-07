@@ -93,6 +93,21 @@ const suspendSchema = z.object({
 });
 export type SuspendInput = z.infer<typeof suspendSchema>;
 
+/**
+ * The people search.
+ *
+ * `q` is optional, exactly as it is on the tenant list: an operator opening the
+ * screen cold should see the newest accounts rather than an empty box that
+ * gives no clue what it searches. Every call writes an audit row either way.
+ */
+const listUsersQuerySchema = z.object({
+  /** Matches name, email or phone, case-insensitively for the first two. */
+  q: optionalQuery(z.string().max(200)),
+  limit: optionalQuery(z.coerce.number().int().min(1).max(100)),
+  cursor: optionalQuery(cuid),
+});
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+
 const platformAuditQuerySchema = z.object({
   workspaceId: optionalQuery(cuid),
   actorId: optionalQuery(cuid),
@@ -328,6 +343,22 @@ export class AdminController {
     @Query(zodPipe(listTenantsQuerySchema)) query: ListTenantsQuery,
   ) {
     return this.admin.listTenants(actorFrom(user, req), query);
+  }
+
+  /**
+   * `GET /v1/admin/users` — find a person across every tenant.
+   *
+   * Above `tenants/:workspaceId` in this file only because it reads that way;
+   * Nest matches on the literal prefix, so `users` can never be taken for a
+   * workspace id.
+   */
+  @Get('users')
+  listUsers(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Query(zodPipe(listUsersQuerySchema)) query: ListUsersQuery,
+  ) {
+    return this.admin.listUsers(actorFrom(user, req), query);
   }
 
   @Get('tenants/:workspaceId')

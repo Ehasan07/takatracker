@@ -1,5 +1,7 @@
 'use client';
 
+import { isImpersonating } from './support-session';
+
 /**
  * Offline write queue (spec §5). Mutations made without a connection are parked
  * in IndexedDB and replayed in order when the browser comes back. Mobile uses
@@ -335,6 +337,21 @@ async function refusalMessage(res: Response): Promise<string> {
  * so two rows are never dependent on one another landing.
  */
 export async function flushQueue(): Promise<FlushResult> {
+  /* Not while somebody else's screens are on this tab.
+   *
+   * Every row in here was written by the operator, under the operator's own
+   * cookie, for the operator's own books — and `send()` below uses that cookie.
+   * Replaying one mid-support-session is not a leak, but it posts a write to a
+   * third workspace at the exact moment the screen says the operator is
+   * somewhere else, and the invalidation that follows would repaint the
+   * customer's dashboard from the operator's data. Held, exactly as another
+   * person's rows are held: nothing is sent, nothing is deleted, and the bar
+   * shows the count. The next flush after the session ends takes them. */
+  if (isImpersonating()) {
+    const parked = await listQueued();
+    return { sent: 0, failed: 0, held: parked.length, remaining: parked.length };
+  }
+
   const owner = getSessionOwner();
   const queued = await listQueued();
   let sent = 0;

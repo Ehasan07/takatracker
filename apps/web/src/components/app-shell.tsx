@@ -1,5 +1,6 @@
 'use client';
 
+import { ImpersonationBar } from '@/app/(shell)/admin/impersonation-bar';
 import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus } from 'lucide-react';
@@ -402,6 +403,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <OfflineBar />
+
+        {/* The support bar follows the operator out of `/admin`.
+            It used to be mounted in the admin layout, which was enough while a
+            session was only a token to copy. It is not enough now that the
+            token drives the app: the operator spends the session on the
+            customer's own screens, and a banner that only exists on `/admin` is
+            a banner that is never on screen while it matters — no statement of
+            whose books these are, and no way out but the browser's back
+            button. It renders nothing when there is no session. */}
+        <ImpersonationBar />
 
         <main
           ref={scrollRef}

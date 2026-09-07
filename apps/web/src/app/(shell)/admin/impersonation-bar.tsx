@@ -2,14 +2,16 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, LifeBuoy, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { purgeCachedData } from '@/lib/session-reset';
 import { cn } from '@/lib/utils';
 import { bnDateTime, bnRemaining } from './labels';
 import { clearSupportSession, hasExpired, useNow, useSupportSession } from './impersonation';
-import { endImpersonation, invalidateAdminData } from './queries';
+import { endImpersonation } from './queries';
 
 /**
  * The support-mode bar.
@@ -38,17 +40,89 @@ import { endImpersonation, invalidateAdminData } from './queries';
  * text underneath says plainly that the token stops working when it expires and
  * not before. A "revoke" button that does not revoke is worse than no button.
  */
+/** Why the bar is showing a closed notice rather than a live session. */
+type ClosedNotice = {
+  workspaceName: string;
+  workspaceId: string;
+  expiresAt: string;
+  /** `ended` — the operator pressed the button. `expired` — the clock did it. */
+  cause: 'ended' | 'expired';
+};
+
 export function ImpersonationBar() {
   const session = useSupportSession();
   const queryClient = useQueryClient();
+  const router = useRouter();
   /* The clock stops the moment the token dies: the tick that flips this to
    * false is the last one, and `now` then freezes at the time of expiry. */
   const now = useNow(session !== null && Date.parse(session.expiresAt) > Date.now());
   const [copied, setCopied] = React.useState(false);
-  const [closed, setClosed] = React.useState<{ workspaceName: string; expiresAt: string } | null>(
-    null,
-  );
+  const [closed, setClosed] = React.useState<ClosedNotice | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  /**
+   * Leave the customer's screens, and take their data out of the cache with it.
+   *
+   * Both callers below are the same event seen from two sides: the tab has
+   * stopped acting as the customer, but it is still *showing* their dashboard,
+   * and every query on it is about to refetch under the operator's own cookie.
+   * Without this the screens repaint one panel at a time with the operator's
+   * own books under the customer's name in the banner — the worst possible
+   * moment to take a screenshot, and the exact confusion the banner exists to
+   * prevent. `replace`, not `push`: the customer's pages must not be one Back
+   * away from a session that no longer exists.
+   */
+  const leave = React.useCallback(
+    (workspaceId: string) => {
+      queryClient.clear();
+      /* The service worker's offline copies too. They are keyed by URL, so the
+       * customer's `/api/v1/accounts` and the operator's are one entry, and it
+       * currently holds the customer's. */
+      void purgeCachedData();
+      router.replace(workspaceId ? `/admin/tenants/${workspaceId}` : '/admin');
+    },
+    [queryClient, router],
+  );
+
+  /**
+   * The token ran out while the operator was reading a screen.
+   *
+   * `lib/api.ts` stops attaching an expired token, so from this tick onwards
+   * every request is the operator's own — the session is over whether or not
+   * anybody pressed anything. The envelope is deliberately left in place so the
+   * banner can go on saying what just happened, and "শেষ করুন" still files the
+   * closing audit row against a session that really did exist.
+   */
+  const expiredNow = session !== null && hasExpired(session, now);
+  const handledExpiry = React.useRef(false);
+  React.useEffect(() => {
+    if (!expiredNow || !session || handledExpiry.current) return;
+    handledExpiry.current = true;
+    leave(session.impersonation.workspace.id);
+  }, [expiredNow, session, leave]);
+
+  /**
+   * The session was torn down by something other than the button.
+   *
+   * `api()` clears the store on a 401 during a support session — the customer's
+   * `tokenVersion` moved, their membership was revoked, the workspace was
+   * suspended. The store emptying is the only notice this component gets, and a
+   * banner that simply vanished would leave an operator believing they were
+   * still inside somebody's books.
+   */
+  const previous = React.useRef(session);
+  React.useEffect(() => {
+    const before = previous.current;
+    previous.current = session;
+    if (!before || session || closed) return;
+    setClosed({
+      workspaceName: before.impersonation.workspace.name,
+      workspaceId: before.impersonation.workspace.id,
+      expiresAt: before.expiresAt,
+      cause: 'expired',
+    });
+    leave(before.impersonation.workspace.id);
+  }, [session, closed, leave]);
 
   const end = useMutation({
     mutationFn: () => {
@@ -62,12 +136,13 @@ export function ImpersonationBar() {
     onSuccess: () => {
       if (!session) return;
       haptic('success');
-      setClosed({
-        workspaceName: session.impersonation.workspace.name,
-        expiresAt: session.expiresAt,
-      });
+      const { id: workspaceId, name: workspaceName } = session.impersonation.workspace;
+      setClosed({ workspaceName, workspaceId, expiresAt: session.expiresAt, cause: 'ended' });
+      /* Cleared before `leave`, so the requests the navigation kicks off are
+       * already the operator's own rather than one last round under a token
+       * that has just been disowned. */
       clearSupportSession();
-      invalidateAdminData(queryClient);
+      leave(workspaceId);
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'সেশন বন্ধের তথ্য পাঠানো যায়নি'),
@@ -84,7 +159,9 @@ export function ImpersonationBar() {
           <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-ink text-sm font-medium">
-              {closed.workspaceName}-এর সাপোর্ট সেশন কার্যবিবরণীতে বন্ধ হিসেবে লেখা হয়েছে।
+              {closed.cause === 'ended'
+                ? `${closed.workspaceName}-এর সাপোর্ট সেশন কার্যবিবরণীতে বন্ধ হিসেবে লেখা হয়েছে।`
+                : `${closed.workspaceName}-এর সাপোর্ট সেশন শেষ হয়েছে — আপনি আবার নিজের অ্যাকাউন্টে আছেন।`}
             </p>
             <p className="text-ink-muted mt-0.5 text-xs">
               টোকেনটি এই ডিভাইস থেকে মুছে ফেলা হয়েছে। সার্ভার এটি বাতিল করতে পারে না — এটি{' '}

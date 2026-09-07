@@ -23,6 +23,8 @@ export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
+import type { ImpersonationEnvelope } from '@/lib/support-session';
+
 export const isJsonObject = (value: unknown): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -133,6 +135,75 @@ export function toTenantPage(raw: unknown): TenantPage {
   const page = obj(raw);
   return {
     items: list(page.items).map(toTenantRow),
+    nextCursor: strOrNull(page.nextCursor),
+  };
+}
+
+// --- people ------------------------------------------------------------------
+
+/** One workspace a person belongs to, and on what terms. */
+export interface UserWorkspace {
+  id: string;
+  name: string;
+  /** Widened past the Prisma enum, like `TenantRow.status`. */
+  status: string;
+  role: string;
+  membershipStatus: string;
+  joinedAt: string;
+}
+
+export interface UserRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  /* Another operator. The console greys the row rather than offering a support
+   * session the API refuses — see `AdminImpersonationService`. */
+  isSuperAdmin: boolean;
+  emailVerified: boolean;
+  /** Set while an erasure is inside its grace period. */
+  deletionRequestedAt: string | null;
+  createdAt: string;
+  workspaces: UserWorkspace[];
+}
+
+export interface UserPage {
+  items: UserRow[];
+  nextCursor: string | null;
+}
+
+const userWorkspace = (value: unknown, index: number): UserWorkspace => {
+  const row = obj(value);
+  const workspace = {
+    id: strOrNull(row.id) ?? `ws-${index}`,
+    name: str(row.name, 'নামহীন'),
+    status: str(row.status, 'UNKNOWN'),
+    role: str(row.role, 'MEMBER'),
+    membershipStatus: str(row.membershipStatus, 'UNKNOWN'),
+    joinedAt: str(row.joinedAt),
+  };
+  return workspace;
+};
+
+export function toUserRow(raw: unknown, index: number): UserRow {
+  const row = obj(raw);
+  return {
+    id: strOrNull(row.id) ?? `user-${index}`,
+    name: str(row.name, 'নামহীন'),
+    email: str(row.email),
+    phone: strOrNull(row.phone),
+    isSuperAdmin: bool(row.isSuperAdmin),
+    emailVerified: bool(row.emailVerified),
+    deletionRequestedAt: strOrNull(row.deletionRequestedAt),
+    createdAt: str(row.createdAt),
+    workspaces: list(row.workspaces).map(userWorkspace),
+  };
+}
+
+export function toUserPage(raw: unknown): UserPage {
+  const page = obj(raw);
+  return {
+    items: list(page.items).map(toUserRow),
     nextCursor: strOrNull(page.nextCursor),
   };
 }
@@ -497,24 +568,10 @@ export function toAuditPage(raw: unknown): PlatformAuditPage {
  * `AdminImpersonationService`'s TODO — so every claim the support banner makes
  * comes from this envelope and from nowhere else.
  */
-export interface ImpersonationEnvelope {
-  tokenType: string;
-  accessToken: string;
-  transport: string;
-  /** Always `null`. The session cannot be refreshed, extended, or survive itself. */
-  refreshToken: null;
-  expiresIn: number;
-  expiresAt: string;
-  sessionId: string;
-  impersonation: {
-    workspace: { id: string; name: string; status: string };
-    actingAs: { id: string; name: string; email: string; role: string };
-    startedBy: { id: string; email: string };
-    startedAt: string;
-    reason: string;
-  };
-  banner: string;
-}
+/* Declared in `lib/support-session.ts`, which is where the envelope is stored
+ * and where `lib/api.ts` reads it from. Re-exported here so the admin console's
+ * contract file still describes the whole `/admin/*` surface in one place. */
+export type { ImpersonationEnvelope } from '@/lib/support-session';
 
 export function toEnvelope(raw: unknown): ImpersonationEnvelope {
   const row = obj(raw);

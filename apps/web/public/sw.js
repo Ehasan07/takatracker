@@ -155,6 +155,21 @@ self.addEventListener('fetch', (event) => {
   // Auth must never be cached. Belt and braces: it is not on the allowlist either.
   if (url.pathname.startsWith('/api/v1/auth')) return;
 
+  /* A support session's reads never touch this cache, in either direction.
+   *
+   * The web app authenticates with the `hishab_at` cookie and nothing else, so
+   * an `Authorization` header on a same-origin request means exactly one thing:
+   * an operator is acting as a customer, and this response is that customer's
+   * accounts, transactions or reports. The cache is origin-wide and outlives
+   * the session — fifteen minutes later the operator is themselves again, and
+   * the first time they lose connection this worker would hand them somebody
+   * else's ledger from disk, with no session, no banner and no audit row.
+   *
+   * Left to the network entirely rather than half-handled: reading from the
+   * cache is wrong too, since the entry it would match was written under the
+   * operator's own session and is their data under the customer's screens. */
+  if (request.headers.has('authorization')) return;
+
   /* Data: network first, cache only as an offline fallback, and only for the
    * reads named in DATA_CACHE_ALLOWLIST.
    *

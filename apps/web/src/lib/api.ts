@@ -2,6 +2,7 @@
 
 import type { AccountType } from '@hishab/shared';
 import { enqueueMutation } from './offline-queue';
+import { activeSupportSession, clearSupportSession } from './support-session';
 
 /**
  * Every browser request goes to our own origin at /api/* and Next proxies it to
@@ -34,6 +35,32 @@ export class FeatureLimitError extends ApiError {
   ) {
     super(402, message);
     this.name = 'FeatureLimitError';
+  }
+}
+
+/**
+ * Thrown when a support session tried to write.
+ *
+ * The server refuses this too — `SupportReadOnlyInterceptor` is the boundary and
+ * this is not it. Refusing here as well keeps a mutation from leaving the tab at
+ * all, so an optimistic update never paints a change that the API is about to
+ * throw away, and the operator reads the same sentence either way.
+ */
+export class SupportReadOnlyError extends ApiError {
+  constructor() {
+    super(
+      403,
+      'সাপোর্ট সেশন শুধু দেখার জন্য — এই সেশন থেকে কোনো তথ্য যোগ, বদল বা মুছে ফেলা যায় না',
+    );
+    this.name = 'SupportReadOnlyError';
+  }
+}
+
+/** Thrown when the support token ran out mid-session. */
+export class SupportSessionExpiredError extends ApiError {
+  constructor() {
+    super(401, 'সাপোর্ট সেশনের মেয়াদ শেষ — দেখতে হলে নতুন করে সেশন চালু করুন');
+    this.name = 'SupportSessionExpiredError';
   }
 }
 
@@ -96,6 +123,28 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const { body, queueWhenOffline, ...init } = options;
   const method = init.method ?? 'GET';
 
+  /**
+   * Which identity this one request travels as.
+   *
+   * A support session is a bearer token for the customer's own user, and
+   * `JwtStrategy` reads the `Authorization` header *before* the `hishab_at`
+   * cookie — so attaching it is the whole mechanism. The operator's cookie is
+   * still in the jar and is simply outranked; `credentials: 'omit'` below makes
+   * that explicit rather than relying on the extractor order for correctness,
+   * and means a request that should have been impersonated fails loudly instead
+   * of quietly succeeding as the operator.
+   *
+   * `/admin/*` is excluded, and that exclusion is the exit door. Those routes
+   * are guarded by `SuperAdminGuard`, which reads `isSuperAdmin` for whoever
+   * the request authenticates as — the customer is not an operator, so sending
+   * the support token to `/admin/impersonate/end` would 404 the only call that
+   * closes the session. The operator's own cookie goes there, always.
+   */
+  const support = path.startsWith('/admin') ? null : activeSupportSession();
+
+  /* Refused before it leaves the tab. See `SupportReadOnlyError`. */
+  if (support && method !== 'GET') throw new SupportReadOnlyError();
+
   if (
     queueWhenOffline &&
     method !== 'GET' &&
@@ -110,9 +159,10 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     fetch(`${API_BASE}${path}`, {
       ...init,
       method,
-      credentials: 'same-origin',
+      credentials: support ? 'omit' : 'same-origin',
       headers: {
         'content-type': 'application/json',
+        ...(support ? { authorization: `Bearer ${support.accessToken}` } : {}),
         ...(init.headers ?? {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -129,8 +179,18 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     throw new ApiError(0, 'সংযোগ পাওয়া যাচ্ছে না');
   }
 
-  // The 15-minute access token expired; rotate once and retry.
   if (res.status === 401 && !path.startsWith('/auth/')) {
+    if (support) {
+      /* Never rotate a support session. The refresh cookie in this browser is
+       * the *operator's*, so `POST /auth/refresh` would succeed, mint a token
+       * for them, and the next request would quietly go through as the operator
+       * — same screens, different identity, no visible change. A support token
+       * has no refresh token by design; when it is gone the session is over and
+       * has to be started again with a stated reason. */
+      clearSupportSession();
+      throw new SupportSessionExpiredError();
+    }
+    // The 15-minute access token expired; rotate once and retry.
     if (await refreshSession()) res = await doFetch();
   }
 

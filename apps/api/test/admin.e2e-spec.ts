@@ -856,6 +856,105 @@ describe('super admin', () => {
     await ctx.http().post('/v1/auth/sessions/revoke-others').set(auth(tenant)).send({}).expect(200);
   });
 
+  it('finds a person across tenants, and files the search against the operator', async () => {
+    const op = await operator();
+    const tenant = await signup(ctx);
+
+    const found = await ctx
+      .http()
+      .get(`/v1/admin/users?q=${encodeURIComponent(tenant.email)}`)
+      .set(auth(op))
+      .expect(200);
+
+    const row = found.body.items.find((u: { id: string }) => u.id === tenant.id);
+    expect(row).toBeDefined();
+    expect(row.email).toBe(tenant.email);
+    /* The memberships are what make a row actionable: a support session is
+     * started against a workspace, so a user listed without one is a user
+     * nobody can enter. */
+    expect(row.workspaces.map((w: { id: string }) => w.id)).toContain(tenant.workspaceId);
+    expect(row.isSuperAdmin).toBe(false);
+
+    // Nothing that authenticates anybody reaches the browser.
+    expect(row.passwordHash).toBeUndefined();
+    expect(row.tokenVersion).toBeUndefined();
+
+    /* Filed against the *operator's* own workspace, because the read crossed
+     * every tenant rather than one — `fileRead` with the entity overridden. */
+    await settle();
+    const trail = await auditFor(op.workspaceId, 'admin.user_list_viewed');
+    expect(trail.length).toBeGreaterThan(0);
+    expect(trail.every((e) => e.actorUserId === op.id && e.actorType === 'SUPPORT')).toBe(true);
+
+    // And the door it exists to open works from the id it just returned.
+    await ctx
+      .http()
+      .post(`/v1/admin/tenants/${tenant.workspaceId}/impersonate`)
+      .set(auth(op))
+      .send({ userId: tenant.id, reason: 'ফোনে খুঁজে পাওয়া গেল — টিকিট ৩১২' })
+      .expect(200);
+  });
+
+  it('keeps the people search behind the same 404 as the rest of the panel', async () => {
+    const ordinary = await signup(ctx);
+    await ctx.http().get('/v1/admin/users').set(auth(ordinary)).expect(404);
+    await ctx.http().get('/v1/admin/users').expect(404);
+  });
+
+  it('lets a support session read everything and write nothing', async () => {
+    const op = await operator();
+    const tenant = await signup(ctx);
+
+    const started = await ctx
+      .http()
+      .post(`/v1/admin/tenants/${tenant.workspaceId}/impersonate`)
+      .set(auth(op))
+      .send({ reason: 'লেনদেন দুইবার দেখাচ্ছে — টিকিট ৭০৪' })
+      .expect(200);
+    const support = { Authorization: `Bearer ${started.body.accessToken}` };
+
+    // Reading is the whole feature and is untouched.
+    await ctx.http().get('/v1/accounts').set(support).expect(200);
+    await ctx.http().get('/v1/transactions').set(support).expect(200);
+
+    /* Writing is refused everywhere, not on a list of routes.
+     *
+     * `NoImpersonationGuard` above closes four doors by name. This closes the
+     * rest, and the reason is the one `AdminImpersonationService` states about
+     * itself: an ordinary write during a session is filed as the customer,
+     * `actorType: 'USER'`, and the customer is never told a session happened.
+     * A ledger entry created here would therefore be, in every record the
+     * product keeps, one they made themselves. */
+    const refused = await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(support)
+      .send({ name: 'নগদ বাক্স', type: 'CASH', openingBalance: 0 })
+      .expect(403);
+    expect(refused.body.message).toContain('সাপোর্ট সেশন');
+
+    /* An empty body on a route that would normally 400 in its Zod pipe. It
+     * still 403s, which is the assertion: the refusal happens before the
+     * handler's validation, so no route can opt out of it by parsing first. */
+    await ctx.http().post('/v1/transactions').set(support).send({}).expect(403);
+
+    // And nothing reached the books.
+    expect(
+      await ctx.prisma.account.count({
+        where: { workspaceId: tenant.workspaceId, name: 'নগদ বাক্স' },
+      }),
+    ).toBe(0);
+
+    /* The customer's own token walks the same route into the same workspace.
+     * What is refused is the session, not the tenant. */
+    await ctx
+      .http()
+      .post('/v1/accounts')
+      .set(auth(tenant))
+      .send({ name: 'নগদ বাক্স', type: 'CASH', openingBalance: 0 })
+      .expect(201);
+  });
+
   it('reads a tenant’s balances, and files the look against the operator', async () => {
     const op = await operator();
     const tenant = await signup(ctx);

@@ -1,19 +1,19 @@
 'use client';
 
-import { LayoutGrid, ScrollText, Building2 } from 'lucide-react';
+import { Building2, LayoutGrid, ScrollText, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
-import { ImpersonationBar } from './impersonation-bar';
 import { NotFoundScreen, QueryError } from './parts';
 import { useOperatorProbe } from './queries';
 
 const TABS: { href: string; label: string; icon: typeof LayoutGrid }[] = [
   { href: '/admin', label: 'সারসংক্ষেপ', icon: LayoutGrid },
   { href: '/admin/tenants', label: 'ওয়ার্কস্পেস', icon: Building2 },
+  { href: '/admin/users', label: 'ইউজার', icon: UserRound },
   { href: '/admin/audit', label: 'কার্যবিবরণী', icon: ScrollText },
 ];
 
@@ -44,10 +44,10 @@ const TABS: { href: string; label: string; icon: typeof LayoutGrid }[] = [
  *
  * ## The bar
  *
- * `ImpersonationBar` is mounted here so it is present on every admin screen and
- * survives navigation between them. It cannot follow an operator out of
- * `/admin` from this file — that needs `components/app-shell.tsx`, which this
- * change does not own. See the note in the handover.
+ * `ImpersonationBar` is no longer mounted here. It moved to
+ * `components/app-shell.tsx`, which wraps every signed-in screen rather than
+ * only the console — the operator spends a support session on the customer's
+ * own pages, which is precisely where the banner and the way out have to be.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -81,8 +81,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-4">
-      <ImpersonationBar />
-
       <nav aria-label="প্ল্যাটফর্ম মেনু" className="chip-strip">
         {TABS.map((tab) => {
           const active =

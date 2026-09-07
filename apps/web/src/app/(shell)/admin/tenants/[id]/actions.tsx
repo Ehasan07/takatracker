@@ -1,12 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
-import { setSupportSession } from '../../impersonation';
+import { enterSupportSession } from '../../impersonation';
 import { bnNum, memberStatusLabel, roleLabel, workspaceStatusLabel } from '../../labels';
 import { ActionSheet } from '../../parts';
 import {
@@ -342,6 +343,7 @@ export function ImpersonateSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const candidates = tenant.members.filter((m) => m.status === 'ACTIVE' && !m.isSuperAdmin);
   const defaultUserId = tenant.owner?.id ?? '';
   const [userId, setUserId] = React.useState(defaultUserId);
@@ -366,11 +368,9 @@ export function ImpersonateSheet({
       }),
     onSuccess: (envelope) => {
       haptic('warn');
-      /* The banner is driven by this envelope and by nothing else — the token
-       * carries no impersonation claim yet. Stored before the sheet closes so
-       * the bar is already up when it does. */
-      setSupportSession(envelope);
-      invalidateAdminData(queryClient);
+      /* Four steps in a fixed order, shared with the people search so the two
+       * doors into a workspace cannot drift apart. See `enterSupportSession`. */
+      enterSupportSession(envelope, queryClient, router);
       onOpenChange(false);
     },
     onError: (err) => setError(errorText(err, 'সাপোর্ট সেশন চালু করা যায়নি')),

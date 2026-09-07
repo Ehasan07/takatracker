@@ -1,99 +1,78 @@
 'use client';
 
+import type { QueryClient } from '@tanstack/react-query';
 import * as React from 'react';
-import { isJsonObject, type ImpersonationEnvelope } from './types';
+import { purgeCachedData } from '@/lib/session-reset';
+import {
+  setSupportSession,
+  subscribeToSupportSession,
+  supportServerSnapshot,
+  supportSnapshot,
+  type ImpersonationEnvelope,
+} from '@/lib/support-session';
 
 /**
- * Where a live support session is remembered.
+ * The React half of the support-session store.
  *
- * ## Why the client has to remember anything at all
+ * The store itself moved to `lib/support-session.ts` when `lib/api.ts` started
+ * sending the token on every request: the request path cannot import from the
+ * admin console without a cycle, and the console cannot subscribe to a store it
+ * does not own. So the state lives in `lib/` and the hooks live here, next to
+ * the only screens that render them.
  *
- * The token `POST /admin/tenants/:id/impersonate` returns carries no marker
- * inside it — `AdminImpersonationService` says as much in its TODO, and adding
- * `imp` / `impBy` claims needs edits to `auth/` that the API change did not
- * own. So there is nothing to decode: every word the support banner says is
- * read back out of the envelope the server handed over, and if this store is
- * empty the banner cannot exist. That is the honest failure mode — a banner
- * that inferred a session from anything else would be a guess about whose data
- * is on screen.
- *
- * ## Why `sessionStorage`
- *
- * The envelope contains a bearer token for somebody else's ledger. `localStorage`
- * would keep it on the disk of a shared support laptop until something cleared
- * it, long after it stopped working and long after anyone remembered it was
- * there. `sessionStorage` is scoped to the one tab and dies with it, which
- * matches the life of the thing: fifteen minutes, one operator, one tab.
- *
- * It is never written into the `hishab_at` cookie. The API is explicit that
- * doing so would silently replace the operator's own session with the
- * customer's, so every later admin action would be attributed to the customer
- * and closing the banner would not undo it.
+ * Everything the previous module exported is re-exported below, so nothing that
+ * imported from here had to move.
  */
-const KEY = 'hishab_support_session';
-
-/** `undefined` = not read from storage yet. `null` = read, and there is none. */
-let current: ImpersonationEnvelope | null | undefined;
-const listeners = new Set<() => void>();
-
-const isEnvelope = (value: unknown): value is ImpersonationEnvelope => {
-  if (!isJsonObject(value)) return false;
-  const imp = value.impersonation;
-  if (!isJsonObject(imp)) return false;
-  return (
-    typeof value.accessToken === 'string' &&
-    typeof value.expiresAt === 'string' &&
-    isJsonObject(imp.workspace) &&
-    isJsonObject(imp.actingAs)
-  );
-};
-
-function read(): ImpersonationEnvelope | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return isEnvelope(parsed) ? parsed : null;
-  } catch {
-    /* Private mode, a quota error, a half-written value from a crashed tab —
-     * none of them are worth taking the panel down for. No session, then. */
-    return null;
-  }
-}
+export {
+  clearSupportSession,
+  hasExpired,
+  setSupportSession,
+  activeSupportSession,
+  isImpersonating,
+  type ImpersonationEnvelope,
+} from '@/lib/support-session';
 
 /**
- * Referentially stable, which `useSyncExternalStore` requires: re-parsing the
- * JSON on every render would hand React a new object each time and loop.
+ * Step into a workspace, from wherever the operator started the session.
+ *
+ * One function because there is more than one way in — the workspace page and
+ * the people search — and these four steps are a security sequence rather than
+ * a convenience. Two copies would be two places to keep in step the next time a
+ * cache is added, and the copy somebody forgets is the one that shows the
+ * operator's own balances under the customer's name.
+ *
+ * The order is the whole thing:
+ *
+ *  1. **Store the envelope.** `lib/api.ts` reads it on every request, so from
+ *     this line on the tab is acting as the customer. The banner is driven by
+ *     the same object, which is why it is up before anything navigates.
+ *  2. **Empty the query cache.** Not `invalidateAdminData`, which only touches
+ *     the admin keys: every other key in there holds the *operator's* own
+ *     accounts, dashboard and transactions, fetched under their own cookie.
+ *  3. **Purge the offline copies.** The service worker keeps `/api/v1/accounts`
+ *     and its neighbours for offline use, keyed by URL alone — so the
+ *     operator's entry and the customer's are the same entry.
+ *  4. **Go to the product.** Seeing what the customer sees is the feature, and
+ *     a soft navigation keeps the support bar mounted across it so its
+ *     countdown continues rather than restarting from a fresh page load.
  */
-function snapshot(): ImpersonationEnvelope | null {
-  if (current === undefined) current = read();
-  return current;
+export function enterSupportSession(
+  envelope: ImpersonationEnvelope,
+  queryClient: QueryClient,
+  router: { push: (href: string) => void },
+): void {
+  setSupportSession(envelope);
+  queryClient.clear();
+  void purgeCachedData();
+  router.push('/');
 }
-
-/** Nothing is impersonated on the server render, so the bar starts absent. */
-const serverSnapshot = (): ImpersonationEnvelope | null => null;
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function setSupportSession(envelope: ImpersonationEnvelope | null): void {
-  current = envelope;
-  try {
-    if (envelope) window.sessionStorage.setItem(KEY, JSON.stringify(envelope));
-    else window.sessionStorage.removeItem(KEY);
-  } catch {
-    // The bar still works for the life of this tab even if nothing persisted.
-  }
-  for (const listener of listeners) listener();
-}
-
-export const clearSupportSession = (): void => setSupportSession(null);
 
 export function useSupportSession(): ImpersonationEnvelope | null {
-  return React.useSyncExternalStore(subscribe, snapshot, serverSnapshot);
+  return React.useSyncExternalStore(
+    subscribeToSupportSession,
+    supportSnapshot,
+    supportServerSnapshot,
+  );
 }
 
 /**
@@ -112,8 +91,3 @@ export function useNow(active: boolean): number {
   }, [active]);
   return now;
 }
-
-export const hasExpired = (envelope: ImpersonationEnvelope, now: number): boolean => {
-  const at = Date.parse(envelope.expiresAt);
-  return Number.isFinite(at) && at <= now;
-};

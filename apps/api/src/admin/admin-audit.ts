@@ -26,6 +26,7 @@ import type { AuditAction } from '../audit/audit.service';
  *                         has to be one query.
  */
 export const TENANT_LIST_VIEWED: AuditAction = 'admin.tenant_list_viewed';
+export const USER_LIST_VIEWED: AuditAction = 'admin.user_list_viewed';
 export const TENANT_VIEWED: AuditAction = 'admin.tenant_viewed';
 export const PLAN_ASSIGNED: AuditAction = 'admin.plan_assigned';
 export const FEATURE_OVERRIDDEN: AuditAction = 'admin.feature_overridden';

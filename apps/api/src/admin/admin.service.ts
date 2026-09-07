@@ -22,12 +22,14 @@ import {
   ANALYTICS_VIEWED,
   fileAgainst,
   fileRead,
+  USER_LIST_VIEWED,
   type AdminActor,
 } from './admin-audit';
 import { BYTES_PER_MB, limitOf, periodKeyFor, toMb, type Limits } from './tenant-usage';
 import type {
   AssignPlanInput,
   ListTenantsQuery,
+  ListUsersQuery,
   PlatformAuditQuery,
   SetFeatureOverrideInput,
   SuspendInput,
@@ -366,6 +368,111 @@ export class AdminService {
         limit,
         returned: items.length,
       },
+    });
+
+    return { items, nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
+  }
+
+  /**
+   * People, across every tenant.
+   *
+   * ## Why this exists next to `listTenants`
+   *
+   * A support ticket names a person, not a workspace: an email address, a
+   * mobile number, a name spelled the way they spell it. Reaching them through
+   * the workspace list means already knowing which workspace they are in, which
+   * is the thing the ticket is least likely to say — and somebody who belongs
+   * to two workspaces cannot be found that way at all without opening both.
+   *
+   * ## What it deliberately does not return
+   *
+   * No `passwordHash`, no `tokenVersion`. Neither is needed to identify anybody
+   * and both would be on a screen in a browser. The memberships come back
+   * because they are what makes a row actionable — a support session is started
+   * against a workspace, so a user with no workspace is a user nobody can enter.
+   *
+   * `isSuperAdmin` is returned so the console can grey the row out rather than
+   * offer an action the API is going to refuse: `AdminImpersonationService`
+   * will not mint a token for another operator, and a button that 403s is worse
+   * than a button that is not there.
+   */
+  async listUsers(actor: AdminActor, query: ListUsersQuery) {
+    const limit = Math.min(MAX_PAGE, Math.max(1, query.limit ?? DEFAULT_PAGE));
+    const q = query.q?.trim();
+
+    const rows = await this.prisma.user.findMany({
+      where: q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' as const } },
+              { email: { contains: q, mode: 'insensitive' as const } },
+              /* No `mode` — a phone number is digits either way, and asking
+               * Postgres to case-fold them buys nothing and costs the index. */
+              { phone: { contains: q } },
+            ],
+          }
+        : {},
+      /* Two keys for the same reason `listTenants` uses two: `createdAt` is not
+       * unique, and two accounts made in the same millisecond would otherwise
+       * swap places between pages and one of them would never be returned. */
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        isSuperAdmin: true,
+        emailVerifiedAt: true,
+        deletionRequestedAt: true,
+        createdAt: true,
+        memberships: {
+          /* A deleted workspace cannot be entered — `AdminImpersonationService`
+           * refuses it and `JwtStrategy` would reject the token anyway — so
+           * listing it would only offer a door that does not open. */
+          where: { workspace: { deletedAt: null } },
+          orderBy: { joinedAt: 'asc' },
+          select: {
+            role: true,
+            status: true,
+            joinedAt: true,
+            workspace: { select: { id: true, name: true, status: true } },
+          },
+        },
+      },
+    });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    const items = page.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      isSuperAdmin: u.isSuperAdmin,
+      emailVerified: u.emailVerifiedAt !== null,
+      deletionRequestedAt: u.deletionRequestedAt?.toISOString() ?? null,
+      createdAt: u.createdAt.toISOString(),
+      workspaces: u.memberships.map((m) => ({
+        id: m.workspace.id,
+        name: m.workspace.name,
+        status: m.workspace.status,
+        role: m.role,
+        membershipStatus: m.status,
+        joinedAt: m.joinedAt.toISOString(),
+      })),
+    }));
+
+    /* `entity: 'User'` overrides the `'Workspace'` that `fileRead` assumes,
+     * because this read crossed no single workspace — it crossed all of them,
+     * looking for one person. */
+    this.audit.emit({
+      ...fileRead(actor),
+      entity: 'User',
+      action: USER_LIST_VIEWED,
+      after: { q: q ?? null, limit, returned: items.length },
     });
 
     return { items, nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };

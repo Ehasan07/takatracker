@@ -2,6 +2,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { clearSessionOwner } from './offline-queue';
+import { clearSupportSession } from './support-session';
 
 /**
  * Everything a sign-out has to take off this device.
@@ -25,7 +26,20 @@ const DATA_CACHE = 'hishab-v1-data';
 const SESSION_ENDED = 'hishab:session-ended';
 
 export async function resetSessionForSignOut(queryClient: QueryClient): Promise<void> {
-  /* First, because it is the only step that changes what may be replayed. The
+  /* Before anything else, because it is the only thing here that decides *whose
+   * credentials leave this tab on the next request*.
+   *
+   * A support envelope lives in `sessionStorage`, which survives a sign-out —
+   * it is scoped to the tab, and signing out does not close the tab. So an
+   * operator who ends their own session while acting as a customer would leave
+   * a live bearer token for that customer's ledger sitting in the tab; whoever
+   * signed in next on this machine would have `lib/api.ts` attach it to every
+   * request and would be looking at somebody else's books under their own
+   * name. Fifteen minutes is a short window and not a small one. */
+  clearSupportSession();
+
+  /* Then the queue, because it is the only step that changes what may be
+   * replayed. The
    * offline queue rows are kept, not deleted: each one records who wrote it, so
    * dropping the owner is enough to make every one of them unmatchable by the
    * next session, and the author gets their entries back — into their own
@@ -39,6 +53,22 @@ export async function resetSessionForSignOut(queryClient: QueryClient): Promise<
   await queryClient.cancelQueries().catch(() => undefined);
   queryClient.clear();
 
+  await purgeCachedData();
+}
+
+/**
+ * Drop every cached API read, in this page and in the worker that serves the
+ * other tabs.
+ *
+ * Sign-out is not the only moment this is needed. Starting and ending a support
+ * session swaps whose data the screens are showing without anybody signing in
+ * or out, and the caches are keyed by URL — `/api/v1/accounts` is one entry, so
+ * the operator's copy and the customer's copy are the same key. The worker
+ * refuses to cache an impersonated read at all (see the `authorization` check
+ * in `public/sw.js`), and this clears whatever was already there on the way in
+ * and on the way out.
+ */
+export async function purgeCachedData(): Promise<void> {
   await Promise.all([clearDataCache(), notifyServiceWorker()]);
 }
 

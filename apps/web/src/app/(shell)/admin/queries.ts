@@ -9,12 +9,14 @@ import {
   toOverview,
   toTenantDetail,
   toTenantPage,
+  toUserPage,
   type CatalogueFeature,
   type ImpersonationEnvelope,
   type Overview,
   type PlatformAuditPage,
   type TenantDetail,
   type TenantPage,
+  type UserPage,
 } from './types';
 
 /**
@@ -40,6 +42,10 @@ export interface TenantFilters {
   planCode?: string;
 }
 
+export interface UserFilters {
+  q?: string;
+}
+
 export interface AuditFilters {
   workspaceId?: string;
   actorId?: string;
@@ -48,6 +54,7 @@ export interface AuditFilters {
 
 /** The API's own default is 25 and its ceiling 100. */
 export const TENANT_PAGE_SIZE = 25;
+export const USER_PAGE_SIZE = 25;
 export const AUDIT_PAGE_SIZE = 50;
 
 /**
@@ -65,6 +72,7 @@ export const adminKeys = {
   overview: () => ['admin', 'overview'] as const,
   tenants: (filters: TenantFilters) => ['admin', 'tenants', filters] as const,
   tenant: (id: string) => ['admin', 'tenant', id] as const,
+  users: (filters: UserFilters) => ['admin', 'users', filters] as const,
   audit: (filters: AuditFilters) => ['admin', 'audit', filters] as const,
   /* Its own key rather than part of `tenant(id)`. Opening a tenant's plan page
    * must not read their balances as a side effect — the two are separate
@@ -118,6 +126,19 @@ export async function fetchTenants(filters: TenantFilters, cursor?: string): Pro
         cursor,
       })}`,
     ),
+  );
+}
+
+/**
+ * People, across every tenant.
+ *
+ * Each call writes an `admin.user_list_viewed` row, which is why the screen
+ * debounces its search box rather than firing per keystroke: a search anybody
+ * can review is the point, and one row per letter typed is a log nobody reads.
+ */
+export async function fetchUsers(filters: UserFilters, cursor?: string): Promise<UserPage> {
+  return toUserPage(
+    await api<unknown>(`/admin/users${search({ q: filters.q, limit: USER_PAGE_SIZE, cursor })}`),
   );
 }
 

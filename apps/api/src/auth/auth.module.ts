@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { jwtAccessSecret } from '../common/env';
@@ -13,6 +14,7 @@ import { AuthService } from './auth.service';
 import { EmailTokenService } from './email-token.service';
 import { JwtStrategy } from './jwt.strategy';
 import { SessionsService } from './sessions.service';
+import { SupportReadOnlyInterceptor } from './support-read-only.interceptor';
 
 @Module({
   imports: [
@@ -47,6 +49,11 @@ import { SessionsService } from './sessions.service';
     SessionsService,
     BreachedPasswordService,
     SmsSender,
+    /* Global, not route-bound. A support session is read-only everywhere or it
+     * is read-only nowhere — a list of protected routes is a list somebody
+     * forgets to add to, and the route they forget is the one that writes a
+     * ledger entry under the customer's name. See the essay on the class. */
+    { provide: APP_INTERCEPTOR, useClass: SupportReadOnlyInterceptor },
   ],
   exports: [AuthService, AccountService, AccountDeletionService, SessionsService],
 })
