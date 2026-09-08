@@ -39,20 +39,19 @@ export class FeatureLimitError extends ApiError {
 }
 
 /**
- * Thrown when a support session tried to write.
+ * Thrown when a support session tried to write while offline.
  *
- * The server refuses this too — `SupportReadOnlyInterceptor` is the boundary and
- * this is not it. Refusing here as well keeps a mutation from leaving the tab at
- * all, so an optimistic update never paints a change that the API is about to
- * throw away, and the operator reads the same sentence either way.
+ * Not a refusal of the write itself — a session may write, and that is the
+ * point of it. It is a refusal to *park* one. The offline queue replays a
+ * parked row later under whatever cookie this browser then holds, which for an
+ * operator is their own: the entry would land in the operator's workspace,
+ * under the operator's name, in a workspace that has no idea what it means.
+ * Better to fail now, while the person who typed it is still looking.
  */
-export class SupportReadOnlyError extends ApiError {
+export class SupportOfflineError extends ApiError {
   constructor() {
-    super(
-      403,
-      'সাপোর্ট সেশন শুধু দেখার জন্য — এই সেশন থেকে কোনো তথ্য যোগ, বদল বা মুছে ফেলা যায় না',
-    );
-    this.name = 'SupportReadOnlyError';
+    super(0, 'সাপোর্ট সেশনে অফলাইনে কিছু জমা রাখা যায় না — সংযোগ ফিরলে আবার চেষ্টা করুন');
+    this.name = 'SupportOfflineError';
   }
 }
 
@@ -142,10 +141,13 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
    */
   const support = path.startsWith('/admin') ? null : activeSupportSession();
 
-  /* Refused before it leaves the tab. See `SupportReadOnlyError`. */
-  if (support && method !== 'GET') throw new SupportReadOnlyError();
+  /* A support session writes online or not at all. See `SupportOfflineError`. */
+  if (support && method !== 'GET' && typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new SupportOfflineError();
+  }
 
   if (
+    !support &&
     queueWhenOffline &&
     method !== 'GET' &&
     typeof navigator !== 'undefined' &&
@@ -172,6 +174,10 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   try {
     res = await doFetch();
   } catch {
+    /* Same rule on a request that failed rather than one that never left: a
+     * support session's write must not be parked for a later replay under the
+     * operator's own cookie. */
+    if (support && method !== 'GET') throw new SupportOfflineError();
     if (queueWhenOffline && method !== 'GET') {
       await enqueueMutation({ path, method, body });
       throw new QueuedOfflineError();

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AuditActorType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { currentRequestContext } from '../common/request-context';
 
 /**
  * The actions worth recording (v3 §A3). Kept as a union rather than free text
@@ -226,12 +227,37 @@ export class AuditService {
    * down with it — the loud failure belongs in the logs, not in their face.
    */
   async record(event: AuditRecord): Promise<void> {
+    /**
+     * Read before the first `await`, which is what makes this correct.
+     *
+     * `emit()` calls this without awaiting it, so the promise is created inside
+     * the caller's async context and everything up to the first suspension runs
+     * there. Move this line below the `await` and the store would be whatever
+     * the event loop happened to be running — usually nothing, occasionally
+     * somebody else's request. That failure would be silent and intermittent,
+     * which for an audit trail is the worst shape a bug can have.
+     *
+     * No call site passes this and none should: there are 135 of them, and an
+     * operator id threaded through all of them is an operator id missing from
+     * one of them. See common/request-context.ts.
+     */
+    const impersonatorUserId = currentRequestContext()?.impersonatorUserId ?? null;
+
     try {
       await this.prisma.auditEvent.create({
         data: {
           workspaceId: event.workspaceId,
+          /* Still the customer. The session authenticates as their user and the
+           * write belongs in their books — rewriting the actor would make the
+           * timeline lie about whose workspace this is. The operator's name goes
+           * in the column beside it. */
           actorUserId: event.actorUserId ?? null,
-          actorType: event.actorType ?? 'USER',
+          /* SUPPORT wins over whatever the call site believed, because the call
+           * site does not know: an ordinary service writing an ordinary row has
+           * no idea a support session is holding the keyboard, and that is the
+           * one fact this row has to carry. */
+          actorType: impersonatorUserId ? 'SUPPORT' : (event.actorType ?? 'USER'),
+          impersonatorUserId,
           action: event.action,
           entity: event.entity,
           entityId: event.entityId,

@@ -745,12 +745,19 @@ describe('super admin', () => {
     expect(started.body.refreshToken).toBeNull();
     expect(await ctx.prisma.refreshToken.count({ where: { userId: tenant.id } })).toBe(before);
 
-    // Fifteen minutes, and never more however the platform TTL is configured.
-    expect(started.body.expiresIn).toBe(15 * 60);
-    expect(started.body.expiresIn).toBeLessThanOrEqual(15 * 60);
+    /* An hour, and never more however `IMPERSONATION_TTL` is configured — the
+     * ceiling is enforced by `assertBoxed`, not merely hoped for. It is an hour
+     * rather than fifteen minutes because a session may now write, and fifteen
+     * minutes is not long enough to fix what it took that long to find.
+     *
+     * Its own variable, too: lengthening a support session must not lengthen
+     * the token every ordinary user carries. `JWT_ACCESS_TTL` is untouched by
+     * this and the assertion below would fail if the two were ever merged. */
+    expect(started.body.expiresIn).toBe(60 * 60);
+    expect(started.body.expiresIn).toBeLessThanOrEqual(60 * 60);
     const window = new Date(started.body.expiresAt).getTime() - Date.now();
-    expect(window).toBeGreaterThan(13 * 60_000);
-    expect(window).toBeLessThanOrEqual(15 * 60_000 + 5_000);
+    expect(window).toBeGreaterThan(58 * 60_000);
+    expect(window).toBeLessThanOrEqual(60 * 60_000 + 5_000);
 
     expect(started.body.impersonation.actingAs.id).toBe(tenant.id);
     expect(started.body.impersonation.startedBy.id).toBe(op.id);
@@ -901,7 +908,7 @@ describe('super admin', () => {
     await ctx.http().get('/v1/admin/users').expect(404);
   });
 
-  it('lets a support session read everything and write nothing', async () => {
+  it('writes as the customer, and names the operator on every row it writes', async () => {
     const op = await operator();
     const tenant = await signup(ctx);
 
@@ -909,50 +916,68 @@ describe('super admin', () => {
       .http()
       .post(`/v1/admin/tenants/${tenant.workspaceId}/impersonate`)
       .set(auth(op))
-      .send({ reason: 'লেনদেন দুইবার দেখাচ্ছে — টিকিট ৭০৪' })
+      .send({ reason: 'হিসাব মিলছে না, ঠিক করে দিতে হবে — টিকিট ৭০৪' })
       .expect(200);
     const support = { Authorization: `Bearer ${started.body.accessToken}` };
 
-    // Reading is the whole feature and is untouched.
+    // Reading is unchanged.
     await ctx.http().get('/v1/accounts').set(support).expect(200);
     await ctx.http().get('/v1/transactions').set(support).expect(200);
 
-    /* Writing is refused everywhere, not on a list of routes.
-     *
-     * `NoImpersonationGuard` above closes four doors by name. This closes the
-     * rest, and the reason is the one `AdminImpersonationService` states about
-     * itself: an ordinary write during a session is filed as the customer,
-     * `actorType: 'USER'`, and the customer is never told a session happened.
-     * A ledger entry created here would therefore be, in every record the
-     * product keeps, one they made themselves. */
-    const refused = await ctx
+    /* And writing works. This is the product decision the attribution below
+     * exists to make defensible: an operator can fix a customer's books from
+     * inside their own screens rather than describing the fix over the phone. */
+    const created = await ctx
       .http()
       .post('/v1/accounts')
       .set(support)
       .send({ name: 'নগদ বাক্স', type: 'CASH', openingBalance: 0 })
-      .expect(403);
-    expect(refused.body.message).toContain('সাপোর্ট সেশন');
+      .expect(201);
 
-    /* An empty body on a route that would normally 400 in its Zod pipe. It
-     * still 403s, which is the assertion: the refusal happens before the
-     * handler's validation, so no route can opt out of it by parsing first. */
-    await ctx.http().post('/v1/transactions').set(support).send({}).expect(403);
+    /* The account is the customer's, in the customer's workspace. Nothing about
+     * a support session moves a row somewhere else. */
+    const account = await ctx.prisma.account.findUnique({
+      where: { id: created.body.id },
+      select: { workspaceId: true, name: true },
+    });
+    expect(account?.workspaceId).toBe(tenant.workspaceId);
+    expect(account?.name).toBe('নগদ বাক্স');
 
-    // And nothing reached the books.
-    expect(
-      await ctx.prisma.account.count({
-        where: { workspaceId: tenant.workspaceId, name: 'নগদ বাক্স' },
-      }),
-    ).toBe(0);
+    await settle();
 
-    /* The customer's own token walks the same route into the same workspace.
-     * What is refused is the session, not the tenant. */
-    await ctx
+    /* The row that makes it traceable. `actorUserId` is the customer, because
+     * the session authenticates as them and the entry belongs in their books;
+     * `impersonatorUserId` is the only record that somebody else was holding
+     * the keyboard, and `actorType` is forced to SUPPORT regardless of what the
+     * calling service believed. None of this is passed by a call site — see
+     * `common/request-context.ts`. */
+    const written = await ctx.prisma.auditEvent.findMany({
+      where: { workspaceId: tenant.workspaceId, entityId: created.body.id },
+      select: { actorUserId: true, actorType: true, impersonatorUserId: true },
+    });
+    expect(written.length).toBeGreaterThan(0);
+    expect(written.every((row) => row.actorUserId === tenant.id)).toBe(true);
+    expect(written.every((row) => row.actorType === 'SUPPORT')).toBe(true);
+    expect(written.every((row) => row.impersonatorUserId === op.id)).toBe(true);
+
+    /* The customer's own token writes the same route and leaves no operator on
+     * the row. The stamp is about the session, not about the workspace. */
+    const ownAccount = await ctx
       .http()
       .post('/v1/accounts')
       .set(auth(tenant))
-      .send({ name: 'নগদ বাক্স', type: 'CASH', openingBalance: 0 })
+      .send({ name: 'নিজের নগদ', type: 'CASH', openingBalance: 0 })
       .expect(201);
+
+    await settle();
+
+    const ownRows = await ctx.prisma.auditEvent.findMany({
+      where: { workspaceId: tenant.workspaceId, entityId: ownAccount.body.id },
+      select: { actorType: true, impersonatorUserId: true },
+    });
+    expect(ownRows.length).toBeGreaterThan(0);
+    expect(ownRows.every((row) => row.impersonatorUserId === null)).toBe(true);
+    expect(ownRows.every((row) => row.actorType === 'USER')).toBe(true);
   });
 
   it('reads a tenant’s balances, and files the look against the operator', async () => {

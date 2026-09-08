@@ -20,7 +20,7 @@ import { normaliseBdPhone, type LoginInput, type SignupInput } from '@hishab/sha
  */
 const LOGIN_REFUSAL = 'ইমেইল/মোবাইল বা পাসওয়ার্ড ভুল';
 import { AuditService } from '../audit/audit.service';
-import { jwtAccessSecret } from '../common/env';
+import { jwtAccessSecret, ttlSeconds } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountService } from './account.service';
 import { ARGON_OPTIONS } from './auth.helpers';
@@ -61,6 +61,23 @@ const REFRESH_TTL_DAYS = 30;
 const ACCESS_TTL = process.env.JWT_ACCESS_TTL ?? '15m';
 /** The same window, in seconds, for the `expiresIn` a client schedules refreshes on. */
 const ACCESS_TTL_SECONDS = 15 * 60;
+
+/**
+ * A support session's own window, separate from everybody else's.
+ *
+ * It used to inherit `JWT_ACCESS_TTL`, which was fine while a session could
+ * only read — fifteen minutes is long enough to look at a screen. It is not
+ * long enough to work through a customer's problem now that a session may write,
+ * and the obvious fix is the wrong one: raising `JWT_ACCESS_TTL` lengthens the
+ * token every ordinary user carries, so a support convenience would widen the
+ * window on every stolen phone in the product.
+ *
+ * Its own variable instead. `AdminImpersonationService.assertBoxed` reads the
+ * same one and refuses to issue anything if it has been widened past the bound
+ * that service is willing to stand behind.
+ */
+const IMPERSONATION_TTL = process.env.IMPERSONATION_TTL ?? '60m';
+const IMPERSONATION_TTL_SECONDS = ttlSeconds(IMPERSONATION_TTL) ?? 60 * 60;
 
 /**
  * How long after a rotation a replay can still be a dropped response.
@@ -516,7 +533,7 @@ export class AuthService {
       // Read through the resolver, never `process.env`: the strategy that
       // verifies this token reads it at a different moment in the boot, and the
       // two must not be able to see different values. See common/env.ts.
-      { secret: jwtAccessSecret(), expiresIn: ACCESS_TTL },
+      { secret: jwtAccessSecret(), expiresIn: impersonatedBy ? IMPERSONATION_TTL : ACCESS_TTL },
     );
   }
 
@@ -543,7 +560,10 @@ export class AuthService {
     });
     return {
       accessToken: await this.signAccessToken(user, workspaceId, impersonatedBy),
-      expiresIn: ACCESS_TTL_SECONDS,
+      /* Must match what was actually signed. A client that scheduled its work
+       * against the wrong number would either give up on a live session or keep
+       * one it no longer has. */
+      expiresIn: impersonatedBy ? IMPERSONATION_TTL_SECONDS : ACCESS_TTL_SECONDS,
     };
   }
 

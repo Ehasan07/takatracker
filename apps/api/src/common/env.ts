@@ -254,3 +254,25 @@ export function jwtAccessSecret(): string {
   );
   return cachedAccessSecret;
 }
+
+/** `'15m'`, `'900s'`, `'900'` — the `expiresIn` grammar `@nestjs/jwt` accepts. */
+const TTL_UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3_600, d: 86_400 };
+
+/**
+ * A TTL string as a number of seconds, or `null` when it cannot be parsed.
+ *
+ * `null` rather than a fallback, deliberately. The two callers use this to
+ * decide how long a credential lives, and a value they cannot read is a
+ * question they must refuse rather than answer with a guess — see
+ * `AdminImpersonationService.assertBoxed`, which would otherwise hand out a
+ * token of unknown length into somebody else's ledger because an unrelated
+ * environment change made the variable unreadable.
+ */
+export function ttlSeconds(raw: string | undefined): number | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const match = /^(\d+)\s*(s|m|h|d)?$/i.exec(value);
+  if (!match) return null;
+  const multiplier = TTL_UNIT_SECONDS[(match[2] ?? 's').toLowerCase()] ?? 1;
+  return Number(match[1]) * multiplier;
+}

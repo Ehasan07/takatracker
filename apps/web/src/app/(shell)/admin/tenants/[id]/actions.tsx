@@ -456,11 +456,16 @@ export function ImpersonateSheet({
           <p>
             আপনি <span className="font-medium">{tenant.name}</span>-এর{' '}
             <span className="font-medium">{target?.name || target?.email}</span> (
-            {roleLabel(target?.role ?? 'MEMBER')}) হিসেবে দেখার জন্য একটি টোকেন পাবেন।
+            {roleLabel(target?.role ?? 'MEMBER')}) হিসেবে তাঁদের নিজের পর্দায় কাজ করবেন।
           </p>
           <p className="mt-1">
-            টোকেনটি <span className="font-medium">১৫ মিনিট</span> চলে, রিফ্রেশ হয় না, আর কুকিতে
-            লেখা হয় না — আপনার নিজের সেশন অক্ষত থাকবে।
+            সেশনটি <span className="font-medium">এক ঘণ্টা</span> চলে, রিফ্রেশ হয় না, আর কুকিতে লেখা
+            হয় না — আপনার নিজের সেশন অক্ষত থাকবে।
+          </p>
+          <p className="mt-1">
+            <span className="font-medium">আপনি লিখতেও পারবেন</span> — লেনদেন, সেটিংস, সবকিছু। যা
+            করবেন তা তাঁদের নিজের বইয়ে তাঁদের নামেই বসবে, আর কার্যবিবরণীর প্রতিটি সারির পাশে আপনার
+            নাম লেখা থাকবে। পাসওয়ার্ড বদল, ডিভাইস রিভোক আর ডেটা এক্সপোর্ট বন্ধ থাকে।
           </p>
           <p className="mt-1">
             শুরু ও শেষ দুটোই ওই ওয়ার্কস্পেসের কার্যবিবরণীতে আপনার নাম-সহ লেখা হবে, আর গ্রাহক তা

@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { RequestContextMiddleware } from './common/request-context.middleware';
 import { AccountsModule } from './accounts/accounts.module';
 import { AdminModule } from './admin/admin.module';
 import { AttachmentsModule } from './attachments/attachments.module';
@@ -70,4 +71,11 @@ import { TransactionsModule } from './transactions/transactions.module';
   ],
   controllers: [HealthController],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /* Every route, including the unauthenticated ones. A context that exists only
+   * on some paths is one `AuditService.record` has to test for, and the branch
+   * that says "no context here" is indistinguishable from "no operator here". */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}

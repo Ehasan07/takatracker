@@ -8,16 +8,22 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from '../auth/auth.service';
+import { ttlSeconds } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { IMPERSONATION_ENDED, IMPERSONATION_STARTED, type AdminActor } from './admin-audit';
 import type { EndImpersonationInput, StartImpersonationInput } from './admin.controller';
 
 /**
- * The box. Fifteen minutes is long enough to reproduce a bug on somebody's
- * screen and short enough that a forgotten tab is not a standing key to their
- * books.
+ * The box.
+ *
+ * An hour, up from fifteen minutes, because a session may now write: fifteen
+ * minutes is long enough to reproduce a bug on somebody's screen and not long
+ * enough to work through the problem behind it and fix the entries. It remains
+ * short enough that a forgotten tab is not a standing key to their books, and
+ * it is a ceiling this service enforces rather than a number it hopes for —
+ * `assertBoxed` refuses to issue anything if the configured window is wider.
  */
-const MAX_SECONDS = 15 * 60;
+const MAX_SECONDS = 60 * 60;
 
 /**
  * Support impersonation.
@@ -71,12 +77,24 @@ const MAX_SECONDS = 15 * 60;
  * somebody else's face — changing their password, revoking their devices,
  * downloading their books.
  *
- * What does *not* follow, and is worth saying plainly: ordinary writes made
- * during a session are still audited as the customer, `actorType: 'USER'`.
- * Attributing them to SUPPORT means every audit call site in the application
- * reading `impersonatedBy`, and a half-converted set of call sites would be
- * worse than a consistent one — the start and end rows below, plus the
- * timestamps, are what bound a session today.
+ * ## Writes, and how they are attributed
+ *
+ * A session may write. Everything it writes lands in the customer's own books
+ * under the customer's own user — that is what "acting as them" means, and
+ * `Transaction.author` naming them is correct rather than a compromise.
+ *
+ * What the trail adds is the second name. `AuditService.record` stamps
+ * `AuditEvent.impersonatorUserId` with the operator and forces
+ * `actorType: 'SUPPORT'` on every row written inside a session, reading the id
+ * from the request context rather than from any of its 135 call sites — see
+ * `common/request-context.ts` for why that is the only version of this that can
+ * be trusted. So "who actually did this?" has an answer for each individual
+ * write, not merely for the session that contained it.
+ *
+ * What is still true and worth saying plainly: the customer is not told. No
+ * banner reaches their screen and no email is sent. The audit trail is theirs
+ * to read and the start row names the reason, but nothing interrupts them while
+ * it is happening.
  */
 @Injectable()
 export class AdminImpersonationService {
@@ -200,7 +218,7 @@ export class AdminImpersonationService {
         reason: input.reason,
       },
       /** Ready to render, so every client shows the customer the same sentence. */
-      banner: `সাপোর্ট মোড — আপনি ${workspace.name}-এর ${membership.user.name} হিসেবে দেখছেন। ${expiresAt.toISOString()} পর্যন্ত।`,
+      banner: `সাপোর্ট মোড — আপনি ${workspace.name}-এর ${membership.user.name} হিসেবে কাজ করছেন। যা করবেন তা তাঁদের বইয়ে বসবে। ${expiresAt.toISOString()} পর্যন্ত।`,
     };
   }
 
@@ -254,44 +272,39 @@ export class AdminImpersonationService {
   }
 
   /**
-   * Refuse to issue anything if the platform access TTL is wider than the box.
+   * Refuse to issue anything if the configured window is wider than the box.
    *
-   * `reissueAccessToken` signs with `JWT_ACCESS_TTL` (default `15m`), so the
-   * fifteen-minute bound is inherited, not enforced here. If somebody widens
-   * that variable for an unrelated reason — a mobile client complaining about
-   * refreshes, say — impersonation would silently start handing out tokens of
-   * the same length into other people's ledgers. Refusing is the loud failure:
-   * it breaks one support tool instead of quietly removing its only limit.
+   * `AuthService.signAccessToken` signs a support token with
+   * `IMPERSONATION_TTL` (default `60m`) — its own variable, so lengthening a
+   * support session cannot lengthen every ordinary user's token and vice versa.
+   * The bound is therefore inherited from configuration, not enforced by the
+   * signer, and this is where it is checked.
+   *
+   * If somebody widens that variable — a support engineer tired of restarting
+   * sessions, say — this service would otherwise start handing out long-lived
+   * write access to other people's ledgers with nothing saying so. Refusing is
+   * the loud failure: it breaks one support tool instead of quietly removing
+   * its only limit.
    */
   private assertBoxed(): void {
-    const configured = parseTtlSeconds(process.env.JWT_ACCESS_TTL);
+    const raw = process.env.IMPERSONATION_TTL;
+    /* Unset is the documented default and is inside the box by definition. */
+    const configured = raw?.trim() ? ttlSeconds(raw) : MAX_SECONDS;
 
     if (configured === null) {
       this.logger.error(
-        `JWT_ACCESS_TTL is set to ${JSON.stringify(process.env.JWT_ACCESS_TTL)}, which this ` +
-          'service cannot parse, so the impersonation window cannot be proven to be short.',
+        `IMPERSONATION_TTL is set to ${JSON.stringify(raw)}, which this service cannot parse, ` +
+          'so the impersonation window cannot be proven to be bounded.',
       );
       throw new BadRequestException('সাপোর্ট সেশন এখন চালু করা যাচ্ছে না, কনফিগারেশন ঠিক করুন');
     }
 
     if (configured > MAX_SECONDS) {
       this.logger.error(
-        `Refusing to impersonate: JWT_ACCESS_TTL is ${configured}s, and an impersonation token ` +
-          `inherits it. Lower it to ${MAX_SECONDS}s or give impersonation its own signer.`,
+        `Refusing to impersonate: IMPERSONATION_TTL is ${configured}s, and a support token ` +
+          `is signed with it. Lower it to ${MAX_SECONDS}s or less.`,
       );
       throw new BadRequestException('সাপোর্ট সেশন এখন চালু করা যাচ্ছে না, কনফিগারেশন ঠিক করুন');
     }
   }
 }
-
-const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3_600, d: 86_400 };
-
-/** `'15m'`, `'900s'`, `'900'` — the `expiresIn` grammar `@nestjs/jwt` accepts. */
-const parseTtlSeconds = (raw: string | undefined): number | null => {
-  const value = raw?.trim();
-  if (!value) return MAX_SECONDS; // unset falls back to ACCESS_TTL's own '15m'
-  const match = /^(\d+)\s*(s|m|h|d)?$/i.exec(value);
-  if (!match) return null;
-  const multiplier = UNIT_SECONDS[(match[2] ?? 's').toLowerCase()] ?? 1;
-  return Number(match[1]) * multiplier;
-};

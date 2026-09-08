@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import type { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { jwtAccessSecret } from '../common/env';
+import { markImpersonated } from '../common/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from './current-user.decorator';
 
@@ -108,6 +109,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException();
     }
 
+    /* Beside the request as well as on the AuthUser. `AuditService.record` is
+     * called from 135 places and cannot be handed an operator id through all of
+     * them; this is the one moment every authenticated request passes through
+     * and the first at which the answer is known. See common/request-context.ts. */
+    const impersonatedBy = payload.imp === true ? (payload.impBy ?? null) : null;
+    markImpersonated(impersonatedBy);
+
     return {
       id: membership.user.id,
       email: membership.user.email,
@@ -120,7 +128,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
        * envelope. `impBy` without `imp` is treated as no session at all: the
        * pair is minted together and one without the other is not a shape this
        * server produces. */
-      impersonatedBy: payload.imp === true ? (payload.impBy ?? null) : null,
+      impersonatedBy,
     };
   }
 }

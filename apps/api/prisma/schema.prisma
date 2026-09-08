@@ -73,6 +73,7 @@ model User {
   sentInvitations  Invitation[]   @relation("InvitationSender")
   telegram         TelegramConnection[]
   auditEvents      AuditEvent[]         @relation("AuditActor")
+  impersonatedAudit AuditEvent[]        @relation("AuditImpersonator")
   statementShares  StatementShare[]     @relation("StatementShareAuthor")
   splitGroups      SplitGroup[]         @relation("SplitGroupAuthor")
 }
@@ -853,14 +854,30 @@ model AuditEvent {
   after        Json?
   ip           String?
   userAgent    String?
+  /// The platform operator who was holding the keyboard, when this row was
+  /// written inside a support session. Null for every ordinary action.
+  ///
+  /// `actorUserId` stays the customer on purpose: the session authenticates as
+  /// their user, the write lands in their workspace, and `Transaction.author`
+  /// is correctly them — the books are theirs and nothing here rewrites that.
+  /// This column is the only place recording that a second person was involved,
+  /// which is what makes writing during a support session defensible rather
+  /// than merely convenient. Filled in one place, `AuditService.record`, from
+  /// the request context — never passed by a call site, because there are 135
+  /// of them and the one somebody forgets is the write nobody can attribute.
+  impersonatorUserId String?
   createdAt    DateTime       @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  actor     User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor        User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  impersonator User?     @relation("AuditImpersonator", fields: [impersonatorUserId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([workspaceId, action])
   @@index([workspaceId, entity, entityId])
+  /// "What did this operator do, and where?" — the question the column exists
+  /// to answer, asked across every tenant at once.
+  @@index([impersonatorUserId, createdAt(sort: Desc)])
 }
 
 // ---------------------------------------------------------------------------
