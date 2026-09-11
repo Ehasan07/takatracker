@@ -1,7 +1,6 @@
 import { formatLedgerDate, formatMinor, fromLocalDateString, type Locale } from '@hishab/shared';
 import Link from 'next/link';
 import { BrandMark } from '@/components/brand-mark';
-import { FooterAdBlock, type FooterAd } from '@/components/print-footer-ad';
 import { PrintButton } from './print-button';
 
 /**
@@ -44,16 +43,6 @@ export interface PublicStatement {
   reference: string;
   expiresAt: string;
   issuedAt: string;
-  /**
-   * The sponsored strip this workspace's documents carry, printed at the very
-   * foot of the page and nowhere else.
-   *
-   * It travels with the statement rather than being fetched: nobody is signed
-   * in on this page, and a second unauthenticated endpoint keyed by workspace
-   * would let anybody holding one link enumerate which shops carry which
-   * sponsor. Null for almost every workspace.
-   */
-  ad: FooterAd | null;
   data: Record<string, unknown>;
 }
 
@@ -348,13 +337,6 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
               one stray tap away from a reader losing the page they were sent. */}
           <p className="text-ink-muted">takatracker.com</p>
         </footer>
-
-        {/* Paper only, and below the document's own footer: the strip a super
-            admin sold on this workspace's printed statements. It is hidden on
-            screen for the same reason the signup card below is hidden in print
-            — a reader holding a financial record should not have to sort
-            advertising out of it on the medium they are reading it in. */}
-        <FooterAdBlock ad={statement.ad} />
       </main>
 
       {/* Outside `.statement`, and gone in print. The reader is welcome to keep

@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
-import { AdsModule } from '../ads/ads.module';
 import { LoansModule } from '../loans/loans.module';
 import { PublicStatementController } from './public-statement.controller';
 import { PublicStatementService } from './public-statement.service';
@@ -16,7 +15,7 @@ import { StatementShareService } from './statement-share.service';
  * copy somebody outside the workspace is holding is the worst one to be wrong.
  */
 @Module({
-  imports: [LoansModule, AccountsModule, AdsModule],
+  imports: [LoansModule, AccountsModule],
   controllers: [StatementShareController, PublicStatementController],
   providers: [StatementShareService, PublicStatementService],
   exports: [StatementShareService],

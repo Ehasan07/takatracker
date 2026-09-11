@@ -27,7 +27,6 @@ import { TranslationsModule } from './translations/translations.module';
 import { StatementsModule } from './statements/statements.module';
 import { WorkspaceModule } from './workspace/workspace.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { AdsModule } from './ads/ads.module';
 import { ReportsModule } from './reports/reports.module';
 import { TagsModule } from './tags/tags.module';
 import { TaxModule } from './tax/tax.module';
@@ -66,7 +65,6 @@ import { TransactionsModule } from './transactions/transactions.module';
     IngestionModule,
     TransactionsModule,
     ReportsModule,
-    AdsModule,
     TaxModule,
     NotificationsModule,
     FeedbackModule,

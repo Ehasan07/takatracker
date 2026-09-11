@@ -395,14 +395,6 @@ export interface MeDto {
    * menu item that leads to a 404.
    */
   isSuperAdmin: boolean;
-  /**
-   * This person's standing in the workspace on their way in.
-   *
-   * Decides which screens are offered, never which are allowed: `RolesGuard`
-   * re-reads the membership on every request, so a forged value here buys a
-   * menu item that leads to a 403.
-   */
-  role: 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
   workspace: { id: string; name: string; currency: string; timezone: string };
 }
 

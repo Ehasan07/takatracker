@@ -444,7 +444,6 @@ model Workspace {
   people       Person[]
   transactions Transaction[]
   entries      LedgerEntry[]
-  adPlacements AdPlacement[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -2501,84 +2500,4 @@ model Feedback {
   /// ceiling that stops one person flooding the table costs a full scan, which
   /// would make the flood cheaper the more of it there already was.
   @@index([userId, createdAt])
-}
-
-// ---------------------------------------------------------------------------
-// Sponsored footers
-//
-// A shop's ledger and its customer statements are documents somebody else
-// reads, and a super admin can sell the strip at the bottom of them. Two
-// tables rather than a column on `Workspace`: one advert usually runs across
-// several shops at once, and the wording has to be editable in one place once
-// it does — a column would mean the same sponsor's phone number stored forty
-// times and corrected thirty-nine.
-// ---------------------------------------------------------------------------
-
-/// What a sponsor wants printed. Owned by the super admin, never by a tenant.
-model AdCampaign {
-  id String @id @default(cuid())
-
-  /// Internal, for the admin list: "Rahim Steel — Q4". Never printed.
-  name String
-
-  /// The line the reader actually sees, printed in full.
-  headline String
-
-  /// A sentence or two under it. Optional — some sponsors want only a name.
-  body String?
-
-  /// Phone, address or website, set small on the last line. One string rather
-  /// than three columns because what a sponsor wants printed there differs by
-  /// sponsor, and a form with three boxes gets two of them left empty.
-  contactLine String?
-
-  /// Where the headline links when the document is on a screen rather than on
-  /// paper. Printed output ignores it — a URL nobody can click is noise in a
-  /// footer that is already borrowed space.
-  linkUrl String?
-
-  /// False takes it off every document at once without unpicking placements,
-  /// which is what "stop it, now" needs to be.
-  isActive Boolean @default(true)
-
-  /// Which operator created it. An advert printed on a customer's statement
-  /// with no attribution is a liability, exactly as an entitlement override is.
-  createdByUserId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  placements AdPlacement[]
-
-  @@index([isActive])
-}
-
-/// One campaign switched on for one workspace.
-model AdPlacement {
-  id          String @id @default(cuid())
-  campaignId  String
-  workspaceId String
-
-  /// Optional window. Null start means "already running", null end means
-  /// "until somebody stops it" — the same shape `WorkspaceFeatureOverride`
-  /// uses for the same reason: a sold placement has an end date and a
-  /// goodwill one does not.
-  startsAt DateTime?
-  endsAt   DateTime?
-
-  /// Why this shop. Free text, read by the next operator.
-  note String?
-
-  grantedByUserId String?
-
-  createdAt DateTime @default(now())
-
-  campaign  AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  /// One placement per campaign per workspace. Running the same advert twice on
-  /// one document is a bug, not a louder advert.
-  @@unique([campaignId, workspaceId])
-  /// The read every document does: "what runs on this workspace, today".
-  @@index([workspaceId, endsAt])
 }

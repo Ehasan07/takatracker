@@ -10,7 +10,6 @@ import {
   toTenantDetail,
   toTenantPage,
   toUserPage,
-  type AdCampaignRow,
   type CatalogueFeature,
   type ImpersonationEnvelope,
   type Overview,
@@ -82,7 +81,6 @@ export const adminKeys = {
   messages: (id: string) => ['admin', 'tenant', id, 'messages'] as const,
   analytics: (filters: Record<string, string | undefined>) =>
     ['admin', 'analytics', filters] as const,
-  ads: () => ['admin', 'ads'] as const,
 };
 
 /**
@@ -329,49 +327,4 @@ export function useOperatorProbe(): {
     isError: probe.isError && !notHere,
     refetch: () => void probe.refetch(),
   };
-}
-
-// --- sponsored footers -------------------------------------------------------
-
-/**
- * The adverts a super admin prints at the foot of a workspace's documents.
- *
- * Filed under `['admin']` like everything else on the panel, so placing one
- * refreshes the tenant screens that show it alongside the campaign list.
- */
-export async function fetchAdCampaigns(): Promise<AdCampaignRow[]> {
-  const raw = await api<{ campaigns?: unknown }>('/admin/ads');
-  return Array.isArray(raw.campaigns) ? (raw.campaigns as AdCampaignRow[]) : [];
-}
-
-export interface AdCampaignBody {
-  name: string;
-  headline: string;
-  body?: string | null;
-  contactLine?: string | null;
-  linkUrl?: string | null;
-  isActive?: boolean;
-}
-
-export function createAdCampaign(body: AdCampaignBody): Promise<unknown> {
-  return api<unknown>('/admin/ads', { method: 'POST', body });
-}
-
-export function updateAdCampaign(id: string, body: Partial<AdCampaignBody>): Promise<unknown> {
-  return api<unknown>(`/admin/ads/${id}`, { method: 'PATCH', body });
-}
-
-export function deleteAdCampaign(id: string): Promise<unknown> {
-  return api<unknown>(`/admin/ads/${id}`, { method: 'DELETE' });
-}
-
-export function placeAd(
-  id: string,
-  body: { workspaceId: string; startsAt?: string | null; endsAt?: string | null; note?: string },
-): Promise<unknown> {
-  return api<unknown>(`/admin/ads/${id}/placements`, { method: 'PUT', body });
-}
-
-export function withdrawAd(id: string, workspaceId: string): Promise<unknown> {
-  return api<unknown>(`/admin/ads/${id}/placements/${workspaceId}`, { method: 'DELETE' });
 }

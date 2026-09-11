@@ -44,7 +44,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, FileText, NotebookText } from 'lucide-react';
+import { Briefcase, FileText } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';
@@ -52,7 +52,7 @@ import { FlowBars } from '@/components/charts/flow-bars';
 import { Money } from '@/components/money';
 import { Skeleton, SkeletonCard } from '@/components/skeleton';
 import { Sheet } from '@/components/ui/sheet';
-import { api, endpoints } from '@/lib/api';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/t';
 import { BreakdownPanel } from './breakdown';
@@ -192,22 +192,6 @@ function ReportsBody({ today }: { today: Date }) {
   });
   const businessEnabled = workspace.data?.businessEnabled ?? false;
 
-  /* The party due report has two locks and the screen draws the door only when
-     both are open: the workspace needs the flag a super admin grants, and the
-     member has to be an owner or an admin. Neither check is the real one — the
-     API refuses on its own — but a link that always 403s is a link that teaches
-     people the product is broken. */
-  const me = useQuery({ queryKey: ['me'], queryFn: endpoints.me, staleTime: 5 * 60_000 });
-  const entitlements = useQuery({
-    queryKey: ['entitlements'],
-    queryFn: endpoints.entitlements,
-    staleTime: 60_000,
-  });
-  const dueFlag = entitlements.data?.entitlements['party.due.report'];
-  const partyDuesEnabled =
-    (dueFlag === null || (typeof dueFlag === 'number' && dueFlag > 0)) &&
-    (me.data?.role === 'OWNER' || me.data?.role === 'ADMIN');
-
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       <header className="flex items-baseline justify-between gap-2">
@@ -233,15 +217,6 @@ function ReportsBody({ today }: { today: Date }) {
             >
               <Briefcase className="h-4 w-4" aria-hidden />
               {t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
-            </Link>
-          ) : null}
-          {partyDuesEnabled ? (
-            <Link
-              href="/reports/party-dues"
-              className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
-            >
-              <NotebookText className="h-4 w-4" aria-hidden />
-              {t('dues.title', 'বাকির খাতা')}
             </Link>
           ) : null}
           <Link

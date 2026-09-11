@@ -673,30 +673,3 @@ export interface TenantMessages {
   summary: { total: number; parsed: number; unread: number; ignored: number };
   messages: TenantMessageRow[];
 }
-
-/* --- sponsored footers ----------------------------------------------------- */
-
-/** One campaign running on one workspace. */
-export interface AdPlacementRow {
-  id: string;
-  workspaceId: string;
-  workspaceName: string;
-  workspaceStatus: string;
-  startsAt: string | null;
-  endsAt: string | null;
-  note: string | null;
-  createdAt: string;
-}
-
-/** What a sponsor wants printed, and everywhere it prints. */
-export interface AdCampaignRow {
-  id: string;
-  name: string;
-  headline: string;
-  body: string | null;
-  contactLine: string | null;
-  linkUrl: string | null;
-  isActive: boolean;
-  createdAt: string;
-  placements: AdPlacementRow[];
-}

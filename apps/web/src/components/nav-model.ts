@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   LayoutGrid,
   Mail,
-  Megaphone,
   NotebookText,
   PiggyBank,
   ScrollText,
@@ -346,12 +345,6 @@ export const ADMIN_GROUP: Group = {
       label: 'বিশ্লেষণ',
       icon: ChartColumn,
       blurb: 'খাত অনুযায়ী, সব টেন্যান্ট মিলিয়ে',
-    },
-    {
-      href: '/admin/ads',
-      label: 'বিজ্ঞাপন',
-      icon: Megaphone,
-      blurb: 'কার কাগজে কার বিজ্ঞাপন ছাপা হবে',
     },
     {
       href: '/admin/audit',

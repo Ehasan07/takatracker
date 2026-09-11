@@ -194,22 +194,8 @@ export const AUDIT_ACTIONS = [
   'admin.feature_overridden',
   'admin.tenant_suspended',
   'admin.tenant_reactivated',
-  /* Sponsored footers. Wording and placement are separate actions because they
-     answer different questions: "what did this customer's statements say?" and
-     "who decided this customer's statements would carry an advert at all?" */
-  'admin.ad_created',
-  'admin.ad_updated',
-  'admin.ad_deleted',
-  'admin.ad_placed',
-  'admin.ad_withdrawn',
   'support.impersonation_started',
   'support.impersonation_ended',
-  /* A download of the whole counterparty list — every customer and supplier a
-     workspace has, with what each still owes. Its own action rather than
-     `export.downloaded`: this one names people who never agreed to be in a
-     spreadsheet, and "who took the party list out?" must be answerable without
-     reading every CSV download in the trail. */
-  'report.party_dues_downloaded',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

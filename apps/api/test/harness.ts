@@ -143,12 +143,6 @@ export const TEST_TABLES = [
   'TelegramConnection',
   'CardReminderCycle',
   'WorkspaceFeatureOverride',
-  /* Placements before the campaigns they point at, and both before the
-     workspaces. A sponsored footer left behind would print on the next run's
-     documents and the test that asserts "no advert" would fail for a reason
-     nobody could see in its own file. */
-  'AdPlacement',
-  'AdCampaign',
   /* The plan catalogue is truncated too, now that boot only seeds what is
    * missing rather than overwriting it every time. Without this, a test that
    * edits FREE would leave that edit behind for every later run — and the

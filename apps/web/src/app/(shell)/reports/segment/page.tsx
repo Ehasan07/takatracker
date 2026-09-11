@@ -6,7 +6,6 @@ import Link from 'next/link';
 import * as React from 'react';
 import { StandardNote } from '@/components/info-note';
 import { Money } from '@/components/money';
-import { PrintFooterAd } from '@/components/print-footer-ad';
 import { SkeletonRows } from '@/components/skeleton';
 import { Field, Input, Select } from '@/components/ui/field';
 import { toLocalDateString } from '@hishab/shared';
@@ -225,9 +224,6 @@ export default function SegmentPage() {
       ) : statement.data ? (
         <Result data={statement.data} />
       ) : null}
-
-      {/* Paper only. */}
-      <PrintFooterAd />
     </div>
   );
 }

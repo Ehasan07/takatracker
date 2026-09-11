@@ -4,7 +4,6 @@ import { fromLocalDateString, toLocalDateString, type Locale } from '@hishab/sha
 import { minorToNumber } from '../common/bigint-json';
 import { AccountStatementService } from '../accounts/account-statement.service';
 import { LoansService } from '../loans/loans.service';
-import { AdsService } from '../ads/ads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../transactions/transactions.service';
 import type { ResolvedShare } from './statement-share.service';
@@ -63,7 +62,6 @@ export class PublicStatementService {
     private readonly prisma: PrismaService,
     private readonly loans: LoansService,
     private readonly accountStatements: AccountStatementService,
-    private readonly ads: AdsService,
   ) {}
 
   async render(share: ResolvedShare): Promise<PublicStatement> {
@@ -86,13 +84,7 @@ export class PublicStatementService {
       locale,
     };
     const range = { from: share.from ?? undefined, to: share.to ?? undefined };
-    /* The sponsored strip travels with the document rather than being fetched
-     * by the page: nobody is signed in here, and a second unauthenticated
-     * endpoint keyed by workspace would let anybody holding one statement link
-     * enumerate which shops carry which sponsor. */
-    const ad = await this.ads.footerFor(workspace.id);
     const head = {
-      ad,
       workspaceName: workspace.name,
       currency: workspace.currency,
       locale,

@@ -256,27 +256,6 @@ export const DEFAULT_FEATURES: readonly FeatureDefinition[] = [
     isActive: true,
     sortOrder: 120,
   },
-  /**
-   * Every counterparty's outstanding balance, in one spreadsheet.
-   *
-   * Off on both packages and it is not an oversight, the way `sms.channel` is
-   * not one: this is granted per workspace by a super admin through an
-   * override, so the grant records who gave it and why. A package that sold it
-   * would hand it to everyone who paid, and the pricing page would then be
-   * promising a list nobody asked to be on — the file names every customer and
-   * supplier a shop has, with what each of them still owes.
-   */
-  {
-    key: 'party.due.report',
-    kind: 'FLAG',
-    label: 'বাকির খাতা রিপোর্ট',
-    labelEn: 'Party due report',
-    unit: 'count',
-    period: 'LIFETIME',
-    category: 'core',
-    isActive: true,
-    sortOrder: 130,
-  },
 ];
 
 /**
@@ -423,7 +402,6 @@ export const DEFAULT_PLANS: readonly PlanDefinition[] = [
       'export.enabled': 0,
       'sms.channel': 0,
       'notifications.telegram': 1,
-      'party.due.report': 0,
     },
   },
   {
@@ -456,9 +434,6 @@ export const DEFAULT_PLANS: readonly PlanDefinition[] = [
        * it, so the pricing page must not promise it. */
       'sms.channel': 0,
       'notifications.telegram': 1,
-      /* Granted per workspace by a super admin, for the reason on the feature
-       * definition above. Paying for the package does not buy it. */
-      'party.due.report': 0,
     },
   },
 ];
