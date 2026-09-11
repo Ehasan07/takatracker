@@ -10,6 +10,7 @@ import { SkeletonRows } from '@/components/skeleton';
 import { Field, Input } from '@/components/ui/field';
 import { toLocalDateString } from '@hishab/shared';
 import { fmtDate, fmtDateObject, fmtNumber } from '@/lib/format';
+import { PrintFooterAd } from '@/components/print-footer-ad';
 import { t } from '@/lib/t';
 import {
   fetchBalanceSheetAt,
@@ -141,6 +142,10 @@ export default function StatementsPage() {
           />
         </>
       )}
+
+      {/* Paper only — the sponsored strip a super admin placed on this
+          workspace, if it has one. */}
+      <PrintFooterAd />
     </div>
   );
 }

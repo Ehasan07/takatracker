@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AccountsModule } from '../accounts/accounts.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AdminAdsService } from './admin-ads.service';
 import { AdminAnalyticsService } from './admin-analytics.service';
 import { AdminBroadcastService } from './admin-broadcast.service';
 import { AdminCatalogueService } from './admin-catalogue.service';
@@ -42,6 +43,7 @@ import { SuperAdminGuard } from './super-admin.guard';
     AdminFinanceService,
     AdminAnalyticsService,
     AdminBroadcastService,
+    AdminAdsService,
     SuperAdminGuard,
   ],
 })

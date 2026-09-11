@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -20,6 +21,7 @@ import type { AdminActor } from './admin-audit';
 import { AdminBroadcastService } from './admin-broadcast.service';
 import { AdminCatalogueService } from './admin-catalogue.service';
 import { AdminImpersonationService } from './admin-impersonation.service';
+import { AdminAdsService } from './admin-ads.service';
 import { AdminService } from './admin.service';
 import { SuperAdminGuard } from './super-admin.guard';
 
@@ -49,6 +51,38 @@ const listTenantsQuerySchema = z.object({
   cursor: optionalQuery(z.string().max(200)),
 });
 export type ListTenantsQuery = z.infer<typeof listTenantsQuerySchema>;
+
+/**
+ * What a sponsor wants printed.
+ *
+ * `headline` is capped where a printed footer stops being a footer. The limits
+ * are the design: an advert that can be any length is an advert that can push
+ * the last row of somebody's ledger onto a second page.
+ */
+const adCampaignSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  headline: z.string().trim().min(1).max(120),
+  body: z.string().trim().max(280).nullish(),
+  contactLine: z.string().trim().max(160).nullish(),
+  linkUrl: z.string().trim().url().max(500).nullish(),
+  isActive: z.boolean().optional(),
+});
+export type AdCampaignBody = z.infer<typeof adCampaignSchema>;
+
+/* Every field optional, but `null` still means "clear this line" — which is why
+ * this is a `.partial()` of the same shape rather than a looser second schema
+ * that would let the two drift. */
+const updateAdCampaignSchema = adCampaignSchema.partial();
+export type UpdateAdCampaignBody = z.infer<typeof updateAdCampaignSchema>;
+
+const placeAdSchema = z.object({
+  workspaceId: cuid,
+  /** ISO timestamps. Null on either side means "no bound on this end". */
+  startsAt: z.string().datetime().nullish(),
+  endsAt: z.string().datetime().nullish(),
+  note: z.string().trim().max(500).nullish(),
+});
+export type PlaceAdBody = z.infer<typeof placeAdSchema>;
 
 const assignPlanSchema = z.object({
   planCode: z.string().min(1).max(60),
@@ -313,6 +347,7 @@ export class AdminController {
     private readonly catalogue: AdminCatalogueService,
     private readonly broadcast: AdminBroadcastService,
     private readonly impersonation: AdminImpersonationService,
+    private readonly ads: AdminAdsService,
   ) {}
 
   // --- platform --------------------------------------------------------------
@@ -583,6 +618,68 @@ export class AdminController {
     @Body(zodPipe(updateFeatureSchema)) body: UpdateFeatureInput,
   ) {
     return this.catalogue.updateFeature(actorFrom(user, req), key, body);
+  }
+
+  // --- sponsored footers -----------------------------------------------------
+
+  /**
+   * The advert strip at the bottom of a workspace's printed documents.
+   *
+   * Wording lives on the campaign and reach lives on the placement, so a
+   * sponsor's phone number is corrected once rather than once per shop. Nothing
+   * here is sold by a package: an advert on somebody's customer statements is
+   * a decision an operator makes about one workspace, and the audit row says
+   * who made it.
+   */
+  @Get('ads')
+  listAds() {
+    return this.ads.list();
+  }
+
+  @Post('ads')
+  createAd(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Body(zodPipe(adCampaignSchema)) body: AdCampaignBody,
+  ) {
+    return this.ads.create(actorFrom(user, req), body);
+  }
+
+  @Patch('ads/:id')
+  updateAd(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body(zodPipe(updateAdCampaignSchema)) body: UpdateAdCampaignBody,
+  ) {
+    return this.ads.update(actorFrom(user, req), id, body);
+  }
+
+  @Delete('ads/:id')
+  deleteAd(@CurrentUser() user: AuthUser, @Req() req: Request, @Param('id') id: string) {
+    return this.ads.remove(actorFrom(user, req), id);
+  }
+
+  /* PUT: the body describes the whole state of one placement, and sending it
+   * twice leaves the same row — the same reason the feature override is a PUT. */
+  @Put('ads/:id/placements')
+  placeAd(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body(zodPipe(placeAdSchema)) body: PlaceAdBody,
+  ) {
+    return this.ads.place(actorFrom(user, req), id, body);
+  }
+
+  @Delete('ads/:id/placements/:workspaceId')
+  withdrawAd(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.ads.withdraw(actorFrom(user, req), id, workspaceId);
   }
 
   // --- impersonation ---------------------------------------------------------

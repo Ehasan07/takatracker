@@ -8,6 +8,7 @@ import { t } from '@/lib/t';
 import { formatMinor, toLocalDateString } from '@hishab/shared';
 import { BrandMark } from '@/components/brand-mark';
 import { Money } from '@/components/money';
+import { PrintFooterAd } from '@/components/print-footer-ad';
 import { Skeleton, SkeletonRows } from '@/components/skeleton';
 import { Field, Input } from '@/components/ui/field';
 import { haptic } from '@/lib/haptics';
@@ -603,6 +604,10 @@ export function StatementView({
       )}
 
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
+
+      {/* Paper only. A statement printed for a creditor carries the sponsor's
+          strip; the same statement on screen does not. */}
+      <PrintFooterAd />
     </section>
   );
 }
