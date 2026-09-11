@@ -138,11 +138,11 @@ DATABASE_URL="\${MIGRATE_DATABASE_URL:-\$DATABASE_URL}" \
 # --- make the service worker's bytes change ------------------------------------
 # A browser installs a new service worker only when sw.js differs byte for byte.
 # Without this the file is identical after every deploy, no worker installs,
-# \`activate\` never runs, and an installed home-screen app keeps serving the
+# `activate` never runs, and an installed home-screen app keeps serving the
 # previous release's shell out of its cache — including chunk URLs this build no
 # longer has. Stamping the release id makes every deploy a new worker.
 #
-# \`grep -q\` first: if the placeholder ever disappears, this has to fail the
+# `grep -q` first: if the placeholder ever disappears, this has to fail the
 # release rather than silently stop working.
 echo '--- stamp the service worker'
 SW=apps/web/public/sw.js
