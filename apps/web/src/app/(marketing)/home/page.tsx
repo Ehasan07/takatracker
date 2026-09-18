@@ -1,6 +1,6 @@
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Building2, Check, Wallet } from 'lucide-react';
 import Link from 'next/link';
-import { CONTENT_BN, type Hero, type SiteContent, type UiStrings } from '../content';
+import { CONTENT_BN, type Doors, type Hero, type SiteContent, type UiStrings } from '../content';
 import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from '../seo';
 
 /**
@@ -71,7 +71,7 @@ export default function LandingPage() {
  * `SiteContent` type would not compile.
  */
 export function Landing({ content, locale }: { content: SiteContent; locale: 'bn' | 'en' }) {
-  const { hero, proof, steps, groups, coming, faq, ui } = content;
+  const { hero, doors, proof, steps, groups, coming, faq, ui } = content;
   const isBn = locale === 'bn';
   const home = isBn ? '/' : '/en';
   return (
@@ -86,7 +86,7 @@ export function Landing({ content, locale }: { content: SiteContent; locale: 'bn
         dangerouslySetInnerHTML={{ __html: jsonLdScript(faqJsonLd(faq)) }}
       />
 
-      <Hero hero={hero} ui={ui} isBn={isBn} />
+      <Hero hero={hero} doors={doors} ui={ui} isBn={isBn} />
       <ProofStrip proof={proof} label={ui.proofLabel} />
       <Steps steps={steps} ui={ui} isBn={isBn} />
       <Features groups={groups} ui={ui} home={home} />
@@ -98,7 +98,17 @@ export function Landing({ content, locale }: { content: SiteContent; locale: 'bn
   );
 }
 
-function Hero({ hero, ui, isBn }: { hero: Hero; ui: UiStrings; isBn: boolean }) {
+function Hero({
+  hero,
+  doors,
+  ui,
+  isBn,
+}: {
+  hero: Hero;
+  doors: Doors;
+  ui: UiStrings;
+  isBn: boolean;
+}) {
   return (
     <section className="border-rule border-b">
       <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
@@ -128,6 +138,46 @@ function Hero({ hero, ui, isBn }: { hero: Hero; ui: UiStrings; isBn: boolean }) 
           </Link>
         </div>
         <p className="text-ink-muted mt-3 text-sm">{ui.heroNote}</p>
+
+        {/* Two doors, named. The business one is a plain `<a>` to the trade
+            site with the product's own words as its text — server-rendered and
+            followable, so a crawler reads what is on the other side of it and
+            credits the link to the thing it describes. */}
+        <h2 id="doors" className="text-ink mt-8 text-sm font-medium">
+          {doors.heading}
+        </h2>
+        <div
+          role="group"
+          aria-labelledby="doors"
+          className="mt-3 grid max-w-3xl gap-3 sm:grid-cols-2"
+        >
+          <Link
+            href="/signup"
+            className="press rounded-card border-rule bg-surface hover:border-brand hover:bg-brand-tint block border p-4"
+          >
+            <span className="text-ink flex items-center gap-2 text-sm font-semibold">
+              <Wallet className="text-brand h-4 w-4 shrink-0" aria-hidden />
+              {doors.personal.title}
+            </span>
+            <span className="text-ink-muted mt-1 block text-xs leading-relaxed">
+              {doors.personal.body}
+            </span>
+          </Link>
+          <a
+            href={doors.business.href}
+            hrefLang={isBn ? 'bn' : 'en'}
+            className="press rounded-card border-rule bg-surface hover:border-brand hover:bg-brand-tint block border p-4"
+          >
+            <span className="text-ink flex items-center gap-2 text-sm font-semibold">
+              <Building2 className="text-brand h-4 w-4 shrink-0" aria-hidden />
+              {doors.business.title}
+              <ArrowUpRight className="text-ink-muted ml-auto h-4 w-4 shrink-0" aria-hidden />
+            </span>
+            <span className="text-ink-muted mt-1 block text-xs leading-relaxed">
+              {doors.business.body}
+            </span>
+          </a>
+        </div>
       </div>
     </section>
   );

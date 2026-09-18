@@ -12,6 +12,8 @@
  * about. A feature that is half-built belongs in `COMING`, however close it is.
  */
 
+import { tradeHref } from './trade';
+
 export interface Feature {
   /** Bengali, because that is the language of the product. */
   title: string;
@@ -47,8 +49,30 @@ export interface Hero {
   secondaryCta: string;
 }
 
+/**
+ * The two products, named side by side under the hero.
+ *
+ * The same person often keeps two sets of books — their own and their shop's —
+ * and those are different apps at different addresses. Naming both here sends
+ * a trader to the one built for them before they open an account in this one.
+ * The trade site carries the mirror of this pair for the same reason.
+ */
+export interface Doors {
+  heading: string;
+  personal: { title: string; body: string };
+  business: {
+    title: string;
+    body: string;
+    /** The trade site's landing page, in this page's language. */
+    href: string;
+    /** The site-wide footer link's text: the phrase somebody actually searches. */
+    footerLabel: string;
+  };
+}
+
 export interface SiteContent {
   hero: Hero;
+  doors: Doors;
   proof: { value: string; label: string }[];
   steps: { title: string; body: string }[];
   groups: FeatureGroup[];
@@ -603,6 +627,13 @@ export const FAQ: { q: string; a: string }[] = [
     q: 'Taka Tracker কি সত্যিই ফ্রি?',
     a: 'হ্যাঁ। ফ্রি প্যাকেজ আজীবন ফ্রি — কোনো ট্রায়াল নয়, শেষে কার্ড চাওয়া হয় না। দুটি অ্যাকাউন্ট, সীমাহীন লেনদেন, সীমাহীন দেনাদার-পাওনাদার। শুধু রসিদের ছবি প্রিমিয়ামে।',
   },
+  /* Here, and not only as a link under the hero, because this list is also the
+     page's `FAQPage` data — the answer a search engine or an assistant quotes
+     when somebody asks for business accounting software in Bangladesh. */
+  {
+    q: 'দোকান বা ব্যবসার হিসাব কি এখানে রাখা যায়?',
+    a: 'ব্যবসার হিসাবের জন্য আলাদা সফটওয়্যার আছে — trade.takatracker.com। রড-সিমেন্ট-বালি, গ্লাস, থাই অ্যালুমিনিয়াম, মোটরসাইকেল পার্টস বা মুদি দোকানের মতো ট্রেডিং ব্যবসার ক্রয়-বিক্রয়, কাস্টমারের বাকি, মজুদ আর মাসের লাভ সেখানে রাখা হয়। takatracker.com নিজের ব্যক্তিগত আয়-ব্যয়ের জন্য। দুটো আলাদা অ্যাপ, আলাদা অ্যাকাউন্ট।',
+  },
   {
     q: 'ডাবল-এন্ট্রি মানে কী, আমার কি এটা লাগবে?',
     a: 'ডাবল-এন্ট্রি মানে প্রতিটি টাকার দুই দিক লেখা — কোথা থেকে এল আর কোথায় গেল। আপনাকে ডেবিট-ক্রেডিট শিখতে হবে না, পর্দায় সেটা দেখাবেই না। লাভটা হলো, হিসাব কখনো নিজের সাথে অমিল হতে পারে না।',
@@ -679,8 +710,23 @@ export const UI_BN: UiStrings = {
   otherLocaleHref: '/en',
 };
 
+const DOORS_BN: Doors = {
+  heading: 'কোন হিসাব রাখবেন?',
+  personal: {
+    title: 'ব্যক্তিগত হিসাব',
+    body: 'নিজের আয়-ব্যয়, ধার-দেনা, ডিপিএস ও বীমা — এই অ্যাপটাই',
+  },
+  business: {
+    title: 'ব্যবসার হিসাব',
+    body: 'রড-সিমেন্ট, গ্লাস, থাই অ্যালুমিনিয়াম, মোটরসাইকেল পার্টস বা মুদি দোকানের ক্রয়-বিক্রয়, বাকি, মজুদ ও লাভ — trade.takatracker.com-এ আলাদা সফটওয়্যার',
+    href: tradeHref('bn'),
+    footerLabel: 'ব্যবসার হিসাবের সফটওয়্যার',
+  },
+};
+
 export const CONTENT_BN: SiteContent = {
   hero: HERO,
+  doors: DOORS_BN,
   proof: [...PROOF],
   steps: [...STEPS],
   groups: GROUPS,

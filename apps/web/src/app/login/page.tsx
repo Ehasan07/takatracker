@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { PasswordInput } from '@/components/ui/password-input';
 import { fmtNumber } from '@/lib/format';
+import { tradeHref } from '@/app/(marketing)/trade';
 
 /**
  * Two ways in, on one screen.
@@ -189,14 +190,24 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
-      <header className="text-center">
+    /* Auto margins rather than `justify-center`, for the reason on the sign-up
+       page: a centred column taller than its scroller loses its top. */
+    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col gap-6 px-4 py-10">
+      <header className="mt-auto text-center">
         <h1 className="text-ink text-3xl font-semibold">Taka Tracker</h1>
         <p className="text-ink-muted text-sm">আয়, খরচ ও সঞ্চয়ের ব্যক্তিগত খাতা</p>
       </header>
       <React.Suspense fallback={null}>
         <LoginForm />
       </React.Suspense>
+      {/* A trader whose password is right but whose account is on the trade
+          site gets "wrong password" here, and has no way to guess why. */}
+      <p className="text-ink-muted mb-auto text-center text-sm">
+        ব্যবসার হিসাবের অ্যাকাউন্ট?{' '}
+        <a href={tradeHref('bn', '/login')} className="text-brand font-medium underline">
+          ব্যবসার অ্যাপে লগইন করুন
+        </a>
+      </p>
     </main>
   );
 }

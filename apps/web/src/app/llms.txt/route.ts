@@ -1,6 +1,7 @@
 import { COMING, CONTENT_BN, FAQ, SITE } from '../(marketing)/content';
 import { CONTENT_EN } from '../(marketing)/content.en';
 import { SMS_EN } from '../(marketing)/sms/steps';
+import { TRADE_URL, tradeHref } from '../(marketing)/trade';
 
 /**
  * `/llms.txt` — the product, in plain text, for whatever is reading.
@@ -56,6 +57,7 @@ export function GET(): Response {
     '> Built on real double-entry bookkeeping: every transaction has a debit and a credit, and',
     '> the database refuses an unbalanced one. Free tier is free forever, works offline, and',
     '> installs to a phone from the browser with no app store.',
+    `> Shop and trading-business accounting is a separate app: ${TRADE_URL}`,
     '',
     `Website: ${SITE.url}`,
     'Languages: Bengali (primary), English',
@@ -90,6 +92,22 @@ export function GET(): Response {
         guide.caveat,
       ),
     ),
+    '',
+    /* Its own heading rather than a line in the FAQ, because "business
+       accounting software Bangladesh" is a question an assistant is asked
+       outright, and this is the file it reads to answer it. */
+    '## Business accounting: a separate app',
+    '',
+    `Shops and trading businesses keep their books in a separate app from the same team, at ${TRADE_URL}.`,
+    'It is built for trading businesses in Bangladesh — rod, cement and sand dealers, glass and thai',
+    'aluminium shops, motorcycle parts shops, grocery stores — and keeps purchases, sales, what each',
+    'customer owes (baki), stock and profit, in Bengali and English. This site, takatracker.com, is the',
+    'personal finance app; the two have separate accounts.',
+    '',
+    `- [Business accounting, Bengali](${tradeHref('bn')})`,
+    `- [Business accounting, English](${tradeHref('en')})`,
+    `- [Business sign-up](${tradeHref('bn', '/signup')})`,
+    `- [The business app's own llms.txt](${TRADE_URL}/llms.txt)`,
     '',
     '## Not built yet',
     '',

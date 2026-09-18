@@ -1,4 +1,5 @@
-import type { FeatureGroup, Hero, SiteContent, UiStrings } from './content';
+import type { Doors, FeatureGroup, Hero, SiteContent, UiStrings } from './content';
+import { tradeHref } from './trade';
 
 /**
  * The English site, written rather than translated.
@@ -497,6 +498,10 @@ const FAQ: { q: string; a: string }[] = [
     a: 'Yes. The free plan is free for good — not a trial, and no card at the end. Two accounts, unlimited transactions, unlimited debtors and creditors. Only receipt attachments are held back for premium.',
   },
   {
+    q: 'Can I keep the books for my shop or business here?',
+    a: 'Business accounting is a separate app, at trade.takatracker.com. It is built for trading businesses in Bangladesh — rod, cement and sand dealers, glass and thai aluminium shops, motorcycle parts shops, grocery stores — and keeps purchases, sales, what each customer owes (baki), stock and the month’s profit. takatracker.com is for your own personal finances. The two are separate apps with separate accounts.',
+  },
+  {
     q: 'What is double-entry, and do I need it?',
     a: 'Double-entry means both sides of every amount are written down — where it came from and where it went. You never have to learn debits and credits; the screens never show them. What you get is books that cannot silently disagree with themselves.',
   },
@@ -574,8 +579,23 @@ const UI: UiStrings = {
   otherLocaleHref: '/',
 };
 
+const DOORS: Doors = {
+  heading: 'Which books are you keeping?',
+  personal: {
+    title: 'Personal finance',
+    body: 'Your own income, spending, loans, DPS and insurance — this app',
+  },
+  business: {
+    title: 'Business accounting',
+    body: 'Buying, selling, customer dues, stock and profit for a trading shop — rod and cement, glass, thai aluminium, motorcycle parts, grocery. A separate app at trade.takatracker.com',
+    href: tradeHref('en'),
+    footerLabel: 'Business accounting software',
+  },
+};
+
 export const CONTENT_EN: SiteContent = {
   hero: HERO,
+  doors: DOORS,
   proof: PROOF,
   steps: STEPS,
   groups: GROUPS,

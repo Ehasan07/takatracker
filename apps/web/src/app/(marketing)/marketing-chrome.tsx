@@ -121,7 +121,7 @@ export function MarketingHeader() {
 
 export function MarketingFooter() {
   const pathname = usePathname();
-  const { nav: NAV } = contentFor(pathname);
+  const { nav: NAV, doors } = contentFor(pathname);
   return (
     <footer className="border-rule bg-brand-tint mt-16 border-t">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
@@ -154,6 +154,17 @@ export function MarketingFooter() {
                 </Link>
               </li>
             ))}
+            {/* On every public page, not only the landing one, so the trade
+                site is linked from the whole domain under the words people
+                search it by. */}
+            <li>
+              <a
+                href={doors.business.href}
+                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+              >
+                {doors.business.footerLabel}
+              </a>
+            </li>
           </ul>
         </nav>
 

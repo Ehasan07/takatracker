@@ -12,6 +12,7 @@ import {
   type Locale,
 } from '@hishab/shared';
 import { guessDevice } from '@/app/(marketing)/guide/device-guide';
+import { tradeHref } from '@/app/(marketing)/trade';
 import { api, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
@@ -66,13 +67,30 @@ export default function SignupPage() {
   };
 
   return (
-    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
-      <header className="text-center">
+    /* Centred by auto margins on the first and last child, not `justify-center`.
+       `main` is the scroller here, and a centred column taller than the screen
+       overflows upward as well as down — past the top of a scroll container,
+       where no amount of scrolling reaches. On a 700px phone that was the
+       heading and everything above the language field. */
+    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col gap-6 px-4 py-10">
+      <header className="mt-auto text-center">
         <h1 className="text-ink text-3xl font-semibold">নতুন অ্যাকাউন্ট</h1>
         <p className="text-ink-muted text-sm">এক মিনিটেই শুরু করুন</p>
       </header>
 
-      <form className="flex flex-col gap-4" onSubmit={(e) => void onSubmit(e)}>
+      {/* Above the form, not under it: a shopkeeper who came for the shop's
+          books should find out this is the personal app before filling in six
+          fields, not after. */}
+      <p className="border-rule bg-surface text-ink-muted rounded-md border px-3 py-2 text-center text-sm">
+        {locale === 'en'
+          ? 'Keeping books for a shop or business?'
+          : 'দোকান বা ব্যবসার হিসাব রাখবেন?'}{' '}
+        <a href={tradeHref(locale, '/signup')} className="text-brand font-medium underline">
+          {locale === 'en' ? 'Sign up for the business app' : 'ব্যবসার অ্যাকাউন্ট খুলুন'}
+        </a>
+      </p>
+
+      <form className="mb-auto flex flex-col gap-4" onSubmit={(e) => void onSubmit(e)}>
         <Field label="ভাষা / Language" htmlFor="locale">
           <Select
             id="locale"
