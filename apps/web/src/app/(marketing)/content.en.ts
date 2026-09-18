@@ -499,7 +499,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Can I keep the books for my shop or business here?',
-    a: 'Business accounting is a separate app, at trade.takatracker.com. It is built for trading businesses in Bangladesh — rod, cement and sand dealers, glass and thai aluminium shops, motorcycle parts shops, grocery stores — and keeps purchases, sales, what each customer owes (baki), stock and the month’s profit. takatracker.com is for your own personal finances. The two are separate apps with separate accounts.',
+    a: 'Business accounting is a separate app, at trade.takatracker.com. It is built for rod, cement, sand and stone, paint, thai aluminium and glass traders in Bangladesh, and works for other trading businesses too — motorcycle parts shops, grocery stores. It keeps purchases, sales, what each customer owes (baki), stock and the month’s profit. takatracker.com is for your own personal finances. The two are separate apps with separate accounts.',
   },
   {
     q: 'What is double-entry, and do I need it?',
@@ -587,7 +587,7 @@ const DOORS: Doors = {
   },
   business: {
     title: 'Business accounting',
-    body: 'Buying, selling, customer dues, stock and profit for a trading shop — rod and cement, glass, thai aluminium, motorcycle parts, grocery. A separate app at trade.takatracker.com',
+    body: 'Buying, selling, customer dues, stock and profit for a trading shop — rod and cement, sand and stone, paint, thai aluminium, glass, motorcycle parts, grocery. A separate app at trade.takatracker.com',
     href: tradeHref('en'),
     footerLabel: 'Business accounting software',
   },
