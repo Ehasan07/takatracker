@@ -289,7 +289,7 @@ function ResetForm() {
 
 export default function ResetPage() {
   return (
-    <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4 py-10">
+    <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 py-10 [--gutter-x:1rem]">
       <header className="text-center">
         <h1 className="text-ink text-3xl font-semibold">
           {t('reset.newPassword', 'নতুন পাসওয়ার্ড')}

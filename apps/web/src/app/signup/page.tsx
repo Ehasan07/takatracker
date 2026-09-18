@@ -72,7 +72,7 @@ export default function SignupPage() {
        overflows upward as well as down — past the top of a scroll container,
        where no amount of scrolling reaches. On a 700px phone that was the
        heading and everything above the language field. */
-    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col gap-6 px-4 py-10">
+    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col gap-6 py-10 [--gutter-x:1rem]">
       <header className="mt-auto text-center">
         <h1 className="text-ink text-3xl font-semibold">নতুন অ্যাকাউন্ট</h1>
         <p className="text-ink-muted text-sm">এক মিনিটেই শুরু করুন</p>

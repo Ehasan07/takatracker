@@ -223,9 +223,13 @@
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+/* Unlayered, so it beats any `px-*` on the same element — which is how the
+   sign-in pages lost their 16px gutter and ran their fields into the glass.
+   A page that wants a gutter sets `[--gutter-x:1rem]` instead, and gets
+   whichever is wider: its gutter, or the notch. */
 .safe-x {
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding-left: max(var(--gutter-x, 0px), env(safe-area-inset-left));
+  padding-right: max(var(--gutter-x, 0px), env(safe-area-inset-right));
 }
 
 /* --- money, in every theme -------------------------------------------------
