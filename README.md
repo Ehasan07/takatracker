@@ -1,13 +1,19 @@
-# হিসাব — Hishab
+# Taka Tracker
 
-A private, offline-first personal accounting app for Bangladesh. Income,
-expenses, money lent and borrowed, DPS/savings, insurance, assets vs.
+**হিসাব** — a private, offline-first personal accounting app for Bangladesh.
+Income, expenses, money lent and borrowed, DPS/savings, insurance, assets vs.
 liabilities — with AI-written monthly analytics in Bengali and English.
 
 Ships as a responsive installable PWA (this repo), with iOS and Android to
-follow from the same business-logic packages.
+follow from the same business-logic packages. Inside the code the product is
+called Hishab, which is why every package is `@hishab/*`.
 
-Production: **https://takatracker.com** — live.
+Live at **[takatracker.com](https://takatracker.com)**.
+
+<p>
+  <img src="docs/screenshots/desktop.png" alt="Taka Tracker home page on a laptop" width="74%">
+  <img src="docs/screenshots/mobile.png" alt="Taka Tracker home page on a phone" width="21%">
+</p>
 
 ---
 
@@ -147,4 +153,11 @@ not create.
   extension + Telegram credit-card reminders, with every conflict between them
   resolved. Read this before the source specs.
 - [PROGRESS.md](./PROGRESS.md) — milestone status, decisions, open questions
-- [hishab-agentic-build-prompt-v2_1.md](./hishab-agentic-build-prompt-v2_1.md) — the original v2 specification
+- [docs/SAAS-ARCHITECTURE.md](./docs/SAAS-ARCHITECTURE.md) — tenant isolation, packages and super-admin control
+- [docs/ACCOUNTING-AUDIT.md](./docs/ACCOUNTING-AUDIT.md) — where the ledger stands against accounting practice
+- [docs/specs/](./docs/specs/) — the original v2 specification and the v3 SaaS extension
+
+## Security
+
+Found a vulnerability? Please report it privately, not in a public issue. See
+[SECURITY.md](./SECURITY.md).
