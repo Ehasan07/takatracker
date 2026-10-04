@@ -13,16 +13,17 @@ import { auth, createTestApp, resetDatabase, signup, type TestContext } from './
  */
 
 /**
- * Local calendar dates, not UTC ones. `toISOString()` reports the UTC day, which
- * in Asia/Dhaka is still yesterday for the last six hours of the evening — so
- * "15 days ago" would arrive as 16 and every overdue count would be off by one.
+ * Calendar dates in Asia/Dhaka, the workspace's timezone, because that is the
+ * day the API counts from. Neither the UTC day nor the machine's own day will
+ * do: for the first six hours after midnight in Dhaka the UTC day is still
+ * yesterday, and CI runs in UTC — so "15 days ago" would arrive as 16 and every
+ * overdue count would be off by one.
  */
-const iso = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dhakaDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' });
 const shiftDays = (n: number): string => {
   const d = new Date();
-  d.setDate(d.getDate() + n);
-  return iso(d);
+  d.setUTCDate(d.getUTCDate() + n);
+  return dhakaDay.format(d);
 };
 const daysAgo = (n: number): string => shiftDays(-n);
 const daysAhead = (n: number): string => shiftDays(n);

@@ -783,7 +783,7 @@ describe('a common pot', () => {
   });
 
   it('spending the pot is the owner’s share only, and clears the rest of the debt', async () => {
-    const before = await get('/v1/transactions/summary').expect(200);
+    const before = await get('/v1/transactions/summary?month=2026-08').expect(200);
 
     await post(`/v1/split/groups/${groupId}/expenses`, {
       description: 'অফিসের চা-নাশতা',
@@ -796,7 +796,7 @@ describe('a common pot', () => {
       fromPot: true,
     }).expect(201);
 
-    const after = await get('/v1/transactions/summary').expect(200);
+    const after = await get('/v1/transactions/summary?month=2026-08').expect(200);
 
     /* ৳2,000 of it was the owner's own money and is spending. */
     expect(after.body.expenseMinor).toBe(before.body.expenseMinor + 200_000);

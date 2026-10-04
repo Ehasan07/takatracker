@@ -1407,7 +1407,7 @@ describe('ingestion', () => {
 
       const statement = await ctx
         .http()
-        .get(`/v1/reports/income-statement?tagId=${shop}`)
+        .get(`/v1/reports/income-statement?from=2020-01-01&to=2030-12-31&tagId=${shop}`)
         .set(auth(ws.user))
         .expect(200);
       expect(statement.body.expenseMinor).toBe(125_050);
