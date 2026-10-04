@@ -53,6 +53,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # `migrate deploy` does not generate the client, so without this the API
+      # builds against an empty @prisma/client and fails on every model type.
+      # infra/deploy/20-release.sh runs the same command for the same reason.
+      - name: Generate the Prisma client
+        run: pnpm --filter @hishab/api exec prisma generate
+
       # The service container creates hishab_test only; the e2e database is
       # ours to make. `prisma migrate deploy` below would create it implicitly,
       # but doing it here with psql fails in ten seconds rather than ten
