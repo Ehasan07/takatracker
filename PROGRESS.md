@@ -610,11 +610,11 @@ only and no usable key was available.
 
 The server is shared, so every choice below exists to keep these untouched:
 
-| Neighbour                           | Where                                     |
-| ----------------------------------- | ----------------------------------------- |
-| n8n (Docker, compose project `n8n`) | `127.0.0.1:5678` → `automation.example.com` |
-| x-ui / xray VPN panel               | its own ports → `vpn.example.com`  |
-| `other-bot` (pm2, `/root/other-bot`) | `0.0.0.0:3000`                            |
+| Neighbour                            | Where                                       |
+| ------------------------------------ | ------------------------------------------- |
+| n8n (Docker, compose project `n8n`)  | `127.0.0.1:5678` → `automation.example.com` |
+| x-ui / xray VPN panel                | its own ports → `vpn.example.com`           |
+| `other-bot` (pm2, `/root/other-bot`) | `0.0.0.0:3000`                              |
 
 Verified after the release: system Node still v20.20.2, `other-bot` online
 with **0 restarts**, the n8n container never restarted, x-ui active with all

@@ -2,8 +2,8 @@
 
 One plan, reconciling three inputs:
 
-- `hishab-agentic-build-prompt-v2_1.md` — the product and technical spec (M0–M22)
-- the v3 SaaS extension — multi-tenancy, private SMS, mailbox ingestion (M23–M35)
+- [`hishab-agentic-build-prompt-v2_1.md`](./specs/hishab-agentic-build-prompt-v2_1.md) — the product and technical spec (M0–M22)
+- [the v3 SaaS extension](./specs/hishab-v3-saas-extension.md) — multi-tenancy, private SMS, mailbox ingestion (M23–M35)
 - credit-card due reminders over Telegram (M36, specified below)
 
 **Where they disagree, this document is the authority.** Section 1 lists every

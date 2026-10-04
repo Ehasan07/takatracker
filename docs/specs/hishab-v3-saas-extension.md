@@ -20,8 +20,8 @@ Three shifts from v2:
    mailbox and Hishab reads matching messages directly, in addition to the
    existing forwarding alias.
 
-**Terminology correction the agent must not get wrong:** SMTP *sends* mail. To
-*read* a mailbox you need **IMAP** or a provider API (Gmail API, Microsoft
+**Terminology correction the agent must not get wrong:** SMTP _sends_ mail. To
+_read_ a mailbox you need **IMAP** or a provider API (Gmail API, Microsoft
 Graph). Every "connect your email" flow in this document is IMAP or OAuth.
 There is no SMTP read path.
 
@@ -48,7 +48,7 @@ Invitation(id, workspaceId, email, role, tokenHash, expiresAt, acceptedAt)
 `IngestSource`, `InboundMessage`, `ParsedDraft`, `MerchantMapping`,
 `AiReport`, `ChangeLog`, `NetWorthSnapshot`). Backfill by creating one
 workspace per existing user and setting `workspaceId` accordingly. Keep
-`userId` on rows that record *who* did something; `workspaceId` is what scoping
+`userId` on rows that record _who_ did something; `workspaceId` is what scoping
 uses from now on.
 
 - Move the tenant guard from `userId` to `workspaceId` in the repository layer.
@@ -101,10 +101,10 @@ and every support-impersonation session. Append-only; never exposed cross-tenant
 
 Two Expo build variants driven by `app.config.ts` and EAS profiles:
 
-| Profile | Distribution | SMS |
-|---|---|---|
-| `production` | App Store + Play Store | **compiled out** |
-| `personal` | internal / sideloaded APK, owner only | enabled |
+| Profile      | Distribution                          | SMS              |
+| ------------ | ------------------------------------- | ---------------- |
+| `production` | App Store + Play Store                | **compiled out** |
+| `personal`   | internal / sideloaded APK, owner only | enabled          |
 
 - The public Android manifest must contain **no** `READ_SMS`, `RECEIVE_SMS`, or
   `RECEIVE_MMS`. Not commented out — absent. Add a CI check that greps the
@@ -130,7 +130,7 @@ without any permission from you:
 
 1. **Webhook + automation app (Android).** The user runs Tasker / MacroDroid /
    Automate, matches SMS from their bank, and POSTs the text to their personal
-   Hishab webhook URL. The permission lives in *their* automation app, not
+   Hishab webhook URL. The permission lives in _their_ automation app, not
    yours. Ship a one-tap "copy my webhook URL" and a ready-made MacroDroid
    template file.
 2. **iOS Shortcuts automation.** A "When I receive a message from <sender>"
@@ -149,11 +149,11 @@ the user which of their sources is which.
 
 ### C1. Three tiers — build in this order
 
-| Tier | Method | Works with | Credential risk | Status |
-|---|---|---|---|---|
-| 1 | Forwarding alias | everything | none | already built (v2) |
-| 2 | **IMAP + app password** | Gmail (with 2FA), Yahoo, Zoho, cPanel/custom domains, most BD hosts | high | build now |
-| 3 | OAuth (Gmail API / Microsoft Graph) | Gmail, Outlook/M365 | low | later, see C5 |
+| Tier | Method                              | Works with                                                          | Credential risk | Status             |
+| ---- | ----------------------------------- | ------------------------------------------------------------------- | --------------- | ------------------ |
+| 1    | Forwarding alias                    | everything                                                          | none            | already built (v2) |
+| 2    | **IMAP + app password**             | Gmail (with 2FA), Yahoo, Zoho, cPanel/custom domains, most BD hosts | high            | build now          |
+| 3    | OAuth (Gmail API / Microsoft Graph) | Gmail, Outlook/M365                                                 | low             | later, see C5      |
 
 Keep Tier 1 as the **default** in the UI. Present Tier 2 as "উন্নত" with a plain
 explanation of what access is granted. Most users should never need Tier 2.
@@ -197,7 +197,7 @@ AI prompt.**
 - Poll every `pollIntervalSec` (default 900 s; minimum 300 s), or use IMAP IDLE
   where the server supports it. Track `lastUid` per folder for incremental fetch.
 - **Fetch headers first.** Discard anything whose sender is not in the allowlist
-  *before* downloading the body. Never store non-matching mail, not even briefly.
+  _before_ downloading the body. Never store non-matching mail, not even briefly.
 - Fetch `text/plain` only; if absent, strip the HTML server-side. Cap at 8 KB.
   Ignore attachments in v1.
 - Verify the message is not a forward of something already ingested — reuse the
@@ -261,7 +261,7 @@ AI prompt.**
 - Dunning: 3 retries, then `PAST_DUE` (read-only access), then `SUSPENDED` after
   14 days, then export-only for 30 days before deletion.
 
-**App-store rule that changes the design:** selling a subscription *inside* the
+**App-store rule that changes the design:** selling a subscription _inside_ the
 iOS app requires In-App Purchase and its commission. The simplest compliant
 path is to sell only on the web, and have the mobile app sign in to an existing
 account without mentioning purchase, prices, or upgrade links anywhere in the
@@ -330,21 +330,21 @@ Do not touch these while doing the SaaS conversion:
 
 ## PART F — MILESTONES (continuing v2's numbering)
 
-| # | Milestone | Done when |
-|---|---|---|
-| M23 | Workspace + Membership models, full `workspaceId` migration and backfill | Cross-workspace isolation test passes on every surface |
-| M24 | Entitlements engine + `402` limit responses + UI limit states | Downgrading a plan visibly restricts features |
-| M25 | Audit log + admin-visible timeline | Every action in A3 produces an event |
-| M26 | SMS split: build variants, manifest CI check, server feature gate | `production` manifest has zero SMS permissions |
-| M27 | Automation replacements: `AUTOMATION` source label, MacroDroid template, iOS Shortcut, manual-paste box | A pasted bKash SMS creates a draft |
-| M28 | `EmailConnection` model, secret store, envelope encryption, test-connection flow | Credential never returned or logged; test asserts it |
-| M29 | IMAP sync worker: incremental fetch, allowlist-before-body, backfill, failure handling | Gmail app-password connection produces drafts |
-| M30 | Signup, verification, password reset, sessions, 2FA, guided onboarding | New user reaches a populated dashboard unaided |
-| M31 | Plans, billing provider, webhooks, dunning, subscription lifecycle | Paid signup → active → past due → suspended all work |
-| M32 | Admin back-office + impersonation with consent and audit | Support can diagnose a parse failure without raw bodies |
-| M33 | Observability: parse-failure alerting, ingestion dashboards, status page | A simulated format change fires an alert |
-| M34 | Legal pages, data export, deletion pipeline, backup restore drill | A restore from backup is performed and documented |
-| M35 | Pricing page, marketing site, trial flow, launch checklist | End-to-end signup to paid, on a real device |
+| #   | Milestone                                                                                               | Done when                                               |
+| --- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| M23 | Workspace + Membership models, full `workspaceId` migration and backfill                                | Cross-workspace isolation test passes on every surface  |
+| M24 | Entitlements engine + `402` limit responses + UI limit states                                           | Downgrading a plan visibly restricts features           |
+| M25 | Audit log + admin-visible timeline                                                                      | Every action in A3 produces an event                    |
+| M26 | SMS split: build variants, manifest CI check, server feature gate                                       | `production` manifest has zero SMS permissions          |
+| M27 | Automation replacements: `AUTOMATION` source label, MacroDroid template, iOS Shortcut, manual-paste box | A pasted bKash SMS creates a draft                      |
+| M28 | `EmailConnection` model, secret store, envelope encryption, test-connection flow                        | Credential never returned or logged; test asserts it    |
+| M29 | IMAP sync worker: incremental fetch, allowlist-before-body, backfill, failure handling                  | Gmail app-password connection produces drafts           |
+| M30 | Signup, verification, password reset, sessions, 2FA, guided onboarding                                  | New user reaches a populated dashboard unaided          |
+| M31 | Plans, billing provider, webhooks, dunning, subscription lifecycle                                      | Paid signup → active → past due → suspended all work    |
+| M32 | Admin back-office + impersonation with consent and audit                                                | Support can diagnose a parse failure without raw bodies |
+| M33 | Observability: parse-failure alerting, ingestion dashboards, status page                                | A simulated format change fires an alert                |
+| M34 | Legal pages, data export, deletion pipeline, backup restore drill                                       | A restore from backup is performed and documented       |
+| M35 | Pricing page, marketing site, trial flow, launch checklist                                              | End-to-end signup to paid, on a real device             |
 
 **Minimum sellable slice:** M23, M24, M25, M26, M30, M31, M33, M34.
 M28–M29 (IMAP) can ship after launch — the forwarding alias already covers

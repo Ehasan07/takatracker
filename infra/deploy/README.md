@@ -140,8 +140,8 @@ serve today.
 Create three **A** records at the registrar for `takatracker.com`, all pointing
 at the server:
 
-| Type | Name   | Value             | TTL     |
-| ---- | ------ | ----------------- | ------- |
+| Type | Name   | Value       | TTL     |
+| ---- | ------ | ----------- | ------- |
 | A    | `api`  | `SERVER_IP` | default |
 | A    | `sms`  | `SERVER_IP` | default |
 | A    | `mail` | `SERVER_IP` | default |
