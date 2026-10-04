@@ -78,9 +78,7 @@ describe('generic parser — an English credit alert', () => {
        `1422` — the head of the number — and reported it as the tail, which
        against an account filed under 8001 is not a near miss but a different
        account. */
-    const masked = genericParser.parse({
-      body: '18-Aug-2026 Tk. 19,950 Deposit Tk. 42,603 Balance A/C: 1422***8001',
-    });
+    const masked = parse('18-Aug-2026 Tk. 19,950 Deposit Tk. 42,603 Balance A/C: 1422***8001');
     expect(masked.fields.accountHint).toBe('8001');
     expect(masked.evidence.accountHint).toBe('A/C: 1422***8001');
   });
