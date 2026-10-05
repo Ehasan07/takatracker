@@ -1,7 +1,7 @@
 'use client';
 
 import type { MigrationDecision } from '@hishab/core';
-import { CircleAlert, Pencil } from 'lucide-react';
+import { CircleAlert, Pencil } from '@/components/icons';
 import * as React from 'react';
 import { CategoryOptions } from '@/components/category-options';
 import { Input, Select } from '@/components/ui/field';

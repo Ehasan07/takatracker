@@ -32,7 +32,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Plus, Search, X } from 'lucide-react';
+import { Check, Plus, Search, X } from '@/components/icons';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/field';

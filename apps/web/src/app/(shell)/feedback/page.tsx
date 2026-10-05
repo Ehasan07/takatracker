@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { ArrowLeft, CircleCheck } from 'lucide-react';
+import { ArrowLeft, CircleCheck } from '@/components/icons';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';

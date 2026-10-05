@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Layers, PackagePlus, Tags } from 'lucide-react';
+import { ChevronRight, Layers, PackagePlus, Tags } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { SkeletonCard } from '@/components/skeleton';

@@ -1,6 +1,6 @@
 'use client';
 
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw } from '@/components/icons';
 import * as React from 'react';
 import { haptic } from '@/lib/haptics';
 

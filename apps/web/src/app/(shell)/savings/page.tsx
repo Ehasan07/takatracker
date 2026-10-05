@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Trash2,
   TrendingUp,
-} from 'lucide-react';
+} from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';

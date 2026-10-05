@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ExternalLink, Send, Unplug } from 'lucide-react';
+import { Check, ExternalLink, Send, Unplug } from '@/components/icons';
 import * as React from 'react';
 import { api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';

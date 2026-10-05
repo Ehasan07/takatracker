@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CloudOff, TriangleAlert } from 'lucide-react';
+import { CloudOff, TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { endpoints } from '@/lib/api';
 import { t } from '@/lib/t';

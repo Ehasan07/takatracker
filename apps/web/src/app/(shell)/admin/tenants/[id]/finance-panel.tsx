@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Eye } from 'lucide-react';
+import { Eye } from '@/components/icons';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';
 import { api } from '@/lib/api';

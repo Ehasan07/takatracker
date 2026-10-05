@@ -3,7 +3,7 @@
 import { fiscalYearOf } from '@hishab/core';
 import { toLocalDateString } from '@hishab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Calculator } from 'lucide-react';
+import { AlertTriangle, Calculator } from '@/components/icons';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { SkeletonRows } from '@/components/skeleton';

@@ -29,7 +29,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Info, Merge, Pencil, Plus, Search, Tag as TagIcon } from 'lucide-react';
+import { Info, Merge, Pencil, Plus, Search, Tag as TagIcon } from '@/components/icons';
 import * as React from 'react';
 import { t } from '@/lib/t';
 import { Money } from '@/components/money';

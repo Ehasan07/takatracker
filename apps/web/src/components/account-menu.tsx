@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut, Settings } from '@/components/icons';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { api, endpoints } from '@/lib/api';

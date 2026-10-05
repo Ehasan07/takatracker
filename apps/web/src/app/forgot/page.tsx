@@ -1,6 +1,6 @@
 'use client';
 
-import { MailCheck } from 'lucide-react';
+import { MailCheck } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';

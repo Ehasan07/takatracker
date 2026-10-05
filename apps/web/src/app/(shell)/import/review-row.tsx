@@ -1,6 +1,6 @@
 'use client';
 
-import { Info } from 'lucide-react';
+import { Info } from '@/components/icons';
 import * as React from 'react';
 import { CategoryOptions } from '@/components/category-options';
 import { Money } from '@/components/money';

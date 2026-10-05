@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowUpRight, Building2, Check, Wallet } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Building2, Check, Wallet } from '@/components/icons';
 import Link from 'next/link';
 import { CONTENT_BN, type Doors, type Hero, type SiteContent, type UiStrings } from '../content';
 import { faqJsonLd, jsonLdScript, pageMetadata, softwareApplicationJsonLd } from '../seo';

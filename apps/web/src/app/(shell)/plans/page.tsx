@@ -2,7 +2,7 @@
 
 import { FEATURE_KEYS } from '@hishab/core';
 import { useQuery } from '@tanstack/react-query';
-import { Ban, Check, Info, Lock } from 'lucide-react';
+import { Ban, Check, Info, Lock } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { t } from '@/lib/t';

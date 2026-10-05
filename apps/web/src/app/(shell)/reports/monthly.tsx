@@ -46,7 +46,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { PiggyBank } from 'lucide-react';
+import { PiggyBank } from '@/components/icons';
 import { formatMinor } from '@hishab/shared';
 import { Money } from '@/components/money';
 import { t } from '@/lib/t';

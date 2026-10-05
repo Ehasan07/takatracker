@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Layers, Plus, Tags } from 'lucide-react';
+import { Layers, Plus, Tags } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';

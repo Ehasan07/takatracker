@@ -26,7 +26,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Info } from 'lucide-react';
+import { ArrowRight, Info } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';

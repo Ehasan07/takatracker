@@ -9,7 +9,7 @@ import {
   Search,
   Settings,
   X,
-} from 'lucide-react';
+} from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';

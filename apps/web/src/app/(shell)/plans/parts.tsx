@@ -1,7 +1,7 @@
 'use client';
 
 import { FEATURES, isFeatureKey, type FeatureDefinition } from '@hishab/core';
-import { RotateCw, TriangleAlert } from 'lucide-react';
+import { RotateCw, TriangleAlert } from '@/components/icons';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';

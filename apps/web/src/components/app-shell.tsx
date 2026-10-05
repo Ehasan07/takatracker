@@ -3,7 +3,7 @@
 import { ImpersonationBar } from '@/app/(shell)/admin/impersonation-bar';
 import { useIsOperator } from '@/app/(shell)/admin/operator-flag';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus } from 'lucide-react';
+import { ChevronLeft, Plus } from '@/components/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';

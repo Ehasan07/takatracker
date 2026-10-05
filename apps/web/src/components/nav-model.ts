@@ -23,7 +23,7 @@ import {
   Users,
   Wallet,
   type LucideIcon,
-} from 'lucide-react';
+} from '@/components/icons';
 import { t } from '@/lib/t';
 
 /**

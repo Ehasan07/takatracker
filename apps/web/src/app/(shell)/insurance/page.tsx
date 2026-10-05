@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Link2, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
+import { Check, Link2, Pencil, PiggyBank, Plus, Trash2 } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';

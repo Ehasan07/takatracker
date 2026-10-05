@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Undo2 } from 'lucide-react';
+import { Undo2 } from '@/components/icons';
 import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';

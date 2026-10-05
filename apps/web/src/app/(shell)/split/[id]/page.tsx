@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, HandCoins, Link2, PiggyBank, Plus, Trash2, UserPlus } from 'lucide-react';
+import { ArrowLeft, HandCoins, Link2, PiggyBank, Plus, Trash2, UserPlus } from '@/components/icons';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';

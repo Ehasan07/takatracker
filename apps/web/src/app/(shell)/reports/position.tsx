@@ -41,7 +41,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { CreditCard, Landmark, Wallet } from 'lucide-react';
+import { CreditCard, Landmark, Wallet } from '@/components/icons';
 import { Money } from '@/components/money';
 import { seriesColour } from '@/components/charts/palette';
 import { t } from '@/lib/t';

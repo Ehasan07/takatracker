@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, LifeBuoy, X } from 'lucide-react';
+import { Check, Copy, LifeBuoy, X } from '@/components/icons';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';

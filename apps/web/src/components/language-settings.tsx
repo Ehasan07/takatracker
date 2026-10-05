@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Languages } from 'lucide-react';
+import { Languages } from '@/components/icons';
 import * as React from 'react';
 import { LOCALES, type Locale } from '@hishab/shared';
 import { ApiError, api } from '@/lib/api';

@@ -1,6 +1,6 @@
 'use client';
 
-import { TriangleAlert, RotateCw } from 'lucide-react';
+import { TriangleAlert, RotateCw } from '@/components/icons';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { Button } from '@/components/ui/button';

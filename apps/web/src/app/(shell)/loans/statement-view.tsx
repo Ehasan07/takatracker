@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpDown, Download, FileText, Link2, Printer, Share2 } from 'lucide-react';
+import { ArrowUpDown, Download, FileText, Link2, Printer, Share2 } from '@/components/icons';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { endpoints } from '@/lib/api';

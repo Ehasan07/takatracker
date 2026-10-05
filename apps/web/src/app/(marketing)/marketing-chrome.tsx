@@ -1,10 +1,10 @@
 'use client';
 
-import { Menu, X } from 'lucide-react';
+import { Menu, X } from '@/components/icons';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
-import { Languages } from 'lucide-react';
+import { Languages } from '@/components/icons';
 import { BrandMark } from '@/components/brand-mark';
 import { CONTACT, CONTENT_BN, SITE, SOCIAL } from './content';
 import { CONTENT_EN } from './content.en';

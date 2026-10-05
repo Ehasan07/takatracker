@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, LayoutGrid, ScrollText, UserRound } from 'lucide-react';
+import { Building2, LayoutGrid, ScrollText, UserRound } from '@/components/icons';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';

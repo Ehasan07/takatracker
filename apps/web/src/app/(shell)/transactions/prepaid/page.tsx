@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { CalendarRange, ChevronLeft, ChevronRight, Info } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Money } from '@/components/money';

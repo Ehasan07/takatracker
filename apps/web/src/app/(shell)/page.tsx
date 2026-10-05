@@ -6,7 +6,7 @@ import { t } from '@/lib/t';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { ACCOUNT_CLASS, LIQUID_TYPES } from '@hishab/core';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/components/icons';
 import Link from 'next/link';
 import { useGreeting } from '@/components/account-menu';
 import { FirstRunCard } from '@/components/first-run-card';

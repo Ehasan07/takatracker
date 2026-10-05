@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, X } from 'lucide-react';
+import { Plus, X } from '@/components/icons';
 import * as React from 'react';
 import {
   COMMON_QUANTITY_UNITS,

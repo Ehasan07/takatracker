@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Briefcase } from 'lucide-react';
+import { Briefcase } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { StandardNote } from '@/components/info-note';

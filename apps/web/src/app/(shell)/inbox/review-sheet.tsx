@@ -9,7 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-} from 'lucide-react';
+} from '@/components/icons';
 import * as React from 'react';
 import { formatMinor, MoneyParseError, parseMoneyToMinor } from '@hishab/shared';
 import { CategoryPicker } from '@/components/category-picker';
@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { originOf, type FieldOrigin } from './evidence';
 import { convertedAmountText, FxReviewField } from './fx-review';
 import { bnDate, bnDateTime, bnNum, channelLabel, REJECT_REASONS, statusLabel } from './labels';
-import { Sparkles } from 'lucide-react';
+import { Sparkles } from '@/components/icons';
 import { t } from '@/lib/t';
 import { ConfidenceMeter, OriginBadge, StatusPill } from './parts';
 import { RawMessage } from './raw-message';

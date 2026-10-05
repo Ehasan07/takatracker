@@ -14,7 +14,7 @@ import {
   Scale,
   TrendingUp,
   Tags,
-} from 'lucide-react';
+} from '@/components/icons';
 import * as React from 'react';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { CardAmount } from '@/components/card-amount';

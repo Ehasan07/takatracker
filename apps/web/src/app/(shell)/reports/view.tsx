@@ -44,7 +44,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { Briefcase, FileText } from 'lucide-react';
+import { Briefcase, FileText } from '@/components/icons';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';

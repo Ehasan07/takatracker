@@ -34,7 +34,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { Search, X } from 'lucide-react';
+import { Search, X } from '@/components/icons';
 import * as React from 'react';
 import { api, type CategoryDto } from '@/lib/api';
 import { t } from '@/lib/t';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Download, FileText, Paperclip, TriangleAlert } from 'lucide-react';
+import { Download, FileText, Paperclip, TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';

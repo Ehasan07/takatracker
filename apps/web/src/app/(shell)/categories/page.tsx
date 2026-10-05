@@ -13,7 +13,7 @@ import {
   RotateCw,
   Trash2,
   TriangleAlert,
-} from 'lucide-react';
+} from '@/components/icons';
 import * as React from 'react';
 import { t } from '@/lib/t';
 import { Skeleton } from '@/components/skeleton';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Filter, Trash2 } from 'lucide-react';
+import { Filter, Trash2 } from '@/components/icons';
 import * as React from 'react';
 import { api } from '@/lib/api';
 import { haptic } from '@/lib/haptics';

@@ -30,7 +30,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ListFilter } from '@/components/icons';
 import * as React from 'react';
 import { Donut, type DonutSlice } from '@/components/charts/donut';
 import { Money } from '@/components/money';

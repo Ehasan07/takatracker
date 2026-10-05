@@ -36,50 +36,46 @@
 
 :root {
   /* ---- default: the app's own colours, and what a new reader gets --------- */
-  --hishab-ink: #17251e;
-  --hishab-ink-muted: #5a6b62;
-  --hishab-paper: #fafbf7;
+  --hishab-ink: #16241d;
+  --hishab-ink-muted: #4f6157;
+  --hishab-paper: #f5f8f6;
   --hishab-surface: #ffffff;
-  --hishab-greenbar: #f1f5ec;
-  --hishab-rule: #d6ded0;
-  /* Brand. Blue, because that is what a finance product is: every bank, every
-     ledger app and every payment network the world over signals trust in blue,
-     and a green primary reads as "money in" rather than as the product.
+  --hishab-greenbar: #edf4ef;
+  --hishab-rule: #d5e2d8;
+  /* Brand. The green of the mark itself — the square in brand/takatracker-icon
+     — so the logo, the buttons and the hero are one colour rather than a green
+     logo on a blue product.
 
-     Deepened to the royal blue the brand's own printed material uses, so the
-     app and the poster are the same product rather than two that share a name.
-     The orange that goes with it lives in `--hishab-brass` below. */
-  --hishab-brand: #1b3fa0;
-  --hishab-brand-strong: #12256a;
-  --hishab-brand-soft: #3457bd;
-  --hishab-brand-tint: #e9edfa;
+     Income is green too, and that is deliberate rather than a collision: an
+     amount never carries meaning by colour alone here. Money in is signed `+`
+     and labelled, money out is signed `−` and red, and the brand green sits on
+     chrome — buttons, the active tab, a header — never on a figure. */
+  --hishab-brand: #1f6f4a;
+  --hishab-brand-strong: #154d33;
+  --hishab-brand-soft: #2a7f57;
+  --hishab-brand-tint: #e4efe8;
   --hishab-brand-contrast: #ffffff;
 
-  /* Money keeps its own two colours, and they are not the brand's.
-     Green is money in, red is money out — the one convention a person reads
-     without being taught, and the reason the primary had to move off green
-     rather than the income colour moving onto blue. */
-  --hishab-income: #1f6f4a;
-  --hishab-expense: #d32029;
-  /* The brand's second colour, and the one rule it has to obey.
+  /* Money keeps its own two colours. Green is money in, red is money out — the
+     one convention a person reads without being taught. Income is a hair
+     darker than the brand so that the two are never literally the same ink. */
+  --hishab-income: #1d6a46;
+  --hishab-expense: #c62828;
+  /* The gold of the rule under the ৳ in the mark, darkened until it clears AA
+     as text on every ground. The printed gold (`--hishab-gold`) reads 2.97:1 on
+     white, so it is only ever a bar, a dot or a ring — never a letter. This is
+     the colour of the focus ring and of small brand labels.
    *
-   * Orange, from the printed identity — but darkened until it clears AA on
-   * every ground it is set on. The poster's #f47b20 reads 2.8:1 against a
-   * greenbar row where `text-brass` labels actually sit; #b45f06 reads 4.15:1,
-   * which still fails. #a85805 is the lightest orange that clears 4.5:1 on
-   * paper, greenbar and surface alike — `theme.test.ts` is what found the two
-   * that did not, and it is the reason the printed orange cannot be used as
-   * text unchanged.
-   *
-   * It never touches an amount. Orange and red are neighbours and red already
-   * means *money gone* here, so an orange figure would read as bad news to
-   * somebody scanning. Orange is brand and chrome: an undrawn limit, a label,
-   * an accent — never a number's colour. */
-  --hishab-brass: #a85805;
+   * It never touches an amount: a gold figure would read as a third kind of
+   * money next to green and red. */
+  --hishab-brass: #8f5f14;
+  /* The mark's gold, exactly. Decoration only: the bar under a heading or a
+     total, the dot on an active tab, the accent inside an icon. */
+  --hishab-gold: #c8892c;
 
-  --hishab-radius-sm: 4px;
-  --hishab-radius-md: 8px;
-  --hishab-radius-lg: 12px;
+  --hishab-radius-sm: 8px;
+  --hishab-radius-md: 14px;
+  --hishab-radius-lg: 20px;
 
   /* Bengali first in the stack, Latin second.
    *
@@ -103,27 +99,28 @@
 }
 
 :root[data-mode='dark'] {
-  --hishab-ink: #e8efe7;
-  --hishab-ink-muted: #9aab9f;
-  --hishab-paper: #101614;
-  --hishab-surface: #16201c;
-  --hishab-greenbar: #1a241f;
-  --hishab-rule: #2c3a33;
-  /* The royal blue lifted for a dark ground. A hue this deep is unreadable at
+  --hishab-ink: #e6efe8;
+  --hishab-ink-muted: #a1b3a7;
+  --hishab-paper: #0e1612;
+  --hishab-surface: #15201a;
+  --hishab-greenbar: #1a2820;
+  --hishab-rule: #2a3b31;
+  /* The mark's green lifted for a dark ground. A hue this deep is unreadable at
      its printed value here, so the dark face carries a lighter tint of the
-     same blue rather than a different one. */
-  --hishab-brand: #7d9cf5;
-  --hishab-brand-strong: #a8bdf9;
-  --hishab-brand-soft: #7d9cf5;
+     same green rather than a different one, with dark text on it. */
+  --hishab-brand: #5bc08c;
+  --hishab-brand-strong: #8fd8b0;
+  --hishab-brand-soft: #5bc08c;
   /* A tint, not a wash: on a dark ground the brand block has to sit *above*
      the surface, so this is lighter than --hishab-surface rather than paler
      than white. */
-  --hishab-brand-tint: #17224a;
-  --hishab-brand-contrast: #0b1533;
+  --hishab-brand-tint: #133022;
+  --hishab-brand-contrast: #08170f;
 
   --hishab-income: #63c295;
   --hishab-expense: #f0827d;
-  --hishab-brass: #ff9a4d;
+  --hishab-brass: #e3b35c;
+  --hishab-gold: #d9a44a;
 }
 
 /* ---- mono: no hue anywhere -----------------------------------------------
@@ -156,6 +153,7 @@
   --hishab-income: #0d0d0d;
   --hishab-expense: #4f4f4f;
   --hishab-brass: #2e2e2e;
+  --hishab-gold: #8a8a8a;
 }
 
 :root[data-theme='mono'][data-mode='dark'] {
@@ -174,6 +172,7 @@
   --hishab-income: #fafafa;
   --hishab-expense: #a8a8a8;
   --hishab-brass: #d0d0d0;
+  --hishab-gold: #9a9a9a;
 }
 
 /* ---- contrast: for a phone in the sun, and for eyes that need more ---------
@@ -201,15 +200,16 @@
   --hishab-surface: #ffffff;
   --hishab-greenbar: #ededed;
   --hishab-rule: #5c5c5c;
-  --hishab-brand: #003a8c;
-  --hishab-brand-strong: #002766;
-  --hishab-brand-soft: #00479f;
-  --hishab-brand-tint: #e3edfb;
+  --hishab-brand: #0b5b37;
+  --hishab-brand-strong: #063d24;
+  --hishab-brand-soft: #0e6b41;
+  --hishab-brand-tint: #e2f0e7;
   --hishab-brand-contrast: #ffffff;
 
   --hishab-income: #00552b;
   --hishab-expense: #9e0009;
-  --hishab-brass: #4f3a00;
+  --hishab-brass: #5c3d00;
+  --hishab-gold: #8a5a00;
 }
 
 :root[data-theme='contrast'][data-mode='dark'] {
@@ -221,15 +221,16 @@
   --hishab-surface: #0b0b0b;
   --hishab-greenbar: #191919;
   --hishab-rule: #777777;
-  --hishab-brand: #9ecbff;
-  --hishab-brand-strong: #cfe6ff;
-  --hishab-brand-soft: #9ecbff;
-  --hishab-brand-tint: #0a1c30;
+  --hishab-brand: #7fe0ae;
+  --hishab-brand-strong: #bdf2d6;
+  --hishab-brand-soft: #7fe0ae;
+  --hishab-brand-tint: #0a2618;
   --hishab-brand-contrast: #000000;
 
   --hishab-income: #74e8a8;
   --hishab-expense: #ff9c94;
   --hishab-brass: #f2c351;
+  --hishab-gold: #f2c351;
 }
 
 /* ---- calm: warm paper, low saturation -------------------------------------
@@ -251,15 +252,16 @@
   --hishab-surface: #fffdf8;
   --hishab-greenbar: #efe9dd;
   --hishab-rule: #d9cfbe;
-  --hishab-brand: #3f6285;
-  --hishab-brand-strong: #2f4a66;
-  --hishab-brand-soft: #4d7597;
-  --hishab-brand-tint: #e8eef4;
+  --hishab-brand: #3d6b54;
+  --hishab-brand-strong: #2e5442;
+  --hishab-brand-soft: #4a7d63;
+  --hishab-brand-tint: #e6efe9;
   --hishab-brand-contrast: #ffffff;
 
   --hishab-income: #3a6647;
   --hishab-expense: #97362e;
   --hishab-brass: #6f5824;
+  --hishab-gold: #b08a3e;
 }
 
 :root[data-theme='calm'][data-mode='dark'] {
@@ -269,15 +271,16 @@
   --hishab-surface: #23201c;
   --hishab-greenbar: #2a2620;
   --hishab-rule: #3f3931;
-  --hishab-brand: #8fb0cb;
-  --hishab-brand-strong: #b3cbdf;
-  --hishab-brand-soft: #8fb0cb;
-  --hishab-brand-tint: #26313b;
+  --hishab-brand: #93c4a8;
+  --hishab-brand-strong: #b8dcc6;
+  --hishab-brand-soft: #93c4a8;
+  --hishab-brand-tint: #22332a;
   --hishab-brand-contrast: #14120f;
 
   --hishab-income: #8ec9a2;
   --hishab-expense: #e0a099;
   --hishab-brass: #cfa95f;
+  --hishab-gold: #cfa95f;
 }
 
 /* The floor for a reader whose JavaScript never ran, and the only place in this
@@ -289,27 +292,31 @@
  * would have set the attribute. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-mode]) {
-    --hishab-ink: #e8efe7;
-    --hishab-ink-muted: #9aab9f;
-    --hishab-paper: #101614;
-    --hishab-surface: #16201c;
-    --hishab-greenbar: #1a241f;
-    --hishab-rule: #2c3a33;
-    --hishab-brand: #7d9cf5;
-    --hishab-brand-strong: #a8bdf9;
-    --hishab-brand-soft: #7d9cf5;
-    --hishab-brand-tint: #17224a;
-    --hishab-brand-contrast: #0b1533;
+    --hishab-ink: #e6efe8;
+    --hishab-ink-muted: #a1b3a7;
+    --hishab-paper: #0e1612;
+    --hishab-surface: #15201a;
+    --hishab-greenbar: #1a2820;
+    --hishab-rule: #2a3b31;
+    --hishab-brand: #5bc08c;
+    --hishab-brand-strong: #8fd8b0;
+    --hishab-brand-soft: #5bc08c;
+    --hishab-brand-tint: #133022;
+    --hishab-brand-contrast: #08170f;
 
     --hishab-income: #63c295;
     --hishab-expense: #f0827d;
-    --hishab-brass: #ff9a4d;
+    --hishab-brass: #e3b35c;
+    --hishab-gold: #d9a44a;
   }
 }
 
-/* Money never reflows: tabular figures, fixed column, right aligned. */
+/* Money never reflows: tabular figures, fixed column, right aligned. Set in
+   the text face rather than a monospace one — the figures are tabular either
+   way, and a typewriter face for every amount made the ledger read like a
+   terminal rather than a খাতা. */
 .money {
-  font-family: var(--hishab-font-mono);
+  font-family: var(--hishab-font-sans);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
   text-align: right;

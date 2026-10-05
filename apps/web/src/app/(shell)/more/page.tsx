@@ -1,7 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, LogOut, Search, X } from 'lucide-react';
+import { ChevronRight, LogOut, Search, X } from '@/components/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';

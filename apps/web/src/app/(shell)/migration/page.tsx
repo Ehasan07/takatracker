@@ -17,7 +17,7 @@ import {
   Search,
   Trash2,
   Upload,
-} from 'lucide-react';
+} from '@/components/icons';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';

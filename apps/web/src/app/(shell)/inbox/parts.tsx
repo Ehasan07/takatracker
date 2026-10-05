@@ -8,7 +8,7 @@
  * anyone deciding to create one.
  */
 
-import { Quote, RotateCw, Sparkles, TriangleAlert } from 'lucide-react';
+import { Quote, RotateCw, Sparkles, TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { formatMinor } from '@hishab/shared';
 import { Money } from '@/components/money';

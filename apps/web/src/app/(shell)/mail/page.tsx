@@ -28,7 +28,7 @@
  */
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Mail, Search, Settings, X } from 'lucide-react';
+import { Mail, Search, Settings, X } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link2, Merge, Pencil, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
+import { Link2, Merge, Pencil, Plus, Search, Trash2, TriangleAlert } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Money } from '@/components/money';

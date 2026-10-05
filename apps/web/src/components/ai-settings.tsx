@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Sparkles } from 'lucide-react';
+import { Sparkles } from '@/components/icons';
 import * as React from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';

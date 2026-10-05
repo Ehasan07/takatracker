@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toAsciiDigits } from '@hishab/shared';
-import { ListChecks, RotateCw, TriangleAlert } from 'lucide-react';
+import { ListChecks, RotateCw, TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { SkeletonCard } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';

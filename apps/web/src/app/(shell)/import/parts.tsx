@@ -7,7 +7,7 @@
  * deciding to create one.
  */
 
-import { RotateCw, TriangleAlert } from 'lucide-react';
+import { RotateCw, TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';

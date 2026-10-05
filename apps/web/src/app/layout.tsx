@@ -33,9 +33,11 @@ import { APPEARANCE_BOOT } from '@/lib/theme';
 
 /* The Bengali subset of Anek Bangla, which is what the app is mostly set in.
  *
- * One file covers both weights because Anek Bangla is variable and Google
- * serves the wght axis clamped to the range asked for — so `400 600` is a
- * range, not a list, and text at 500 interpolates instead of snapping.
+ * One file covers every weight because Anek Bangla is variable — so `400 800`
+ * is a range, not a list, and text at 500 interpolates instead of snapping.
+ * The file is the same bytes Google serves for a 400..800 request; it was
+ * declared as 400–600 until the headings started using 700 and 800, and the
+ * browser clamps a request to the declared range rather than to the file.
  *
  * `unicode-range` is what stops this 152 KB file from being pulled onto a page
  * that has no Bengali on it, and — more importantly — what makes the fall
@@ -43,7 +45,7 @@ import { APPEARANCE_BOOT } from '@/lib/theme';
  * given browser handles a missing glyph. `next/font/local` has no per-file
  * unicode-range, hence one call per subset. */
 const bengali = localFont({
-  src: [{ path: './fonts/anek-bangla-bengali.woff2', weight: '400 600', style: 'normal' }],
+  src: [{ path: './fonts/anek-bangla-bengali.woff2', weight: '400 800', style: 'normal' }],
   display: 'swap',
   variable: '--font-bengali',
   declarations: [
@@ -64,7 +66,7 @@ const bengali = localFont({
    Anek Bangla rather than dropping to the Latin face. Second in the stack, and
    only ever reached for the code points above. */
 const bengaliLatin = localFont({
-  src: [{ path: './fonts/anek-bangla-latin.woff2', weight: '400 600', style: 'normal' }],
+  src: [{ path: './fonts/anek-bangla-latin.woff2', weight: '400 800', style: 'normal' }],
   display: 'swap',
   variable: '--font-bengali-latin',
   declarations: [
@@ -77,14 +79,16 @@ const bengaliLatin = localFont({
   adjustFontFallback: false,
 });
 
-/* Bai Jamjuree is not variable, so its weights really are three files. Three,
+/* Bai Jamjuree is not variable, so its weights really are separate files. Four,
    not the whole family: every extra one is a file a phone has to download
-   before the page settles, and the design uses regular, medium and semibold. */
+   before the page settles. 700 is the wordmark's weight — the face the
+   `Taka Tracker` lockup in brand/ is drawn in. */
 const latin = localFont({
   src: [
     { path: './fonts/bai-jamjuree-latin-400.woff2', weight: '400', style: 'normal' },
     { path: './fonts/bai-jamjuree-latin-500.woff2', weight: '500', style: 'normal' },
     { path: './fonts/bai-jamjuree-latin-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/bai-jamjuree-latin-700.woff2', weight: '700', style: 'normal' },
   ],
   display: 'swap',
   variable: '--font-latin',

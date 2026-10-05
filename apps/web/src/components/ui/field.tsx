@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
    controls reads as a mobile site blown up. `md:` is the pointer proxy that
    Tailwind can express statically. */
 const controlClasses =
-  'min-h-11 md:min-h-9 w-full rounded-md border border-rule bg-surface px-3 py-2 md:py-1.5 text-base md:text-sm text-ink placeholder:text-ink-muted transition-colors hover:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 disabled:opacity-50';
+  'min-h-11 md:min-h-10 w-full rounded-xl border-[1.5px] border-rule bg-surface px-3.5 py-2 md:py-1.5 text-base md:text-sm text-ink placeholder:text-ink-muted transition-colors hover:border-ink-muted focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-1 disabled:opacity-50';
 
 export const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
   ({ className, ...props }, ref) => (
@@ -45,7 +45,7 @@ export function Field({
 }) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <label htmlFor={htmlFor} className="text-ink text-sm font-medium">
+      <label htmlFor={htmlFor} className="text-ink text-sm font-semibold">
         {label}
       </label>
       {children}

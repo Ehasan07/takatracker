@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { MessageSquareText } from 'lucide-react';
+import { MessageSquareText } from '@/components/icons';
 import * as React from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Printer } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { StandardNote } from '@/components/info-note';

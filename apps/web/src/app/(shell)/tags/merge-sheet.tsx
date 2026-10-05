@@ -17,7 +17,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Merge } from 'lucide-react';
+import { ArrowRight, Merge } from '@/components/icons';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/field';

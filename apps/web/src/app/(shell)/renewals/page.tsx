@@ -9,7 +9,7 @@ import {
 } from '@hishab/core';
 import { formatMinor, parseMoneyToMinor, toLocalDateString } from '@hishab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, Plus, Trash2 } from '@/components/icons';
 import * as React from 'react';
 import { CategoryOptions } from '@/components/category-options';
 import { Money } from '@/components/money';

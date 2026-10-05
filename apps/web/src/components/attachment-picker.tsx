@@ -1,6 +1,6 @@
 'use client';
 
-import { Camera, Paperclip, RotateCw, X } from 'lucide-react';
+import { Camera, Paperclip, RotateCw, X } from '@/components/icons';
 import * as React from 'react';
 import {
   ATTACHMENT_ACCEPT,

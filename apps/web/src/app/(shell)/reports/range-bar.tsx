@@ -8,7 +8,7 @@
  * the date filter once should not have to learn it again three screens later.
  */
 
-import { Download } from 'lucide-react';
+import { Download } from '@/components/icons';
 import * as React from 'react';
 import { Field, Input } from '@/components/ui/field';
 import { ApiError } from '@/lib/api';

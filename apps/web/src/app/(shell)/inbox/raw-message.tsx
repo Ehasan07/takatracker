@@ -1,6 +1,6 @@
 'use client';
 
-import { Quote } from 'lucide-react';
+import { Quote } from '@/components/icons';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { locateEvidence } from './evidence';

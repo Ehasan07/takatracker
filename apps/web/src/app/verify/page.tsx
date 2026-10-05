@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { CheckCircle2, Clock, Info, Mail, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Clock, Info, Mail, TriangleAlert } from '@/components/icons';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';

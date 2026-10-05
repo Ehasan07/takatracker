@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronRight, Plus, UsersRound } from 'lucide-react';
+import { Check, ChevronRight, Plus, UsersRound } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { CategoryOptions } from '@/components/category-options';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy, Eye, EyeOff, Inbox, RotateCw, TriangleAlert } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, Inbox, RotateCw, TriangleAlert } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { api } from '@/lib/api';

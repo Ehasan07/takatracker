@@ -10,7 +10,7 @@ import {
   Minus,
   PackageX,
   TriangleAlert,
-} from 'lucide-react';
+} from '@/components/icons';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { haptic } from '@/lib/haptics';

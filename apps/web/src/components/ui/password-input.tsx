@@ -1,6 +1,6 @@
 'use client';
 
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from '@/components/icons';
 import * as React from 'react';
 import { Input } from '@/components/ui/field';
 import { t } from '@/lib/t';

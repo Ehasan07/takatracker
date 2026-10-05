@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Scale } from 'lucide-react';
+import { Scale } from '@/components/icons';
 import { fromMilli } from '@/components/quantity';
 import { api } from '@/lib/api';
 import { bnNum } from '../admin/labels';

@@ -11,7 +11,7 @@
  * duplication is the cheaper of the two.
  */
 
-import { ArrowDownRight, ArrowUpRight, Minus, RotateCw, TriangleAlert } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Minus, RotateCw, TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { Skeleton } from '@/components/skeleton';

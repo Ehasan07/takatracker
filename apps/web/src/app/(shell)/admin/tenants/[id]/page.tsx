@@ -9,7 +9,7 @@ import {
   PlayCircle,
   ShieldAlert,
   SlidersHorizontal,
-} from 'lucide-react';
+} from '@/components/icons';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import * as React from 'react';

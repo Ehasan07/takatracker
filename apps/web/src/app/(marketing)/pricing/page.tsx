@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Minus } from 'lucide-react';
+import { ArrowRight, Check, Minus } from '@/components/icons';
 import Link from 'next/link';
 import { formatMinor } from '@hishab/shared';
 import { CONTACT, CONTENT_BN, PAYMENT_URL, type SiteContent } from '../content';

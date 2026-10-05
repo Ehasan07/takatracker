@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Minus, X } from 'lucide-react';
+import { ArrowRight, Check, Minus, X } from '@/components/icons';
 import Link from 'next/link';
 import { GUIDE } from '@/content/guide';
 import { EN } from '@/i18n/en';

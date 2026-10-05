@@ -1,7 +1,7 @@
 'use client';
 
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LifeBuoy, Search, ShieldCheck, UserRound } from 'lucide-react';
+import { LifeBuoy, Search, ShieldCheck, UserRound } from '@/components/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';

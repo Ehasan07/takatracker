@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from '@/components/icons';
 import * as React from 'react';
 import { ApiError, api } from '@/lib/api';
 import { Button } from '@/components/ui/button';

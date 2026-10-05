@@ -1,6 +1,6 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { Check } from '@/components/icons';
 import { Money } from '@/components/money';
 import { haptic } from '@/lib/haptics';
 import { t } from '@/lib/t';

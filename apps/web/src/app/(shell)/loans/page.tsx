@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Plus, Search } from 'lucide-react';
+import { ChevronRight, Plus, Search } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Money } from '@/components/money';

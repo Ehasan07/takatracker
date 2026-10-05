@@ -2,7 +2,7 @@
 
 import type { DatePreference } from '@hishab/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, FileSpreadsheet, Upload } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, Upload } from '@/components/icons';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';

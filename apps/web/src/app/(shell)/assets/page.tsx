@@ -12,7 +12,7 @@ import {
   Plus,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
+} from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Money } from '@/components/money';

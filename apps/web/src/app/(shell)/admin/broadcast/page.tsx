@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Send } from 'lucide-react';
+import { Send } from '@/components/icons';
 import * as React from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';

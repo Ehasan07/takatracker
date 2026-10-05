@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, Minus, Plus } from 'lucide-react';
+import { ArrowRight, Minus, Plus } from '@/components/icons';
 import * as React from 'react';
 import { Money } from '@/components/money';
 import { cn } from '@/lib/utils';

@@ -3,7 +3,7 @@
 /** Create a tag, or rename, recolour and re-word an existing one. */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ban, Trash2 } from 'lucide-react';
+import { Ban, Trash2 } from '@/components/icons';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';

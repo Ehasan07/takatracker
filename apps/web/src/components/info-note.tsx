@@ -1,6 +1,6 @@
 'use client';
 
-import { Info } from 'lucide-react';
+import { Info } from '@/components/icons';
 import * as React from 'react';
 import { t } from '@/lib/t';
 

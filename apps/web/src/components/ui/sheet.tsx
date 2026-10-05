@@ -1,7 +1,7 @@
 'use client';
 
 import * as Dialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
+import { X } from '@/components/icons';
 import * as React from 'react';
 import { useIsDesktop, useKeyboardInset } from '@/hooks/use-device';
 import { haptic } from '@/lib/haptics';
@@ -75,12 +75,12 @@ export function Sheet({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="sheet-overlay fixed inset-0 z-40 bg-black/40" />
+        <Dialog.Overlay className="sheet-overlay fixed inset-0 z-40 bg-[rgb(22_36_29/0.45)]" />
         <Dialog.Content
           className={cn(
             'sheet-panel bg-surface text-ink fixed z-50 flex flex-col shadow-2xl',
-            'inset-x-0 bottom-0 max-h-[92dvh] rounded-t-2xl',
-            'md:inset-x-auto md:bottom-auto md:left-1/2 md:top-1/2 md:max-h-[85dvh] md:w-[32rem] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl',
+            'inset-x-0 bottom-0 max-h-[92dvh] rounded-t-[28px]',
+            'md:inset-x-auto md:bottom-auto md:left-1/2 md:top-1/2 md:max-h-[85dvh] md:w-[32rem] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-[28px]',
             className,
           )}
           style={{
@@ -101,12 +101,12 @@ export function Sheet({
             style={{ touchAction: 'none' }}
             aria-hidden
           >
-            <div className="bg-rule h-1 w-10 rounded-full" />
+            <div className="bg-rule h-1.5 w-11 rounded-full" />
           </div>
 
-          <div className="border-rule bg-surface flex shrink-0 items-center justify-between border-b px-4 py-3">
+          <div className="border-rule bg-surface flex shrink-0 items-center justify-between border-b px-5 py-3.5">
             <div className="min-w-0">
-              <Dialog.Title className="truncate text-lg font-semibold">{title}</Dialog.Title>
+              <Dialog.Title className="truncate text-xl font-bold">{title}</Dialog.Title>
               {description ? (
                 <Dialog.Description className="text-ink-muted truncate text-sm">
                   {description}
@@ -117,13 +117,13 @@ export function Sheet({
             </div>
             <Dialog.Close
               aria-label={t('common.close', 'বন্ধ করুন')}
-              className="press touch-target hover:bg-greenbar -mr-2 flex items-center justify-center rounded-md"
+              className="press touch-target bg-greenbar hover:bg-brand-tint -mr-1 flex items-center justify-center rounded-xl"
             >
               <X className="h-5 w-5" aria-hidden />
             </Dialog.Close>
           </div>
 
-          <div className="app-scroll min-h-0 flex-1 px-4 py-4">{children}</div>
+          <div className="app-scroll min-h-0 flex-1 px-5 py-5">{children}</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

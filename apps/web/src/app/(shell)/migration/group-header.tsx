@@ -1,7 +1,7 @@
 'use client';
 
 import type { MigrationDecision } from '@hishab/core';
-import { Check, Layers } from 'lucide-react';
+import { Check, Layers } from '@/components/icons';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/field';

@@ -9,7 +9,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Monitor, RotateCw, Smartphone, Tablet, TriangleAlert } from 'lucide-react';
+import { LogOut, Monitor, RotateCw, Smartphone, Tablet, TriangleAlert } from '@/components/icons';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { t } from '@/lib/t';

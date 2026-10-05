@@ -1,7 +1,7 @@
 'use client';
 
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Building2, Lock, ScrollText, X } from 'lucide-react';
+import { Building2, Lock, ScrollText, X } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { SkeletonRows } from '@/components/skeleton';

@@ -10,7 +10,7 @@
  * without anyone deciding to create one.
  */
 
-import { KeyRound, RotateCw, TriangleAlert } from 'lucide-react';
+import { KeyRound, RotateCw, TriangleAlert } from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';

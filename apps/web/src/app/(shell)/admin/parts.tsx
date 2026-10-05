@@ -1,6 +1,12 @@
 'use client';
 
-import { Ban, FileQuestion, Infinity as InfinityIcon, RotateCw, TriangleAlert } from 'lucide-react';
+import {
+  Ban,
+  FileQuestion,
+  Infinity as InfinityIcon,
+  RotateCw,
+  TriangleAlert,
+} from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { Skeleton } from '@/components/skeleton';

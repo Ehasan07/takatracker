@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Globe } from 'lucide-react';
+import { Globe } from '@/components/icons';
 import * as React from 'react';
 import { currencyOf, formatMinor } from '@hishab/shared';
 import { convert } from '@/components/fx-convert';

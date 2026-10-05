@@ -6,25 +6,27 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'press inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 select-none',
+  'press inline-flex items-center justify-center gap-2 rounded-[14px] text-sm font-semibold disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 select-none',
   {
     variants: {
       variant: {
-        /* Brand blue, not the income green it used to be. A primary button is
-           the *product* speaking; green is what the ledger says about money
-           coming in, and using one colour for both made "save" look like a
-           credit. */
-        primary: 'bg-brand text-brand-contrast hover:bg-brand-strong',
+        /* The mark's green. A primary button is the product speaking; the
+           money colours stay on amounts, and an amount is never only a colour.
+           The darker lip under it is the one bit of depth in the system — it
+           reads as something to press without a drop shadow's blur. */
+        primary:
+          'bg-brand text-brand-contrast shadow-[0_3px_0_var(--hishab-brand-strong)] hover:bg-brand-soft',
         danger: 'bg-expense text-white hover:opacity-90',
-        outline: 'border border-rule bg-surface text-ink hover:bg-brand-tint',
+        outline:
+          'border-[1.5px] border-rule bg-surface text-ink hover:border-ink-muted hover:bg-greenbar',
         ghost: 'text-ink hover:bg-brand-tint',
       },
       size: {
         // 44px minimum touch target everywhere (spec §5, §10).
-        default: 'min-h-11 px-4 py-2',
-        sm: 'min-h-11 px-3 text-sm',
+        default: 'min-h-11 px-5 py-2',
+        sm: 'min-h-11 px-3.5 text-sm',
         icon: 'h-11 w-11',
-        block: 'min-h-12 w-full px-4 text-base',
+        block: 'min-h-13 w-full rounded-2xl px-5 text-base font-bold',
       },
     },
     defaultVariants: { variant: 'primary', size: 'default' },

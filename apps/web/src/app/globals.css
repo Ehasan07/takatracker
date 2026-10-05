@@ -23,11 +23,18 @@
   --color-income: var(--hishab-income);
   --color-expense: var(--hishab-expense);
   --color-brass: var(--hishab-brass);
+  --color-gold: var(--hishab-gold);
 
   --font-sans: var(--hishab-font-sans);
   --font-mono: var(--hishab-font-mono);
+  /* Latin set in the wordmark's face. The sans stack reaches Anek Bangla's own
+     Latin first, which is right inside a Bengali sentence and wrong for the
+     name of the product. */
+  --font-wordmark: var(--font-latin), 'Bai Jamjuree', ui-sans-serif, system-ui, sans-serif;
 
-  --radius-card: 12px;
+  /* The mark is a squircle with a tile inside it; cards take the tile's
+     proportion rather than the near-square 12px they had. */
+  --radius-card: 20px;
 }
 
 @layer base {

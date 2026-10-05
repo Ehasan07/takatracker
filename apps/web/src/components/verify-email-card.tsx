@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MailCheck } from 'lucide-react';
+import { MailCheck } from '@/components/icons';
 import * as React from 'react';
 import { api, ApiError, endpoints } from '@/lib/api';
 import { t } from '@/lib/t';

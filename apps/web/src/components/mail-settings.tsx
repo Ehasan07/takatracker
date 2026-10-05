@@ -47,7 +47,7 @@ import {
   RotateCw,
   Trash2,
   TriangleAlert,
-} from 'lucide-react';
+} from '@/components/icons';
 import Link from 'next/link';
 import * as React from 'react';
 import { t } from '@/lib/t';
