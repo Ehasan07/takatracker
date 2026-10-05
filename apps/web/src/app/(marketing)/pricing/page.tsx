@@ -372,7 +372,7 @@ function PlanCard({
         </div>
 
         <p className="text-ink mt-5 text-[48px] font-extrabold tabular-nums leading-none">
-          `৳${money(plan.priceMinor)}`
+          {`৳${money(plan.priceMinor)}`}
           {!free ? (
             <span className="text-ink-muted ml-1 text-lg font-medium">{t.perMonth}</span>
           ) : null}
