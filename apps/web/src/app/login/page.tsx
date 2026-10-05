@@ -9,6 +9,7 @@ import { Field, Input } from '@/components/ui/field';
 import { PasswordInput } from '@/components/ui/password-input';
 import { fmtNumber } from '@/lib/format';
 import { tradeHref } from '@/app/(marketing)/trade';
+import { AuthFrame } from '@/components/auth-frame';
 
 /**
  * Two ways in, on one screen.
@@ -136,7 +137,7 @@ function LoginForm() {
       ) : null}
 
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+        <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
           {error}
         </p>
       ) : null}
@@ -192,9 +193,9 @@ export default function LoginPage() {
   return (
     /* Auto margins rather than `justify-center`, for the reason on the sign-up
        page: a centred column taller than its scroller loses its top. */
-    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col gap-6 py-10 [--gutter-x:1rem]">
-      <header className="mt-auto text-center">
-        <h1 className="text-ink text-3xl font-semibold">Taka Tracker</h1>
+    <AuthFrame>
+      <header className="mt-auto">
+        <h1 className="text-ink text-[32px] font-extrabold leading-tight">Taka Tracker</h1>
         <p className="text-ink-muted text-sm">আয়, খরচ ও সঞ্চয়ের ব্যক্তিগত খাতা</p>
       </header>
       <React.Suspense fallback={null}>
@@ -208,6 +209,6 @@ export default function LoginPage() {
           ব্যবসার অ্যাপে লগইন করুন
         </a>
       </p>
-    </main>
+    </AuthFrame>
   );
 }

@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/skeleton';
 import { Button } from '@/components/ui/button';
 import { api, ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { AuthFrame } from '@/components/auth-frame';
 
 /**
  * Four different things can be true when somebody opens a verification link,
@@ -223,9 +224,11 @@ function OutcomeCard({
 
 export default function VerifyPage() {
   return (
-    <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 py-10 [--gutter-x:1rem]">
-      <header className="text-center">
-        <h1 className="text-ink text-3xl font-semibold">{t('verify.appName', 'হিসাব')}</h1>
+    <AuthFrame>
+      <header>
+        <h1 className="text-ink text-[32px] font-extrabold leading-tight">
+          {t('verify.appName', 'হিসাব')}
+        </h1>
         <p className="text-ink-muted text-sm">{t('verify.title', 'ইমেইল যাচাই')}</p>
       </header>
       <React.Suspense
@@ -237,6 +240,6 @@ export default function VerifyPage() {
       >
         <VerifyView />
       </React.Suspense>
-    </main>
+    </AuthFrame>
   );
 }

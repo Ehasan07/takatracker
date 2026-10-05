@@ -131,13 +131,15 @@ export function HeroPreview({ locale }: { locale: 'bn' | 'en' }) {
 /** Three notes fanned behind the card: a red ৳১০০, a green ৳৫০০ with its gold
     thread, and a dollar behind them. The product's own designs — neither is a
     picture of a real banknote. */
-function Notes({ isBn }: { isBn: boolean }) {
+export function Notes({ isBn, className }: { isBn: boolean; className?: string }) {
   const hundred = isBn ? '১০০' : '100';
   const fiveHundred = isBn ? '৫০০' : '500';
   return (
     <svg
       viewBox="0 0 340 250"
-      className="absolute -right-3 top-0 w-[230px] overflow-visible sm:-right-6 sm:w-[340px]"
+      className={
+        className ?? 'absolute -right-3 top-0 w-[230px] overflow-visible sm:-right-6 sm:w-[340px]'
+      }
     >
       <defs>
         <pattern

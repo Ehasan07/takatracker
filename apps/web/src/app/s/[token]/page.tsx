@@ -58,14 +58,14 @@ export default async function SharedStatementPage({
       <main className="bg-paper flex min-h-dvh flex-col items-center justify-center gap-4 px-4 text-center">
         <BrandMark size="md" />
         <div>
-          <h1 className="text-ink text-xl font-semibold">লিংকটি আর কাজ করছে না</h1>
+          <h1 className="text-ink text-xl font-bold">লিংকটি আর কাজ করছে না</h1>
           <p className="text-ink-muted mt-1 text-sm">
             যিনি পাঠিয়েছেন তাঁর কাছে নতুন একটি লিংক চেয়ে নিন।
           </p>
         </div>
         <Link
           href="/"
-          className="press border-rule text-ink hover:bg-greenbar inline-flex min-h-11 items-center rounded-md border px-4 text-sm"
+          className="press border-rule text-ink hover:bg-greenbar inline-flex min-h-11 items-center rounded-xl border px-4 text-sm"
         >
           Taka Tracker কী?
         </Link>

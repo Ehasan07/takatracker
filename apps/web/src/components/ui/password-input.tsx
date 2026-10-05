@@ -93,7 +93,7 @@ export function PasswordInput({
          * `aria-controls` already says which field it belongs to. */
         aria-label={shown ? t('password.hide', 'লুকান') : t('password.show', 'দেখান')}
         tabIndex={-1}
-        className="press text-ink-muted hover:text-ink absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md"
+        className="press text-ink-muted hover:text-ink absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl"
       >
         {shown ? (
           <EyeOff className="h-4 w-4" aria-hidden />

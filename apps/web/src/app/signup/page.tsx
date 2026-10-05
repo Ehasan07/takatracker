@@ -16,6 +16,7 @@ import { tradeHref } from '@/app/(marketing)/trade';
 import { api, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
+import { AuthFrame } from '@/components/auth-frame';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -72,16 +73,16 @@ export default function SignupPage() {
        overflows upward as well as down — past the top of a scroll container,
        where no amount of scrolling reaches. On a 700px phone that was the
        heading and everything above the language field. */
-    <main className="app-scroll safe-x mx-auto flex h-dvh w-full max-w-sm flex-col gap-6 py-10 [--gutter-x:1rem]">
-      <header className="mt-auto text-center">
-        <h1 className="text-ink text-3xl font-semibold">নতুন অ্যাকাউন্ট</h1>
+    <AuthFrame>
+      <header className="mt-auto">
+        <h1 className="text-ink text-[32px] font-extrabold leading-tight">নতুন অ্যাকাউন্ট</h1>
         <p className="text-ink-muted text-sm">এক মিনিটেই শুরু করুন</p>
       </header>
 
       {/* Above the form, not under it: a shopkeeper who came for the shop's
           books should find out this is the personal app before filling in six
           fields, not after. */}
-      <p className="border-rule bg-surface text-ink-muted rounded-md border px-3 py-2 text-center text-sm">
+      <p className="border-rule bg-surface text-ink-muted rounded-xl border px-3 py-2 text-center text-sm">
         {locale === 'en'
           ? 'Keeping books for a shop or business?'
           : 'দোকান বা ব্যবসার হিসাব রাখবেন?'}{' '}
@@ -205,7 +206,7 @@ export default function SignupPage() {
         </Field>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -221,6 +222,6 @@ export default function SignupPage() {
           </Link>
         </p>
       </form>
-    </main>
+    </AuthFrame>
   );
 }

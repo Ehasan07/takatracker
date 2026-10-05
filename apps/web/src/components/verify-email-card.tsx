@@ -83,7 +83,7 @@ export function VerifyEmailCard() {
   if (!data || data.emailVerifiedAt) return null;
 
   return (
-    <section className="rounded-card border-brand/40 bg-brand-tint border p-4">
+    <section className="rounded-card border-brand/40 bg-brand-tint border-[1.5px] p-4">
       <h2 className="text-ink flex items-center gap-2 text-base font-semibold">
         <MailCheck className="text-brand h-4 w-4" aria-hidden />
         {t('verify.title', 'ইমেইল যাচাই করুন')}

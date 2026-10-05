@@ -44,7 +44,7 @@ export default function AppError({
       <BrandMark size="md" />
 
       <div className="max-w-sm">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">কিছু একটা ভুল হয়েছে</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">কিছু একটা ভুল হয়েছে</h1>
         <p className="text-ink-muted mt-2 text-sm leading-relaxed">
           পাতাটি দেখাতে গিয়ে সমস্যা হয়েছে। খাতায় কিছু লেখা হয়নি — আপনার হিসাব যেমন ছিল তেমনই
           আছে। আবার চেষ্টা করে দেখুন।
@@ -61,13 +61,13 @@ export default function AppError({
         <button
           type="button"
           onClick={reset}
-          className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 items-center rounded-md px-4 text-sm font-medium"
+          className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 items-center rounded-xl px-4 text-sm font-medium"
         >
           আবার চেষ্টা করুন
         </button>
         <a
           href="/"
-          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-md border px-4 text-sm"
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-xl border px-4 text-sm"
         >
           হোমে ফিরুন
         </a>

@@ -12,6 +12,7 @@ import { api, ApiError } from '@/lib/api';
 import { fmtNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { AuthFrame } from '@/components/auth-frame';
 
 const MIN_LENGTH = 8;
 
@@ -261,7 +262,7 @@ function ResetForm() {
       </Field>
 
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+        <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
           {error}
         </p>
       ) : null}
@@ -289,9 +290,9 @@ function ResetForm() {
 
 export default function ResetPage() {
   return (
-    <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 py-10 [--gutter-x:1rem]">
-      <header className="text-center">
-        <h1 className="text-ink text-3xl font-semibold">
+    <AuthFrame>
+      <header>
+        <h1 className="text-ink text-[32px] font-extrabold leading-tight">
           {t('reset.newPassword', 'নতুন পাসওয়ার্ড')}
         </h1>
         <p className="text-ink-muted text-sm">
@@ -307,6 +308,6 @@ export default function ResetPage() {
       >
         <ResetForm />
       </React.Suspense>
-    </main>
+    </AuthFrame>
   );
 }

@@ -281,9 +281,7 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
         <header className="border-rule flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b pb-4">
           <BrandMark size="md" />
           <div className="text-right">
-            <p className="text-ink-muted text-xs font-medium uppercase tracking-wide">
-              {t.statement}
-            </p>
+            <p className="text-ink-muted text-xs font-medium font-semibold">{t.statement}</p>
             <p className="text-ink-muted mt-0.5 text-xs">
               {t.reference}: <span className="money text-ink">{statement.reference}</span>
             </p>
@@ -297,7 +295,7 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
             reader looks for. */}
         <div className="mt-5">
           <p className="text-ink-muted text-xs">{t.subject}</p>
-          <h1 className="text-ink break-words text-2xl font-semibold">{statement.title}</h1>
+          <h1 className="text-ink break-words text-2xl font-extrabold">{statement.title}</h1>
           {statement.subtitle ? (
             <p className="text-ink-muted break-words text-sm">{statement.subtitle}</p>
           ) : null}
@@ -343,7 +341,7 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
           their own books; they are not welcome to find an advertisement in the
           middle of a financial record they were sent. */}
       <aside className="mx-auto w-full max-w-3xl px-4 pb-10 sm:px-6 print:hidden">
-        <div className="rounded-card border-rule bg-surface flex flex-col gap-4 border p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="rounded-card border-rule bg-surface flex flex-col gap-4 border-[1.5px] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-ink font-semibold">{t.ctaTitle}</p>
             <p className="text-ink-muted mt-1 text-sm">{t.ctaBody}</p>
@@ -351,13 +349,13 @@ export function StatementDocument({ statement }: { statement: PublicStatement })
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Link
               href={statement.locale === 'en' ? '/signup?lang=en' : '/signup'}
-              className="press bg-brand text-brand-contrast hover:bg-brand-strong inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium"
+              className="press bg-brand text-brand-contrast hover:bg-brand-strong inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium"
             >
               {t.ctaButton}
             </Link>
             <Link
               href={statement.locale === 'en' ? '/en/pricing' : '/pricing'}
-              className="press border-rule text-ink hover:bg-greenbar inline-flex min-h-11 items-center rounded-md border px-4 text-sm"
+              className="press border-rule text-ink hover:bg-greenbar inline-flex min-h-11 items-center rounded-xl border px-4 text-sm"
             >
               {t.ctaPricing}
             </Link>

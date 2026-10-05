@@ -33,7 +33,7 @@ export default function NotFound() {
 
       <div className="max-w-sm">
         <p className="text-ink-muted text-sm font-medium">৪০৪</p>
-        <h1 className="text-ink mt-1 text-xl font-semibold sm:text-2xl">
+        <h1 className="text-ink mt-1 text-xl font-extrabold sm:text-2xl">
           পাতাটি খুঁজে পাওয়া গেল না
         </h1>
         <p className="text-ink-muted mt-2 text-sm leading-relaxed">
@@ -46,13 +46,13 @@ export default function NotFound() {
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Link
           href="/"
-          className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 items-center rounded-md px-4 text-sm font-medium"
+          className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 items-center rounded-xl px-4 text-sm font-medium"
         >
           হোমে ফিরুন
         </Link>
         <Link
           href="/transactions"
-          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-md border px-4 text-sm"
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-xl border px-4 text-sm"
         >
           খাতা দেখুন
         </Link>

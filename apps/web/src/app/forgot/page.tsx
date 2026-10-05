@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { api, ApiError } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
+import { AuthFrame } from '@/components/auth-frame';
 
 /**
  * "Forgot password" is an account-enumeration oracle if it is honest about
@@ -51,9 +52,11 @@ export default function ForgotPage() {
   };
 
   return (
-    <main className="app-scroll safe-x mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 py-10 [--gutter-x:1rem]">
-      <header className="text-center">
-        <h1 className="text-ink text-3xl font-semibold">পাসওয়ার্ড ভুলে গেছেন?</h1>
+    <AuthFrame>
+      <header>
+        <h1 className="text-ink text-[32px] font-extrabold leading-tight">
+          পাসওয়ার্ড ভুলে গেছেন?
+        </h1>
         <p className="text-ink-muted text-sm">ইমেইলে একটি লিংক পাঠিয়ে দেব</p>
       </header>
 
@@ -65,7 +68,7 @@ export default function ForgotPage() {
             এই ঠিকানায় যদি কোনো অ্যাকাউন্ট থেকে থাকে, তাহলে পাসওয়ার্ড বদলানোর একটি লিংক পাঠানো
             হয়েছে। লিংকটি এক ঘণ্টা কাজ করবে। ইনবক্সে না পেলে স্প্যাম ফোল্ডারও দেখুন।
           </p>
-          <p className="text-ink-muted bg-brand-tint rounded-md p-3 text-xs">
+          <p className="text-ink-muted bg-brand-tint rounded-xl p-3 text-xs">
             অ্যাকাউন্ট আছে কি নেই — আমরা দুই ক্ষেত্রেই একই কথা বলি। তা না হলে যে কেউ এই পাতায়
             ঠিকানা লিখে লিখে জেনে নিতে পারত কার হিসাব এখানে আছে।
           </p>
@@ -99,7 +102,7 @@ export default function ForgotPage() {
           </Field>
 
           {error ? (
-            <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
               {error}
             </p>
           ) : null}
@@ -116,6 +119,6 @@ export default function ForgotPage() {
           </p>
         </form>
       )}
-    </main>
+    </AuthFrame>
   );
 }
