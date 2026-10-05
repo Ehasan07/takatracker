@@ -250,7 +250,7 @@ function FocusBar({
         <button
           type="button"
           onClick={onOpen}
-          className="press text-income hover:bg-greenbar flex min-h-11 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium md:min-h-9"
+          className="press text-income hover:bg-greenbar flex min-h-11 shrink-0 items-center gap-1 rounded-xl px-2 text-xs font-medium md:min-h-9"
         >
           <ListFilter className="h-3.5 w-3.5" aria-hidden />
           {t('reports.breakdown.allEntries', 'সব লেনদেন')}
@@ -318,7 +318,7 @@ function LegendRow({
             ? t('reports.breakdown.openSub', '{name} — উপ-খাত').replace('{name}', row.name)
             : t('reports.breakdown.openEntries', '{name} — লেনদেনগুলো').replace('{name}', row.name)
         }
-        className="press hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-md px-1 text-left"
+        className="press hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-xl px-1 text-left"
       >
         {body}
         <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />

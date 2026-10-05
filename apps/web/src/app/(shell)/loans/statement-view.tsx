@@ -376,7 +376,7 @@ export function StatementView({
               haptic('tap');
               setNewestFirst((v) => !v);
             }}
-            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm"
           >
             <ArrowUpDown className="h-4 w-4 shrink-0" aria-hidden />
             {newestFirst
@@ -426,7 +426,7 @@ export function StatementView({
       {/* Opening / closing, at a glance and on paper. A zero here before the
           data lands would be a lie, so it waits behind a skeleton. */}
       {showBalances ? (
-        <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4">
+        <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border-[1.5px] p-4">
           <div className="min-w-0">
             <dt className="text-ink-muted text-xs">{t('stmt.opening', 'প্রারম্ভিক জের')}</dt>
             <dd>
@@ -453,11 +453,11 @@ export function StatementView({
       {isError ? (
         <QueryError message="বিবরণী আনা যায়নি।" onRetry={onRetry} />
       ) : isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={5} />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">{t('stmt.emptyPeriod', 'এই সময়ে কোনো লেনদেন নেই।')}</p>
           <p className="text-ink-muted mt-1 text-sm">
             {t('stmt.tryFilters', 'উপরের ফিল্টার বদলে দেখুন।')}
@@ -470,7 +470,7 @@ export function StatementView({
             {ordered.map((row, i) => (
               <li
                 key={`${row.date}-${i}`}
-                className="rounded-card border-rule bg-surface border p-3"
+                className="rounded-card border-rule bg-surface border-[1.5px] p-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -515,7 +515,7 @@ export function StatementView({
           </ul>
 
           {/* Tablet up, and always on paper. */}
-          <div className="loan-print-table rounded-card border-rule bg-surface hidden overflow-x-auto border md:block">
+          <div className="loan-print-table rounded-card border-rule bg-surface hidden overflow-x-auto border-[1.5px] md:block">
             <table className="w-full min-w-[48rem] text-sm">
               <caption className="sr-only">{`${heading} — বিবরণী (${range})`}</caption>
               <thead>
@@ -620,7 +620,7 @@ function ExportButton({
     <button
       type="button"
       onClick={onClick}
-      className="press border-rule text-ink hover:bg-greenbar bg-surface flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-3 text-sm"
+      className="press border-rule text-ink hover:bg-greenbar bg-surface flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm"
     >
       {icon}
       {children}

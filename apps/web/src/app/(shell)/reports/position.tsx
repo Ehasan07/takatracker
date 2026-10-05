@@ -376,7 +376,7 @@ export function CardStatementsPanel({ asOfText }: { asOfText: string }) {
               <dd>
                 <Money
                   minor={cards.data.statementTotalMinor}
-                  className="text-expense block text-xl font-semibold"
+                  className="text-expense block text-xl font-bold"
                   decimals={false}
                 />
               </dd>
@@ -388,7 +388,7 @@ export function CardStatementsPanel({ asOfText }: { asOfText: string }) {
               <dd>
                 <Money
                   minor={cards.data.currentTotalMinor}
-                  className="block text-xl font-semibold"
+                  className="block text-xl font-bold"
                   decimals={false}
                 />
               </dd>

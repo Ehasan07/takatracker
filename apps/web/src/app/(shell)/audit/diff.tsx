@@ -212,7 +212,7 @@ function LegChange({ from, to, resolve }: { from: Leg; to: Leg; resolve: NameRes
   const held = LEG_FIELDS.filter((key) => from[key] === to[key] && from[key] !== null);
 
   return (
-    <div className="border-rule min-w-0 rounded-md border px-2 py-1.5">
+    <div className="border-rule min-w-0 rounded-xl border px-2 py-1.5">
       {held.length > 0 ? (
         <p className="text-ink-muted flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs">
           {held.map((key, i) => (
@@ -318,7 +318,7 @@ const isTombstone = (payload: JsonObject | null): boolean => payload?.deleted ==
 
 function Frame({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-rule bg-greenbar/40 mt-3 min-w-0 rounded-md border border-dashed p-2.5">
+    <div className="border-rule bg-greenbar/40 mt-3 min-w-0 rounded-xl border border-dashed p-2.5">
       <p className="text-ink-muted text-[11px] font-medium">{title}</p>
       <div className="mt-1.5 flex min-w-0 flex-col gap-2">{children}</div>
     </div>

@@ -51,7 +51,7 @@ export default function LoansPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">ধার-দেনা</h1>
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">ধার-দেনা</h1>
         <div className="ml-auto">
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden />
@@ -89,7 +89,7 @@ export default function LoansPage() {
       <div
         role="tablist"
         aria-label="ধার-দেনার দিক"
-        className="border-rule bg-surface grid grid-cols-2 gap-1 rounded-md border p-1"
+        className="border-rule bg-surface grid grid-cols-2 gap-1 rounded-xl border p-1"
       >
         {(['BORROWED', 'LENT'] as const).map((key) => (
           <button
@@ -104,7 +104,7 @@ export default function LoansPage() {
               setDirection(key);
             }}
             className={cn(
-              'press flex min-h-11 items-center justify-center rounded-md px-3 text-sm md:min-h-9',
+              'press flex min-h-11 items-center justify-center rounded-xl px-3 text-sm md:min-h-9',
               direction === key ? 'bg-income font-medium text-white' : 'text-ink hover:bg-greenbar',
             )}
           >
@@ -141,11 +141,11 @@ export default function LoansPage() {
         {loans.isError ? (
           <QueryError message="ঋণের তালিকা আনা যায়নি।" onRetry={() => void loans.refetch()} />
         ) : loans.isLoading ? (
-          <div className="rounded-card border-rule bg-surface overflow-hidden border">
+          <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
             <SkeletonRows rows={4} />
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-card border-rule border border-dashed p-8 text-center">
+          <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
             <p className="text-ink">
               {unfiltered
                 ? direction === 'BORROWED'
@@ -195,18 +195,18 @@ function SummaryCard({
       onClick={onSelect}
       aria-pressed={active}
       className={cn(
-        'press rounded-card border-rule bg-surface border p-4 text-left',
+        'press rounded-card border-rule bg-surface border-[1.5px] p-5 text-left',
         active && 'border-income',
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">{DIRECTION_TITLE[direction]}</h2>
+        <h2 className="text-ink text-lg font-bold">{DIRECTION_TITLE[direction]}</h2>
         <span className="text-ink-muted text-xs">{bnNum(s?.count ?? 0)}টি</span>
       </div>
       <Money
         minor={s?.outstandingMinor ?? 0}
         className={cn(
-          'mt-1 block text-2xl font-semibold',
+          'mt-1 block text-2xl font-extrabold',
           direction === 'BORROWED' ? 'text-expense' : 'text-income',
         )}
       />
@@ -231,7 +231,7 @@ function LoanRow({ loan }: { loan: Loan }) {
     <Link
       href={`/loans/${loan.id}`}
       onClick={() => haptic('tap')}
-      className="press rounded-card border-rule bg-surface hover:bg-greenbar block border p-4"
+      className="press rounded-card border-rule bg-surface hover:bg-greenbar block border-[1.5px] p-4"
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">

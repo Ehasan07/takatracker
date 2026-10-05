@@ -175,7 +175,7 @@ export function OfflineBar() {
             type="button"
             onClick={() => setShowFailures((open) => !open)}
             aria-expanded={showFailures}
-            className="press text-ink min-h-9 shrink-0 rounded-md px-2 text-xs font-medium underline"
+            className="press text-ink min-h-9 shrink-0 rounded-xl px-2 text-xs font-medium underline"
           >
             {showFailures ? t('offline.hide', 'লুকান') : t('offline.details', 'বিস্তারিত')}
           </button>
@@ -202,7 +202,7 @@ export function OfflineBar() {
               <button
                 type="button"
                 onClick={() => discard(item.id)}
-                className="press text-expense min-h-9 shrink-0 rounded-md px-2 font-medium underline"
+                className="press text-expense min-h-9 shrink-0 rounded-xl px-2 font-medium underline"
               >
                 বাতিল করুন
               </button>

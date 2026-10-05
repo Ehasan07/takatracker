@@ -55,7 +55,7 @@ export function QuantityField({
   }
 
   return (
-    <div className="rounded-card border-rule bg-brand-tint space-y-3 border p-3">
+    <div className="rounded-card border-rule bg-brand-tint space-y-3 border-[1.5px] p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-ink text-sm font-medium">{t('quantity.title', 'পরিমাণ')}</p>
         <button

@@ -128,7 +128,7 @@ export default function RenewalsPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+          <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
             নবায়ন ও কাগজপত্র
           </h1>
           <p className="text-ink-muted mt-1 text-sm">
@@ -142,7 +142,7 @@ export default function RenewalsPage() {
       </header>
 
       {needAttention.length > 0 ? (
-        <section className="rounded-card border-expense/40 bg-surface border p-4">
+        <section className="rounded-card border-expense/40 bg-surface border-[1.5px] p-4">
           <p className="text-expense flex items-center gap-1.5 text-sm font-medium">
             <AlertTriangle className="h-4 w-4" aria-hidden />
             {needAttention.length}টি কাগজ এখনই দেখা দরকার
@@ -151,7 +151,10 @@ export default function RenewalsPage() {
       ) : null}
 
       {feeNotice ? (
-        <section className="rounded-card border-brass/50 bg-surface border p-4" role="alert">
+        <section
+          className="rounded-card border-brass/50 bg-surface border-[1.5px] p-4"
+          role="alert"
+        >
           <p className="text-ink text-sm font-medium">
             তারিখ এগিয়ে গেছে, কিন্তু খরচটি খাতায় লেখা যায়নি
           </p>
@@ -166,9 +169,9 @@ export default function RenewalsPage() {
       ) : null}
 
       {yearAhead > 0 ? (
-        <section className="rounded-card border-rule bg-surface border p-4">
+        <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
           <p className="text-ink-muted text-sm">আগামী এক বছরে আনুমানিক খরচ</p>
-          <Money minor={yearAhead} className="text-xl font-semibold" />
+          <Money minor={yearAhead} className="text-xl font-bold" />
           <p className="text-ink-muted mt-1 text-xs">
             আপনার নিজের দেওয়া হিসাব — অ্যাপ কোনো অঙ্ক বানায় না।
           </p>
@@ -176,11 +179,11 @@ export default function RenewalsPage() {
       ) : null}
 
       {rows.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : list.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">এখনো কোনো কাগজ যোগ করা হয়নি।</p>
           <p className="text-ink-muted mt-1 text-sm">
             গাড়ির ফিটনেস, জমির খাজনা, ফ্ল্যাটের হোল্ডিং ট্যাক্স — যেটার তারিখ ভুলে যান সেটা দিয়ে
@@ -191,7 +194,7 @@ export default function RenewalsPage() {
           </Button>
         </div>
       ) : (
-        <ul className="rounded-card border-rule bg-surface overflow-hidden border">
+        <ul className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           {list.map((row) => (
             <li
               key={row.id}

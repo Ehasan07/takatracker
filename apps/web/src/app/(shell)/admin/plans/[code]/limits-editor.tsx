@@ -277,7 +277,7 @@ export function LimitsEditor({ plan, onGone }: { plan: AdminPlan; onGone: () => 
   }
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="text-ink text-base font-semibold">সীমা</h2>
         {changes.length > 0 ? (
@@ -565,7 +565,7 @@ function ReviewPanel({
   return (
     <div
       className={cn(
-        'rounded-card flex flex-col gap-3 border p-3 text-sm',
+        'rounded-card flex flex-col gap-3 border-[1.5px] p-3 text-sm',
         dangerous ? 'border-expense/40 bg-expense/10 text-ink' : 'border-rule bg-greenbar text-ink',
       )}
     >

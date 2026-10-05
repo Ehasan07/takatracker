@@ -148,7 +148,7 @@ function MessageView({
       {detail.isError ? (
         <QueryError message="বার্তাটির লেখা আনা যায়নি।" onRetry={() => void detail.refetch()} />
       ) : detail.isLoading ? (
-        <div className="border-rule flex flex-col gap-2.5 rounded-md border p-3" aria-hidden>
+        <div className="border-rule flex flex-col gap-2.5 rounded-xl border p-3" aria-hidden>
           <Skeleton className="h-3.5 w-4/5" />
           <Skeleton className="h-3.5 w-full" />
           <Skeleton className="h-3.5 w-11/12" />
@@ -162,7 +162,7 @@ function MessageView({
       {/* What the mailbox is for, at the moment it can actually be acted on.
           The server stores mail; it does not turn mail into drafts — see the
           note on the list screen — so the honest next step is the manual one. */}
-      <div className="border-rule bg-greenbar/60 flex flex-col gap-2 rounded-md border border-dashed p-3">
+      <div className="border-rule bg-greenbar/60 flex flex-col gap-2 rounded-xl border border-dashed p-3">
         <p className="text-ink-muted text-xs">
           এই বার্তায় কোনো লেনদেন থাকলে সেটি নিজে খাতায় তুলতে হবে — মেইল থেকে নিজে নিজে কোনো খসড়া
           তৈরি হয় না।

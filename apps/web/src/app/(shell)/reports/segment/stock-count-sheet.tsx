@@ -130,7 +130,7 @@ export function StockCountSheet({
           </p>
           <Money
             minor={done.costOfGoodsSoldMinor}
-            className="text-expense text-2xl font-semibold"
+            className="text-expense text-2xl font-extrabold"
           />
           <p className="text-ink-muted text-sm">
             {t(
@@ -177,7 +177,7 @@ export function StockCountSheet({
           </Field>
 
           {/* The figure being contradicted, before the box that contradicts it. */}
-          <div className="border-rule bg-greenbar rounded-md border p-3">
+          <div className="border-rule bg-greenbar rounded-xl border p-3">
             <p className="text-ink-muted text-xs">
               {t('segment.countLedger', 'খাতা অনুযায়ী মজুদ')}
             </p>
@@ -202,11 +202,11 @@ export function StockCountSheet({
           </Field>
 
           {cost !== null && cost > 0 ? (
-            <div className="border-rule rounded-md border p-3">
+            <div className="border-rule rounded-xl border p-3">
               <p className="text-ink-muted text-xs">
                 {t('segment.countCost', 'বিক্রীত পণ্যের ব্যয় হবে')}
               </p>
-              <Money minor={cost} className="text-expense text-xl font-semibold" />
+              <Money minor={cost} className="text-expense text-xl font-bold" />
             </div>
           ) : null}
 

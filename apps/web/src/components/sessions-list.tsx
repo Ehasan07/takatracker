@@ -247,8 +247,8 @@ export function SessionsList() {
 
   if (signedOut !== null) {
     return (
-      <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+        <h2 className="text-ink text-lg font-bold">
           {t('session.title', 'যেসব ডিভাইসে লগইন আছে')}
         </h2>
         <p role="status" className="text-ink mt-2 flex items-start gap-2 text-sm">
@@ -272,9 +272,9 @@ export function SessionsList() {
   }
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">
+        <h2 className="text-ink text-lg font-bold">
           {t('session.title', 'যেসব ডিভাইসে লগইন আছে')}
         </h2>
         {rows.length > 0 ? (
@@ -283,12 +283,12 @@ export function SessionsList() {
       </div>
 
       {notice ? (
-        <p role="status" className="bg-income/10 text-income mt-2 rounded-md px-3 py-2 text-sm">
+        <p role="status" className="bg-income/10 text-income mt-2 rounded-xl px-3 py-2 text-sm">
           {notice}
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense mt-2 rounded-md px-3 py-2 text-sm">
+        <p role="alert" className="bg-expense/10 text-expense mt-2 rounded-xl px-3 py-2 text-sm">
           {error}
         </p>
       ) : null}
@@ -296,7 +296,7 @@ export function SessionsList() {
       {sessions.isError ? (
         <div
           role="alert"
-          className="border-rule mt-3 flex flex-col items-center gap-2 rounded-md border border-dashed p-6 text-center"
+          className="border-rule mt-3 flex flex-col items-center gap-2 rounded-xl border border-dashed p-6 text-center"
         >
           <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
           <p className="text-ink text-sm">
@@ -308,7 +308,7 @@ export function SessionsList() {
           </Button>
         </div>
       ) : sessions.isLoading ? (
-        <div className="border-rule mt-3 overflow-hidden rounded-md border">
+        <div className="border-rule mt-3 overflow-hidden rounded-xl border">
           <SkeletonRows rows={3} />
         </div>
       ) : rows.length === 0 ? (

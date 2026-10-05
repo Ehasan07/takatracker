@@ -69,7 +69,7 @@ export default function AdminUsersPage() {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">ইউজার খুঁজুন</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">ইউজার খুঁজুন</h1>
         {rows.length > 0 ? (
           <p className="text-ink-muted text-xs">
             {bnNum(rows.length)}জন দেখানো হচ্ছে
@@ -99,11 +99,11 @@ export default function AdminUsersPage() {
       {list.isError ? (
         <QueryError message="ইউজারের তালিকা আনা যায়নি।" onRetry={() => void list.refetch()} />
       ) : list.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={5} />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <UserRound className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">{q ? 'এই খোঁজে কাউকে পাওয়া যায়নি।' : 'কোনো ইউজার নেই।'}</p>
         </div>
@@ -176,7 +176,7 @@ function UserCard({
   onEnter: (workspace: UserWorkspace) => void;
 }) {
   return (
-    <div className="rounded-card border-rule bg-surface border p-3">
+    <div className="rounded-card border-rule bg-surface border-[1.5px] p-3">
       <div className="flex min-w-0 items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-ink flex flex-wrap items-center gap-1.5 font-medium">

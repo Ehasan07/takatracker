@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
  * not jump when the data lands.
  */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('bg-greenbar animate-pulse rounded-md', className)} aria-hidden />;
+  return <div className={cn('bg-greenbar animate-pulse rounded-xl', className)} aria-hidden />;
 }
 
 export function SkeletonRows({ rows = 5 }: { rows?: number }) {
@@ -27,7 +27,7 @@ export function SkeletonRows({ rows = 5 }: { rows?: number }) {
 
 export function SkeletonCard({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-card border-rule bg-surface border p-4', className)}>
+    <div className={cn('rounded-card border-rule bg-surface border-[1.5px] p-5', className)}>
       <Skeleton className="h-3 w-24" />
       <Skeleton className="mt-3 h-7 w-40" />
       <div className="mt-4 space-y-2">

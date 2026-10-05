@@ -237,7 +237,7 @@ export function FeatureSheet({
               </span>
             </Field>
           ) : (
-            <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+            <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
               <span className="text-ink-muted text-xs">কী</span>
               <span className="text-ink break-all text-sm font-medium">{feature?.key}</span>
             </div>
@@ -278,7 +278,7 @@ export function FeatureSheet({
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+              <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
                 <span className="text-ink-muted text-xs">ধরন</span>
                 <span className="text-ink text-sm font-medium">{kindLabel(kind)}</span>
               </div>
@@ -312,7 +312,7 @@ export function FeatureSheet({
             </Field>
           ) : (
             <div className="flex flex-col gap-1.5">
-              <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+              <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
                 <span className="text-ink-muted text-xs">সময়কাল</span>
                 <span className="text-ink text-sm font-medium">{periodLabel(period)}</span>
               </div>
@@ -346,7 +346,7 @@ export function FeatureSheet({
           </Field>
 
           {mode === 'edit' && feature && isSeededFeature(feature.key) ? (
-            <p className="rounded-card border-rule bg-greenbar text-ink-muted border p-3 text-[11px]">
+            <p className="rounded-card border-rule bg-greenbar text-ink-muted border-[1.5px] p-3 text-[11px]">
               {SEEDED_FEATURE_HISTORY}
             </p>
           ) : null}
@@ -369,7 +369,7 @@ export function FeatureSheet({
           ) : null}
 
           {mode === 'create' ? (
-            <p className="rounded-card border-brass/40 bg-brass/10 text-ink border p-3 text-xs">
+            <p className="rounded-card border-brass/40 bg-brass/10 text-ink border-[1.5px] p-3 text-xs">
               {NEW_FEATURE_DEFAULT}
             </p>
           ) : null}

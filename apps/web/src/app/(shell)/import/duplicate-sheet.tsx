@@ -74,7 +74,7 @@ export function DuplicateSheet({
         </p>
 
         {scope === 'ALL_ACCOUNTS' ? (
-          <p className="text-brass bg-brass/10 rounded-md px-3 py-2 text-xs">
+          <p className="text-brass bg-brass/10 rounded-xl px-3 py-2 text-xs">
             {t(
               'import.duplicate.allAccounts',
               'এখনো কোনো অ্যাকাউন্ট বেছে নেওয়া হয়নি, তাই সব অ্যাকাউন্টে খোঁজা হয়েছে। অ্যাকাউন্ট বেছে নিলে তালিকাটি ছোট হবে।',
@@ -82,7 +82,7 @@ export function DuplicateSheet({
           </p>
         ) : null}
 
-        <ul className="divide-rule border-rule divide-y rounded-md border">
+        <ul className="divide-rule border-rule divide-y rounded-xl border">
           {matches.map((match) => (
             <li key={match.transactionId} className="flex flex-col gap-1 p-3">
               <div className="flex items-baseline justify-between gap-3">

@@ -129,12 +129,12 @@ export default function PrepaidSpreadPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">
           {t('prepaid.heading', 'মাসে মাসে ভাগ')}
         </h1>
         <Link
           href="/transactions"
-          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-md border px-3 text-sm"
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-xl border px-3 text-sm"
         >
           {t('prepaid.backToLedger', 'খাতায় ফিরুন')}
         </Link>
@@ -142,7 +142,7 @@ export default function PrepaidSpreadPage() {
 
       {/* First, before a single figure. Somebody who thinks these numbers are
           in the books would misread every one of them. */}
-      <div className="rounded-card border-rule bg-greenbar border p-3">
+      <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3">
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
@@ -185,11 +185,11 @@ export default function PrepaidSpreadPage() {
       </div>
 
       {spread.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <CalendarRange className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">
             {t('prepaid.empty', 'এখনও কোনো খরচকে কয়েক মাসের বলা হয়নি।')}
@@ -202,7 +202,7 @@ export default function PrepaidSpreadPage() {
           </p>
           <Link
             href="/transactions"
-            className="press bg-ink text-surface mt-3 inline-flex min-h-11 items-center rounded-md px-4 text-sm"
+            className="press bg-ink text-surface mt-3 inline-flex min-h-11 items-center rounded-xl px-4 text-sm"
           >
             {t('prepaid.goToLedger', 'খাতায় যান')}
           </Link>
@@ -212,14 +212,14 @@ export default function PrepaidSpreadPage() {
           {/* The window's own total, labelled for exactly what it is. Calling
               it "this year's expense" would be the one sentence on this page
               that was not true. */}
-          <div className="rounded-card border-rule bg-surface flex items-baseline justify-between gap-2 border p-3">
+          <div className="rounded-card border-rule bg-surface flex items-baseline justify-between gap-2 border-[1.5px] p-3">
             <span className="text-ink-muted text-xs">
               {t('prepaid.windowTotal', 'এই বারো মাসে ভাগ করে পড়ছে')}
             </span>
             <Money minor={spread.data?.windowTotalMinor ?? 0} className="text-lg font-semibold" />
           </div>
 
-          <ul className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border">
+          <ul className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border-[1.5px]">
             {months.map((month) => (
               <li key={month.month} className="p-3">
                 <div className="flex items-baseline justify-between gap-2">
@@ -262,7 +262,7 @@ export default function PrepaidSpreadPage() {
             <h2 className="text-ink text-sm font-semibold">
               {t('prepaid.itemsHeading', 'যেসব খরচ ভাগ করে দেখানো হচ্ছে')}
             </h2>
-            <ul className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border">
+            <ul className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border-[1.5px]">
               {items.map((item) => (
                 <li key={item.transactionId} className="flex items-start gap-3 p-3">
                   <div className="min-w-0 flex-1">

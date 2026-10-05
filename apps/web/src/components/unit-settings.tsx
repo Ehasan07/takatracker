@@ -108,8 +108,8 @@ export function UnitSettings() {
   };
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink-muted text-sm font-medium">পরিমাণের একক</h2>
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">পরিমাণের একক</h2>
       <p className="text-ink-muted mt-1 text-sm">
         লেনদেনে পরিমাণ লেখার সময় যে এককগুলো তালিকায় আসবে। কেজি-লিটার থেকে মণ, ভরি, কাঠা, বিঘা,
         পাউন্ড, গ্যালন — {bn(SHIPPED_COUNT)}টি একক সবার জন্যই থাকে। এর বাইরে কিছু লাগলে এখানে যোগ
@@ -127,7 +127,7 @@ export function UnitSettings() {
           it is a wall they scroll past to reach the box they came for. Open,
           it answers the only question this screen is asked — "is the one I
           need already here?" — grouped the way the picker groups it. */}
-      <details className="border-rule mt-3 rounded-md border">
+      <details className="border-rule mt-3 rounded-xl border">
         <summary className="press text-ink-muted flex min-h-11 cursor-pointer items-center px-3 text-sm">
           আগে থেকেই আছে এমন একক দেখুন
         </summary>

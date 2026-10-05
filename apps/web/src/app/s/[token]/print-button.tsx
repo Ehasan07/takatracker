@@ -13,7 +13,7 @@ export function PrintButton({ label }: { label: string }) {
     <button
       type="button"
       onClick={() => window.print()}
-      className="press border-rule text-ink hover:bg-greenbar mt-2 min-h-11 rounded-md border px-3 text-sm print:hidden"
+      className="press border-rule text-ink hover:bg-greenbar mt-2 min-h-11 rounded-xl border px-3 text-sm print:hidden"
     >
       {label}
     </button>

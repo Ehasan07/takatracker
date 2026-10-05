@@ -97,9 +97,9 @@ export function TelegramSettings() {
   const linked = Boolean(connection?.verifiedAt);
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">টেলিগ্রাম নোটিফিকেশন</h2>
+        <h2 className="text-ink text-lg font-bold">টেলিগ্রাম নোটিফিকেশন</h2>
         {connection ? (
           <span className="text-ink-muted text-xs">
             {STATUS_LABEL[connection.status] ?? connection.status}

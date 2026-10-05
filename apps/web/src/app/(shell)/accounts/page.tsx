@@ -311,7 +311,7 @@ export default function AccountsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
           {t('nav.accounts', 'অ্যাকাউন্ট')}
         </h1>
         <div className="flex items-center gap-2">
@@ -319,21 +319,21 @@ export default function AccountsPage() {
               answer "what do I keep books with", so they sit together. */}
           <Link
             href="/import"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <FileUp className="h-4 w-4" aria-hidden />
             আমদানি
           </Link>
           <Link
             href="/savings"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <PiggyBank className="h-4 w-4" aria-hidden />
             সঞ্চয়
           </Link>
           <Link
             href="/categories"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <Tags className="h-4 w-4" aria-hidden />
             ক্যাটাগরি
@@ -350,11 +350,11 @@ export default function AccountsPage() {
         </div>
       </header>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         {/* The headline is cash and cash equivalents alone — the only figure
             that answers "how much can I spend today". */}
         <p className="text-ink-muted text-sm">{t('account.total.liquid', 'হাতে ও ব্যাংকে')}</p>
-        <Money minor={subtotals.liquid} colored className="text-2xl font-semibold" />
+        <Money minor={subtotals.liquid} colored className="text-2xl font-extrabold" />
 
         <dl className="text-ink-muted mt-3 flex flex-col gap-1 text-sm">
           <div className="flex items-center justify-between gap-3">
@@ -404,18 +404,18 @@ export default function AccountsPage() {
       </section>
 
       {accounts.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : accounts.data?.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">{t('account.empty', 'এখনও কোনো অ্যাকাউন্ট নেই।')}</p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
             প্রথম অ্যাকাউন্ট যোগ করুন
           </Button>
         </div>
       ) : (
-        <ul className="rounded-card border-rule bg-surface overflow-hidden border">
+        <ul className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           {sections.flatMap(([group, rows]) => [
             <li
               key={`head-${group}`}
@@ -463,7 +463,7 @@ export default function AccountsPage() {
                     haptic('tap');
                     setEditing(account);
                   }}
-                  className="press flex min-h-11 min-w-0 flex-1 basis-full items-center gap-2 rounded-md text-left md:basis-0"
+                  className="press flex min-h-11 min-w-0 flex-1 basis-full items-center gap-2 rounded-xl text-left md:basis-0"
                 >
                   <AccountAvatar account={account} />
                   <span className="min-w-0 flex-1">
@@ -491,7 +491,7 @@ export default function AccountsPage() {
                     aria-label={`${account.name} — ${t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}`}
                     title={t('account.muteReminder', 'এই মাসের রিমাইন্ডার বন্ধ করুন')}
                     onClick={() => muteReminders.mutate(account.id)}
-                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl"
                   >
                     <BellOff className="h-4 w-4" aria-hidden />
                   </button>
@@ -503,7 +503,7 @@ export default function AccountsPage() {
                   href={`/accounts/${account.id}/statement`}
                   aria-label={`${account.name} — ${t('account.statement', 'হিসাব বিবরণী')}`}
                   title={t('account.statement', 'হিসাব বিবরণী')}
-                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl"
                 >
                   <FileText className="h-4 w-4" aria-hidden />
                 </Link>
@@ -521,7 +521,7 @@ export default function AccountsPage() {
                     aria-label={`${account.name} — ${t('account.sell', 'বিক্রি')}`}
                     title={t('account.sell', 'বিক্রি')}
                     onClick={() => setSelling(account)}
-                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl"
                   >
                     <HandCoins className="h-4 w-4" aria-hidden />
                   </button>
@@ -531,7 +531,7 @@ export default function AccountsPage() {
                     type="button"
                     aria-label={`${account.name} — ${t('account.revalue', 'মূল্যায়ন')}`}
                     onClick={() => setRevaluing(account)}
-                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl"
                   >
                     <TrendingUp className="h-4 w-4" aria-hidden />
                   </button>
@@ -540,7 +540,7 @@ export default function AccountsPage() {
                     type="button"
                     aria-label={`${account.name} — ${t('account.reconcile', 'মেলান')}`}
                     onClick={() => setReconciling(account)}
-                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+                    className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl"
                   >
                     <Scale className="h-4 w-4" aria-hidden />
                   </button>
@@ -608,7 +608,7 @@ export default function AccountsPage() {
             haptic('tap');
             setShowArchived((open) => !open);
           }}
-          className="press border-rule text-ink-muted hover:bg-greenbar flex min-h-11 items-center gap-2 self-start rounded-md border px-3 text-sm"
+          className="press border-rule text-ink-muted hover:bg-greenbar flex min-h-11 items-center gap-2 self-start rounded-xl border px-3 text-sm"
         >
           <Archive className="h-4 w-4" aria-hidden />
           {showArchived
@@ -618,16 +618,16 @@ export default function AccountsPage() {
 
         {showArchived ? (
           archived.isLoading ? (
-            <div className="rounded-card border-rule bg-surface overflow-hidden border">
+            <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
               <SkeletonRows rows={2} />
             </div>
           ) : (archived.data?.length ?? 0) === 0 ? (
-            <p className="text-ink-muted rounded-card border-rule border border-dashed p-4 text-center text-sm">
+            <p className="text-ink-muted rounded-card border-rule border-[1.5px] border-dashed p-4 text-center text-sm">
               আর্কাইভে কোনো অ্যাকাউন্ট নেই।
             </p>
           ) : (
             <>
-              <ul className="rounded-card border-rule bg-surface overflow-hidden border">
+              <ul className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
                 {(archived.data ?? []).map((account) => (
                   <li
                     key={account.id}
@@ -775,7 +775,7 @@ function ConfirmSheet({
       <div className="flex flex-col gap-4">
         <p className="text-ink text-sm">{body}</p>
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -1254,7 +1254,7 @@ function EditAccountSheet({
               aria-pressed={form.color === ''}
               onClick={() => setForm((f) => ({ ...f, color: '' }))}
               className={cn(
-                'press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-md border px-3 text-xs',
+                'press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center rounded-xl border px-3 text-xs',
                 form.color === '' && 'border-ink font-medium',
               )}
             >
@@ -1314,7 +1314,7 @@ function EditAccountSheet({
         {refusal ? (
           <div
             role="alert"
-            className="border-rule bg-greenbar text-ink flex flex-col items-start gap-2 rounded-md border p-3 text-sm"
+            className="border-rule bg-greenbar text-ink flex flex-col items-start gap-2 rounded-xl border p-3 text-sm"
           >
             <p>{refusal}</p>
             {/* Both loan refusals name the loan; the system-account one does not. */}
@@ -1757,8 +1757,8 @@ function ReconcileSheet({
                   onClick={() => setMode(key)}
                   className={
                     mode === key
-                      ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
-                      : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm'
+                      ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-xl px-1 text-sm font-semibold shadow-sm'
+                      : 'press text-ink-muted min-h-11 truncate rounded-xl px-1 text-sm'
                   }
                 >
                   {label}
@@ -1945,7 +1945,7 @@ function RevalueSheet({
         </Field>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -1959,7 +1959,7 @@ function RevalueSheet({
             <h3 className="text-ink-muted text-sm font-medium">
               {t('account.revalueHistory', 'আগের মূল্যায়ন')}
             </h3>
-            <ul className="divide-rule border-rule mt-2 divide-y rounded-md border">
+            <ul className="divide-rule border-rule mt-2 divide-y rounded-xl border">
               {(history.data ?? []).map((row) => (
                 <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2">
                   <span className="min-w-0">
@@ -2109,7 +2109,7 @@ function SellSheet({
         {/* The arithmetic, shown rather than left for somebody to do. The
             carrying amount is cost plus every revaluation since, which is why
             the gain here is smaller than the gain over what was paid. */}
-        <div className="rounded-card border-rule bg-greenbar border p-3 text-sm">
+        <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3 text-sm">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-ink-muted">{t('account.sellCarrying', 'খাতায় এখন আছে')}</span>
             <Money minor={carrying} className="text-ink-muted" />

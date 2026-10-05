@@ -99,7 +99,7 @@ export default function StatementsPage() {
         <button
           type="button"
           onClick={() => window.print()}
-          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
         >
           <Printer className="h-4 w-4" aria-hidden />
           {t('statements.print', 'প্রিন্ট বা PDF')}
@@ -107,7 +107,7 @@ export default function StatementsPage() {
       </div>
 
       <header>
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">
           {t('statements.title', 'আর্থিক বিবৃতি')}
         </h1>
         <p className="text-ink-muted text-sm">
@@ -125,7 +125,7 @@ export default function StatementsPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : (
@@ -174,7 +174,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-card border-rule bg-surface loan-print-block border p-4">
+    <section className="rounded-card border-rule bg-surface loan-print-block border-[1.5px] p-4">
       {/* `flex flex-wrap items-baseline` is the contract `InfoNote` documents:
           the trigger flows after the heading, and the opened note — being
           full-basis — drops to its own line across the card. */}
@@ -449,10 +449,8 @@ function BasisOfPreparation({
   revalued: boolean;
 }) {
   return (
-    <section className="rounded-card border-rule loan-print-block border border-dashed p-4">
-      <h2 className="text-ink-muted text-sm font-medium">
-        {t('statements.basis', 'প্রস্তুতির ভিত্তি')}
-      </h2>
+    <section className="rounded-card border-rule loan-print-block border-[1.5px] border-dashed p-4">
+      <h2 className="text-ink text-lg font-bold">{t('statements.basis', 'প্রস্তুতির ভিত্তি')}</h2>
       <ul className="text-ink-muted mt-2 space-y-1 text-xs">
         {/* The same flex-wrap contract as `Card`, so the note lands on its own
             line under the bullet rather than squeezing the sentence. */}

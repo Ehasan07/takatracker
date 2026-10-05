@@ -25,7 +25,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{message}</p>
@@ -124,7 +124,7 @@ export function Notice({
     <p
       role={tone === 'bad' ? 'alert' : 'status'}
       className={cn(
-        'rounded-md px-3 py-2 text-sm',
+        'rounded-xl px-3 py-2 text-sm',
         tone === 'ok' && 'bg-income/10 text-income',
         tone === 'warn' && 'bg-brass/10 text-brass',
         tone === 'bad' && 'bg-expense/10 text-expense',

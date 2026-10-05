@@ -63,7 +63,7 @@ export default function SplitGroupsPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+          <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
             {t('split.titleFull', 'ভাগাভাগি (ShareCost)')}
           </h1>
           <p className="text-ink-muted text-sm">
@@ -81,7 +81,7 @@ export default function SplitGroupsPage() {
       <InboxCard />
 
       {groups.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : rows.length === 0 ? (
@@ -90,7 +90,7 @@ export default function SplitGroupsPage() {
         <>
           <GroupList groups={live} />
           {archived.length > 0 ? (
-            <details className="rounded-card border-rule bg-surface border">
+            <details className="rounded-card border-rule bg-surface border-[1.5px]">
               <summary className="press text-ink-muted flex min-h-11 cursor-pointer items-center px-4 text-sm">
                 {t('split.archived', 'আর্কাইভ করা গ্রুপ')} ({fmtNumber(archived.length)})
               </summary>
@@ -153,10 +153,8 @@ function InboxCard() {
   if (rows.length === 0) return null;
 
   return (
-    <section className="rounded-card border-brand/40 bg-brand-tint border p-4">
-      <h2 className="text-ink text-sm font-medium">
-        {t('split.inbox', 'আপনার অনুমতির অপেক্ষায়')}
-      </h2>
+    <section className="rounded-card border-brand/40 bg-brand-tint border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">{t('split.inbox', 'আপনার অনুমতির অপেক্ষায়')}</h2>
       <p className="text-ink-muted mt-1 text-xs">
         {t('split.inboxHint', 'অন্য কেউ খরচ ভাগ করেছেন। আপনি রাজি হলে তবেই আপনার খাতায় উঠবে।')}
       </p>
@@ -210,7 +208,7 @@ function GroupList({ groups }: { groups: GroupSummary[] }) {
   if (groups.length === 0) return null;
   return (
     <ul
-      className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border"
+      className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border-[1.5px]"
       aria-label={t('split.groups', 'গ্রুপ')}
     >
       {groups.map((group) => (
@@ -257,7 +255,7 @@ function GroupList({ groups }: { groups: GroupSummary[] }) {
 
 function EmptyState({ onStart }: { onStart: () => void }) {
   return (
-    <div className="rounded-card border-rule bg-surface flex flex-col items-center gap-3 border border-dashed p-8 text-center">
+    <div className="rounded-card border-rule bg-surface flex flex-col items-center gap-3 border-[1.5px] border-dashed p-8 text-center">
       <UsersRound className="text-ink-muted h-8 w-8" aria-hidden />
       <div>
         <p className="text-ink font-medium">{t('split.emptyTitle', 'এখনও কোনো গ্রুপ নেই')}</p>
@@ -386,7 +384,7 @@ function NewGroupSheet({
         </p>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

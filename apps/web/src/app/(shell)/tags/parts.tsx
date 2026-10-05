@@ -74,7 +74,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{message}</p>
@@ -152,7 +152,7 @@ export function ConfirmSheet({
         <div className="text-ink text-sm">{body}</div>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

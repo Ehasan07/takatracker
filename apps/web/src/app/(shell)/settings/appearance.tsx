@@ -53,8 +53,8 @@ export function AppearanceSettings() {
   const { theme, mode, ready, setTheme, setMode } = useAppearance();
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink-muted text-sm font-medium">{t('theme.title', 'চেহারা')}</h2>
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">{t('theme.title', 'চেহারা')}</h2>
       <p className="text-ink-muted mt-1 text-sm">
         {t('theme.blurb', 'রং আর আলো — শুধু এই ফোনের জন্য, হিসাবের কিছু বদলায় না')}
       </p>
@@ -83,8 +83,8 @@ export function AppearanceSettings() {
               aria-pressed={on}
               className={
                 on
-                  ? 'border-brand bg-brand-tint text-ink flex min-h-11 flex-col justify-center gap-0.5 rounded-md border px-3 py-2 text-left'
-                  : 'press border-rule text-ink flex min-h-11 flex-col justify-center gap-0.5 rounded-md border px-3 py-2 text-left'
+                  ? 'border-brand bg-brand-tint text-ink flex min-h-11 flex-col justify-center gap-0.5 rounded-xl border px-3 py-2 text-left'
+                  : 'press border-rule text-ink flex min-h-11 flex-col justify-center gap-0.5 rounded-xl border px-3 py-2 text-left'
               }
             >
               <span className="flex items-center gap-1.5 text-sm font-semibold">
@@ -123,8 +123,8 @@ export function AppearanceSettings() {
               aria-pressed={on}
               className={
                 on
-                  ? 'border-brand bg-brand-tint text-ink min-h-11 rounded-md border px-2 text-sm font-semibold'
-                  : 'press border-rule text-ink min-h-11 rounded-md border px-2 text-sm'
+                  ? 'border-brand bg-brand-tint text-ink min-h-11 rounded-xl border px-2 text-sm font-semibold'
+                  : 'press border-rule text-ink min-h-11 rounded-xl border px-2 text-sm'
               }
             >
               {MODE_LABELS[option]()}
@@ -138,7 +138,7 @@ export function AppearanceSettings() {
 
       {/* `bg-paper` rather than nothing: the sample is standing in for a page,
           and a transparent box would show the card it is sitting on instead. */}
-      <div className="border-rule bg-paper mt-4 rounded-md border p-3" data-testid="theme-preview">
+      <div className="border-rule bg-paper mt-4 rounded-xl border p-3" data-testid="theme-preview">
         <p className="text-ink-muted text-xs">{t('theme.preview', 'দেখতে যেমন হবে')}</p>
         <dl className="mt-2 flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3">

@@ -145,7 +145,7 @@ export function TagSheet({
                   setColour(hex);
                 }}
                 className={cn(
-                  'press touch-target flex items-center justify-center rounded-md border-2',
+                  'press touch-target flex items-center justify-center rounded-xl border-2',
                   colour === hex ? 'border-ink' : 'border-transparent',
                 )}
               >
@@ -161,7 +161,7 @@ export function TagSheet({
                 setColour(null);
               }}
               className={cn(
-                'press touch-target text-ink-muted flex items-center justify-center rounded-md border-2',
+                'press touch-target text-ink-muted flex items-center justify-center rounded-xl border-2',
                 colour === null ? 'border-ink' : 'border-transparent',
               )}
             >
@@ -189,7 +189,7 @@ export function TagSheet({
         </p>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

@@ -108,9 +108,9 @@ export function IngestionSettings() {
     : '';
 
   return (
-    <section className="rounded-card border-rule bg-surface min-w-0 border p-4">
+    <section className="rounded-card border-rule bg-surface min-w-0 border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">বার্তা থেকে লেনদেন (ওয়েবহুক)</h2>
+        <h2 className="text-ink text-lg font-bold">বার্তা থেকে লেনদেন (ওয়েবহুক)</h2>
         <Link href="/inbox" className="text-income inline-flex items-center gap-1 text-xs">
           <Inbox className="h-3.5 w-3.5" aria-hidden />
           ইনবক্স দেখুন
@@ -125,7 +125,7 @@ export function IngestionSettings() {
       {config.isError ? (
         <div
           role="alert"
-          className="border-rule mt-3 rounded-md border border-dashed p-4 text-center"
+          className="border-rule mt-3 rounded-xl border border-dashed p-4 text-center"
         >
           <TriangleAlert className="text-expense mx-auto h-5 w-5" aria-hidden />
           <p className="text-ink mt-1 text-sm">ওয়েবহুকের তথ্য আনা যায়নি।</p>
@@ -157,7 +157,7 @@ export function IngestionSettings() {
           {!data.configured ? (
             <p
               role="status"
-              className="bg-brass/10 text-brass mt-3 flex items-start gap-2 rounded-md px-3 py-2 text-sm"
+              className="bg-brass/10 text-brass mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm"
             >
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>
@@ -409,7 +409,7 @@ function IphoneSteps() {
   ];
 
   return (
-    <details className="border-rule mt-4 rounded-md border p-3">
+    <details className="border-rule mt-4 rounded-xl border p-3">
       <summary className="text-ink cursor-pointer text-sm font-medium">
         আইফোনে কীভাবে সেট করবেন
       </summary>
@@ -497,7 +497,7 @@ function AndroidSteps() {
   ];
 
   return (
-    <details className="border-rule mt-4 rounded-md border p-3">
+    <details className="border-rule mt-4 rounded-xl border p-3">
       <summary className="text-ink cursor-pointer text-sm font-medium">
         অ্যান্ড্রয়েড ফোনে কীভাবে সেট করবেন
       </summary>

@@ -118,7 +118,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className="border-rule mt-3 flex flex-col items-center gap-2 rounded-md border border-dashed p-4 text-center"
+      className="border-rule mt-3 flex flex-col items-center gap-2 rounded-xl border border-dashed p-4 text-center"
     >
       <TriangleAlert className="text-expense h-5 w-5" aria-hidden />
       <p className="text-ink text-sm">{message}</p>
@@ -156,11 +156,11 @@ export function Panel({
   return (
     <section
       data-testid={testId}
-      className={cn('rounded-card border-rule bg-surface border p-4', className)}
+      className={cn('rounded-card border-rule bg-surface border-[1.5px] p-5', className)}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-ink-muted text-sm font-medium">{title}</h2>
+          <h2 className="text-ink text-lg font-bold">{title}</h2>
           <p className="text-ink-muted mt-0.5 text-xs">{scope}</p>
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}

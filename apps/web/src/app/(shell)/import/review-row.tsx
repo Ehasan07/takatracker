@@ -115,7 +115,7 @@ export function ReviewRow({
             <button
               type="button"
               onClick={onExplainDuplicate}
-              className="text-brass border-brass/40 mt-1 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+              className="text-brass border-brass/40 mt-1 inline-flex items-center gap-1 rounded-xl border px-2 py-1 text-xs"
             >
               {t('import.duplicate.badge', 'সম্ভাব্য ডুপ্লিকেট')}
               <Info className="h-3.5 w-3.5" aria-hidden />

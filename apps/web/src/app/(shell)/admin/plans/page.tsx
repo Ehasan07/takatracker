@@ -45,7 +45,7 @@ export default function AdminPlansPage() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">প্যাকেজ ও দাম</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">প্যাকেজ ও দাম</h1>
         {rows.length > 0 ? (
           <p className="text-ink-muted text-xs">
             {bnNum(live.length)}টি চালু
@@ -76,7 +76,7 @@ export default function AdminPlansPage() {
           <SkeletonCard />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <Layers className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">কোনো প্যাকেজ নেই।</p>
           <p className="text-ink-muted mt-1 text-sm">
@@ -150,7 +150,7 @@ function PlanCard({ plan }: { plan: AdminPlan }) {
     <Link
       href={`/admin/plans/${encodeURIComponent(plan.code)}`}
       onClick={() => haptic('tap')}
-      className="press rounded-card border-rule bg-surface hover:bg-greenbar block border p-3.5"
+      className="press rounded-card border-rule bg-surface hover:bg-greenbar block border-[1.5px] p-3.5"
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">

@@ -93,7 +93,7 @@ export function PaymentSheet({
           save.mutate();
         }}
       >
-        <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+        <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
           <span className="text-ink-muted text-xs">এখনও বাকি</span>
           <Money minor={outstandingMinor} className="text-base font-semibold" />
         </div>

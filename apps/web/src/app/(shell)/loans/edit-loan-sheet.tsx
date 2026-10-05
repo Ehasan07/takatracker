@@ -252,7 +252,7 @@ export function EditLoanSheet({
         }}
       >
         {/* Not editable — said once, as a fact, rather than as three dead controls. */}
-        <div className="bg-greenbar flex flex-col gap-1 rounded-md p-3">
+        <div className="bg-greenbar flex flex-col gap-1 rounded-xl p-3">
           <p className="text-ink text-sm">
             {person.name} · {directionLabel(loan.direction)}
           </p>
@@ -340,7 +340,7 @@ export function EditLoanSheet({
 
         {/* What the change is worth, before it is made. */}
         {preview ? (
-          <div className="border-rule flex flex-col gap-1 rounded-md border border-dashed p-3">
+          <div className="border-rule flex flex-col gap-1 rounded-xl border border-dashed p-3">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-ink-muted text-xs">নতুন মোট পাওনা</span>
               <Money minor={preview.totalPayableMinor} className="text-sm font-semibold" />

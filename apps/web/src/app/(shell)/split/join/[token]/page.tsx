@@ -53,7 +53,7 @@ export default function JoinGroupPage() {
   if (joined) {
     return (
       <div className="mx-auto flex w-full max-w-md flex-col gap-4 text-center">
-        <h1 className="text-ink text-xl font-semibold">
+        <h1 className="text-ink text-xl font-bold">
           {t('split.joined', 'যুক্ত হয়েছেন')} — {joined.groupName}
         </h1>
         <p className="text-ink-muted text-sm">
@@ -70,11 +70,9 @@ export default function JoinGroupPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
-      <h1 className="text-ink text-xl font-semibold">
-        {t('split.joinTitle', 'গ্রুপে যুক্ত হবেন?')}
-      </h1>
+      <h1 className="text-ink text-xl font-bold">{t('split.joinTitle', 'গ্রুপে যুক্ত হবেন?')}</h1>
 
-      <div className="rounded-card border-rule bg-surface border p-4">
+      <div className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <p className="text-ink text-sm">
           {t(
             'split.joinExplain',
@@ -92,7 +90,7 @@ export default function JoinGroupPage() {
       </div>
 
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+        <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
           {error}
         </p>
       ) : null}

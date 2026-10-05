@@ -67,7 +67,7 @@ export default function AdminOverviewPage() {
             "প্ল্যাটফর্ম" nav entry is added later — two headings with the same
             accessible name on one screen is a strict-mode failure for the tests
             that look them up by role. See the note in nav-model.ts. */}
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">প্ল্যাটফর্মের সারসংক্ষেপ</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">প্ল্যাটফর্মের সারসংক্ষেপ</h1>
         <p className="text-ink-muted text-xs">হিসাব করা হয়েছে {bnDateTime(data.generatedAt)}</p>
       </header>
 
@@ -87,7 +87,7 @@ export default function AdminOverviewPage() {
 
       <NearLimitCard data={data} featureName={featureName} />
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <h2 className="text-ink text-base font-semibold">অবস্থা অনুযায়ী</h2>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
           {Object.entries(data.tenants.byStatus).length === 0 ? (
@@ -105,7 +105,7 @@ export default function AdminOverviewPage() {
         </dl>
       </section>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <h2 className="text-ink text-base font-semibold">প্ল্যান অনুযায়ী</h2>
         <dl className="mt-3 flex flex-col gap-2">
           {data.tenants.byPlan.length === 0 ? (
@@ -143,7 +143,7 @@ function NearLimitCard({
   const near = data.nearLimit;
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="text-ink flex items-center gap-2 text-base font-semibold">
           <Gauge className="text-brass h-4 w-4" aria-hidden />
@@ -153,7 +153,7 @@ function NearLimitCard({
       </div>
 
       <p className="text-ink mt-2 text-sm">
-        <span className="text-2xl font-semibold">{bnNum(near.tenantCount)}</span>টি ওয়ার্কস্পেস —{' '}
+        <span className="text-2xl font-extrabold">{bnNum(near.tenantCount)}</span>টি ওয়ার্কস্পেস —{' '}
         {bnNum(near.tenantsScanned)}টি দেখে।
       </p>
 
@@ -228,7 +228,7 @@ function BreachRow({
     <Link
       href={`/admin/tenants/${breach.workspaceId}`}
       onClick={() => haptic('tap')}
-      className="press border-rule hover:bg-greenbar flex min-h-11 items-center gap-2 rounded-md border px-3 py-2"
+      className="press border-rule hover:bg-greenbar flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2"
     >
       <div className="min-w-0 flex-1">
         <p className="text-ink truncate text-sm">{breach.name}</p>
@@ -273,7 +273,7 @@ function SignupsCard({ data }: { data: Overview }) {
   const last = daily.at(-1);
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="text-ink text-base font-semibold">
           নতুন ওয়ার্কস্পেস — শেষ {bnNum(data.signups.windowDays)} দিন

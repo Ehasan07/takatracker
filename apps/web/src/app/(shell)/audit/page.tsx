@@ -151,7 +151,7 @@ export default function AuditPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-baseline justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">কার্যবিবরণী</h1>
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">কার্যবিবরণী</h1>
         {rows.length > 0 ? (
           <span className="text-ink-muted ml-auto text-xs">{bnNum(rows.length)}টি ঘটনা</span>
         ) : null}
@@ -159,7 +159,7 @@ export default function AuditPage() {
 
       {/* Said once, plainly. A log the reader believes could have been tidied up
           afterwards is worth nothing to them. */}
-      <p className="rounded-card border-rule bg-surface text-ink-muted flex items-start gap-2 border p-3 text-xs">
+      <p className="rounded-card border-rule bg-surface text-ink-muted flex items-start gap-2 border-[1.5px] p-3 text-xs">
         <Lock className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <span>
           এই তালিকায় শুধু নতুন লাইন <span className="text-ink font-medium">যোগ</span> হয়। কোনো
@@ -185,7 +185,7 @@ export default function AuditPage() {
       </Select>
 
       {entityId ? (
-        <div className="border-rule bg-greenbar flex min-h-11 items-center gap-2 rounded-md border px-3">
+        <div className="border-rule bg-greenbar flex min-h-11 items-center gap-2 rounded-xl border px-3">
           <span className="text-ink min-w-0 flex-1 truncate text-xs">
             একটি রেকর্ডের ঘটনা দেখানো হচ্ছে ({shortId(entityId)})
           </span>
@@ -196,7 +196,7 @@ export default function AuditPage() {
               setEntityId('');
             }}
             aria-label="এই রেকর্ডের ফিল্টার সরান"
-            className="press touch-target text-ink-muted hover:bg-surface -mr-2 flex items-center justify-center rounded-md"
+            className="press touch-target text-ink-muted hover:bg-surface -mr-2 flex items-center justify-center rounded-xl"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -206,11 +206,11 @@ export default function AuditPage() {
       {log.isError ? (
         <QueryError message="কার্যবিবরণী আনা যায়নি।" onRetry={() => void log.refetch()} />
       ) : log.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <ScrollText className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">
             {filtered ? 'এই ফিল্টারে কোনো ঘটনা নেই।' : 'এখনও কিছু রেকর্ড হয়নি।'}
@@ -276,7 +276,7 @@ function Row({
   const entity = entityLabel(event.entity);
 
   return (
-    <article className="rounded-card border-rule bg-surface min-w-0 border p-3.5">
+    <article className="rounded-card border-rule bg-surface min-w-0 border-[1.5px] p-3.5">
       <div className="flex min-w-0 items-start gap-3">
         <span
           className={cn(

@@ -39,7 +39,7 @@ export function FirstRunCard() {
   if (accounts.data.length > 0) return null;
 
   return (
-    <section className="rounded-card border-income/40 bg-surface border p-4">
+    <section className="rounded-card border-income/40 bg-surface border-[1.5px] p-4">
       <h2 className="text-ink text-base font-semibold">{t('firstRun.title', 'শুরু করা যাক')}</h2>
       <p className="text-ink-muted mt-1 text-sm">
         {t('firstRun.body', 'টাকা কোথায় আছে একবার বলে দিলে খাতা লেখা শুরু — দুই মিনিটের কাজ।')}

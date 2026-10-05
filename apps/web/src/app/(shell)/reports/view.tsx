@@ -195,7 +195,7 @@ function ReportsBody({ today }: { today: Date }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       <header className="flex items-baseline justify-between gap-2">
-        <h1 className="text-ink hidden text-2xl font-semibold md:block">
+        <h1 className="text-ink hidden text-2xl font-extrabold md:block">
           {t('nav.reports', 'রিপোর্ট')}
         </h1>
         {/* These screens answer "where did the money go"; the statements answer
@@ -213,7 +213,7 @@ function ReportsBody({ today }: { today: Date }) {
           {businessEnabled ? (
             <Link
               href="/reports/segment"
-              className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+              className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
             >
               <Briefcase className="h-4 w-4" aria-hidden />
               {t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
@@ -221,7 +221,7 @@ function ReportsBody({ today }: { today: Date }) {
           ) : null}
           <Link
             href="/reports/statements"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <FileText className="h-4 w-4" aria-hidden />
             {t('statements.title', 'আর্থিক বিবৃতি')}
@@ -333,7 +333,7 @@ function ReportsBody({ today }: { today: Date }) {
           <PanelSkeleton rows={1} />
         ) : (
           <>
-            <Money minor={sheet.data.netWorthMinor} colored className="text-2xl font-semibold" />
+            <Money minor={sheet.data.netWorthMinor} colored className="text-2xl font-extrabold" />
             <dl className="border-rule mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
               {(
                 [

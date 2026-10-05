@@ -144,7 +144,7 @@ export default function PlansPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header>
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
           প্ল্যান ও সীমা
         </h1>
         <p className="text-ink-muted text-sm md:mt-1">
@@ -161,7 +161,7 @@ export default function PlansPage() {
           that tells somebody they cannot buy what they are trying to buy is
           worse than no page. What is still true, and is said instead, is that
           the invoice cannot tell us who paid — so the switch is by hand. */}
-      <div className="rounded-card border-brand/40 bg-brand-tint border p-3.5">
+      <div className="rounded-card border-brand/40 bg-brand-tint border-[1.5px] p-3.5">
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
@@ -182,7 +182,7 @@ export default function PlansPage() {
             /* `noopener` is the security half — without it the payment page
                keeps a live handle back into this one. */
             rel="noopener noreferrer"
-            className="press bg-brand text-brand-contrast hover:bg-brand-strong inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium"
+            className="press bg-brand text-brand-contrast hover:bg-brand-strong inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium"
           >
             প্রিমিয়াম কিনুন — মাসে ৳৩৫০
           </a>
@@ -190,7 +190,7 @@ export default function PlansPage() {
             href={CONTACT.whatsapp}
             target="_blank"
             rel="noopener noreferrer"
-            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium"
           >
             হোয়াটসঅ্যাপে জানান
           </a>
@@ -219,11 +219,11 @@ export default function PlansPage() {
             onRetry={() => void catalogue.refetch()}
           />
         ) : catalogue.isLoading ? (
-          <div className="rounded-card border-rule bg-surface overflow-hidden border">
+          <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
             <SkeletonRows rows={5} />
           </div>
         ) : (catalogue.data ?? []).length === 0 ? (
-          <div className="rounded-card border-rule border border-dashed p-8 text-center">
+          <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
             <p className="text-ink">{t('plan.none', 'দেখানোর মতো কোনো প্ল্যান নেই।')}</p>
           </div>
         ) : (
@@ -272,11 +272,9 @@ function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: Featu
   });
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="text-ink-muted text-sm font-medium">
-          {t('plan.current', 'আপনার এখনকার প্ল্যান')}
-        </h2>
+        <h2 className="text-ink text-lg font-bold">{t('plan.current', 'আপনার এখনকার প্ল্যান')}</h2>
         <span className="text-ink text-base font-semibold">
           {data?.plan?.name ?? t('plan.free', 'ফ্রি')}
         </span>
@@ -293,7 +291,7 @@ function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: Featu
       )}
 
       {exhausted.length > 0 ? (
-        <div className="border-expense/40 bg-expense/10 mt-3 rounded-md border p-3">
+        <div className="border-expense/40 bg-expense/10 mt-3 rounded-xl border p-3">
           <p className="text-expense text-sm font-medium">
             {exhausted.map((view) => view.label).join(', ')} — সীমা শেষ
           </p>
@@ -308,7 +306,7 @@ function CurrentPlan({ data, views }: { data: Snapshot | undefined; views: Featu
           {exhausted.some((view) => view.key === 'accounts.max') ? (
             <Link
               href="/accounts"
-              className="press border-rule bg-surface text-ink mt-2 inline-flex min-h-11 items-center rounded-md border px-3 text-xs font-medium md:min-h-9"
+              className="press border-rule bg-surface text-ink mt-2 inline-flex min-h-11 items-center rounded-xl border px-3 text-xs font-medium md:min-h-9"
             >
               অ্যাকাউন্ট দেখুন
             </Link>
@@ -479,7 +477,7 @@ function Catalogue({
           <article
             key={plan.code}
             className={cn(
-              'rounded-card border-rule bg-surface border p-4',
+              'rounded-card border-rule bg-surface border-[1.5px] p-5',
               plan.code === currentCode && 'border-income',
             )}
           >
@@ -514,7 +512,7 @@ function Catalogue({
 
       {/* Desktop gets the comparison table, in its own scroller so a third tier
           can never push the page sideways. */}
-      <div className="rounded-card border-rule bg-surface hidden overflow-x-auto border md:block">
+      <div className="rounded-card border-rule bg-surface hidden overflow-x-auto border-[1.5px] md:block">
         <table className="w-full min-w-[32rem] text-sm">
           <caption className="text-ink-muted px-4 py-3 text-left text-xs">
             দাম খসড়া, আর এখান থেকে কিছু কেনা যায় না।

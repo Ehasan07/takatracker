@@ -153,7 +153,7 @@ export function ImpersonationBar() {
     return (
       <div
         role="status"
-        className="rounded-card border-income/40 bg-income/10 sticky top-0 z-20 mb-3 border p-3"
+        className="rounded-card border-income/40 bg-income/10 sticky top-0 z-20 mb-3 border-[1.5px] p-3"
       >
         <div className="flex items-start gap-2">
           <Check className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -172,7 +172,7 @@ export function ImpersonationBar() {
             type="button"
             onClick={() => setClosed(null)}
             aria-label="এই বার্তা সরান"
-            className="press touch-target text-ink-muted hover:bg-surface -mr-2 -mt-1 flex items-center justify-center rounded-md"
+            className="press touch-target text-ink-muted hover:bg-surface -mr-2 -mt-1 flex items-center justify-center rounded-xl"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -210,7 +210,7 @@ export function ImpersonationBar() {
       role="region"
       aria-label="সাপোর্ট মোড"
       className={cn(
-        'rounded-card sticky top-0 z-20 mb-3 border p-3',
+        'rounded-card sticky top-0 z-20 mb-3 border-[1.5px] p-3',
         expired
           ? 'border-rule bg-greenbar text-ink'
           : 'border-expense bg-expense text-white shadow-lg',

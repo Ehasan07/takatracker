@@ -375,7 +375,7 @@ export function AddExpenseSheet({
           </Select>
         </Field>
 
-        <fieldset className="rounded-card border-rule border p-3">
+        <fieldset className="rounded-card border-rule border-[1.5px] p-3">
           <legend className="text-ink-muted px-1 text-xs">{t('split.who', 'কারা ছিলেন')}</legend>
           <ul className="divide-rule divide-y">
             {rows.map((row) => (
@@ -454,7 +454,7 @@ export function AddExpenseSheet({
           </Field>
         ) : null}
 
-        <details className="rounded-card border-rule border">
+        <details className="rounded-card border-rule border-[1.5px]">
           <summary className="press text-ink-muted flex min-h-11 cursor-pointer items-center px-3 text-sm">
             {t('split.more', 'নোট')}
           </summary>
@@ -471,7 +471,7 @@ export function AddExpenseSheet({
         </details>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

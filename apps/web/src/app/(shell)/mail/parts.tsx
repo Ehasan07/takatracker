@@ -30,7 +30,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{message}</p>
@@ -143,7 +143,7 @@ export function AuthFailedNotice({
     <div
       role="alert"
       className={cn(
-        'border-expense/40 bg-expense/10 flex flex-col gap-2 rounded-md border p-3',
+        'border-expense/40 bg-expense/10 flex flex-col gap-2 rounded-xl border p-3',
         className,
       )}
     >
@@ -202,7 +202,7 @@ export function MessageBody({ body, className }: { body: string | null; classNam
     return (
       <p
         className={cn(
-          'border-rule text-ink-muted rounded-md border border-dashed p-3 text-sm',
+          'border-rule text-ink-muted rounded-xl border border-dashed p-3 text-sm',
           className,
         )}
       >
@@ -215,7 +215,7 @@ export function MessageBody({ body, className }: { body: string | null; classNam
   return (
     <div
       className={cn(
-        'border-rule bg-paper text-ink rounded-md border p-3',
+        'border-rule bg-paper text-ink rounded-xl border p-3',
         // Reading typography, not ledger typography: a longer line height and a
         // measure that stops at ~70 characters on a wide window.
         'text-[15px] leading-7 md:text-base',

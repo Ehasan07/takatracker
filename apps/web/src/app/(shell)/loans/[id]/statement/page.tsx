@@ -46,7 +46,7 @@ export default function LoanStatementPage() {
         {personId ? (
           <Link
             href={`/loans/people/${personId}`}
-            className="press border-rule text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <User className="h-4 w-4" aria-hidden />
             পার্টি লেজার
@@ -66,7 +66,7 @@ export default function LoanStatementPage() {
 
       {/* The phone gets this from the shell's title bar, which names this route
           explicitly; printing drops it either way via `no-print`. */}
-      <h1 className="text-ink no-print hidden text-xl font-semibold sm:text-2xl md:block">
+      <h1 className="text-ink no-print hidden text-xl font-extrabold sm:text-2xl md:block">
         ঋণের বিবরণী
       </h1>
 
@@ -85,7 +85,7 @@ export default function LoanStatementPage() {
         onShareLink={() => setSharing(true)}
       >
         {loan ? (
-          <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4 sm:grid-cols-4">
+          <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border-[1.5px] p-4 sm:grid-cols-4">
             <div className="min-w-0">
               <dt className="text-ink-muted text-xs">মূল টাকা</dt>
               <dd>

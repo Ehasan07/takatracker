@@ -345,7 +345,7 @@ export function AttachmentPicker({
           {pending.map((item) => (
             <li
               key={item.key}
-              className="border-rule bg-surface flex w-full items-center gap-3 rounded-md border p-2 sm:w-auto"
+              className="border-rule bg-surface flex w-full items-center gap-3 rounded-xl border p-2 sm:w-auto"
             >
               {item.previewUrl ? (
                 /* The local file, not a round trip: the thumbnail is there the
@@ -353,11 +353,11 @@ export function AttachmentPicker({
                 <img
                   src={item.previewUrl}
                   alt=""
-                  className="border-rule h-11 w-11 shrink-0 rounded-md border object-cover"
+                  className="border-rule h-11 w-11 shrink-0 rounded-xl border object-cover"
                 />
               ) : (
                 <span
-                  className="bg-greenbar text-ink-muted flex h-11 w-11 shrink-0 items-center justify-center rounded-md"
+                  className="bg-greenbar text-ink-muted flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
                   aria-hidden
                 >
                   <Paperclip className="h-4 w-4" />
@@ -394,7 +394,7 @@ export function AttachmentPicker({
                   type="button"
                   onClick={() => retry(item)}
                   aria-label={t('attach.retry', 'আবার চেষ্টা করুন')}
-                  className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-md"
+                  className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-xl"
                 >
                   <RotateCw className="h-4 w-4" aria-hidden />
                 </button>
@@ -410,7 +410,7 @@ export function AttachmentPicker({
                     ? t('quantity.remove', 'বাদ দিন')
                     : t('attach.cancel', 'আপলোড বাতিল করুন')
                 }
-                className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-md"
+                className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-xl"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>

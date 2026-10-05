@@ -125,7 +125,7 @@ export default function AssetsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
           {t('assets.title', 'স্থাবর ও দীর্ঘমেয়াদি সম্পদ')}
         </h1>
         <Link href="/accounts" className="ms-auto">
@@ -137,11 +137,11 @@ export default function AssetsPage() {
       </header>
 
       {accounts.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : assets.length === 0 && sold.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">
             {t('assets.none', 'এখনও কোনো জমি, গাড়ি বা স্বর্ণ যোগ করা হয়নি।')}
           </p>
@@ -158,12 +158,12 @@ export default function AssetsPage() {
       ) : (
         <>
           {/* The headline: what it is worth now, and what that cost. */}
-          <div className="rounded-card border-rule bg-greenbar border p-4">
+          <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-4">
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-ink-muted text-sm">
                 {t('assets.totalValue', 'এখনকার মোট মূল্য')}
               </span>
-              <Money minor={totalValue} className="text-ink text-xl font-semibold" />
+              <Money minor={totalValue} className="text-ink text-xl font-bold" />
             </div>
 
             {withCost.length > 0 ? (
@@ -219,7 +219,7 @@ export default function AssetsPage() {
             return (
               <section
                 key={group.key}
-                className="rounded-card border-rule bg-surface overflow-hidden border"
+                className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]"
               >
                 <header className="border-rule flex items-center justify-between gap-2 border-b px-3.5 py-2.5">
                   <span className="text-ink flex items-center gap-2 text-sm font-medium">
@@ -278,7 +278,7 @@ export default function AssetsPage() {
           {/* Sold, and out of every total above. Kept because "what did I do
               with the Bosila land" is a question that outlives the land. */}
           {sold.length > 0 ? (
-            <section className="rounded-card border-rule bg-surface overflow-hidden border opacity-80">
+            <section className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px] opacity-80">
               <header className="border-rule flex items-center gap-2 border-b px-3.5 py-2.5">
                 <Archive className="text-ink-muted h-4 w-4" aria-hidden />
                 <span className="text-ink-muted text-sm font-medium">

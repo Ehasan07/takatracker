@@ -176,11 +176,9 @@ export function MailSettings() {
   const rows = accounts.data ?? [];
 
   return (
-    <section className="rounded-card border-rule bg-surface min-w-0 border p-4">
+    <section className="rounded-card border-rule bg-surface min-w-0 border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">
-          {t('mail.title', 'ইমেইল থেকে স্টেটমেন্ট')}
-        </h2>
+        <h2 className="text-ink text-lg font-bold">{t('mail.title', 'ইমেইল থেকে স্টেটমেন্ট')}</h2>
         <Link href="/mail" className="text-income inline-flex items-center gap-1 text-xs">
           <Mail className="h-3.5 w-3.5" aria-hidden />
           মেইলবক্স দেখুন
@@ -201,7 +199,7 @@ export function MailSettings() {
       {accounts.isError ? (
         <div
           role="alert"
-          className="border-rule mt-3 rounded-md border border-dashed p-4 text-center"
+          className="border-rule mt-3 rounded-xl border border-dashed p-4 text-center"
         >
           <TriangleAlert className="text-expense mx-auto h-5 w-5" aria-hidden />
           <p className="text-ink mt-1 text-sm">
@@ -226,7 +224,7 @@ export function MailSettings() {
       ) : (
         <>
           {rows.length === 0 ? (
-            <p className="border-rule text-ink-muted mt-4 rounded-md border border-dashed p-4 text-sm">
+            <p className="border-rule text-ink-muted mt-4 rounded-xl border border-dashed p-4 text-sm">
               এখনো কোনো মেইলবক্স যুক্ত করা হয়নি।
             </p>
           ) : (
@@ -379,7 +377,7 @@ function AccountCard({
   const next = nextSweepLine(account.status, account.lastSyncAt, now);
 
   return (
-    <div className="border-rule rounded-md border p-3">
+    <div className="border-rule rounded-xl border p-3">
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
         <p className="text-ink min-w-0 break-all text-sm font-medium">{account.email}</p>
         <StatusPill status={account.status} />
@@ -420,7 +418,7 @@ function AccountCard({
           worker will try again on the next sweep, and saying so is the
           difference between a warning and an alarm. */}
       {!broken && account.lastError ? (
-        <p className="bg-brass/10 text-brass mt-3 flex items-start gap-2 rounded-md px-3 py-2 text-xs">
+        <p className="bg-brass/10 text-brass mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-xs">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
             শেষবার পড়া যায়নি: {account.lastError} সিঙ্ক বন্ধ হয়নি — পরের বার আবার চেষ্টা করা হবে।
@@ -690,7 +688,7 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
           ) : null}
         </Field>
 
-        <details className="border-rule rounded-md border p-3">
+        <details className="border-rule rounded-xl border p-3">
           <summary className="text-ink cursor-pointer text-sm font-medium">
             আরও সেটিং (ইচ্ছা হলে)
           </summary>
@@ -727,7 +725,7 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
       </fieldset>
 
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+        <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
           {error}
         </p>
       ) : null}
@@ -760,7 +758,7 @@ function ConnectFormBody({ onConnected }: { onConnected: (account: MailAccountVi
  */
 function MicrosoftNotice({ message }: { message?: string }) {
   return (
-    <div className="bg-brass/10 text-brass flex items-start gap-2 rounded-md px-3 py-2 text-sm">
+    <div className="bg-brass/10 text-brass flex items-start gap-2 rounded-xl px-3 py-2 text-sm">
       <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <span>
         {message ??
@@ -895,7 +893,7 @@ function PasswordFormBody({
       </fieldset>
 
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+        <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
           {error}
         </p>
       ) : null}
@@ -985,7 +983,7 @@ function DisconnectSheet({
           </p>
 
           {error ? (
-            <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
               {error}
             </p>
           ) : null}

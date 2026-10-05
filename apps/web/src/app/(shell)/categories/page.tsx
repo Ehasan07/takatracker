@@ -177,7 +177,7 @@ export default function CategoriesPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="hidden items-center justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">{t('cat.title', 'ক্যাটাগরি')}</h1>
+        <h1 className="text-ink text-2xl font-extrabold">{t('cat.title', 'ক্যাটাগরি')}</h1>
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="h-4 w-4" aria-hidden />
           নতুন
@@ -216,8 +216,8 @@ export default function CategoriesPage() {
               className={
                 // 44px, like every other target on the screen.
                 kind === value
-                  ? 'press bg-brand text-brand-contrast min-h-11 rounded-md text-sm font-semibold shadow-sm'
-                  : 'press text-ink-muted min-h-11 rounded-md text-sm'
+                  ? 'press bg-brand text-brand-contrast min-h-11 rounded-xl text-sm font-semibold shadow-sm'
+                  : 'press text-ink-muted min-h-11 rounded-xl text-sm'
               }
             >
               {label}
@@ -236,7 +236,7 @@ export default function CategoriesPage() {
           else setSelecting(true);
         }}
         className={cn(
-          'press flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium',
+          'press flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium',
           selecting
             ? 'border-brand bg-brand-tint text-brand'
             : 'border-rule text-ink hover:bg-greenbar',
@@ -250,7 +250,7 @@ export default function CategoriesPage() {
 
       {/* Said once, at the top: what the second level is for and why there is no
           third. Nobody who has not used sub-categories knows either. */}
-      <div className="rounded-card border-rule bg-greenbar border p-3.5">
+      <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3.5">
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
@@ -269,7 +269,7 @@ export default function CategoriesPage() {
       ) : categories.isLoading ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="rounded-card border-rule bg-surface border p-3">
+            <div key={i} className="rounded-card border-rule bg-surface border-[1.5px] p-3">
               <Skeleton className="h-4 w-2/5" />
               <Skeleton className="mt-2 h-3 w-3/5" />
               <Skeleton className="mt-4 h-4 w-1/3" />
@@ -277,7 +277,7 @@ export default function CategoriesPage() {
           ))}
         </div>
       ) : groups.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">
             {kind === 'EXPENSE'
               ? t('cat.noneExpense', 'এখনও কোনো খরচের খাত নেই।')
@@ -292,7 +292,7 @@ export default function CategoriesPage() {
           {groups.map(({ parent, children }) => (
             <li
               key={parent.id}
-              className="rounded-card border-rule bg-surface overflow-hidden border"
+              className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]"
             >
               <CategoryLine
                 category={parent}
@@ -358,7 +358,7 @@ export default function CategoriesPage() {
           picked: an empty bar is a permanent strip of chrome earning nothing. */}
       {selecting && selected.size > 0 ? (
         <div className="sticky bottom-2 z-20 flex items-center gap-2">
-          <div className="rounded-card border-brand bg-surface flex min-w-0 flex-1 items-center gap-2 border p-2 shadow-lg">
+          <div className="rounded-card border-brand bg-surface flex min-w-0 flex-1 items-center gap-2 border-[1.5px] p-2 shadow-lg">
             <span className="text-ink min-w-0 flex-1 truncate px-1 text-sm font-medium">
               {t('cat.selectedN', '{n}টি বাছাই করা').replace('{n}', bn(selected.size))}
             </span>
@@ -519,7 +519,7 @@ function CategoryLine({
           disabled={!selectable}
           onClick={onToggle}
           className={cn(
-            'press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left',
+            'press flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-1 text-left',
             selectable ? 'hover:bg-greenbar' : 'cursor-not-allowed opacity-45',
           )}
         >
@@ -556,7 +556,7 @@ function CategoryLine({
         type="button"
         aria-label={`${nameOf(category)} সম্পাদনা`}
         onClick={onEdit}
-        className="press hover:bg-greenbar flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left"
+        className="press hover:bg-greenbar flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-1 text-left"
       >
         <span className="min-w-0 flex-1">
           <span
@@ -574,7 +574,7 @@ function CategoryLine({
           aria-label={`${nameOf(category)}-এর লেনদেন অন্য খাতে সরান`}
           title={t('cat.moveTitle', 'লেনদেনগুলো অন্য খাতে সরান')}
           onClick={onMove}
-          className="press touch-target text-income hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md"
+          className="press touch-target text-income hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl"
         >
           <Merge className="h-4 w-4" aria-hidden />
         </button>
@@ -593,7 +593,7 @@ function QueryError({ onRetry }: { onRetry: () => void }) {
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{t('cat.listFailed', 'খাতের তালিকা আনা যায়নি।')}</p>
@@ -635,7 +635,7 @@ function ConfirmSheet({
       <div className="flex flex-col gap-4">
         <p className="text-ink text-sm">{body}</p>
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -810,7 +810,7 @@ function MoveSheet({
 
             {/* The direction, drawn. A sentence can be misread; an arrow between
                 two named boxes cannot. */}
-            <div className="rounded-card border-rule bg-greenbar flex items-center gap-2 border p-3">
+            <div className="rounded-card border-rule bg-greenbar flex items-center gap-2 border-[1.5px] p-3">
               <span className="text-ink min-w-0 truncate text-sm line-through">{fromName}</span>
               <ArrowRight className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />
               <span className="text-ink min-w-0 truncate text-sm font-medium">
@@ -857,7 +857,7 @@ function MoveSheet({
             )}
 
             {error ? (
-              <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+              <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
                 {error}
               </p>
             ) : null}
@@ -998,7 +998,7 @@ function ReparentSheet({
         {error ? (
           <p
             role="alert"
-            className="bg-expense/10 text-expense whitespace-pre-line rounded-md px-3 py-2 text-sm"
+            className="bg-expense/10 text-expense whitespace-pre-line rounded-xl px-3 py-2 text-sm"
           >
             {error}
           </p>

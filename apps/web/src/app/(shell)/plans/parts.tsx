@@ -26,7 +26,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{message}</p>
@@ -84,10 +84,10 @@ export function PlanPrice({
   interval: string;
   className?: string;
 }) {
-  if (priceMinor <= 0) return <span className="text-ink text-xl font-semibold">ফ্রি</span>;
+  if (priceMinor <= 0) return <span className="text-ink text-xl font-bold">ফ্রি</span>;
   return (
     <span className={cn('flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5', className)}>
-      <Money minor={priceMinor} className="text-ink text-xl font-semibold" decimals={false} />
+      <Money minor={priceMinor} className="text-ink text-xl font-bold" decimals={false} />
       <span className="text-ink-muted text-xs">/ {interval === 'YEARLY' ? 'বছর' : 'মাস'}</span>
       <span className="bg-brass/15 text-brass rounded-full px-2 py-0.5 text-[11px] font-medium">
         খসড়া দাম

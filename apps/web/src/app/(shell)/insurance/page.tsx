@@ -125,13 +125,13 @@ export default function InsurancePage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
           {t('insurance.word', 'বীমা')}
         </h1>
         <div className="flex items-center gap-2">
           <Link
             href="/savings"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <PiggyBank className="h-4 w-4" aria-hidden />
             সঞ্চয়
@@ -144,11 +144,11 @@ export default function InsurancePage() {
       </header>
 
       {policies.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={2} />
         </div>
       ) : (policies.data?.length ?? 0) === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">{t('insurance.none', 'এখনও কোনো বীমা পলিসি যোগ করা হয়নি।')}</p>
           <Button className="mt-3" onClick={() => setAddOpen(true)}>
             প্রথম পলিসি যোগ করুন
@@ -157,7 +157,7 @@ export default function InsurancePage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {(policies.data ?? []).map((policy) => (
-            <li key={policy.id} className="rounded-card border-rule bg-surface border p-4">
+            <li key={policy.id} className="rounded-card border-rule bg-surface border-[1.5px] p-4">
               <button
                 type="button"
                 onClick={() => setOpenId(policy.id)}
@@ -212,7 +212,7 @@ export default function InsurancePage() {
       >
         {detail.data ? (
           <div className="flex flex-col gap-4">
-            <dl className="bg-greenbar grid grid-cols-2 gap-2 rounded-md p-3 text-xs">
+            <dl className="bg-greenbar grid grid-cols-2 gap-2 rounded-xl p-3 text-xs">
               <div>
                 <dt className="text-ink-muted">{t('insurance.sumAssured', 'বীমার অঙ্ক')}</dt>
                 <dd>
@@ -234,7 +234,7 @@ export default function InsurancePage() {
                 be read as today's. Nothing here is in the ledger, which the
                 last line says out loud rather than leaving to be discovered. */}
             {detail.data.valuedOn ? (
-              <section className="border-rule rounded-md border p-3">
+              <section className="border-rule rounded-xl border p-3">
                 <h3 className="text-ink-muted mb-2 text-xs">
                   {t('insurance.valuation', 'বীমা প্রতিষ্ঠানের হিসাব')}
                   {' · '}
@@ -315,7 +315,7 @@ export default function InsurancePage() {
                     <button
                       type="button"
                       onClick={() => pay.mutate({ policyId: detail.data!.id, premiumId: row.id })}
-                      className="press border-rule text-ink hover:bg-greenbar w-24 shrink-0 rounded-md border py-1.5 text-xs"
+                      className="press border-rule text-ink hover:bg-greenbar w-24 shrink-0 rounded-xl border py-1.5 text-xs"
                     >
                       দিলাম
                     </button>
@@ -443,7 +443,7 @@ function ConfirmSheet({
       <div className="flex flex-col gap-4">
         <p className="text-ink text-sm">{body}</p>
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -779,7 +779,7 @@ function PolicySheet({
             suggest every policy ought to have one. The date leads the group
             because it is the field that makes the rest mean anything — without
             it a cash value read two years ago still reads as today's. */}
-        <fieldset className="border-rule flex flex-col gap-4 rounded-md border p-3">
+        <fieldset className="border-rule flex flex-col gap-4 rounded-xl border p-3">
           <legend className="text-ink-muted px-1 text-xs">
             {t('insurance.valuation', 'বীমা প্রতিষ্ঠানের হিসাব')}
           </legend>

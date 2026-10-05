@@ -376,7 +376,7 @@ export default function MigrationPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header>
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">আগের সফটওয়্যার থেকে আনুন</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">আগের সফটওয়্যার থেকে আনুন</h1>
         <p className="text-ink-muted mt-1 text-sm">
           আগের অ্যাপের অ্যাকাউন্ট আর খাতগুলো এখানে আনুন। সবকিছু আগে খসড়া হিসেবে থাকবে — আপনি দেখে
           অনুমোদন না দিলে খাতায় কিছুই তৈরি হবে না, আর অনুমোদনের পরেও ফিরিয়ে নেওয়া যাবে।
@@ -388,8 +388,8 @@ export default function MigrationPage() {
       {/* The spreadsheet door, open to everybody: a list of headings typed in
           Excel is a chart of accounts too, and it asks for nobody's password. */}
       {!batches.isLoading && !draft ? (
-        <section className="rounded-card border-rule bg-surface border p-4">
-          <h2 className="text-ink text-sm font-medium">এক্সেল থেকে আনুন</h2>
+        <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+          <h2 className="text-ink text-lg font-bold">এক্সেল থেকে আনুন</h2>
           <p className="text-ink-muted mt-1 text-sm">
             একটা CSV ফাইলে <code>name</code> কলাম থাকলেই হবে। চাইলে <code>kind</code> (ACCOUNT বা
             CATEGORY), <code>decision</code> আর <code>targetType</code> কলামও দিতে পারেন।
@@ -429,8 +429,8 @@ export default function MigrationPage() {
       ) : null}
 
       {!batches.isLoading && !draft && allowed ? (
-        <section className="rounded-card border-rule bg-surface border p-4">
-          <h2 className="text-ink text-sm font-medium">সংযোগ করুন</h2>
+        <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+          <h2 className="text-ink text-lg font-bold">সংযোগ করুন</h2>
           <p className="text-ink-muted mt-1 text-sm">
             Wallet-এর ওয়েব অ্যাপে সাইন ইন করে API টোকেনটি কপি করে এখানে বসান।
           </p>
@@ -494,10 +494,10 @@ export default function MigrationPage() {
 
       {draft && detail.data ? (
         <>
-          <section className="rounded-card border-rule bg-surface border p-4">
+          <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-ink text-sm font-medium">খসড়া তৈরি আছে</h2>
+                <h2 className="text-ink text-lg font-bold">খসড়া তৈরি আছে</h2>
                 <p className="text-ink-muted mt-1 text-sm">
                   {detail.data.counts.accounts}টি অ্যাকাউন্ট, {detail.data.counts.categories}টি খাত।
                   প্রতিটির পাশে কী হবে সেটি ঠিক করুন।
@@ -551,7 +551,7 @@ export default function MigrationPage() {
           {/* 296 rows is not a list somebody scrolls twice. The box searches
               names and the group they came from; the toggle narrows to what
               still wants an answer. */}
-          <section className="rounded-card border-rule bg-surface flex flex-col gap-2 border p-3 sm:flex-row sm:items-center">
+          <section className="rounded-card border-rule bg-surface flex flex-col gap-2 border-[1.5px] p-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search
                 className="text-ink-muted pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
@@ -563,7 +563,7 @@ export default function MigrationPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 aria-label="সারি খুঁজুন"
                 placeholder="নাম বা গ্রুপ দিয়ে খুঁজুন"
-                className="border-rule bg-surface text-ink placeholder:text-ink-muted min-h-11 w-full rounded-md border pl-9 pr-3 text-sm"
+                className="border-rule bg-surface text-ink placeholder:text-ink-muted min-h-11 w-full rounded-xl border pl-9 pr-3 text-sm"
               />
             </div>
             <Button
@@ -604,7 +604,7 @@ export default function MigrationPage() {
             onCreateGroup={(itemIds) => apply.mutate(itemIds)}
           />
 
-          <section className="rounded-card border-rule bg-surface flex flex-wrap items-center gap-3 border p-4">
+          <section className="rounded-card border-rule bg-surface flex flex-wrap items-center gap-3 border-[1.5px] p-4">
             <Button onClick={() => apply.mutate(undefined)} disabled={busy}>
               {apply.isPending ? 'তৈরি হচ্ছে…' : 'অনুমোদন করে তৈরি করুন'}
             </Button>
@@ -742,8 +742,8 @@ function ItemList({
 
   if (items.length === 0) return null;
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink text-sm font-medium">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">
         {title} <span className="text-ink-muted">({items.length})</span>
       </h2>
       <ul className="mt-1">
@@ -884,8 +884,8 @@ function RecordsPanel({
   }
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink text-sm font-medium">পুরোনো লেনদেনগুলো আনুন</h2>
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">পুরোনো লেনদেনগুলো আনুন</h2>
       <p className="text-ink-muted mt-1 text-sm">
         অ্যাকাউন্ট আর খাত তৈরি হয়ে গেছে — এবার আগের অ্যাপের লেনদেনগুলো আনা যাবে। অল্প অল্প করে
         আসবে, তাই মাঝপথে থেমে গেলেও যতটুকু এসেছে ততটুকু থাকবে, আর আবার চালালে একই লেনদেন দুবার বসবে
@@ -980,8 +980,8 @@ function AppliedPanel({
 }) {
   const done = batch.status === 'ROLLED_BACK';
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink text-sm font-medium">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">
         {done ? 'ফিরিয়ে নেওয়া হয়েছে' : 'তৈরি হয়ে গেছে'}
       </h2>
       <p className="text-ink-muted mt-1 text-sm">

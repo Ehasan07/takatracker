@@ -104,8 +104,8 @@ export function AccountMenu({
         className={cn(
           'press hover:bg-greenbar flex min-h-11 items-center gap-2 text-left',
           compact
-            ? 'touch-target justify-center rounded-md px-1'
-            : 'border-rule w-full rounded-md border px-2',
+            ? 'touch-target justify-center rounded-xl px-1'
+            : 'border-rule w-full rounded-xl border px-2',
           collapsed && 'justify-center',
         )}
       >
@@ -129,7 +129,7 @@ export function AccountMenu({
         <div
           role="menu"
           className={cn(
-            'border-rule bg-surface absolute z-40 min-w-52 overflow-hidden rounded-md border shadow-lg',
+            'border-rule bg-surface absolute z-40 min-w-52 overflow-hidden rounded-xl border shadow-lg',
             placement === 'down' ? 'right-0 top-full mt-2' : 'bottom-full left-0 mb-2 w-full',
           )}
         >

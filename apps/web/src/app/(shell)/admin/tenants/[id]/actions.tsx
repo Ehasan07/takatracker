@@ -94,7 +94,7 @@ export function PlanSheet({
       }}
       fields={
         <>
-          <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+          <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
             <span className="text-ink-muted text-xs">এখনকার প্ল্যান</span>
             <span className="text-ink text-sm font-medium">
               {tenant.plan ? `${tenant.plan.name} (${tenant.plan.code})` : 'কোনো প্ল্যান নেই'}
@@ -250,7 +250,7 @@ export function StatusSheet({
       }}
       fields={
         <>
-          <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+          <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
             <span className="text-ink-muted text-xs">এখনকার অবস্থা</span>
             <span className="text-ink text-sm font-medium">
               {workspaceStatusLabel(tenant.status)}
@@ -398,7 +398,7 @@ export function ImpersonateSheet({
           {blocked ? (
             <p
               role="alert"
-              className="border-expense/40 bg-expense/10 text-ink rounded-md border p-3 text-sm"
+              className="border-expense/40 bg-expense/10 text-ink rounded-xl border p-3 text-sm"
             >
               {workspaceStatusLabel(tenant.status)} ওয়ার্কস্পেসে সাপোর্ট সেশন চালু করা যায় না। আগে
               পুনরায় সক্রিয় করুন।
@@ -408,7 +408,7 @@ export function ImpersonateSheet({
           {candidates.length === 0 ? (
             <p
               role="alert"
-              className="border-rule bg-greenbar text-ink rounded-md border p-3 text-sm"
+              className="border-rule bg-greenbar text-ink rounded-xl border p-3 text-sm"
             >
               যাকে হয়ে দেখা যায় এমন কোনো সক্রিয় সদস্য নেই। অপারেটরের হয়ে সেশন চালু করা যায় না।
             </p>

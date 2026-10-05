@@ -151,7 +151,7 @@ function TagReport({
       </ul>
 
       {/* The paragraph that stops this panel being filed as a bug. */}
-      <div className="rounded-card border-rule bg-greenbar mt-3 border p-3">
+      <div className="rounded-card border-rule bg-greenbar mt-3 border-[1.5px] p-3">
         <p className="text-ink flex items-start gap-2 text-xs">
           <Info className="text-income mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           {data.overlapMinor > 0 ? (
@@ -221,7 +221,7 @@ function TagRow({ row, from, to }: { row: TagReportRow; from: string; to: string
       ) : (
         <Link
           href={`/transactions?tagId=${encodeURIComponent(row.tagId!)}&from=${from}&to=${to}`}
-          className="press hover:bg-greenbar flex min-h-11 items-center gap-2 rounded-md px-1"
+          className="press hover:bg-greenbar flex min-h-11 items-center gap-2 rounded-xl px-1"
         >
           {inner}
         </Link>
@@ -240,7 +240,7 @@ function TagsLink() {
   return (
     <Link
       href="/tags"
-      className="press text-income hover:bg-greenbar mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 text-xs font-medium"
+      className="press text-income hover:bg-greenbar mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-1 text-xs font-medium"
     >
       ট্যাগগুলো গুছিয়ে নিন
       <ArrowRight className="h-3.5 w-3.5" aria-hidden />

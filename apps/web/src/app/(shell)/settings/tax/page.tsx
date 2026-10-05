@@ -283,10 +283,10 @@ export default function TaxPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-ink text-xl font-semibold sm:text-2xl">
+          <h1 className="text-ink text-xl font-extrabold sm:text-2xl">
             {t('settings.tax', 'আয়কর')}
           </h1>
-          <span className="border-brass text-brass rounded-md border px-2 py-0.5 text-xs font-semibold">
+          <span className="border-brass text-brass rounded-xl border px-2 py-0.5 text-xs font-semibold">
             {t('settings.tax.beta', 'বেটা')}
           </span>
         </div>
@@ -298,7 +298,7 @@ export default function TaxPage() {
         </p>
       </header>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <Field label={t('settings.tax.year', 'অর্থবছর')} htmlFor="tax-year">
           <Select id="tax-year" value={year} onChange={(e) => changeYear(e.target.value)}>
             {years.map((option) => (
@@ -320,7 +320,7 @@ export default function TaxPage() {
           rather than below it, so nobody reads a page of inputs and then
           discovers the answer is not coming. */}
       {regime && !regime.verified ? (
-        <section className="rounded-card border-brass bg-greenbar border p-4" role="status">
+        <section className="rounded-card border-brass bg-greenbar border-[1.5px] p-4" role="status">
           <div className="flex items-start gap-2">
             <AlertTriangle className="text-brass mt-0.5 h-5 w-5 shrink-0" aria-hidden />
             <div>
@@ -342,8 +342,8 @@ export default function TaxPage() {
       {/* Only offered for a verified year, because the choices themselves come
           from the year's own rate table. */}
       {regime?.verified && sheet.data ? (
-        <section className="rounded-card border-rule bg-surface border p-4">
-          <h2 className="text-ink-muted text-sm font-medium">
+        <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+          <h2 className="text-ink text-lg font-bold">
             {t('settings.tax.taxpayer', 'করদাতার তথ্য')}
           </h2>
           <p className="text-ink-muted mt-1 text-xs">
@@ -397,14 +397,14 @@ export default function TaxPage() {
       {/* ---------------------------------------------------------------- */}
 
       {sheet.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={5} />
         </div>
       ) : sheet.data ? (
         <>
-          <section className="rounded-card border-rule bg-surface border p-4">
+          <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-ink-muted text-sm font-medium">
+              <h2 className="text-ink text-lg font-bold">
                 {t('settings.tax.income', 'খাতভিত্তিক আয়')}
               </h2>
               <Money minor={sheet.data.totalIncomeMinor} className="text-ink font-semibold" />
@@ -449,9 +449,9 @@ export default function TaxPage() {
             )}
           </section>
 
-          <section className="rounded-card border-rule bg-surface border p-4">
+          <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-ink-muted text-sm font-medium">
+              <h2 className="text-ink text-lg font-bold">
                 {t('settings.tax.investment', 'রেয়াতযোগ্য বিনিয়োগ')}
               </h2>
               <Money
@@ -500,9 +500,9 @@ export default function TaxPage() {
             )}
           </section>
 
-          <section className="rounded-card border-rule bg-surface border p-4">
+          <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-ink-muted text-sm font-medium">
+              <h2 className="text-ink text-lg font-bold">
                 {t('settings.tax.netWealth', 'অর্থবছর শেষে নিট সম্পদ')}
               </h2>
               <Money minor={sheet.data.netWealthMinor} className="text-ink font-semibold" />
@@ -537,7 +537,7 @@ export default function TaxPage() {
 
       {result ? (
         <section className="rounded-card border-brass bg-surface border-2 p-4">
-          <h2 className="text-ink-muted text-sm font-medium">
+          <h2 className="text-ink text-lg font-bold">
             {t('settings.tax.payable', 'আনুমানিক প্রদেয় আয়কর')}
           </h2>
           <Money
@@ -625,8 +625,8 @@ export default function TaxPage() {
       {/* What the sheet cannot see. Always shown, figure or no figure — the
           limits belong to the inputs, not to the estimate. */}
       {sheet.data ? (
-        <section className="rounded-card border-rule border border-dashed p-4">
-          <h2 className="text-ink-muted text-sm font-medium">
+        <section className="rounded-card border-rule border-[1.5px] border-dashed p-4">
+          <h2 className="text-ink text-lg font-bold">
             {t('settings.tax.limits', 'এই হিসাবে যা ধরা হয়নি')}
           </h2>
           <ul className="text-ink-muted mt-2 flex list-disc flex-col gap-1 pl-5 text-sm">

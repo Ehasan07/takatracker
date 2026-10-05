@@ -62,7 +62,7 @@ export function RangeBar({
   return (
     <section
       aria-label="সময়সীমা"
-      className="rounded-card border-rule bg-surface flex flex-col gap-3 border p-3"
+      className="rounded-card border-rule bg-surface flex flex-col gap-3 border-[1.5px] p-3"
     >
       <div className="chip-strip">
         {PRESETS.map(([key, label]) => (
@@ -119,7 +119,7 @@ export function RangeBar({
           type="button"
           onClick={onExport}
           disabled={exporting}
-          className="press border-rule text-ink hover:bg-greenbar bg-surface flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border px-3 text-sm disabled:opacity-50 md:min-h-9"
+          className="press border-rule text-ink hover:bg-greenbar bg-surface flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-sm disabled:opacity-50 md:min-h-9"
         >
           <Download className="h-4 w-4" aria-hidden />
           {exporting ? 'নামানো হচ্ছে…' : 'এই সময়ের সিএসভি'}

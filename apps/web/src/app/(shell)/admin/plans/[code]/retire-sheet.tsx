@@ -81,7 +81,7 @@ export function RetireSheet({
       }}
       fields={
         <>
-          <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+          <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
             <span className="text-ink-muted text-xs">এখন এই প্যাকেজে</span>
             <span className="text-ink text-sm font-medium">
               {count === null

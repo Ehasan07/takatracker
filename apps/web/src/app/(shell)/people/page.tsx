@@ -70,7 +70,7 @@ export default function PeoplePage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">মানুষজন</h1>
+          <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">মানুষজন</h1>
           <p className="text-ink-muted text-xs">
             যাদের সাথে ধার-দেনা বা লেনদেন আছে। নাম, ফোন ও সম্পর্ক এখান থেকে ঠিক করুন।
           </p>
@@ -96,18 +96,18 @@ export default function PeoplePage() {
       </div>
 
       {people.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : people.isError ? (
-        <div className="rounded-card border-rule border border-dashed p-6 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-6 text-center">
           <p className="text-ink text-sm">{t('people.listFailed', 'তালিকা আনা যায়নি।')}</p>
           <Button className="mt-3" variant="outline" onClick={() => void people.refetch()}>
             আবার চেষ্টা করুন
           </Button>
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink text-sm">
             {debounced
               ? t('people.noneFound', 'কাউকে পাওয়া যায়নি।')
@@ -210,7 +210,7 @@ export default function PeoplePage() {
       {toast ? (
         <div
           role="status"
-          className="border-rule bg-surface fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-md border p-3 shadow-lg md:bottom-6"
+          className="border-rule bg-surface fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-xl border p-3 shadow-lg md:bottom-6"
         >
           <p className="text-ink text-sm">{toast}</p>
           <button
@@ -241,7 +241,7 @@ function PersonCard({
   const position = positionLabel(person);
 
   return (
-    <li className="rounded-card border-rule bg-surface border p-3">
+    <li className="rounded-card border-rule bg-surface border-[1.5px] p-3">
       {/* The card itself opens the person, the way an account row does. The
           two labelled buttons that used to say সম্পাদনা and সরান are gone from
           the footer: the first was a second way of doing what tapping the card
@@ -300,7 +300,7 @@ function PersonCard({
       </button>
 
       {person.duplicateOfIds.length > 0 ? (
-        <p className="text-ink-muted bg-greenbar mt-2 flex items-start gap-1.5 rounded-md p-2 text-xs">
+        <p className="text-ink-muted bg-greenbar mt-2 flex items-start gap-1.5 rounded-xl p-2 text-xs">
           <TriangleAlert className="text-expense mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
             একই রকম আরও {bn(person.duplicateOfIds.length)}টি নাম আছে — একই মানুষ হলে মিলিয়ে দিন,
@@ -313,7 +313,7 @@ function PersonCard({
         {person.loanCount > 0 ? (
           <Link
             href={`/loans/people/${person.id}`}
-            className="press text-income min-h-11 rounded-md px-2 text-xs underline"
+            className="press text-income min-h-11 rounded-xl px-2 text-xs underline"
           >
             হিসাবের খাতা
           </Link>
@@ -324,7 +324,7 @@ function PersonCard({
           <button
             type="button"
             onClick={onShare}
-            className="press text-ink hover:bg-greenbar flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
+            className="press text-ink hover:bg-greenbar flex min-h-11 items-center gap-1 rounded-xl px-2 text-xs"
           >
             <Link2 className="h-3.5 w-3.5" aria-hidden />
             {t('share.short', 'শেয়ার')}
@@ -337,7 +337,7 @@ function PersonCard({
         <button
           type="button"
           onClick={onMerge}
-          className="press text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1 rounded-md px-2 text-xs"
+          className="press text-ink hover:bg-greenbar ml-auto flex min-h-11 items-center gap-1 rounded-xl px-2 text-xs"
         >
           <Merge className="h-3.5 w-3.5" aria-hidden />
           মিলিয়ে দিন

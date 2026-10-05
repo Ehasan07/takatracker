@@ -84,7 +84,7 @@ export function LanguageSettings() {
   });
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink-muted flex items-center gap-2 text-sm font-medium">
         <Languages className="h-4 w-4" aria-hidden />
         ভাষা / Language
@@ -109,8 +109,8 @@ export function LanguageSettings() {
               disabled={loading || save.isPending}
               className={
                 on
-                  ? 'border-brand bg-brand-tint text-brand min-h-11 rounded-md border text-sm font-semibold'
-                  : 'border-rule text-ink min-h-11 rounded-md border text-sm disabled:opacity-50'
+                  ? 'border-brand bg-brand-tint text-brand min-h-11 rounded-xl border text-sm font-semibold'
+                  : 'border-rule text-ink min-h-11 rounded-xl border text-sm disabled:opacity-50'
               }
             >
               {LABELS[locale].name}

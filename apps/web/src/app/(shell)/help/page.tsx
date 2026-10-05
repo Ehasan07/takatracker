@@ -25,7 +25,7 @@ export default function GuidePage() {
       </Link>
 
       <header>
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">
           {t('guide.title', 'কী কী করা যায়')}
         </h1>
         <p className="text-ink-muted mt-1 text-sm">
@@ -37,7 +37,7 @@ export default function GuidePage() {
       </header>
 
       {GUIDE.map((group) => (
-        <section key={group.key} className="rounded-card border-rule bg-surface border p-4">
+        <section key={group.key} className="rounded-card border-rule bg-surface border-[1.5px] p-4">
           <h2 className="text-ink text-base font-semibold">{t(`${group.key}.h`, group.heading)}</h2>
           {group.blurb ? (
             <p className="text-ink-muted text-xs">{t(`${group.key}.s`, group.blurb)}</p>
@@ -72,7 +72,7 @@ export default function GuidePage() {
           shipped, and gave them nowhere to do it. This is that somewhere. */}
       <Link
         href="/feedback?from=/help"
-        className="press border-rule text-ink mb-4 inline-flex min-h-11 w-fit items-center rounded-md border px-4 text-sm font-medium"
+        className="press border-rule text-ink mb-4 inline-flex min-h-11 w-fit items-center rounded-xl border px-4 text-sm font-medium"
       >
         {t('feedback.open', 'মতামত লিখুন')}
       </Link>

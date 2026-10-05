@@ -125,7 +125,7 @@ export default function MailPage() {
           is added to the nav model this can join the others under `md:block`. */}
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-ink text-xl font-semibold sm:text-2xl">মেইলবক্স</h1>
+          <h1 className="text-ink text-xl font-extrabold sm:text-2xl">মেইলবক্স</h1>
           <p className="text-ink-muted mt-0.5 max-w-prose text-xs">
             ব্যাংক ও কার্ডের স্টেটমেন্ট, বিকাশ-নগদের রসিদ আর বিলের মেইল এখানে আসে — যাতে সেগুলো দেখে
             খাতায় লেনদেন তোলা যায়। মেইল থেকে নিজে নিজে কিছু যোগ হয় না।
@@ -181,7 +181,7 @@ export default function MailPage() {
               type="button"
               aria-label="খোঁজা বাতিল"
               onClick={() => setTyped('')}
-              className="press text-ink-muted absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md"
+              className="press text-ink-muted absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl"
             >
               <X className="h-4 w-4" aria-hidden />
             </button>
@@ -223,7 +223,7 @@ export default function MailPage() {
       {messages.isError ? (
         <QueryError message="বার্তার তালিকা আনা যায়নি।" onRetry={() => void messages.refetch()} />
       ) : messages.isLoading || accounts.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : rows.length === 0 ? (
@@ -247,7 +247,7 @@ export default function MailPage() {
             {bnNum(rows.length)}টি বার্তা{messages.hasNextPage ? '+' : ''} · নতুনটি উপরে
           </p>
 
-          <ul className="rounded-card border-rule bg-surface divide-rule min-w-0 divide-y overflow-hidden border">
+          <ul className="rounded-card border-rule bg-surface divide-rule min-w-0 divide-y overflow-hidden border-[1.5px]">
             {rows.map((row, index) => (
               <li key={row.id}>
                 <MessageRow
@@ -392,7 +392,7 @@ function EmptyMail({
 }) {
   if (accounts.length === 0) {
     return (
-      <div className="rounded-card border-rule border border-dashed p-8 text-center">
+      <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
         <Mail className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
         <p className="text-ink mt-2">কোনো মেইলবক্স যুক্ত করা হয়নি।</p>
         <p className="text-ink-muted mx-auto mt-1 max-w-sm text-sm">
@@ -408,7 +408,7 @@ function EmptyMail({
 
   if (filtered) {
     return (
-      <div className="rounded-card border-rule border border-dashed p-8 text-center">
+      <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
         <p className="text-ink">এই খোঁজে {FOLDER_LABEL[folder]} ফোল্ডারে কিছু পাওয়া যায়নি।</p>
         <p className="text-ink-muted mt-1 text-sm">
           মনে রাখুন, খোঁজা হয় শুধু বিষয়, প্রেরক, প্রাপক ও শুরুর কয়েক লাইনে।
@@ -429,7 +429,7 @@ function EmptyMail({
      one where an empty list is most easily mistaken for a broken feature. */
   if (neverSynced.length === relevant.length) {
     return (
-      <div className="rounded-card border-rule border border-dashed p-8 text-center">
+      <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
         <p className="text-ink">এই মেইলবক্স এখনো একবারও পড়া হয়নি।</p>
         <p className="text-ink-muted mx-auto mt-1 max-w-sm text-sm">
           মেইল আনা হয় পেছনে চলা একটি কাজের মাধ্যমে, প্রায় ১৫ মিনিট পরপর — তাই সংযোগ দেওয়ার সাথে
@@ -455,7 +455,7 @@ function EmptyMail({
     .sort()[0];
 
   return (
-    <div className="rounded-card border-rule border border-dashed p-8 text-center">
+    <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
       <p className="text-ink">{FOLDER_LABEL[folder]} ফোল্ডারে কোনো বার্তা নেই।</p>
       <p className="text-ink-muted mx-auto mt-1 max-w-sm text-sm">
         {since

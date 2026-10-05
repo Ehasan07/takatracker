@@ -103,7 +103,7 @@ export default function AdminTenantPage() {
 
       <header className="flex min-w-0 flex-col gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="text-ink min-w-0 text-xl font-semibold sm:text-2xl">{data.name}</h1>
+          <h1 className="text-ink min-w-0 text-xl font-extrabold sm:text-2xl">{data.name}</h1>
           <StatusPill status={data.status} />
         </div>
         <p className="text-ink-muted break-all text-xs">
@@ -135,7 +135,7 @@ export default function AdminTenantPage() {
         </Button>
       </div>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 className="text-ink text-base font-semibold">প্ল্যান ও মালিক</h2>
           {data.plan ? <span className="text-ink-muted text-xs">{data.plan.code}</span> : null}
@@ -193,7 +193,7 @@ export default function AdminTenantPage() {
 
       <MessagesPanel workspaceId={id} />
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <h2 className="text-ink text-base font-semibold">আকার</h2>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
           <Fact label="সক্রিয় সদস্য" value={bnNum(data.totals.memberCount)} />
@@ -262,7 +262,7 @@ function FeaturesSection({
   }, [data.features]);
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink text-base font-semibold">সীমা ও সুবিধা</h2>
 
       {/* An empty `Feature` table is not an empty feature list — the API sends
@@ -356,7 +356,7 @@ function FeatureRow({
           }}
           disabled={!seeded}
           className={cn(
-            'press touch-target text-ink-muted hover:bg-greenbar -mr-2 flex shrink-0 items-center justify-center rounded-md px-2',
+            'press touch-target text-ink-muted hover:bg-greenbar -mr-2 flex shrink-0 items-center justify-center rounded-xl px-2',
             !seeded && 'pointer-events-none opacity-40',
           )}
           aria-label={`${featureName(feature)} সীমা ওভাররাইড করুন`}
@@ -382,7 +382,7 @@ function OverridesSection({
 }) {
   if (data.overrides.length === 0) {
     return (
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <h2 className="text-ink text-base font-semibold">হাতে দেওয়া ওভাররাইড</h2>
         <p className="text-ink-muted mt-2 text-sm">
           কোনো ওভাররাইড নেই — সব সীমা প্ল্যান থেকেই আসছে।
@@ -394,7 +394,7 @@ function OverridesSection({
   const byKey = new Map(data.features.map((f) => [f.key, f]));
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink text-base font-semibold">হাতে দেওয়া ওভাররাইড</h2>
       <ul className="divide-rule mt-2 flex flex-col divide-y">
         {data.overrides.map((override) => {
@@ -480,7 +480,7 @@ function OverridesSection({
 
 function MembersSection({ data }: { data: TenantDetail }) {
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink text-base font-semibold">
         সদস্য <span className="text-ink-muted text-sm">({bnNum(data.members.length)})</span>
       </h2>

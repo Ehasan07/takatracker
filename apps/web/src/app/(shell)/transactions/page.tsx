@@ -286,7 +286,7 @@ export default function TransactionsPage() {
   return (
     <React.Suspense
       fallback={
-        <div className="rounded-card border-rule bg-surface mx-auto w-full max-w-5xl overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface mx-auto w-full max-w-5xl overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       }
@@ -437,7 +437,7 @@ function TransactionsScreen() {
           setDetailOpen(false);
           setEditing(txn);
         }}
-        className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-md"
+        className="press touch-target text-ink-muted hover:bg-greenbar flex items-center justify-center rounded-xl"
       >
         <Pencil className="h-4 w-4" aria-hidden />
       </button>
@@ -445,7 +445,7 @@ function TransactionsScreen() {
         type="button"
         aria-label={t('common.delete', 'মুছুন')}
         onClick={() => remove.mutate(txn)}
-        className="press touch-target text-expense hover:bg-greenbar flex items-center justify-center rounded-md"
+        className="press touch-target text-expense hover:bg-greenbar flex items-center justify-center rounded-xl"
       >
         <Trash2 className="h-4 w-4" aria-hidden />
       </button>
@@ -515,7 +515,7 @@ function TransactionsScreen() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 xl:max-w-6xl">
       {/* The phone gets its title from the shell's navigation bar. */}
       <header className="hidden items-baseline justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">{t('nav.transactions', 'খাতা')}</h1>
+        <h1 className="text-ink text-2xl font-extrabold">{t('nav.transactions', 'খাতা')}</h1>
         <p className="text-ink-muted text-sm">
           {transactions.hasNextPage
             ? t('txn.showingN', '{n} টি দেখানো হচ্ছে').replace('{n}', bn(shown))
@@ -528,7 +528,7 @@ function TransactionsScreen() {
       <div className="flex justify-end md:-mt-2">
         <Link
           href="/transactions/prepaid"
-          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 self-end rounded-md border px-3 text-sm md:min-h-9"
+          className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 self-end rounded-xl border px-3 text-sm md:min-h-9"
         >
           <CalendarRange className="h-4 w-4" aria-hidden />
           {t('prepaid.link', 'মাসে মাসে ভাগ করে দেখুন')}
@@ -549,7 +549,7 @@ function TransactionsScreen() {
       {deadTagFilter ? (
         <div
           role="alert"
-          className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+          className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
         >
           <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
           <p className="text-ink text-sm">{t('txn.tagGone', 'এই ট্যাগটি আর নেই।')}</p>
@@ -569,11 +569,11 @@ function TransactionsScreen() {
       ) : transactions.isError ? (
         <LedgerError onRetry={() => void transactions.refetch()} />
       ) : transactions.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">
             {unfiltered
               ? t('txn.empty', 'এখনও কোনো লেনদেন নেই।')
@@ -591,7 +591,7 @@ function TransactionsScreen() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div
             data-testid="ledger-list"
-            className="rounded-card border-rule bg-surface min-w-0 overflow-hidden border"
+            className="rounded-card border-rule bg-surface min-w-0 overflow-hidden border-[1.5px]"
           >
             {groups.map(([date, rows]) => (
               <section key={date}>
@@ -715,7 +715,7 @@ function TransactionsScreen() {
 
           {/* Persistent detail pane — desktop only (spec §5). */}
           <aside className="hidden lg:block">
-            <div className="rounded-card border-rule bg-surface sticky top-0 border p-4">
+            <div className="rounded-card border-rule bg-surface sticky top-0 border-[1.5px] p-4">
               {detail ? (
                 <TransactionDetail
                   txn={detail}
@@ -1209,7 +1209,7 @@ function LedgerError({ onRetry }: { onRetry: () => void }) {
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{t('txn.listFailed', 'লেনদেনের তালিকা আনা যায়নি।')}</p>
@@ -1538,7 +1538,7 @@ function ReceiptSheet({
         <AttachmentPicker value={ids} onChange={setIds} onUploaded={trackUpload} />
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -1627,7 +1627,7 @@ function PrepaidSheet({ txn, onClose }: { txn: LedgerTxn | null; onClose: () => 
           save.mutate({ startDate, months: n });
         }}
       >
-        <div className="rounded-card border-rule bg-greenbar border p-3">
+        <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3">
           <p className="text-ink text-sm">
             {t(
               'prepaid.sheetHint',
@@ -1669,7 +1669,7 @@ function PrepaidSheet({ txn, onClose }: { txn: LedgerTxn | null; onClose: () => 
         </Field>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

@@ -49,7 +49,7 @@ export default function AdminAnalyticsPage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
       <header>
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">খাত অনুযায়ী বিশ্লেষণ</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">খাত অনুযায়ী বিশ্লেষণ</h1>
         <p className="text-ink-muted mt-1 text-sm">
           সব ওয়ার্কস্পেস মিলিয়ে, নাম ছাড়া। কোনো একজন গ্রাহকের হিসাব এখানে নেই — সেটি তার নিজের
           পাতায়।
@@ -85,7 +85,7 @@ export default function AdminAnalyticsPage() {
       ) : analytics.isError ? (
         <p className="text-expense text-sm">বিশ্লেষণ আনা যায়নি।</p>
       ) : slices.length === 0 ? (
-        <p className="text-ink-muted rounded-card border-rule border border-dashed p-6 text-center text-sm">
+        <p className="text-ink-muted rounded-card border-rule border-[1.5px] border-dashed p-6 text-center text-sm">
           এখনো যথেষ্ট লেনদেন নেই।
         </p>
       ) : (
@@ -94,7 +94,7 @@ export default function AdminAnalyticsPage() {
             {slices.map((slice) => (
               <li
                 key={`${slice.kind}:${slice.name}`}
-                className="rounded-card border-rule bg-surface border p-3"
+                className="rounded-card border-rule bg-surface border-[1.5px] p-3"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="text-ink text-sm font-medium">{slice.name}</p>
@@ -117,7 +117,7 @@ export default function AdminAnalyticsPage() {
             ))}
           </ul>
 
-          <div className="rounded-card border-rule bg-greenbar border p-4">
+          <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-4">
             <p className="text-ink-muted text-xs">
               {bnNum(analytics.data.workspacesCounted)}টি ওয়ার্কস্পেসের হিসাব ধরা হয়েছে।{' '}
               {analytics.data.currencyNote}

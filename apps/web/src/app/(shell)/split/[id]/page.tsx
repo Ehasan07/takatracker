@@ -94,17 +94,17 @@ export default function SplitGroupPage() {
       </Link>
 
       {group.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={4} />
         </div>
       ) : !data ? (
         <p className="text-ink-muted text-sm">{t('split.notFound', 'গ্রুপটি পাওয়া যায়নি।')}</p>
       ) : (
         <>
-          <header className="rounded-card border-rule bg-surface border p-4">
+          <header className="rounded-card border-rule bg-surface border-[1.5px] p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <h1 className="text-ink truncate text-xl font-semibold">{data.name}</h1>
+                <h1 className="text-ink truncate text-xl font-bold">{data.name}</h1>
                 <p className="text-ink-muted text-xs">
                   {fmtNumber(data.members.filter((m) => !m.removedAt).length)} জন
                 </p>
@@ -169,11 +169,9 @@ export default function SplitGroupPage() {
 
           <PotCard group={data} />
 
-          <section className="rounded-card border-rule bg-surface border p-4">
+          <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-ink-muted text-sm font-medium">
-                {t('split.settleUp', 'হিসাব মেটাতে')}
-              </h2>
+              <h2 className="text-ink text-lg font-bold">{t('split.settleUp', 'হিসাব মেটাতে')}</h2>
               {/* Money changes hands before a bill exists all the time — an
                   advance for the hotel booking, somebody chipping in on the bus.
                   Until now the only way in was to tap a suggestion, and there
@@ -198,7 +196,7 @@ export default function SplitGroupPage() {
                       <button
                         type="button"
                         onClick={() => setSettling(s)}
-                        className="press border-rule hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-md border px-3 text-left text-sm"
+                        className="press border-rule hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 text-left text-sm"
                       >
                         <HandCoins className="text-ink-muted h-4 w-4 shrink-0" aria-hidden />
                         <span className="text-ink min-w-0 flex-1 truncate">
@@ -222,7 +220,7 @@ export default function SplitGroupPage() {
               {t('split.expenses', 'খরচের তালিকা')}
             </h2>
             {expenses.isLoading ? (
-              <div className="rounded-card border-rule bg-surface overflow-hidden border">
+              <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
                 <SkeletonRows rows={3} />
               </div>
             ) : (expenses.data ?? []).length === 0 ? (
@@ -231,7 +229,7 @@ export default function SplitGroupPage() {
               </p>
             ) : (
               <ul
-                className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border"
+                className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border-[1.5px]"
                 aria-label={t('split.expenses', 'খরচের তালিকা')}
               >
                 {(expenses.data ?? []).map((expense) => (
@@ -319,7 +317,7 @@ function PotCard({ group }: { group: GroupDetail }) {
 
   if (!group.potAccountId) {
     return (
-      <section className="rounded-card border-rule border border-dashed p-4">
+      <section className="rounded-card border-rule border-[1.5px] border-dashed p-4">
         <p className="text-ink text-sm font-medium">{t('split.potTitle', 'সবাই মিলে তহবিল')}</p>
         <p className="text-ink-muted mt-1 text-xs">
           {t(
@@ -342,13 +340,11 @@ function PotCard({ group }: { group: GroupDetail }) {
   }
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-ink-muted text-sm font-medium">
-            {t('split.potTitle', 'সবাই মিলে তহবিল')}
-          </h2>
-          <Money minor={group.potBalanceMinor ?? 0} className="text-ink text-xl font-semibold" />
+          <h2 className="text-ink text-lg font-bold">{t('split.potTitle', 'সবাই মিলে তহবিল')}</h2>
+          <Money minor={group.potBalanceMinor ?? 0} className="text-ink text-xl font-bold" />
         </div>
         <Button type="button" variant="outline" onClick={() => setContributing(true)}>
           <PiggyBank className="h-4 w-4" aria-hidden />
@@ -509,7 +505,7 @@ function ContributeSheet({
         )}
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -569,7 +565,7 @@ function InviteButton({ groupId, memberId }: { groupId: string; memberId: string
       disabled={invite.isPending}
       aria-label={t('split.invite', 'আমন্ত্রণ পাঠান')}
       title={t('split.invite', 'আমন্ত্রণ পাঠান')}
-      className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md disabled:opacity-50"
+      className="press touch-target text-ink-muted hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl disabled:opacity-50"
     >
       <UserPlus className="h-3.5 w-3.5" aria-hidden />
     </button>
@@ -595,7 +591,7 @@ function DeleteExpense({ groupId, expenseId }: { groupId: string; expenseId: str
       onClick={() => remove.mutate()}
       disabled={remove.isPending}
       aria-label={t('split.deleteExpense', 'এই খরচটি মুছুন')}
-      className="press touch-target text-expense hover:bg-greenbar flex items-center justify-center rounded-md disabled:opacity-50"
+      className="press touch-target text-expense hover:bg-greenbar flex items-center justify-center rounded-xl disabled:opacity-50"
     >
       <Trash2 className="h-4 w-4" aria-hidden />
     </button>
@@ -684,7 +680,7 @@ function AddMemberSheet({
           )}
         </p>
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -867,7 +863,7 @@ function SettleSheet({
         )}
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

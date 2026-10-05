@@ -53,9 +53,9 @@ export function MessagesPanel({ workspaceId }: { workspaceId: string }) {
   const data = messages.data;
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-ink-muted text-sm font-medium">ফোন থেকে আসা বার্তা</h2>
+        <h2 className="text-ink text-lg font-bold">ফোন থেকে আসা বার্তা</h2>
         {data ? (
           <span className="text-ink-muted text-xs">সর্বশেষ {data.messages.length}টি</span>
         ) : null}

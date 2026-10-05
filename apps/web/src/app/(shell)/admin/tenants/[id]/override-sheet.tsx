@@ -156,7 +156,7 @@ export function OverrideSheet({
       }}
       fields={
         <>
-          <dl className="bg-greenbar flex flex-col gap-1.5 rounded-md p-3 text-xs">
+          <dl className="bg-greenbar flex flex-col gap-1.5 rounded-xl p-3 text-xs">
             <Row
               label="প্ল্যান যা দেয়"
               value={limitText(feature.planLimit, feature.kind, feature.unit)}

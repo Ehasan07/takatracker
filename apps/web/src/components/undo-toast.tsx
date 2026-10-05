@@ -42,7 +42,7 @@ export function UndoToast({
       <button
         type="button"
         onClick={onUndo}
-        className="press min-h-9 shrink-0 rounded-md px-3 font-semibold underline"
+        className="press min-h-9 shrink-0 rounded-xl px-3 font-semibold underline"
       >
         ফিরিয়ে আনুন
       </button>

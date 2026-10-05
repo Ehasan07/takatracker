@@ -101,7 +101,7 @@ function SearchBox({
             type="button"
             aria-label={t('inbox.searchClear', 'খোঁজা বাতিল')}
             onClick={() => onChange('')}
-            className="press text-ink-muted absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md"
+            className="press text-ink-muted absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -123,7 +123,7 @@ function SearchBox({
     not empty, this word is not in it. */
 function NoMatch({ query }: { query: string }) {
   return (
-    <div className="rounded-card border-rule border border-dashed p-8 text-center">
+    <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
       <p className="text-ink text-sm">
         “{query.trim()}” — {t('inbox.noMatch', 'এরকম কিছু পাওয়া যায়নি।')}
       </p>
@@ -258,7 +258,7 @@ export default function InboxPage() {
           on a phone too rather than hiding below md: the way /loans does. */}
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+          <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
             {t('inbox.title', 'এসএমএস ইনবক্স')}
           </h1>
           <p className="text-ink-muted text-xs">
@@ -324,7 +324,7 @@ export default function InboxPage() {
           {drafts.isError ? (
             <QueryError message="খসড়ার তালিকা আনা যায়নি।" onRetry={() => void drafts.refetch()} />
           ) : drafts.isLoading ? (
-            <div className="rounded-card border-rule bg-surface overflow-hidden border">
+            <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
               <SkeletonRows rows={5} />
             </div>
           ) : rows.length === 0 ? (
@@ -407,7 +407,7 @@ function DraftRow({
     <button
       type="button"
       onClick={onOpen}
-      className="press rounded-card border-rule bg-surface hover:bg-greenbar block w-full min-w-0 border p-3 text-left"
+      className="press rounded-card border-rule bg-surface hover:bg-greenbar block w-full min-w-0 border-[1.5px] p-3 text-left"
     >
       <div className="flex min-w-0 items-start gap-3">
         <span
@@ -457,7 +457,7 @@ function DraftRow({
 
 function EmptyInbox({ unfiltered }: { unfiltered: boolean }) {
   return (
-    <div className="rounded-card border-rule border border-dashed p-8 text-center">
+    <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
       <p className="text-ink">
         {unfiltered ? 'যাচাইয়ের অপেক্ষায় কোনো খসড়া নেই।' : 'এই ছাঁকনিতে কোনো খসড়া নেই।'}
       </p>
@@ -514,7 +514,7 @@ function MessageLog({
   }
   if (isLoading) {
     return (
-      <div className="rounded-card border-rule bg-surface overflow-hidden border">
+      <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
         <SkeletonRows rows={5} />
       </div>
     );
@@ -524,7 +524,7 @@ function MessageLog({
   }
   if (rows.length === 0) {
     return (
-      <div className="rounded-card border-rule bg-surface border p-6 text-center">
+      <div className="rounded-card border-rule bg-surface border-[1.5px] p-6 text-center">
         <p className="text-ink text-sm font-medium">
           {t('inbox.noMessages', 'এখনো কোনো বার্তা আসেনি')}
         </p>
@@ -550,7 +550,7 @@ function MessageLog({
       </p>
       <ul className="flex flex-col gap-2">
         {rows.map((row) => (
-          <li key={row.id} className="rounded-card border-rule bg-surface border p-3">
+          <li key={row.id} className="rounded-card border-rule bg-surface border-[1.5px] p-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-ink text-sm font-medium">
                 {row.sender || channelLabel(row.channel)}

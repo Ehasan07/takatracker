@@ -41,28 +41,26 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+      <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
         {t('nav.settings', 'সেটিংস')}
       </h1>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">{t('shell.account', 'অ্যাকাউন্ট')}</h2>
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+        <h2 className="text-ink text-lg font-bold">{t('shell.account', 'অ্যাকাউন্ট')}</h2>
         <p className="text-ink mt-1">{me.data?.name}</p>
         <p className="text-ink-muted text-sm">{me.data?.email}</p>
       </section>
 
       {/* Above the plan, because somebody who cannot find a feature will not go
           looking for the manual below their billing. */}
-      <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">
-          {t('settings.guide', 'কী কী করা যায়')}
-        </h2>
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+        <h2 className="text-ink text-lg font-bold">{t('settings.guide', 'কী কী করা যায়')}</h2>
         <p className="text-ink-muted mt-1 text-sm">
           {t('settings.guide.blurb', 'অ্যাপের প্রতিটি জিনিস কোথায় আর কীভাবে কাজ করে')}
         </p>
         <Link
           href="/help"
-          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium"
         >
           {t('settings.guide.open', 'তালিকা দেখুন')}
         </Link>
@@ -72,22 +70,22 @@ export default function SettingsPage() {
           has found what they were looking for, the other has not. Above the
           plan for the same reason the manual is — somebody who cannot make the
           app do something will not scroll past their billing to say so. */}
-      <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">{t('feedback.title', 'মতামত পাঠান')}</h2>
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+        <h2 className="text-ink text-lg font-bold">{t('feedback.title', 'মতামত পাঠান')}</h2>
         <p className="text-ink-muted mt-1 text-sm">
           {t('feedback.settingsBlurb', 'কী ভুল হচ্ছে, আর কী থাকলে ভালো হতো — লিখে পাঠান')}
         </p>
         <Link
           href="/feedback?from=/settings"
-          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium"
         >
           {t('feedback.open', 'মতামত লিখুন')}
         </Link>
       </section>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-ink-muted text-sm font-medium">{t('settings.plan', 'প্ল্যান')}</h2>
+          <h2 className="text-ink text-lg font-bold">{t('settings.plan', 'প্ল্যান')}</h2>
           <span className="text-ink text-sm font-semibold">
             {entitlements.data?.plan?.name ?? '—'}
           </span>
@@ -118,8 +116,8 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+        <h2 className="text-ink text-lg font-bold">
           {t('settings.categories', 'খাত ব্যবস্থাপনা')}
         </h2>
         <p className="text-ink-muted mt-1 text-sm">
@@ -127,7 +125,7 @@ export default function SettingsPage() {
         </p>
         <Link
           href="/categories"
-          className="press bg-income mt-3 inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium text-white"
+          className="press bg-income mt-3 inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-white"
         >
           {t('settings.seeCategories', 'ক্যাটাগরি দেখুন')}
         </Link>
@@ -138,10 +136,10 @@ export default function SettingsPage() {
           needs the room to show its working and carry its disclaimer beside it,
           which a card between the theme picker and the language picker does
           not have. */}
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-ink-muted text-sm font-medium">{t('settings.tax', 'আয়কর')}</h2>
-          <span className="border-brass text-brass rounded-md border px-2 py-0.5 text-xs font-semibold">
+          <h2 className="text-ink text-lg font-bold">{t('settings.tax', 'আয়কর')}</h2>
+          <span className="border-brass text-brass rounded-xl border px-2 py-0.5 text-xs font-semibold">
             {t('settings.tax.beta', 'বেটা')}
           </span>
         </div>
@@ -153,7 +151,7 @@ export default function SettingsPage() {
         </p>
         <Link
           href="/settings/tax"
-          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium"
+          className="press border-rule text-ink mt-3 inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium"
         >
           {t('settings.tax.open', 'আয়কর হিসাব দেখুন')}
         </Link>
@@ -179,8 +177,8 @@ export default function SettingsPage() {
 
       <AppearanceSettings />
 
-      <section className="rounded-card border-rule bg-surface border p-4">
-        <h2 className="text-ink-muted text-sm font-medium">{t('settings.nextUp', 'পরের ধাপ')}</h2>
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+        <h2 className="text-ink text-lg font-bold">{t('settings.nextUp', 'পরের ধাপ')}</h2>
         <ul className="text-ink-muted mt-2 list-disc pl-5 text-sm">
           <li>
             {t(

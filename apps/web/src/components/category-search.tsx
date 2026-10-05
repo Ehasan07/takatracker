@@ -119,7 +119,7 @@ export function CategorySearch({
           placeholder={t('entry.searchCategoryHint', 'খাত খুঁজুন — রিকশা, khabar, বিদ্যুৎ')}
           aria-label={t('entry.searchCategory', 'খাত খুঁজুন')}
           enterKeyHint="search"
-          className="border-rule bg-surface text-ink placeholder:text-ink-muted focus:border-brand focus:ring-brand/30 min-h-11 w-full rounded-md border pl-9 pr-9 text-sm focus:outline-none focus:ring-2"
+          className="border-rule bg-surface text-ink placeholder:text-ink-muted focus:border-brand focus:ring-brand/30 min-h-11 w-full rounded-xl border pl-9 pr-9 text-sm focus:outline-none focus:ring-2"
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault();
@@ -164,7 +164,7 @@ export function CategorySearch({
            carries the accelerator strip — chips with the same খাত names on them
            — and "the যাতায়াত button" is otherwise two different controls. */
         <ul
-          className="app-scroll border-rule max-h-44 rounded-md border"
+          className="app-scroll border-rule max-h-44 rounded-xl border"
           aria-label={t('common.searchResults', 'খোঁজার ফলাফল')}
         >
           {hits.map((row) => (

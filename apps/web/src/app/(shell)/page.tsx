@@ -199,7 +199,7 @@ function MonthBars({
           />
         </div>
       ))}
-      <p className="bg-greenbar text-ink mt-1 flex items-baseline justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium">
+      <p className="bg-greenbar text-ink mt-1 flex items-baseline justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium">
         <span>{t('dashboard.net', 'নিট')}</span>
         <Money minor={netMinor} colored signed className="shrink-0" decimals={false} />
       </p>
@@ -273,7 +273,7 @@ export default function DashboardPage() {
           greeting carries the phone header instead of a second "ড্যাশবোর্ড". */}
       <header className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
         <div className="min-w-0">
-          <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+          <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
             {t('dashboard.title', 'ড্যাশবোর্ড')}
           </h1>
           {greeting ? (
@@ -328,8 +328,8 @@ export default function DashboardPage() {
        */}
       <div className="flex flex-col gap-3 md:grid md:grid-cols-2 md:items-start">
         <div data-testid="dashboard-main" className="contents md:flex md:flex-col md:gap-3">
-          <section className="rounded-card border-rule bg-surface order-1 border p-4">
-            <h2 className="text-ink-muted text-sm font-medium">
+          <section className="rounded-card border-rule bg-surface order-1 border-[1.5px] p-4">
+            <h2 className="text-ink text-lg font-bold">
               {t('dashboard.thisMonth', 'এই মাসের হিসাব')}
             </h2>
             {/* The window these three cover, said out loud. The panels underneath
@@ -375,9 +375,9 @@ export default function DashboardPage() {
             <SkeletonCard className="order-3" />
           )}
 
-          <section className="rounded-card border-rule bg-surface order-8 border p-4">
+          <section className="rounded-card border-rule bg-surface order-8 border-[1.5px] p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-ink-muted text-sm font-medium">
+              <h2 className="text-ink text-lg font-bold">
                 {t('dashboard.recent', 'সাম্প্রতিক লেনদেন')}
               </h2>
               <Link href="/transactions" className="text-income text-sm underline">
@@ -414,7 +414,7 @@ export default function DashboardPage() {
             the screen with a full set of books, which is why it has a column
             rather than a neighbour that had to match its height. */}
         <div data-testid="dashboard-side" className="contents md:flex md:flex-col md:gap-3">
-          <section className="rounded-card border-rule bg-surface order-2 border p-4">
+          <section className="rounded-card border-rule bg-surface order-2 border-[1.5px] p-4">
             {/* Net worth first, in the largest type on the screen.
              *
              * It used to be the other way round: ৳14,31,268 of liquid cash set
@@ -443,7 +443,7 @@ export default function DashboardPage() {
                 minor={summary.data?.netWorthMinor ?? 0}
                 colored={false}
                 signed
-                className="text-2xl font-semibold leading-none sm:text-3xl"
+                className="text-2xl font-extrabold leading-none sm:text-3xl"
               />
               <p className="text-xs opacity-80">
                 {t('dashboard.netWorthHint', 'জমি, সঞ্চয়, পাওনা — সব ধরে, দায় বাদ দিয়ে')}
@@ -563,7 +563,7 @@ export default function DashboardPage() {
                 const header = (
                   <li
                     key={`head-${key}`}
-                    className={`flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-xs font-medium ${GROUP_TINT[key]}`}
+                    className={`flex items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-xs font-medium ${GROUP_TINT[key]}`}
                   >
                     <span>{t(`dashboard.group.${key}`, label)}</span>
                     <Money minor={subtotal} signed colored className="shrink-0" />
@@ -719,8 +719,8 @@ export default function DashboardPage() {
               A ring rather than five bars of one colour: every slice is a share
               of the same whole, and the whole is the month — see
               `components/dashboard/spend-split.tsx`. */}
-          <section className="rounded-card border-rule bg-surface order-7 border p-4">
-            <h2 className="text-ink-muted text-sm font-medium">
+          <section className="rounded-card border-rule bg-surface order-7 border-[1.5px] p-4">
+            <h2 className="text-ink text-lg font-bold">
               {t('dashboard.split.heading', 'খরচ কোথায় গেল')}
             </h2>
             <p className="text-ink-muted mt-0.5 text-xs">

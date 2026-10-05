@@ -249,7 +249,7 @@ export function PlanFormSheet({
               </span>
             </Field>
           ) : (
-            <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+            <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
               <span className="text-ink-muted text-xs">কোড</span>
               <span className="text-ink text-sm font-medium">{plan?.code}</span>
             </div>
@@ -316,7 +316,7 @@ export function PlanFormSheet({
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-md p-3">
+              <div className="bg-greenbar flex items-baseline justify-between gap-2 rounded-xl p-3">
                 <span className="text-ink-muted text-xs">এখন</span>
                 <span className="text-ink text-sm font-medium">
                   {plan?.isPublic ? 'বিক্রির তালিকায়' : OFF_SALE}

@@ -223,7 +223,7 @@ function FileCard({
   className?: string;
 }) {
   return (
-    <div className={cn('rounded-card border-rule bg-greenbar border p-4', className)}>
+    <div className={cn('rounded-card border-rule bg-greenbar border-[1.5px] p-4', className)}>
       <div className="flex items-center gap-3">
         <FileText className="text-ink-muted h-8 w-8 shrink-0" aria-hidden />
         <div className="min-w-0">
@@ -254,7 +254,7 @@ function Thumbnail({ meta, size }: { meta: AttachmentMeta; size: 'sm' | 'md' }) 
     return (
       <span
         className={cn(
-          'border-rule bg-greenbar text-ink-muted flex items-center justify-center rounded-md border',
+          'border-rule bg-greenbar text-ink-muted flex items-center justify-center rounded-xl border',
           box,
         )}
         aria-hidden
@@ -265,7 +265,7 @@ function Thumbnail({ meta, size }: { meta: AttachmentMeta; size: 'sm' | 'md' }) 
   }
 
   if (loading || !url) {
-    return <span className={cn('bg-greenbar animate-pulse rounded-md', box)} aria-hidden />;
+    return <span className={cn('bg-greenbar animate-pulse rounded-xl', box)} aria-hidden />;
   }
 
   /* A plain <img>, not next/image: the source is a blob URL that exists only in
@@ -275,7 +275,7 @@ function Thumbnail({ meta, size }: { meta: AttachmentMeta; size: 'sm' | 'md' }) 
       src={url}
       alt=""
       onError={() => setDecodeFailed(true)}
-      className={cn('border-rule rounded-md border object-cover', box)}
+      className={cn('border-rule rounded-xl border object-cover', box)}
     />
   );
 }
@@ -318,7 +318,7 @@ export function AttachmentViewer({
     return metaQuery.isError ? (
       <span
         className={cn(
-          'border-rule text-ink-muted flex items-center justify-center rounded-md border border-dashed',
+          'border-rule text-ink-muted flex items-center justify-center rounded-xl border border-dashed',
           box,
           className,
         )}
@@ -328,7 +328,7 @@ export function AttachmentViewer({
         <span className="sr-only">ফাইলটি পাওয়া যায়নি</span>
       </span>
     ) : (
-      <span className={cn('bg-greenbar animate-pulse rounded-md', box, className)} aria-hidden />
+      <span className={cn('bg-greenbar animate-pulse rounded-xl', box, className)} aria-hidden />
     );
   }
 
@@ -351,7 +351,7 @@ export function AttachmentViewer({
           setOpen(true);
         }}
         aria-label={`দেখুন: ${meta.filename}`}
-        className={cn('press touch-target flex items-center justify-center rounded-md', className)}
+        className={cn('press touch-target flex items-center justify-center rounded-xl', className)}
       >
         <Thumbnail meta={meta} size={size} />
       </button>
@@ -372,7 +372,7 @@ export function AttachmentViewer({
           </dl>
 
           {saveError ? (
-            <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+            <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
               {saveError}
             </p>
           ) : null}
@@ -405,14 +405,14 @@ function FullSize({ meta }: { meta: AttachmentMeta }) {
   }
 
   if (loading) {
-    return <div className="bg-greenbar h-64 w-full animate-pulse rounded-md" aria-hidden />;
+    return <div className="bg-greenbar h-64 w-full animate-pulse rounded-xl" aria-hidden />;
   }
 
   if (error) {
     return (
       <div
         role="alert"
-        className="rounded-card border-rule flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+        className="rounded-card border-rule flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
       >
         <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
         <p className="text-ink text-sm">{error}</p>
@@ -437,7 +437,7 @@ function FullSize({ meta }: { meta: AttachmentMeta }) {
       src={url}
       alt={meta.filename}
       onError={() => setDecodeFailed(true)}
-      className="border-rule mx-auto max-h-[60dvh] w-full rounded-md border object-contain"
+      className="border-rule mx-auto max-h-[60dvh] w-full rounded-xl border object-contain"
     />
   );
 }

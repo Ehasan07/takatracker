@@ -191,13 +191,13 @@ export function ShareStatementSheet({
         </Button>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
 
         {made ? (
-          <div className="rounded-card border-brand/40 bg-brand-tint border p-3">
+          <div className="rounded-card border-brand/40 bg-brand-tint border-[1.5px] p-3">
             <p className="text-ink text-sm font-medium">
               {t('share.ready', 'লিংক তৈরি — এখনই কপি করে নিন')}
             </p>
@@ -213,7 +213,7 @@ export function ShareStatementSheet({
                 readOnly
                 value={made}
                 onFocus={(e) => e.currentTarget.select()}
-                className="border-rule bg-surface text-ink min-h-11 w-full rounded-md border px-3 text-xs"
+                className="border-rule bg-surface text-ink min-h-11 w-full rounded-xl border px-3 text-xs"
                 aria-label={t('share.link', 'শেয়ার লিংক')}
               />
               <Button type="button" variant="outline" onClick={() => void copy()}>
@@ -233,7 +233,7 @@ export function ShareStatementSheet({
             <h3 className="text-ink-muted text-sm font-medium">
               {t('share.existing', 'আগের লিংকগুলো')}
             </h3>
-            <ul className="divide-rule border-rule mt-2 divide-y rounded-md border">
+            <ul className="divide-rule border-rule mt-2 divide-y rounded-xl border">
               {shares.data.map((share) => (
                 <li key={share.id} className="flex items-center justify-between gap-2 p-3">
                   <div className="min-w-0">
@@ -265,7 +265,7 @@ export function ShareStatementSheet({
                       onClick={() => revoke.mutate(share.id)}
                       disabled={revoke.isPending}
                       aria-label={t('share.revokeOne', 'এই লিংকটি বাতিল করুন')}
-                      className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-md disabled:opacity-50"
+                      className="press touch-target text-expense hover:bg-greenbar flex shrink-0 items-center justify-center rounded-xl disabled:opacity-50"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>

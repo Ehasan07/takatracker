@@ -274,7 +274,7 @@ export function TagPicker({
           type="button"
           onClick={() => void createTag(typedName)}
           disabled={creating}
-          className="press border-income text-income hover:bg-income/10 flex min-h-11 items-center gap-2 rounded-md border border-dashed px-3 text-left text-sm disabled:opacity-50"
+          className="press border-income text-income hover:bg-income/10 flex min-h-11 items-center gap-2 rounded-xl border border-dashed px-3 text-left text-sm disabled:opacity-50"
         >
           <Plus className="h-4 w-4 shrink-0" aria-hidden />
           <span className="truncate">
@@ -284,7 +284,7 @@ export function TagPicker({
       ) : null}
 
       {error ? (
-        <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-xs">
+        <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-xs">
           {error}
         </p>
       ) : null}
@@ -292,7 +292,7 @@ export function TagPicker({
       {all.isError ? (
         <div
           role="alert"
-          className="border-rule flex items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2"
+          className="border-rule flex items-center justify-between gap-2 rounded-xl border border-dashed px-3 py-2"
         >
           {/* Two different problems, and they need two different sentences. One
               dropped request on mobile data used to read the same as a broken
@@ -317,7 +317,7 @@ export function TagPicker({
       ) : (
         /* Scrolls inside its own box. Forty tags must not push the amount and
            the save button off a phone screen. */
-        <ul className="app-scroll border-rule max-h-44 rounded-md border">
+        <ul className="app-scroll border-rule max-h-44 rounded-xl border">
           {shown.map((tag) => {
             const on = value.includes(tag.id);
             return (

@@ -114,11 +114,7 @@ export function PacePanel({ month, className }: { month: MonthComparison; classN
             <span className="text-ink-muted text-xs">
               {t('dashboard.pace.spentSoFar', 'এ পর্যন্ত খরচ')}
             </span>
-            <Money
-              minor={spentMinor}
-              className="text-expense text-xl font-semibold"
-              decimals={false}
-            />
+            <Money minor={spentMinor} className="text-expense text-xl font-bold" decimals={false} />
           </p>
 
           {measured.spentPercent === null ? (

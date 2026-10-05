@@ -116,7 +116,7 @@ function FeedbackForm() {
       </Link>
 
       <header>
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">
           {t('feedback.title', 'মতামত পাঠান')}
         </h1>
         <p className="text-ink-muted mt-1 text-sm">
@@ -130,7 +130,7 @@ function FeedbackForm() {
       {sent ? (
         <section
           data-testid="feedback-sent"
-          className="rounded-card border-income/40 bg-surface border p-4"
+          className="rounded-card border-income/40 bg-surface border-[1.5px] p-4"
         >
           <h2 className="text-ink flex items-center gap-2 text-sm font-medium">
             <CircleCheck className="text-income h-4 w-4" aria-hidden />
@@ -148,7 +148,7 @@ function FeedbackForm() {
         </section>
       ) : (
         <form
-          className="rounded-card border-rule bg-surface flex flex-col gap-3 border p-4"
+          className="rounded-card border-rule bg-surface flex flex-col gap-3 border-[1.5px] p-4"
           onSubmit={(e) => {
             e.preventDefault();
             setError(null);

@@ -254,13 +254,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           e2e/responsive.spec.ts resolves it with getByRole('navigation'). */}
       <aside
         data-testid="sidebar"
-        className="border-rule bg-surface safe-top hidden w-56 shrink-0 flex-col border-r md:flex lg:w-64"
+        className="border-rule bg-surface safe-top hidden w-60 shrink-0 flex-col border-r md:flex lg:w-[268px]"
       >
-        <div className="shrink-0 px-4 pb-2 pt-4">
-          <Link href="/" className="text-ink text-lg font-semibold">
-            Taka Tracker
+        <div className="shrink-0 px-5 pb-3 pt-5">
+          <Link href="/" className="press inline-flex min-h-11 items-center">
+            <BrandMark size="md" />
           </Link>
-          <p className="text-ink-muted text-xs">takatracker.com</p>
         </div>
 
         {/* Thirteen 44px rows and three labels measure 664px, which is exactly
@@ -272,7 +271,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             three more headings would clutter a screen reader's document
             outline. `aria-labelledby` still names each list. */}
         <nav
-          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+          className="min-h-0 flex-1 overflow-y-auto px-3 pb-2"
           aria-label={t('shell.mainMenu', 'প্রধান মেনু')}
         >
           {sidebarGroups.map((group) => (
@@ -280,7 +279,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {group.title ? (
                 <p
                   id={`nav-${group.id}`}
-                  className="text-ink-muted px-3 pb-0.5 pt-2 text-[11px] font-medium tracking-wide"
+                  className="text-ink-muted px-3.5 pb-1 pt-4 text-[13px] font-semibold"
                 >
                   {groupTitleOf(group)}
                 </p>
@@ -296,14 +295,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       prefetch={group.id === 'primary'}
                       aria-current={isActive(item.href) ? 'page' : undefined}
                       className={cn(
-                        'press flex min-h-11 items-center gap-3 rounded-md px-3 text-sm',
+                        'press flex min-h-11 items-center gap-3 rounded-[14px] px-3.5 text-[15px]',
                         isActive(item.href)
-                          ? 'bg-greenbar text-income font-semibold'
-                          : 'text-ink hover:bg-greenbar',
+                          ? 'bg-brand text-brand-contrast font-bold'
+                          : 'text-ink hover:bg-greenbar font-medium',
                       )}
                     >
-                      <item.icon className="h-5 w-5 shrink-0" aria-hidden />
+                      <item.icon className="h-[22px] w-[22px] shrink-0" aria-hidden />
                       <span className="truncate">{labelOf(item)}</span>
+                      {/* The mark's gold, on the one row you are on. */}
+                      {isActive(item.href) ? (
+                        <span
+                          aria-hidden
+                          className="bg-gold ml-auto h-[7px] w-[7px] shrink-0 rounded-full"
+                        />
+                      ) : null}
                     </Link>
                   </li>
                 ))}
@@ -326,7 +332,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={openQuickAdd}
               title={`${t('shell.newTransaction', 'নতুন লেনদেন')} (N)`}
-              className="press bg-brand text-brand-contrast hover:bg-brand-strong flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium"
+              className="press bg-brand text-brand-contrast hover:bg-brand-soft flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] px-4 text-[15px] font-bold shadow-[0_3px_0_var(--hishab-brand-strong)]"
             >
               <Plus className="h-4 w-4" aria-hidden />
               {t('shell.newTransaction', 'নতুন লেনদেন')}
@@ -349,7 +355,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="chrome-blur border-rule safe-top safe-x z-30 shrink-0 border-b md:hidden">
           <div
             className={cn(
-              'relative flex h-12 items-center',
+              'relative flex h-14 items-center',
               /* The right inset is the account button's, in both layouts: it is
                  positioned against the bar rather than flowing, so the centred
                  title stays centred and the brand stays hard left. */
@@ -379,7 +385,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <ChevronLeft className="h-6 w-6" aria-hidden />
                 </button>
-                <h1 className="text-ink truncate text-base font-semibold">{titleFor(pathname)}</h1>
+                <h1 className="text-ink truncate text-[17px] font-bold">{titleFor(pathname)}</h1>
               </>
             ) : (
               <>
@@ -394,7 +400,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     Right-aligned and muted: the eye starts at the brand, and
                     the title is a label rather than a headline once something
                     else is already claiming the left. */}
-                <h1 className="text-ink-muted ml-auto min-w-0 truncate pl-3 text-sm">
+                <h1 className="text-ink-muted ml-auto min-w-0 truncate pl-3 text-[15px] font-semibold">
                   {titleFor(pathname)}
                 </h1>
               </>
@@ -421,7 +427,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <PullToRefresh scrollRef={scrollRef} onRefresh={refresh}>
             {/* Bottom padding clears the tab bar and the floating button. */}
-            <div className="px-3 pb-28 pt-4 sm:px-4 md:px-6 md:pb-10 md:pt-6">
+            <div className="px-3 pb-28 pt-4 sm:px-4 md:px-8 md:pb-12 md:pt-8">
               <PageTransition direction={directionRef.current}>{children}</PageTransition>
             </div>
           </PullToRefresh>
@@ -435,14 +441,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           aria-label={t('shell.newTransaction', 'নতুন লেনদেন')}
           onClick={openQuickAdd}
           className={cn(
-            'press bg-brand text-brand-contrast fixed right-4 z-30 h-14 w-14 items-center justify-center rounded-full shadow-lg',
+            'press bg-brand text-brand-contrast fixed right-4 z-30 h-[58px] w-[58px] items-center justify-center rounded-[18px] shadow-[0_5px_0_var(--hishab-brand-strong)]',
             // Not the `hidden` attribute: `display: flex` from a utility class
             // is an author rule and beats the user agent's `[hidden]`.
             keyboardInset > 0 || isOperator ? 'hidden' : 'flex md:hidden',
           )}
           style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
         >
-          <Plus className="h-6 w-6" aria-hidden />
+          <Plus className="h-7 w-7" strokeWidth={2.2} aria-hidden />
         </button>
 
         {/* Bottom tab bar — up to 767px.
@@ -469,19 +475,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={() => haptic('tap')}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'press touch-target flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]',
-                  active ? 'text-income font-semibold' : 'text-ink-muted',
+                  'press touch-target flex flex-col items-center justify-center gap-0.5 pb-1 pt-1.5 text-xs',
+                  active ? 'text-brand font-bold' : 'text-ink-muted font-medium',
                 )}
               >
                 <span
                   className={cn(
                     'flex h-7 w-12 items-center justify-center rounded-full transition-colors',
-                    active && 'bg-greenbar',
+                    active && 'bg-brand-tint',
                   )}
                 >
-                  <item.icon className="h-5 w-5" aria-hidden />
+                  <item.icon className="h-[22px] w-[22px]" aria-hidden />
                 </span>
                 <span className="w-full truncate px-0.5 text-center">{tabLabelOf(item)}</span>
+                {/* The mark's gold under the tab you are on; a transparent one
+                    under the others so every label sits on the same line. */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'h-[3px] w-[18px] rounded-full',
+                    active ? 'bg-gold' : 'bg-transparent',
+                  )}
+                />
               </Link>
             );
           })}

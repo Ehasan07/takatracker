@@ -73,10 +73,8 @@ export default function PartyLedgerPage() {
         />
       ) : null}
 
-      <header className="rounded-card border-rule bg-surface loan-print-block border p-4">
-        <h1 className="text-ink truncate text-xl font-semibold">
-          {person?.name ?? 'পার্টি লেজার'}
-        </h1>
+      <header className="rounded-card border-rule bg-surface loan-print-block border-[1.5px] p-4">
+        <h1 className="text-ink truncate text-xl font-bold">{person?.name ?? 'পার্টি লেজার'}</h1>
         {person?.phone ? <p className="text-ink-muted text-sm">{person.phone}</p> : null}
 
         <div className="border-rule mt-3 border-t pt-3">
@@ -91,10 +89,10 @@ export default function PartyLedgerPage() {
             minor={Math.abs(netMinor)}
             className={
               netMinor > 0
-                ? 'text-income block text-2xl font-semibold'
+                ? 'text-income block text-2xl font-extrabold'
                 : netMinor < 0
-                  ? 'text-expense block text-2xl font-semibold'
-                  : 'block text-2xl font-semibold'
+                  ? 'text-expense block text-2xl font-extrabold'
+                  : 'block text-2xl font-extrabold'
             }
           />
           {netMinor === 0 ? <p className="text-ink-muted text-xs">দুই পক্ষের হিসাব সমান।</p> : null}
@@ -121,13 +119,13 @@ export default function PartyLedgerPage() {
         {loans.isError ? (
           <QueryError message="ঋণের তালিকা আনা যায়নি।" onRetry={() => void loans.refetch()} />
         ) : loans.isLoading ? (
-          <div className="rounded-card border-rule bg-surface overflow-hidden border">
+          <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
             <SkeletonRows rows={2} />
           </div>
         ) : rows.length === 0 ? (
           <p className="text-ink-muted text-sm">এই ব্যক্তির নামে কোনো ঋণ নেই।</p>
         ) : (
-          <ul className="rounded-card border-rule bg-surface loan-print-block overflow-hidden border">
+          <ul className="rounded-card border-rule bg-surface loan-print-block overflow-hidden border-[1.5px]">
             {rows.map((loan) => (
               <li key={loan.id} className="ledger-row border-rule border-b last:border-b-0">
                 <Link

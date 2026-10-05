@@ -69,7 +69,7 @@ export default function AdminTenantsPage() {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">সব ওয়ার্কস্পেস</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">সব ওয়ার্কস্পেস</h1>
         {rows.length > 0 ? (
           <p className="text-ink-muted text-xs">
             {bnNum(rows.length)}টি দেখানো হচ্ছে
@@ -121,11 +121,11 @@ export default function AdminTenantsPage() {
           onRetry={() => void list.refetch()}
         />
       ) : list.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={5} />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <Building2 className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">
             {filtered ? 'এই ছাঁকনিতে কোনো ওয়ার্কস্পেস নেই।' : 'কোনো ওয়ার্কস্পেস নেই।'}
@@ -173,7 +173,7 @@ function TenantCard({ tenant }: { tenant: TenantRow }) {
     <Link
       href={`/admin/tenants/${tenant.id}`}
       onClick={() => haptic('tap')}
-      className="press rounded-card border-rule bg-surface hover:bg-greenbar block border p-3.5"
+      className="press rounded-card border-rule bg-surface hover:bg-greenbar block border-[1.5px] p-3.5"
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">

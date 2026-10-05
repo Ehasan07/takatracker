@@ -46,7 +46,7 @@ export function ExportPanel() {
   const rangeInvalid = from !== '' && to !== '' && from > to;
 
   return (
-    <section className="rounded-card border-rule bg-surface flex flex-col gap-3 border p-4">
+    <section className="rounded-card border-rule bg-surface flex flex-col gap-3 border-[1.5px] p-4">
       <div>
         <h2 className="text-ink text-base font-semibold">তথ্য নামিয়ে নিন</h2>
         <p className="text-ink-muted text-xs">

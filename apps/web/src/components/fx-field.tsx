@@ -112,7 +112,7 @@ export function FxField({
     value.amountMinor > 0 ? convert(value.amountMinor, value.currency, rate, base) : null;
 
   return (
-    <div className="rounded-card border-rule bg-greenbar space-y-3 border p-3">
+    <div className="rounded-card border-rule bg-greenbar space-y-3 border-[1.5px] p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-ink text-sm font-medium">{t('fx.title', 'অন্য মুদ্রার খরচ')}</p>
         <button

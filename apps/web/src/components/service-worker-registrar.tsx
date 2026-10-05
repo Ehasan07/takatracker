@@ -205,7 +205,7 @@ export function ServiceWorkerRegistrar() {
       <button
         type="button"
         onClick={dismiss}
-        className="touch-target text-ink-muted rounded-md px-2 text-sm"
+        className="touch-target text-ink-muted rounded-xl px-2 text-sm"
       >
         পরে
       </button>
@@ -215,7 +215,7 @@ export function ServiceWorkerRegistrar() {
           void installEvent.prompt();
           dismiss();
         }}
-        className="bg-income min-h-11 rounded-md px-3 text-sm font-medium text-white"
+        className="bg-income min-h-11 rounded-xl px-3 text-sm font-medium text-white"
       >
         যোগ করুন
       </button>

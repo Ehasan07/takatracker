@@ -40,7 +40,7 @@ export function QuantityPanel({ period }: { period: Period }) {
   if (quantities.isPending || units.length === 0) return null;
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink flex items-center gap-2 text-base font-semibold">
         <Scale className="text-brand h-4 w-4" aria-hidden />
         পরিমাণ

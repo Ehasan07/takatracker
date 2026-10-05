@@ -215,7 +215,7 @@ export default function LoanDetailPage() {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
         <BackLink />
         <SkeletonCard />
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={4} />
         </div>
       </div>
@@ -234,10 +234,10 @@ export default function LoanDetailPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
       <BackLink />
 
-      <header className="rounded-card border-rule bg-surface border p-4">
+      <header className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-ink truncate text-xl font-semibold">
+            <h1 className="text-ink truncate text-xl font-bold">
               {person?.name ?? t('common.unknown', 'অজানা')}
             </h1>
             <p className="text-ink-muted truncate text-sm">
@@ -298,7 +298,7 @@ export default function LoanDetailPage() {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Link
             href={`/loans/${loan.id}/statement`}
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <FileText className="h-4 w-4" aria-hidden />
             বিবরণী
@@ -306,7 +306,7 @@ export default function LoanDetailPage() {
           {person?.id ? (
             <Link
               href={`/loans/people/${person.id}`}
-              className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+              className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
             >
               <User className="h-4 w-4" aria-hidden />
               পার্টি লেজার
@@ -365,7 +365,7 @@ export default function LoanDetailPage() {
             screen, and a sideways-scrolling table is not a table anybody reads. */}
         <ul className="loan-screen-cards flex flex-col gap-2 md:hidden">
           {history.map((row) => (
-            <li key={row.key} className="rounded-card border-rule bg-surface border p-3">
+            <li key={row.key} className="rounded-card border-rule bg-surface border-[1.5px] p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-ink text-sm">{row.description}</p>
@@ -399,7 +399,7 @@ export default function LoanDetailPage() {
                       type="button"
                       aria-label="কিস্তি মুছুন"
                       onClick={() => setDeleting(row.payment)}
-                      className="press touch-target text-expense hover:bg-greenbar no-print flex items-center justify-center rounded-md"
+                      className="press touch-target text-expense hover:bg-greenbar no-print flex items-center justify-center rounded-xl"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
@@ -418,7 +418,7 @@ export default function LoanDetailPage() {
         </ul>
 
         {/* Tablet up: the full nine columns, in their own scroll container. */}
-        <div className="loan-print-table rounded-card border-rule bg-surface hidden overflow-x-auto border md:block">
+        <div className="loan-print-table rounded-card border-rule bg-surface hidden overflow-x-auto border-[1.5px] md:block">
           <table className="w-full min-w-[56rem] text-sm">
             <caption className="sr-only">{`${loan.loanNumber} — কিস্তির হিসাব`}</caption>
             <thead>
@@ -471,7 +471,7 @@ export default function LoanDetailPage() {
                         type="button"
                         aria-label="কিস্তি মুছুন"
                         onClick={() => setDeleting(row.payment)}
-                        className="press text-expense hover:bg-greenbar flex h-9 w-9 items-center justify-center rounded-md"
+                        className="press text-expense hover:bg-greenbar flex h-9 w-9 items-center justify-center rounded-xl"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
                       </button>

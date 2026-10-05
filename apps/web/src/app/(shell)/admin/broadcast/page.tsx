@@ -95,13 +95,13 @@ export default function AdminBroadcastPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header>
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">বার্তা পাঠান</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">বার্তা পাঠান</h1>
         <p className="text-ink-muted mt-1 text-sm">
           যাঁরা নিজে টেলিগ্রাম যুক্ত করেছেন এবং চালু রেখেছেন, কেবল তাঁদের কাছেই যাবে।
         </p>
       </header>
 
-      <div className="rounded-card border-rule bg-brand-tint border p-4">
+      <div className="rounded-card border-rule bg-brand-tint border-[1.5px] p-4">
         <p className="text-ink text-sm">
           এখন পর্যন্ত{' '}
           <strong className="font-medium">{reach.data ? bnNum(reach.data.connected) : '…'}</strong>{' '}
@@ -157,7 +157,7 @@ export default function AdminBroadcastPage() {
       </div>
 
       {counted ? (
-        <div className="rounded-card border-brand/40 bg-surface border p-4">
+        <div className="rounded-card border-brand/40 bg-surface border-[1.5px] p-4">
           <p className="text-ink text-sm">
             <strong className="font-medium">{bnNum(counted.eligible)}</strong> জনের কাছে যাবে।{' '}
             {counted.withoutTelegram > 0
@@ -175,7 +175,7 @@ export default function AdminBroadcastPage() {
       ) : null}
 
       {outcome ? (
-        <div className="rounded-card border-rule bg-brand-tint border p-4">
+        <div className="rounded-card border-rule bg-brand-tint border-[1.5px] p-4">
           <p className="text-ink text-sm">
             {bnNum(outcome.sent)} জনের কাছে গেছে
             {outcome.failed > 0 ? `, ${bnNum(outcome.failed)}টি যায়নি` : ''}।

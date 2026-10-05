@@ -46,7 +46,7 @@ export function ImportHistory() {
   const rows = batches.data ?? [];
 
   return (
-    <section className="rounded-card border-rule bg-surface flex flex-col gap-3 border p-4">
+    <section className="rounded-card border-rule bg-surface flex flex-col gap-3 border-[1.5px] p-4">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-ink text-base font-semibold">আগের ইমপোর্ট</h2>
         <span className="text-ink-muted text-xs">{bnNum(rows.length)}টি</span>
@@ -58,11 +58,11 @@ export function ImportHistory() {
       {batches.isError ? (
         <QueryError message="ইমপোর্টের তালিকা আনা যায়নি।" onRetry={() => void batches.refetch()} />
       ) : batches.isLoading ? (
-        <div className="rounded-card border-rule overflow-hidden border">
+        <div className="rounded-card border-rule overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : rows.length === 0 ? (
-        <p className="text-ink-muted rounded-md border border-dashed p-6 text-center text-sm">
+        <p className="text-ink-muted rounded-xl border border-dashed p-6 text-center text-sm">
           এখনও কোনো ফাইল ইমপোর্ট করা হয়নি।
         </p>
       ) : (

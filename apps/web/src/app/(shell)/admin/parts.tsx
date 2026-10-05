@@ -39,7 +39,7 @@ export function QueryError({
   return (
     <div
       role="alert"
-      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border border-dashed p-6 text-center"
+      className="rounded-card border-rule bg-surface flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center"
     >
       <TriangleAlert className="text-expense h-6 w-6" aria-hidden />
       <p className="text-ink text-sm">{message}</p>
@@ -70,7 +70,7 @@ export function NotFoundScreen() {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 py-16 text-center">
       <FileQuestion className="text-ink-muted h-10 w-10" aria-hidden />
-      <h1 className="text-ink text-xl font-semibold">৪০৪ — পাওয়া যায়নি</h1>
+      <h1 className="text-ink text-xl font-bold">৪০৪ — পাওয়া যায়নি</h1>
       <p className="text-ink-muted text-sm">এই ঠিকানায় কোনো পাতা নেই।</p>
       <Button variant="outline" asChild className="mt-2">
         <Link href="/">ড্যাশবোর্ডে ফিরুন</Link>
@@ -137,9 +137,9 @@ export function StatTile({
   tone?: string;
 }) {
   return (
-    <div className="rounded-card border-rule bg-surface min-w-0 border p-3.5">
+    <div className="rounded-card border-rule bg-surface min-w-0 border-[1.5px] p-3.5">
       <p className="text-ink-muted truncate text-xs">{label}</p>
-      <p className={cn('text-ink mt-1 truncate text-xl font-semibold', tone)}>{value}</p>
+      <p className={cn('text-ink mt-1 truncate text-xl font-bold', tone)}>{value}</p>
       {note ? <p className="text-ink-muted mt-0.5 truncate text-[11px]">{note}</p> : null}
     </div>
   );
@@ -200,7 +200,7 @@ export function ActionSheet({
         <div className="flex flex-col gap-4">
           <div
             className={cn(
-              'rounded-card border p-3 text-sm',
+              'rounded-card border-[1.5px] p-3 text-sm',
               destructive
                 ? 'border-expense/40 bg-expense/10 text-ink'
                 : 'border-rule bg-greenbar text-ink',
@@ -278,7 +278,7 @@ export function Segmented<T extends string>({
       <div
         role="radiogroup"
         aria-label={label}
-        className="border-rule bg-surface flex flex-col gap-1 rounded-md border p-1 sm:flex-row"
+        className="border-rule bg-surface flex flex-col gap-1 rounded-xl border p-1 sm:flex-row"
       >
         {options.map(([key, text]) => (
           <button
@@ -291,7 +291,7 @@ export function Segmented<T extends string>({
               onChange(key);
             }}
             className={cn(
-              'press flex min-h-11 flex-1 items-center justify-center rounded-md px-3 text-sm md:min-h-9',
+              'press flex min-h-11 flex-1 items-center justify-center rounded-xl px-3 text-sm md:min-h-9',
               value === key ? 'bg-income font-medium text-white' : 'text-ink hover:bg-greenbar',
             )}
           >
@@ -446,7 +446,7 @@ export function Fact({ label, value }: { label: string; value: React.ReactNode }
 /** Something the operator must read before trusting the numbers beside it. */
 export function Caveat({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-card border-brass/40 bg-brass/10 text-ink flex items-start gap-2 border p-3 text-xs">
+    <p className="rounded-card border-brass/40 bg-brass/10 text-ink flex items-start gap-2 border-[1.5px] p-3 text-xs">
       <TriangleAlert className="text-brass mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <span className="min-w-0">{children}</span>
     </p>
@@ -457,7 +457,7 @@ export function CardSkeleton({ rows = 3 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-3">
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="rounded-card border-rule bg-surface border p-4">
+        <div key={i} className="rounded-card border-rule bg-surface border-[1.5px] p-4">
           <Skeleton className="h-4 w-2/5" />
           <Skeleton className="mt-2 h-3 w-3/5" />
           <Skeleton className="mt-3 h-3 w-1/3" />

@@ -88,7 +88,7 @@ export function InfoNote({
            with a note in it is not taller than the same row without one. The
            target itself is untouched — it is the margin that shrinks, not the
            button. */
-        className="press touch-target text-ink-muted hover:text-ink hover:bg-greenbar -my-2 inline-flex shrink-0 items-center justify-center rounded-md"
+        className="press touch-target text-ink-muted hover:text-ink hover:bg-greenbar -my-2 inline-flex shrink-0 items-center justify-center rounded-xl"
       >
         <Info className="h-4 w-4" aria-hidden />
       </button>

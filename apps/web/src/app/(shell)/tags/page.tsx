@@ -121,7 +121,7 @@ export default function TagsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="hidden items-center justify-between gap-2 md:flex">
-        <h1 className="text-ink text-2xl font-semibold">{t('tags.title', 'ট্যাগ')}</h1>
+        <h1 className="text-ink text-2xl font-extrabold">{t('tags.title', 'ট্যাগ')}</h1>
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="h-4 w-4" aria-hidden />
           নতুন
@@ -130,7 +130,7 @@ export default function TagsPage() {
 
       {/* Said once, at the top, and never assumed. Without it the first tag
           somebody makes is "খাবার", and then there are two category systems. */}
-      <div className="rounded-card border-rule bg-greenbar border p-3.5">
+      <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3.5">
         <p className="text-ink flex items-start gap-2 text-sm">
           <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
@@ -165,7 +165,7 @@ export default function TagsPage() {
       ) : active.isLoading ? (
         <div className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="rounded-card border-rule bg-surface border p-3">
+            <div key={i} className="rounded-card border-rule bg-surface border-[1.5px] p-3">
               <Skeleton className="h-4 w-2/5" />
               <Skeleton className="mt-2 h-3 w-3/5" />
               <Skeleton className="mt-4 h-4 w-1/3" />
@@ -173,7 +173,7 @@ export default function TagsPage() {
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           {query === '' ? (
             <>
               <TagIcon className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
@@ -200,13 +200,16 @@ export default function TagsPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((tag) => (
-            <li key={tag.id} className="rounded-card border-rule bg-surface overflow-hidden border">
+            <li
+              key={tag.id}
+              className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]"
+            >
               <div className="flex items-center gap-1 px-2 py-1.5">
                 <button
                   type="button"
                   aria-label={`${nameOf(tag)} সম্পাদনা`}
                   onClick={() => openEdit(tag)}
-                  className="press hover:bg-greenbar flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left"
+                  className="press hover:bg-greenbar flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-1 text-left"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">

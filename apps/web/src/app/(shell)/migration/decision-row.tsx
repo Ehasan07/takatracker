@@ -163,7 +163,7 @@ export function DecisionRow({
             type="button"
             onClick={onAskDetail}
             disabled={frozen}
-            className={`mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+            className={`mt-1 inline-flex items-center gap-1 rounded-xl px-2 py-1 text-xs ${
               item.needs === 'CATEGORY'
                 ? 'text-ink-muted border-rule border'
                 : item.needsComplete

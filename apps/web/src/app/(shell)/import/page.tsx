@@ -301,7 +301,7 @@ export default function ImportPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header>
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
           ইমপোর্ট ও এক্সপোর্ট
         </h1>
         <p className="text-ink-muted text-sm">
@@ -313,7 +313,7 @@ export default function ImportPage() {
       </header>
 
       {/* ---- Step 1: the file ------------------------------------------- */}
-      <section className="rounded-card border-rule bg-surface flex flex-col gap-3 border p-4">
+      <section className="rounded-card border-rule bg-surface flex flex-col gap-3 border-[1.5px] p-4">
         <StepHeader
           step="১"
           title={t('import.step1.title', 'ফাইল বেছে নিন')}
@@ -331,7 +331,7 @@ export default function ImportPage() {
             <Skeleton className="h-4 w-1/3" />
           </div>
         ) : file && preview ? (
-          <div className="bg-greenbar flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md p-3 text-sm">
+          <div className="bg-greenbar flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl p-3 text-sm">
             <span className="text-ink flex min-w-0 items-center gap-1.5 font-medium">
               <FileSpreadsheet className="h-4 w-4 shrink-0" aria-hidden />
               <span className="truncate">{preview.filename}</span>
@@ -382,7 +382,7 @@ export default function ImportPage() {
             somebody can confirm they uploaded the right month and the right
             account, which is not otherwise visible anywhere on this screen. */}
         {preview && preview.preamble.length > 0 ? (
-          <details className="border-rule rounded-md border p-3">
+          <details className="border-rule rounded-xl border p-3">
             <summary className="text-ink-muted min-h-11 cursor-pointer text-sm">
               {t('import.file.preamble', 'ফাইলের উপরে যা লেখা আছে')}
             </summary>
@@ -429,7 +429,7 @@ export default function ImportPage() {
 
       {/* ---- Step 2: the mapping ---------------------------------------- */}
       {preview ? (
-        <section className="rounded-card border-rule bg-surface flex flex-col gap-4 border p-4">
+        <section className="rounded-card border-rule bg-surface flex flex-col gap-4 border-[1.5px] p-4">
           <StepHeader
             step="২"
             title="কলাম মেলান"
@@ -471,7 +471,7 @@ export default function ImportPage() {
 
       {/* ---- Step 3: approve, one row at a time ------------------------- */}
       {preview && review ? (
-        <section className="rounded-card border-rule bg-surface flex flex-col gap-4 border p-4">
+        <section className="rounded-card border-rule bg-surface flex flex-col gap-4 border-[1.5px] p-4">
           <StepHeader
             step="৩"
             title={t('import.step3.title', 'সারি ধরে ধরে দেখে নিন')}
@@ -527,7 +527,7 @@ export default function ImportPage() {
           ) : null}
 
           {result ? (
-            <div className="bg-income/10 flex flex-col gap-1 rounded-md p-3" role="status">
+            <div className="bg-income/10 flex flex-col gap-1 rounded-xl p-3" role="status">
               <p className="text-income flex items-center gap-1.5 text-sm font-medium">
                 <CheckCircle2 className="h-4 w-4" aria-hidden />
                 ইমপোর্ট শেষ
@@ -644,7 +644,7 @@ function FileDrop({ onFile, busy }: { onFile: (file: File | null) => void; busy:
         onFile(e.dataTransfer.files?.[0] ?? null);
       }}
       className={cn(
-        'rounded-card flex flex-col items-center gap-2 border border-dashed p-6 text-center transition-colors',
+        'rounded-card flex flex-col items-center gap-2 border-[1.5px] border-dashed p-6 text-center transition-colors',
         over ? 'border-income bg-greenbar' : 'border-rule',
       )}
     >

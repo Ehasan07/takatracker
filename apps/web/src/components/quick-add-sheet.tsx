@@ -578,8 +578,8 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
                   className={cn(
                     tab.span,
                     kind === tab.kind
-                      ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
-                      : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
+                      ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-xl px-1 text-sm font-semibold shadow-sm'
+                      : 'press text-ink-muted min-h-11 truncate rounded-xl px-1 text-sm',
                   )}
                 >
                   {t(tab.key, tab.label)}
@@ -629,7 +629,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
             inputMode={coarse ? 'none' : 'decimal'}
             enterKeyHint="done"
             placeholder={fmtNumber('0.00')}
-            className="money h-14 !text-3xl font-semibold"
+            className="money h-14 !text-[32px] font-extrabold leading-tight"
           />
         </Field>
 
@@ -796,7 +796,7 @@ export function QuickAddSheet({ open, onOpenChange, editing }: QuickAddSheetProp
         </Field>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

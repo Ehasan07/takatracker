@@ -132,7 +132,7 @@ export default function AccountStatementPage() {
         />
       ) : null}
 
-      <h1 className="text-ink no-print hidden text-xl font-semibold sm:text-2xl md:block">
+      <h1 className="text-ink no-print hidden text-xl font-extrabold sm:text-2xl md:block">
         {t('account.statement', 'হিসাব বিবরণী')}
       </h1>
 
@@ -156,7 +156,7 @@ export default function AccountStatementPage() {
         showBalances={false}
       >
         {data ? (
-          <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border p-4 sm:grid-cols-4">
+          <dl className="rounded-card border-rule bg-surface loan-print-block grid grid-cols-2 gap-3 border-[1.5px] p-4 sm:grid-cols-4">
             <div className="min-w-0">
               <dt className="text-ink-muted text-xs">{t('stmt.opening', 'প্রারম্ভিক জের')}</dt>
               <dd>

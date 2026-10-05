@@ -87,7 +87,7 @@ export default function AdminPlanDetailPage() {
 
       <header className="flex min-w-0 flex-col gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="text-ink min-w-0 text-xl font-semibold sm:text-2xl">{plan.name}</h1>
+          <h1 className="text-ink min-w-0 text-xl font-extrabold sm:text-2xl">{plan.name}</h1>
           {plan.retired ? <OffSalePill /> : null}
           {plan.isDefault ? <DefaultPlanPill /> : null}
         </div>
@@ -134,7 +134,7 @@ export default function AdminPlanDetailPage() {
           they believe is about to be overwritten. */}
       {isSeededPlan(plan.code) ? <Note>{SEEDED_PLAN_HISTORY}</Note> : null}
 
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <h2 className="text-ink text-base font-semibold">প্যাকেজ</h2>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
           <Fact

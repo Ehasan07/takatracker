@@ -45,7 +45,7 @@ export default function MorePage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <header className="hidden md:block">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">আরও</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">আরও</h1>
         <p className="text-ink-muted mt-1 text-sm">অ্যাপের সব পাতা এক জায়গায়।</p>
       </header>
 
@@ -72,7 +72,7 @@ export default function MorePage() {
           aria-label="পাতা খুঁজুন"
           placeholder="কোন পাতা খুঁজছেন?"
           data-testid="more-search"
-          className="border-rule bg-surface text-ink placeholder:text-ink-muted min-h-11 w-full rounded-md border pl-9 pr-10 text-sm"
+          className="border-rule bg-surface text-ink placeholder:text-ink-muted min-h-11 w-full rounded-xl border pl-9 pr-10 text-sm"
         />
         {searching ? (
           <button
@@ -90,7 +90,7 @@ export default function MorePage() {
         matches.length > 0 ? (
           <Section title={`${fmtNumber(String(matches.length))} টি পাতা`} items={matches} />
         ) : (
-          <p className="text-ink-muted rounded-card border-rule bg-surface border p-4 text-sm">
+          <p className="text-ink-muted rounded-card border-rule bg-surface border-[1.5px] p-4 text-sm">
             কিছু পাওয়া যায়নি। অন্য শব্দে খুঁজে দেখুন — যেমন “বীমা”, “এক্সেল” বা “থিম”।
           </p>
         )
@@ -116,8 +116,8 @@ export default function MorePage() {
 function Section({ title, items }: { title: string; items: Destination[] }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h2 className="text-ink-muted px-1 text-xs font-medium uppercase tracking-wide">{title}</h2>
-      <ul className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border">
+      <h2 className="text-ink-muted px-1 text-xs font-medium font-semibold">{title}</h2>
+      <ul className="rounded-card border-rule bg-surface divide-rule divide-y overflow-hidden border-[1.5px]">
         {items.map((item) => (
           <li key={item.href}>
             <Link
@@ -170,7 +170,7 @@ function SignOutRow() {
       type="button"
       disabled={busy}
       onClick={() => void signOut()}
-      className="press rounded-card border-rule bg-surface text-expense flex min-h-14 w-full items-center gap-3 border px-3 text-sm font-medium disabled:opacity-60"
+      className="press rounded-card border-rule bg-surface text-expense flex min-h-14 w-full items-center gap-3 border-[1.5px] px-3 text-sm font-medium disabled:opacity-60"
     >
       <span className="bg-greenbar text-expense flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
         <LogOut className="h-5 w-5" aria-hidden />

@@ -47,7 +47,7 @@ export function WorkspaceCountRail({
     return (
       <div
         role="status"
-        className="rounded-card border-brass/40 bg-brass/10 text-ink flex items-start gap-3 border p-3.5"
+        className="rounded-card border-brass/40 bg-brass/10 text-ink flex items-start gap-3 border-[1.5px] p-3.5"
       >
         <CircleHelp className="text-brass mt-0.5 h-5 w-5 shrink-0" aria-hidden />
         <div className="min-w-0">
@@ -65,7 +65,7 @@ export function WorkspaceCountRail({
     return (
       <div
         role="status"
-        className="rounded-card border-rule bg-greenbar text-ink flex items-start gap-3 border p-3.5"
+        className="rounded-card border-rule bg-greenbar text-ink flex items-start gap-3 border-[1.5px] p-3.5"
       >
         <Building2 className="text-ink-muted mt-0.5 h-5 w-5 shrink-0" aria-hidden />
         <div className="min-w-0">
@@ -81,7 +81,7 @@ export function WorkspaceCountRail({
   return (
     <div
       role="status"
-      className="rounded-card border-brass/50 bg-brass/10 text-ink flex items-start gap-3 border p-3.5"
+      className="rounded-card border-brass/50 bg-brass/10 text-ink flex items-start gap-3 border-[1.5px] p-3.5"
     >
       <Building2 className="text-brass mt-0.5 h-6 w-6 shrink-0" aria-hidden />
       <div className="min-w-0">
@@ -318,7 +318,7 @@ export function PlanPrice({
 /** A quiet statement of fact. `Caveat` is for warnings; this is for context. */
 export function Note({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-card border-rule bg-greenbar text-ink-muted border p-3 text-xs">
+    <p className="rounded-card border-rule bg-greenbar text-ink-muted border-[1.5px] p-3 text-xs">
       {children}
     </p>
   );
@@ -329,7 +329,7 @@ export function Danger({ children }: { children: React.ReactNode }) {
   return (
     <div
       role="alert"
-      className="rounded-card border-expense/40 bg-expense/10 text-ink flex items-start gap-2 border p-3 text-xs"
+      className="rounded-card border-expense/40 bg-expense/10 text-ink flex items-start gap-2 border-[1.5px] p-3 text-xs"
     >
       <TriangleAlert className="text-expense mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <div className="min-w-0">{children}</div>

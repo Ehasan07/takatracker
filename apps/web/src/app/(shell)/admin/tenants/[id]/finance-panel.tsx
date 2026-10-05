@@ -47,7 +47,7 @@ export function FinancePanel({ workspaceId }: { workspaceId: string }) {
     formatMinor(minor, { currency: finance.data?.currency ?? 'BDT', bengaliNumerals: true });
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-ink font-medium">আর্থিক অবস্থা</h2>
@@ -77,7 +77,7 @@ export function FinancePanel({ workspaceId }: { workspaceId: string }) {
               ['দায়', money(finance.data.liabilitiesMinor)],
               ['মুদ্রা', finance.data.currency],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-card border-rule border p-3">
+              <div key={label} className="rounded-card border-rule border-[1.5px] p-3">
                 <dt className="text-ink-muted text-xs">{label}</dt>
                 <dd className="text-ink money mt-1 text-sm font-medium">{value}</dd>
               </div>
@@ -142,7 +142,7 @@ export function FinancePanel({ workspaceId }: { workspaceId: string }) {
               ['পাওনা (ঋণ)', money(finance.data.loans.lentOutstandingMinor)],
               ['দেনা (ঋণ)', money(finance.data.loans.borrowedOutstandingMinor)],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-card border-rule border p-3">
+              <div key={label} className="rounded-card border-rule border-[1.5px] p-3">
                 <dt className="text-ink-muted text-xs">{label}</dt>
                 <dd className="text-ink money mt-1 text-sm font-medium">{value}</dd>
               </div>

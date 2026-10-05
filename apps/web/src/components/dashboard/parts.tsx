@@ -60,9 +60,9 @@ export function DashPanel({
   return (
     <section
       data-testid={testId}
-      className={cn('rounded-card border-rule bg-surface border p-4', className)}
+      className={cn('rounded-card border-rule bg-surface border-[1.5px] p-5', className)}
     >
-      <h2 className="text-ink-muted text-sm font-medium">{title}</h2>
+      <h2 className="text-ink text-lg font-bold">{title}</h2>
       {scope ? <p className="text-ink-muted mt-0.5 text-xs">{scope}</p> : null}
       {children}
     </section>
@@ -85,7 +85,7 @@ export function DashError({ message, onRetry }: { message: string; onRetry: () =
   return (
     <div
       role="alert"
-      className="border-rule mt-3 flex flex-col items-center gap-2 rounded-md border border-dashed p-4 text-center"
+      className="border-rule mt-3 flex flex-col items-center gap-2 rounded-xl border border-dashed p-4 text-center"
     >
       <TriangleAlert className="text-expense h-5 w-5" aria-hidden />
       <p className="text-ink text-sm">{message}</p>

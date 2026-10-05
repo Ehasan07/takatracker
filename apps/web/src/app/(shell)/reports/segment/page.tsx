@@ -125,7 +125,7 @@ export default function SegmentPage() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <Printer className="h-4 w-4" aria-hidden />
             {t('statements.print', 'প্রিন্ট বা PDF')}
@@ -135,7 +135,7 @@ export default function SegmentPage() {
 
       <header>
         <div className="flex flex-wrap items-baseline gap-x-1.5">
-          <h1 className="text-ink text-xl font-semibold sm:text-2xl">
+          <h1 className="text-ink text-xl font-extrabold sm:text-2xl">
             {t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
           </h1>
           <StandardNote noteKey="note.segmentBooks" />
@@ -218,7 +218,7 @@ export default function SegmentPage() {
       <StockCountSheet open={counting} onOpenChange={setCounting} tagId={tagId} />
 
       {tagId === '' ? null : statement.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : statement.data ? (
@@ -239,7 +239,7 @@ export default function SegmentPage() {
  */
 function NotEnabled() {
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink text-base font-semibold">
         {t('segment.offTitle', 'এই হিসাবটি চালু করা নেই')}
       </h2>
@@ -251,7 +251,7 @@ function NotEnabled() {
       </p>
       <Link
         href="/settings"
-        className="press border-rule text-ink hover:bg-greenbar mt-3 inline-flex min-h-11 items-center rounded-md border px-3 text-sm"
+        className="press border-rule text-ink hover:bg-greenbar mt-3 inline-flex min-h-11 items-center rounded-xl border px-3 text-sm"
       >
         {t('segment.offGo', 'সেটিংসে যান')}
       </Link>
@@ -294,13 +294,13 @@ function Guide({ openByDefault }: { openByDefault: boolean }) {
   }, [openByDefault]);
 
   return (
-    <section className="rounded-card border-rule bg-surface no-print border">
+    <section className="rounded-card border-rule bg-surface no-print border-[1.5px]">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((was) => !was)}
-        className="press text-ink hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-md px-4 py-2 text-left text-sm font-medium"
+        className="press text-ink hover:bg-greenbar flex min-h-11 w-full items-center gap-2 rounded-xl px-4 py-2 text-left text-sm font-medium"
       >
         <Info className="text-brand h-4 w-4 shrink-0" aria-hidden />
         {t('segment.guide', 'ব্যক্তিগত ব্যবসার হিসাব কীভাবে রাখবেন')}
@@ -474,7 +474,7 @@ function Result({ data }: { data: IncomeStatementDto }) {
 
   if (!traded) {
     return (
-      <section className="rounded-card border-rule bg-surface border p-4">
+      <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
         <p className="text-ink-muted text-sm">
           {t(
             'segment.nothing',
@@ -486,7 +486,7 @@ function Result({ data }: { data: IncomeStatementDto }) {
   }
 
   return (
-    <section className="rounded-card border-rule bg-surface loan-print-block border p-4">
+    <section className="rounded-card border-rule bg-surface loan-print-block border-[1.5px] p-4">
       <div className="flex flex-wrap items-baseline gap-x-1.5">
         <h2 className="text-ink text-base font-semibold">
           {data.segment?.name ?? t('segment.title', 'ব্যক্তিগত ব্যবসার হিসাব')}
@@ -497,13 +497,13 @@ function Result({ data }: { data: IncomeStatementDto }) {
 
       {/* The answer first, in the words the question was asked in. Colour is
           never the only signal: the label says লাভ or লোকসান in text. */}
-      <div className="border-rule mt-3 rounded-md border p-3">
+      <div className="border-rule mt-3 rounded-xl border p-3">
         <p className="text-ink-muted text-xs">
           {profit < 0 ? t('segment.loss', 'লোকসান') : t('segment.profit', 'লাভ')}
         </p>
         <Money
           minor={Math.abs(profit)}
-          className={`text-2xl font-semibold ${profit < 0 ? 'text-expense' : 'text-income'}`}
+          className={`text-2xl font-extrabold ${profit < 0 ? 'text-expense' : 'text-income'}`}
         />
       </div>
 

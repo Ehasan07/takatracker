@@ -265,7 +265,7 @@ export default function OnboardingPage() {
           loan detail screens do. */}
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="min-w-0">
-          <h1 className="text-ink text-xl font-semibold sm:text-2xl">শুরু করা যাক</h1>
+          <h1 className="text-ink text-xl font-extrabold sm:text-2xl">শুরু করা যাক</h1>
           <p className="text-ink-muted mt-0.5 text-sm">
             {me.data?.name ? `${me.data.name}, ` : ''}দুই মিনিটের কাজ। যেকোনো সময় থামা যাবে।
           </p>
@@ -276,7 +276,7 @@ export default function OnboardingPage() {
       </header>
 
       {alreadyCompleted ? (
-        <p className="text-ink-muted rounded-card border-rule border border-dashed px-3 py-2 text-xs">
+        <p className="text-ink-muted rounded-card border-rule border-[1.5px] border-dashed px-3 py-2 text-xs">
           শুরুর ধাপ আগেই সম্পন্ন হয়েছে। এখান থেকে যা যোগ করবেন তা সরাসরি খাতায় যাবে।
         </p>
       ) : null}
@@ -297,11 +297,11 @@ export default function OnboardingPage() {
                 onRetry={() => void accounts.refetch()}
               />
             ) : accounts.isLoading ? (
-              <div className="rounded-card border-rule bg-surface overflow-hidden border">
+              <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
                 <SkeletonRows rows={2} />
               </div>
             ) : existing.length > 0 ? (
-              <ul className="rounded-card border-rule bg-surface overflow-hidden border">
+              <ul className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
                 {existing.map((account) => (
                   <li
                     key={account.id}
@@ -366,7 +366,7 @@ export default function OnboardingPage() {
                 {drafts.map((draft) => (
                   <li
                     key={draft.key}
-                    className="rounded-card border-rule bg-surface flex flex-col gap-3 border p-3"
+                    className="rounded-card border-rule bg-surface flex flex-col gap-3 border-[1.5px] p-3"
                   >
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
@@ -384,7 +384,7 @@ export default function OnboardingPage() {
                         type="button"
                         aria-label={`${draft.name || 'নতুন অ্যাকাউন্ট'} সরান`}
                         onClick={() => removeDraft(draft.key)}
-                        className="press touch-target text-ink-muted hover:bg-greenbar mt-6 flex shrink-0 items-center justify-center rounded-md"
+                        className="press touch-target text-ink-muted hover:bg-greenbar mt-6 flex shrink-0 items-center justify-center rounded-xl"
                       >
                         <X className="h-4 w-4" aria-hidden />
                       </button>
@@ -436,7 +436,7 @@ export default function OnboardingPage() {
             {saveError ? (
               <div
                 role="alert"
-                className="bg-expense/10 text-expense flex flex-col items-start gap-2 rounded-md px-3 py-2 text-sm"
+                className="bg-expense/10 text-expense flex flex-col items-start gap-2 rounded-xl px-3 py-2 text-sm"
               >
                 <p>{saveError}</p>
                 {limitRefusal ? (
@@ -451,7 +451,7 @@ export default function OnboardingPage() {
 
         {step === 'entry' ? (
           existing.length === 0 ? (
-            <div className="rounded-card border-rule flex flex-col items-start gap-3 border border-dashed p-4">
+            <div className="rounded-card border-rule flex flex-col items-start gap-3 border-[1.5px] border-dashed p-4">
               <p className="text-ink text-sm">
                 এখনও কোনো অ্যাকাউন্ট নেই। খরচ লিখতে হলে টাকাটা কোথা থেকে গেল তা খাতার জানা দরকার,
                 তাই আগে অন্তত একটা অ্যাকাউন্ট লাগবে।
@@ -462,7 +462,7 @@ export default function OnboardingPage() {
               </Button>
             </div>
           ) : firstTxn ? (
-            <div className="rounded-card border-rule bg-surface flex flex-col gap-2 border p-4">
+            <div className="rounded-card border-rule bg-surface flex flex-col gap-2 border-[1.5px] p-4">
               <p className="text-income flex items-center gap-1.5 text-sm font-medium">
                 <Check className="h-4 w-4 shrink-0" aria-hidden />
                 খাতায় প্রথম লেখা হয়ে গেছে।
@@ -487,7 +487,7 @@ export default function OnboardingPage() {
               </Button>
             </div>
           ) : (
-            <div className="rounded-card border-rule bg-surface flex flex-col items-start gap-3 border p-4">
+            <div className="rounded-card border-rule bg-surface flex flex-col items-start gap-3 border-[1.5px] p-4">
               <p className="text-ink-muted text-sm">
                 আজকের একটা খরচ বা এই মাসের আয় — যেটা মনে আছে সেটাই লিখুন। ভুল হলে পরে বদলানো যাবে।
               </p>
@@ -506,7 +506,7 @@ export default function OnboardingPage() {
                 <Link
                   href={item.href}
                   onClick={() => haptic('tap')}
-                  className="press rounded-card border-rule bg-surface hover:bg-greenbar flex items-start gap-2 border p-3"
+                  className="press rounded-card border-rule bg-surface hover:bg-greenbar flex items-start gap-2 border-[1.5px] p-3"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="text-ink block text-sm font-medium">{item.title}</span>
@@ -531,7 +531,7 @@ export default function OnboardingPage() {
       {complete.isError ? (
         <div
           role="alert"
-          className="bg-expense/10 text-expense flex flex-col items-start gap-2 rounded-md px-3 py-2 text-sm"
+          className="bg-expense/10 text-expense flex flex-col items-start gap-2 rounded-xl px-3 py-2 text-sm"
         >
           <p>{complete.error.message}</p>
           {/* Failing to record the flag must not trap anybody on this screen. */}
@@ -609,7 +609,7 @@ function Stepper({ current, onGoTo }: { current: number; onGoTo: (step: StepId) 
                 onGoTo(entry.id);
               }}
               className={cn(
-                'press flex min-h-11 w-full items-center gap-2 rounded-md px-1 disabled:opacity-100',
+                'press flex min-h-11 w-full items-center gap-2 rounded-xl px-1 disabled:opacity-100',
                 index > current && 'cursor-default',
               )}
             >

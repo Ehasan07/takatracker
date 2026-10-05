@@ -286,13 +286,13 @@ export default function SavingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-ink hidden text-xl font-semibold sm:text-2xl md:block">
+        <h1 className="text-ink hidden text-xl font-extrabold sm:text-2xl md:block">
           সঞ্চয় ও ডিপিএস
         </h1>
         <div className="flex items-center gap-2">
           <Link
             href="/insurance"
-            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm"
+            className="press border-rule text-ink hover:bg-greenbar flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm"
           >
             <ShieldCheck className="h-4 w-4" aria-hidden />
             বীমা
@@ -305,11 +305,11 @@ export default function SavingsPage() {
       </header>
 
       {plans.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={3} />
         </div>
       ) : (plans.data?.length ?? 0) === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <p className="text-ink">
             {t('savings.none', 'এখনও কোনো ডিপিএস বা এফডিআর যোগ করা হয়নি।')}
           </p>
@@ -320,7 +320,7 @@ export default function SavingsPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {(plans.data ?? []).map((plan) => (
-            <li key={plan.id} className="rounded-card border-rule bg-surface border p-4">
+            <li key={plan.id} className="rounded-card border-rule bg-surface border-[1.5px] p-4">
               <button
                 type="button"
                 onClick={() => setOpenId(plan.id)}
@@ -395,7 +395,7 @@ export default function SavingsPage() {
       >
         {detail.data ? (
           <div className="flex flex-col gap-4">
-            <div className="bg-greenbar rounded-md p-3">
+            <div className="bg-greenbar rounded-xl p-3">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-ink-muted text-xs">
                   {t('savings.atMaturityGross', 'মেয়াদপূর্তিতে (কর কাটার আগে)')}
@@ -428,7 +428,7 @@ export default function SavingsPage() {
                 goes teaches the reader nothing. A plan at 0% has no accrual to
                 describe and is the one case that is genuinely absent. */}
             {detail.data.profitRateBps > 0 ? (
-              <div className="border-rule flex items-center justify-between gap-2 rounded-md border p-3">
+              <div className="border-rule flex items-center justify-between gap-2 rounded-xl border p-3">
                 <div className="min-w-0">
                   <p className="text-ink text-sm font-medium">
                     {t('savings.profitAccrued', 'এ পর্যন্ত জমেছে')}
@@ -457,7 +457,7 @@ export default function SavingsPage() {
                 Shown whatever the instrument, including a running DPS where it
                 will read zero: the zero is the point, sitting beside the accrued
                 figure above it. */}
-            <div className="border-rule flex items-center justify-between gap-2 rounded-md border p-3">
+            <div className="border-rule flex items-center justify-between gap-2 rounded-xl border p-3">
               <div className="min-w-0">
                 <p className="text-ink text-sm font-medium">
                   {t('savings.profitReceived', 'এ পর্যন্ত মুনাফা পেয়েছি')}
@@ -491,7 +491,7 @@ export default function SavingsPage() {
                 wrong in a direction nobody would notice. So the state of the
                 link is on the plan, in a sentence, and the way to change it is
                 the ordinary সম্পাদনা button below. */}
-            <div className="border-rule flex items-start justify-between gap-3 rounded-md border p-3">
+            <div className="border-rule flex items-start justify-between gap-3 rounded-xl border p-3">
               <div className="min-w-0">
                 <p className="text-ink text-sm font-medium">
                   {t('savings.linkedAccount', 'কিস্তির টাকা যে হিসাবে জমা হয়')}
@@ -547,7 +547,7 @@ export default function SavingsPage() {
                         }
                         pay.mutate({ planId: detail.data!.id, installmentId: row.id });
                       }}
-                      className="press border-rule text-ink hover:bg-greenbar min-h-11 w-24 shrink-0 rounded-md border py-1.5 text-xs"
+                      className="press border-rule text-ink hover:bg-greenbar min-h-11 w-24 shrink-0 rounded-xl border py-1.5 text-xs"
                     >
                       জমা দিলাম
                     </button>
@@ -738,7 +738,7 @@ function ConfirmSheet({
       <div className="flex flex-col gap-4">
         <p className="text-ink text-sm">{body}</p>
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}
@@ -1490,7 +1490,7 @@ function MatureSheet({
       >
         {/* Said before anything is filled in, because this is the sentence that
             stops somebody booking their own money back as earnings. */}
-        <div className="rounded-card border-rule bg-greenbar border p-3">
+        <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3">
           <p className="text-ink flex items-start gap-2 text-sm">
             <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <span>
@@ -1699,7 +1699,7 @@ function DepositSheet({
       >
         {/* Before any field, because this is the sentence that stops somebody
             believing their savings are money they have spent. */}
-        <div className="rounded-card border-rule bg-greenbar border p-3">
+        <div className="rounded-card border-rule bg-greenbar border-[1.5px] p-3">
           <p className="text-ink flex items-start gap-2 text-sm">
             <Info className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <span>
@@ -1754,7 +1754,7 @@ function DepositSheet({
         </Field>
 
         {error ? (
-          <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+          <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
             {error}
           </p>
         ) : null}

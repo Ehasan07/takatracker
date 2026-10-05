@@ -95,7 +95,7 @@ export function CloseAccount() {
      anybody can plan around. */
   if (pending) {
     return (
-      <section className="rounded-card border-expense/40 bg-surface border p-4">
+      <section className="rounded-card border-expense/40 bg-surface border-[1.5px] p-4">
         <h2 className="text-ink flex items-center gap-2 text-sm font-medium">
           <TriangleAlert className="text-expense h-4 w-4" aria-hidden />
           {t('close.pendingTitle', 'অ্যাকাউন্ট বন্ধ হওয়ার অপেক্ষায়')}
@@ -119,10 +119,8 @@ export function CloseAccount() {
   }
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
-      <h2 className="text-ink-muted text-sm font-medium">
-        {t('close.title', 'অ্যাকাউন্ট বন্ধ করা')}
-      </h2>
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
+      <h2 className="text-ink text-lg font-bold">{t('close.title', 'অ্যাকাউন্ট বন্ধ করা')}</h2>
 
       {!open ? (
         <>

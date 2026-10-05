@@ -41,7 +41,7 @@ export function RawMessage({
     <div className={cn('flex flex-col gap-2', className)}>
       <p
         className={cn(
-          'border-rule bg-paper text-ink rounded-md border p-3 text-sm leading-7',
+          'border-rule bg-paper text-ink rounded-xl border p-3 text-sm leading-7',
           // A 60-character URL in an SMS must wrap, not push the page sideways.
           'whitespace-pre-wrap break-words [overflow-wrap:anywhere]',
         )}
@@ -97,7 +97,7 @@ export function RawMessage({
           the parser and the stored text disagree — better said out loud than
           drawn over whatever happens to be nearby. */}
       {unlocated.length > 0 ? (
-        <ul className="border-rule flex flex-col gap-1 rounded-md border border-dashed p-2">
+        <ul className="border-rule flex flex-col gap-1 rounded-xl border border-dashed p-2">
           {unlocated.map((item) => (
             <li key={item.field} className="text-ink-muted flex min-w-0 items-start gap-1.5">
               <Quote className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />

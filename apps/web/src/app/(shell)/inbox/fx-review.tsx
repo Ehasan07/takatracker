@@ -97,7 +97,7 @@ export function FxReviewField({
   const info = currencyOf(currency);
 
   return (
-    <div className="rounded-card border-brass/40 bg-brass/5 flex flex-col gap-3 border p-3">
+    <div className="rounded-card border-brass/40 bg-brass/5 flex flex-col gap-3 border-[1.5px] p-3">
       <div className="flex items-start gap-2">
         <Globe className="text-brass mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <div className="min-w-0">

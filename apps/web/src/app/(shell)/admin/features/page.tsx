@@ -59,7 +59,7 @@ export default function AdminFeaturesPage() {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">ফিচার ক্যাটালগ</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">ফিচার ক্যাটালগ</h1>
         {items.length > 0 ? (
           <p className="text-ink-muted text-xs">
             {bnNum(active.length)}টি চালু
@@ -83,18 +83,21 @@ export default function AdminFeaturesPage() {
         </Button>
       </div>
 
-      <p className="rounded-card border-rule bg-greenbar text-ink-muted border p-3 text-xs">
+      <p className="rounded-card border-rule bg-greenbar text-ink-muted border-[1.5px] p-3 text-xs">
         {NEW_FEATURE_DEFAULT}
       </p>
 
       {catalogue.isError ? (
         <QueryError message="ফিচার ক্যাটালগ আনা যায়নি।" onRetry={() => void catalogue.refetch()} />
       ) : catalogue.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border" aria-busy>
+        <div
+          className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]"
+          aria-busy
+        >
           <SkeletonRows rows={6} />
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <Tags className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">ক্যাটালগ খালি।</p>
           <p className="text-ink-muted mt-1 text-sm">
@@ -105,7 +108,10 @@ export default function AdminFeaturesPage() {
       ) : (
         <>
           {[...byCategory.entries()].map(([category, features]) => (
-            <section key={category} className="rounded-card border-rule bg-surface border p-4">
+            <section
+              key={category}
+              className="rounded-card border-rule bg-surface border-[1.5px] p-4"
+            >
               <h2 className="text-ink text-base font-semibold">{categoryLabel(category)}</h2>
               <ul className="divide-rule mt-1 flex flex-col divide-y">
                 {features.map((feature) => (
@@ -116,7 +122,7 @@ export default function AdminFeaturesPage() {
                         haptic('tap');
                         setEditKey(feature.key);
                       }}
-                      className="press-row -mx-2 flex min-h-11 w-[calc(100%+1rem)] items-start gap-2 rounded-md px-2 py-2.5 text-left"
+                      className="press-row -mx-2 flex min-h-11 w-[calc(100%+1rem)] items-start gap-2 rounded-xl px-2 py-2.5 text-left"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-ink truncate text-sm">
@@ -159,7 +165,7 @@ export default function AdminFeaturesPage() {
             </section>
           ))}
 
-          <p className="rounded-card border-rule bg-greenbar text-ink-muted border p-3 text-xs">
+          <p className="rounded-card border-rule bg-greenbar text-ink-muted border-[1.5px] p-3 text-xs">
             {NO_FEATURE_DELETE}
           </p>
         </>

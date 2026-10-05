@@ -59,7 +59,7 @@ export function SetupCard({ onDone }: { onDone: (result: SetupResult) => void })
   const trimmed = name.trim();
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink text-base font-semibold">
         {t('segment.setupTitle', 'ব্যবসার হিসাব চালু করুন')}
       </h2>

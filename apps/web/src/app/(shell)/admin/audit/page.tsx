@@ -63,7 +63,7 @@ export default function AdminAuditPage() {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h1 className="text-ink text-xl font-semibold sm:text-2xl">সব কার্যবিবরণী</h1>
+        <h1 className="text-ink text-xl font-extrabold sm:text-2xl">সব কার্যবিবরণী</h1>
         {rows.length > 0 ? (
           <span className="text-ink-muted text-xs">{bnNum(rows.length)}টি ঘটনা</span>
         ) : null}
@@ -71,7 +71,7 @@ export default function AdminAuditPage() {
 
       {/* The one query in the product whose whole purpose is to ignore the
           workspace boundary. Reading it is itself a recorded event. */}
-      <p className="rounded-card border-rule bg-surface text-ink-muted flex items-start gap-2 border p-3 text-xs">
+      <p className="rounded-card border-rule bg-surface text-ink-muted flex items-start gap-2 border-[1.5px] p-3 text-xs">
         <Lock className="text-income mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <span>
           এখানে সব ওয়ার্কস্পেসের ঘটনা একসঙ্গে দেখা যায়। এই পাতা খোলাও একটি{' '}
@@ -108,7 +108,7 @@ export default function AdminAuditPage() {
       />
 
       {actorId ? (
-        <div className="border-rule bg-greenbar flex min-h-11 items-center gap-2 rounded-md border px-3">
+        <div className="border-rule bg-greenbar flex min-h-11 items-center gap-2 rounded-xl border px-3">
           <span className="text-ink min-w-0 flex-1 truncate text-xs">
             একজন ব্যবহারকারীর ঘটনা দেখানো হচ্ছে ({shortId(actorId)})
           </span>
@@ -119,7 +119,7 @@ export default function AdminAuditPage() {
               setActorId('');
             }}
             aria-label="এই ব্যবহারকারীর ফিল্টার সরান"
-            className="press touch-target text-ink-muted hover:bg-surface -mr-2 flex items-center justify-center rounded-md"
+            className="press touch-target text-ink-muted hover:bg-surface -mr-2 flex items-center justify-center rounded-xl"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -129,11 +129,11 @@ export default function AdminAuditPage() {
       {log.isError ? (
         <QueryError message="কার্যবিবরণী আনা যায়নি।" onRetry={() => void log.refetch()} />
       ) : log.isLoading ? (
-        <div className="rounded-card border-rule bg-surface overflow-hidden border">
+        <div className="rounded-card border-rule bg-surface overflow-hidden border-[1.5px]">
           <SkeletonRows rows={6} />
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-card border-rule border border-dashed p-8 text-center">
+        <div className="rounded-card border-rule border-[1.5px] border-dashed p-8 text-center">
           <ScrollText className="text-ink-muted mx-auto h-6 w-6" aria-hidden />
           <p className="text-ink mt-2">
             {filtered ? 'এই ছাঁকনিতে কোনো ঘটনা নেই।' : 'এখনও কিছু রেকর্ড হয়নি।'}
@@ -180,7 +180,7 @@ function Row({ event, onFilterActor }: { event: PlatformAuditEvent; onFilterActo
   return (
     <article
       className={cn(
-        'rounded-card bg-surface min-w-0 border p-3.5',
+        'rounded-card bg-surface min-w-0 border-[1.5px] p-3.5',
         alarming ? 'border-expense/40' : 'border-rule',
       )}
     >
@@ -257,7 +257,7 @@ function Payload({ before, after }: { before: JsonObject | null; after: JsonObje
       {entries.map(([label, payload]) => (
         <div key={label} className="min-w-0">
           <p className="text-ink-muted text-[11px]">{label}</p>
-          <dl className="border-rule bg-greenbar mt-0.5 overflow-x-auto rounded-md border p-2">
+          <dl className="border-rule bg-greenbar mt-0.5 overflow-x-auto rounded-xl border p-2">
             {Object.entries(payload).map(([key, value]) => (
               <div key={key} className="flex gap-2 whitespace-nowrap text-[11px]">
                 <dt className="text-ink-muted">{key}</dt>

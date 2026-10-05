@@ -124,7 +124,7 @@ export function MergeSheet({
 
             {/* The direction, drawn. A sentence can be misread; an arrow between
                 two named chips cannot. */}
-            <div className="rounded-card border-rule bg-greenbar flex items-center gap-2 border p-3">
+            <div className="rounded-card border-rule bg-greenbar flex items-center gap-2 border-[1.5px] p-3">
               <span className="text-ink flex min-w-0 items-center gap-1.5 text-sm">
                 <TagDot color={source?.color ?? null} />
                 <span className="truncate line-through">{fromName}</span>
@@ -159,7 +159,7 @@ export function MergeSheet({
             )}
 
             {error ? (
-              <p role="alert" className="bg-expense/10 text-expense rounded-md px-3 py-2 text-sm">
+              <p role="alert" className="bg-expense/10 text-expense rounded-xl px-3 py-2 text-sm">
                 {error}
               </p>
             ) : null}

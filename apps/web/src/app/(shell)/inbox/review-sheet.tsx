@@ -692,13 +692,13 @@ function ReviewForm({
       {message ? (
         <RawMessage body={message.body} evidence={draft.evidence} />
       ) : (
-        <p className="border-rule text-ink-muted rounded-md border border-dashed p-3 text-sm">
+        <p className="border-rule text-ink-muted rounded-xl border border-dashed p-3 text-sm">
           মূল বার্তাটি আর সংরক্ষিত নেই, তাই কোথা থেকে কী পড়া হয়েছিল দেখানো যাচ্ছে না।
         </p>
       )}
 
       {draft.confidence === 0 ? (
-        <p className="bg-brass/10 text-brass flex items-start gap-2 rounded-md px-3 py-2 text-sm">
+        <p className="bg-brass/10 text-brass flex items-start gap-2 rounded-xl px-3 py-2 text-sm">
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             এই বার্তায় টাকার কোনো অঙ্ক পাওয়া যায়নি, তাই খসড়াটি নিজে থেকে কিছুই দাবি করছে না।
@@ -712,7 +712,7 @@ function ReviewForm({
            otherwise nothing to tell a reader that two of them were guessed by a
            machine rather than read from their bank. A suggestion presented as a
            reading is how people stop checking. */
-        <p className="bg-brand-tint text-ink-muted flex items-start gap-2 rounded-md px-3 py-2 text-sm">
+        <p className="bg-brand-tint text-ink-muted flex items-start gap-2 rounded-xl px-3 py-2 text-sm">
           <Sparkles className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             {t(
@@ -864,8 +864,8 @@ function ReviewForm({
                 }}
                 className={cn(
                   form.kind === tab.kind
-                    ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-md px-1 text-sm font-semibold shadow-sm'
-                    : 'press text-ink-muted min-h-11 truncate rounded-md px-1 text-sm',
+                    ? 'press bg-brand text-brand-contrast min-h-11 truncate rounded-xl px-1 text-sm font-semibold shadow-sm'
+                    : 'press text-ink-muted min-h-11 truncate rounded-xl px-1 text-sm',
                 )}
               >
                 {t(tab.key, tab.label)}
@@ -1095,7 +1095,7 @@ function ReviewForm({
           </p>
         ) : null}
 
-        <details className="border-rule rounded-md border p-3">
+        <details className="border-rule rounded-xl border p-3">
           <summary className="text-ink cursor-pointer text-sm font-medium">
             বিবরণ ও নোট (ইচ্ছা হলে)
           </summary>
@@ -1133,7 +1133,7 @@ function ReviewForm({
 
       {/* --- already decided ---------------------------------------------- */}
       {pending ? null : (
-        <p className="bg-greenbar text-ink-muted rounded-md px-3 py-2 text-sm">
+        <p className="bg-greenbar text-ink-muted rounded-xl px-3 py-2 text-sm">
           {statusLabel(draft.status)}
           {draft.reviewedAt ? ` · ${bnDateTime(draft.reviewedAt)}` : ''}।{' '}
           {draft.transactionId
@@ -1189,7 +1189,7 @@ function ReviewForm({
           </div>
 
           {rejecting ? (
-            <div className="border-rule flex flex-col gap-2 rounded-md border border-dashed p-3">
+            <div className="border-rule flex flex-col gap-2 rounded-xl border border-dashed p-3">
               <p className="text-ink text-sm">
                 বাতিল করলে খাতায় <strong>কিছুই লেখা হবে না</strong> — কোনো লেনদেন যোগ হবে না, কোনো
                 ব্যালান্সও বদলাবে না। মূল বার্তাটি থেকে যাবে।

@@ -70,7 +70,7 @@ export function InboxRules() {
   if (rules.isSuccess && list.length === 0) return null;
 
   return (
-    <section className="rounded-card border-rule bg-surface border p-4">
+    <section className="rounded-card border-rule bg-surface border-[1.5px] p-4">
       <h2 className="text-ink-muted flex items-center gap-2 text-sm font-medium">
         <Filter className="text-brand h-4 w-4" aria-hidden />
         {t('rules.title', 'যেসব বার্তা আর জিজ্ঞেস করা হবে না')}
@@ -84,7 +84,7 @@ export function InboxRules() {
 
       <ul className="mt-3 flex flex-col gap-2">
         {list.map((rule) => (
-          <li key={rule.id} className="border-rule flex items-start gap-2 rounded-md border p-2.5">
+          <li key={rule.id} className="border-rule flex items-start gap-2 rounded-xl border p-2.5">
             <div className="min-w-0 flex-1">
               <p className="text-ink text-sm font-medium">{rule.sender}</p>
               {/* The message it was taught by. A rule is a fold of a sentence
@@ -107,7 +107,7 @@ export function InboxRules() {
               title={t('rules.remove', 'নিয়মটি সরান')}
               disabled={remove.isPending}
               onClick={() => remove.mutate(rule.id)}
-              className="press touch-target text-ink-muted hover:bg-greenbar hover:text-expense flex shrink-0 items-center justify-center rounded-md disabled:opacity-60"
+              className="press touch-target text-ink-muted hover:bg-greenbar hover:text-expense flex shrink-0 items-center justify-center rounded-xl disabled:opacity-60"
             >
               <Trash2 className="h-4 w-4" aria-hidden />
             </button>

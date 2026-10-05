@@ -115,7 +115,7 @@ export function MappingStep({
         {/* Left: what each column is. */}
         <section aria-label="কলাম মেলানো" className="flex flex-col gap-2">
           <h3 className="text-ink-muted text-sm font-medium">ফাইলের কলামগুলো কী কী</h3>
-          <ul className="divide-rule rounded-card border-rule bg-surface divide-y border">
+          <ul className="divide-rule rounded-card border-rule bg-surface divide-y border-[1.5px]">
             {headers.map((header, index) => (
               <li key={`${header}-${index}`} className="flex items-center gap-3 p-3">
                 <div className="min-w-0 flex-1">
@@ -147,7 +147,7 @@ export function MappingStep({
         {/* Right: the same rows, as the ledger will hold them. */}
         <section aria-label="যেভাবে যোগ হবে" className="flex min-w-0 flex-col gap-2">
           <h3 className="text-ink-muted text-sm font-medium">যেভাবে যোগ হবে</h3>
-          <div className="rounded-card border-rule bg-surface min-w-0 overflow-x-auto border">
+          <div className="rounded-card border-rule bg-surface min-w-0 overflow-x-auto border-[1.5px]">
             <table className="w-full min-w-[30rem] text-sm">
               <thead>
                 <tr className="border-rule text-ink-muted border-b text-left text-xs">

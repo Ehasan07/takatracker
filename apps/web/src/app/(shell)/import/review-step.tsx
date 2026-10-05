@@ -121,7 +121,7 @@ export function ReviewStep({
         ) : null}
       </div>
 
-      <ul className="rounded-card border-rule bg-surface max-h-[32rem] overflow-y-auto border px-3">
+      <ul className="rounded-card border-rule bg-surface max-h-[32rem] overflow-y-auto border-[1.5px] px-3">
         {shown.length === 0 ? (
           <li className="text-ink-muted py-6 text-center text-sm">
             {t('import.review.empty', 'দেখানোর মতো সারি নেই।')}
