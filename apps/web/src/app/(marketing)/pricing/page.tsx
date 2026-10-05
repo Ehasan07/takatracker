@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Minus } from '@/components/icons';
+import { Check, ChevronDown, Minus } from '@/components/icons';
 import Link from 'next/link';
 import { formatMinor } from '@hishab/shared';
 import { CONTACT, CONTENT_BN, PAYMENT_URL, type SiteContent } from '../content';
@@ -261,21 +261,24 @@ export async function Pricing({ content, locale }: { content: SiteContent; local
         dangerouslySetInnerHTML={{ __html: jsonLdScript(faqJsonLd()) }}
       />
 
-      <section className="border-rule border-b">
-        <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <h1 className="text-ink text-3xl font-semibold sm:text-4xl">{t.heading}</h1>
-          <p className="text-ink-muted mt-3 max-w-2xl">{t.blurb}</p>
-        </div>
+      <section className="mx-auto w-full max-w-6xl px-4 pt-14 sm:px-6 sm:pt-20">
+        <h1 className="text-ink text-[44px] font-extrabold leading-[1.1] tracking-[-0.015em] sm:text-[60px]">
+          {t.heading}
+        </h1>
+        <span aria-hidden className="bg-gold mt-6 block h-[9px] w-24 rounded-full" />
+        <p className="text-ink-muted mt-6 max-w-[38em] text-lg leading-[1.75] sm:text-xl">
+          {t.blurb}
+        </p>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+      <section className="mx-auto w-full max-w-6xl px-4 pt-12 sm:px-6">
         {/* One column per plan on a wide screen, rather than a fixed two.
             With three plans the fixed grid dropped প্রো onto a second row on
             its own, beside an empty half — which reads as an afterthought
             rather than as the top tier it is. Below `lg` they stack, which is
             the only honest way to compare three feature lists on a phone. */}
         <div
-          className={`grid gap-4 ${
+          className={`grid gap-6 ${
             plans.length >= 3 ? 'md:grid-cols-2 lg:grid-cols-3' : 'lg:grid-cols-2'
           }`}
         >
@@ -290,12 +293,14 @@ export async function Pricing({ content, locale }: { content: SiteContent; local
           ))}
         </div>
 
-        <div className="rounded-card border-rule bg-brand-tint mt-6 border p-5">
-          <h2 className="text-ink text-sm font-medium">{t.alwaysHeading}</h2>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="bg-greenbar mt-8 rounded-[28px] p-6 sm:p-8">
+          <h2 className="text-ink text-xl font-extrabold">{t.alwaysHeading}</h2>
+          <ul className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             {t.always.map((line) => (
-              <li key={line} className="text-ink-muted flex items-start gap-2 text-sm">
-                <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <li key={line} className="text-ink flex items-start gap-3 text-base">
+                <span className="bg-brand text-brand-contrast mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
+                  <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+                </span>
                 {line}
               </li>
             ))}
@@ -305,15 +310,24 @@ export async function Pricing({ content, locale }: { content: SiteContent; local
 
       <ComparisonTable plans={plans} t={t} />
 
-      <section className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
-        <h2 className="text-ink text-2xl font-semibold">{content.ui.faqHeading}</h2>
-        <div className="mt-6 space-y-3">
+      <section className="mx-auto w-full max-w-6xl px-4 pt-24 sm:px-6">
+        <h2 className="text-ink text-[32px] font-extrabold leading-[1.15] sm:text-[40px]">
+          {content.ui.faqHeading}
+        </h2>
+        <span aria-hidden className="bg-gold mt-5 block h-[7px] w-[72px] rounded-full" />
+        <div className="mt-7 max-w-[860px]">
           {content.faq.map((item) => (
-            <details key={item.q} className="rounded-card border-rule bg-surface border p-4">
-              <summary className="text-ink press cursor-pointer text-sm font-medium">
+            <details key={item.q} className="border-rule group border-t">
+              <summary className="press text-ink flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 py-4 text-lg font-bold marker:hidden">
                 {item.q}
+                <span
+                  aria-hidden
+                  className="bg-greenbar text-ink group-open:bg-brand group-open:text-brand-contrast flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-open:rotate-180"
+                >
+                  <ChevronDown className="h-5 w-5" />
+                </span>
               </summary>
-              <p className="text-ink-muted mt-3 text-sm">{item.a}</p>
+              <p className="text-ink-muted tt-answer pb-6 text-[17px] leading-[1.75]">{item.a}</p>
             </details>
           ))}
         </div>
@@ -338,99 +352,105 @@ function PlanCard({
     formatMinor(minor, { symbol: false, decimals: false, bengaliNumerals: t.bengaliNumerals });
 
   return (
+    /* The suggested plan wears the mark's frame: a white tile inside the green
+       square. The others are the tile alone. */
     <div
-      className={`rounded-card bg-surface border p-6 ${
-        highlight ? 'border-brand shadow-sm' : 'border-rule'
-      }`}
+      className={
+        highlight
+          ? 'rounded-[32px] bg-[#1F6F4A] p-2.5 sm:p-3'
+          : 'border-rule bg-surface rounded-[32px] border-[1.5px]'
+      }
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-ink text-xl font-semibold">{free ? t.freeName : plan.name}</h2>
-        {highlight ? (
-          <span className="bg-brand-tint text-brand rounded-full px-2 py-0.5 text-xs font-medium">
-            {t.premiumBadge}
-          </span>
-        ) : null}
-      </div>
+      <div className="bg-surface flex h-full flex-col rounded-[24px] p-6 sm:p-7">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-ink text-[26px] font-extrabold">{free ? t.freeName : plan.name}</h2>
+          {highlight ? (
+            <span className="bg-gold/15 text-brass rounded-full px-3.5 py-1 text-sm font-bold">
+              {t.premiumBadge}
+            </span>
+          ) : null}
+        </div>
 
-      <p className="text-ink mt-4 text-3xl font-semibold">
-        {free ? t.freeName : `৳${money(plan.priceMinor)}`}
-        {!free ? <span className="text-ink-muted text-base font-normal">{t.perMonth}</span> : null}
-      </p>
-      {free ? (
-        <p className="text-ink-muted mt-1 text-sm">{t.freeNote}</p>
-      ) : plan.priceYearlyMinor != null ? (
-        <p className="text-ink-muted mt-1 text-sm">
-          {t.orYearly}{' '}
-          <strong className="text-ink font-medium">৳{money(plan.priceYearlyMinor)}</strong>
-          {/* The saving is computed from the two prices, not written down: edit
-              either in the admin panel and this sentence follows. */}
-          {savingLine(plan, t, locale)}
+        <p className="text-ink mt-5 text-[48px] font-extrabold tabular-nums leading-none">
+          `৳${money(plan.priceMinor)}`
+          {!free ? (
+            <span className="text-ink-muted ml-1 text-lg font-medium">{t.perMonth}</span>
+          ) : null}
         </p>
-      ) : null}
+        {free ? (
+          <p className="text-ink-muted mt-1 text-sm">{t.freeNote}</p>
+        ) : plan.priceYearlyMinor != null ? (
+          <p className="text-ink-muted mt-1 text-sm">
+            {t.orYearly}{' '}
+            <strong className="text-ink font-medium">৳{money(plan.priceYearlyMinor)}</strong>
+            {/* The saving is computed from the two prices, not written down: edit
+              either in the admin panel and this sentence follows. */}
+            {savingLine(plan, t, locale)}
+          </p>
+        ) : null}
 
-      <ul className="mt-5 space-y-2">
-        {t.compared.map((row) => {
-          const value = plan.features.find((f) => f.key === row.key);
-          const on = value ? value.limitValue === null || value.limitValue > 0 : false;
-          return (
-            <li key={row.key} className="flex items-start gap-2 text-sm">
-              {on ? (
-                <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              ) : (
-                <Minus className="text-ink-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              )}
-              <span className={on ? 'text-ink' : 'text-ink-muted'}>
-                {row.label}
-                {': '}
-                <strong className="font-medium">{describe(value, t, row.note)}</strong>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+        <ul className="mb-7 mt-6">
+          {t.compared.map((row) => {
+            const value = plan.features.find((f) => f.key === row.key);
+            const on = value ? value.limitValue === null || value.limitValue > 0 : false;
+            return (
+              <li
+                key={row.key}
+                className="border-rule flex items-start gap-2.5 border-t py-3 text-[15px]"
+              >
+                {on ? (
+                  <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                ) : (
+                  <Minus className="text-ink-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                )}
+                <span className={on ? 'text-ink' : 'text-ink-muted'}>
+                  {row.label}
+                  {': '}
+                  <strong className="font-bold">{describe(value, t, row.note)}</strong>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
 
-      <Link
-        href="/signup"
-        className={`press mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-medium ${
-          highlight
-            ? 'bg-brand text-brand-contrast hover:opacity-90'
-            : 'border-rule bg-surface text-ink hover:bg-brand-tint border'
-        }`}
-      >
-        {free ? t.freeCta : t.premiumCta}
-        <ArrowRight className="h-4 w-4" aria-hidden />
-      </Link>
-      {/* Every paid tier, not only the recommended one. প্রো had a price, a
+        <Link
+          href="/signup"
+          className="press border-ink text-ink hover:bg-greenbar mt-auto inline-flex min-h-14 w-full items-center justify-center rounded-2xl border-2 px-6 text-lg font-bold"
+        >
+          {free ? t.freeCta : t.premiumCta}
+        </Link>
+        {/* Every paid tier, not only the recommended one. প্রো had a price, a
           feature list and no way to buy it — a reader who wanted the top tier
           had to guess that the button on the card beside it would somehow do.
           `highlight` marks which plan is suggested; it was never meant to mark
           which one takes money. */}
-      {!free ? (
-        <>
-          {/* The invoice is hosted by SSLCommerz, so no card detail ever
+        {!free ? (
+          <>
+            {/* The invoice is hosted by SSLCommerz, so no card detail ever
               reaches this application and there is no PCI surface here to get
               wrong. What the link cannot do is tell us who paid — so the note
               says the plan is switched on by hand rather than implying it flips
               itself the moment the payment clears. */}
-          <a
-            href={PAYMENT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="press border-brand text-brand hover:bg-brand-tint mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-md border text-sm font-medium"
-          >
-            {t.payNow}
-          </a>
-          <p className="text-ink-muted mt-2 text-center text-xs">
-            {t.premiumNote.replace('{plan}', plan.name)}
-          </p>
-          <p className="text-ink-muted mt-1 text-center text-xs">
-            {t.helpLabel}{' '}
-            <a href={CONTACT.hotlineHref} className="text-brand underline">
-              {CONTACT.hotline}
+            <a
+              href={PAYMENT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="press bg-brand text-brand-contrast hover:bg-brand-soft mt-3 inline-flex min-h-14 w-full items-center justify-center rounded-2xl text-lg font-bold shadow-[0_4px_0_var(--hishab-brand-strong)]"
+            >
+              {t.payNow}
             </a>
-          </p>
-        </>
-      ) : null}
+            <p className="text-ink-muted mt-3 text-center text-[13px] leading-relaxed">
+              {t.premiumNote.replace('{plan}', plan.name)}
+            </p>
+            <p className="text-ink-muted mt-1 text-center text-[13px]">
+              {t.helpLabel}{' '}
+              <a href={CONTACT.hotlineHref} className="text-brand underline">
+                {CONTACT.hotline}
+              </a>
+            </p>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -463,25 +483,28 @@ function describe(feature: PlanFeature | undefined, t: Copy, note?: string): str
 
 function ComparisonTable({ plans, t }: { plans: PlanView[]; t: Copy }) {
   return (
-    <section className="border-rule border-y">
-      <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <h2 className="text-ink text-2xl font-semibold">{t.sideBySide}</h2>
+    <section>
+      <div className="mx-auto w-full max-w-6xl px-4 pt-24 sm:px-6">
+        <h2 className="text-ink text-[32px] font-extrabold leading-[1.15] sm:text-[40px]">
+          {t.sideBySide}
+        </h2>
+        <span aria-hidden className="bg-gold mt-5 block h-[7px] w-[72px] rounded-full" />
         {/* The table scrolls inside its own box rather than pushing the page
             sideways — a landing page that scrolls horizontally on a 320px
             phone is the fastest way to lose the visitor and the ranking. */}
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[32rem] border-collapse text-sm">
+        <div className="border-rule bg-surface mt-8 overflow-x-auto rounded-[24px] border-[1.5px]">
+          <table className="w-full min-w-[32rem] border-collapse text-[15px]">
             <caption className="sr-only">{t.tableCaption}</caption>
             <thead>
-              <tr className="border-rule border-b">
-                <th scope="col" className="text-ink-muted py-3 pr-4 text-left font-medium">
+              <tr className="border-rule bg-greenbar border-b">
+                <th scope="col" className="text-ink-muted px-5 py-3.5 text-left font-bold">
                   {t.tableWhat}
                 </th>
                 {plans.map((plan) => (
                   <th
                     key={plan.code}
                     scope="col"
-                    className="text-ink px-4 py-3 text-left font-medium"
+                    className="text-ink px-5 py-3.5 text-left font-extrabold"
                   >
                     {plan.priceMinor === 0 ? t.freeName : plan.name}
                   </th>
@@ -491,11 +514,11 @@ function ComparisonTable({ plans, t }: { plans: PlanView[]; t: Copy }) {
             <tbody>
               {t.compared.map((row) => (
                 <tr key={row.key} className="border-rule border-b last:border-b-0">
-                  <th scope="row" className="text-ink py-3 pr-4 text-left font-normal">
+                  <th scope="row" className="text-ink px-5 py-3.5 text-left font-medium">
                     {row.label}
                   </th>
                   {plans.map((plan) => (
-                    <td key={plan.code} className="text-ink-muted px-4 py-3">
+                    <td key={plan.code} className="text-ink px-5 py-3.5 font-semibold">
                       {describe(
                         plan.features.find((f) => f.key === row.key),
                         t,

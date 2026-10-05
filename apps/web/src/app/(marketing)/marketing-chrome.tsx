@@ -1,10 +1,9 @@
 'use client';
 
-import { Menu, X } from '@/components/icons';
+import { Languages, Menu, Phone, X } from '@/components/icons';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
-import { Languages } from '@/components/icons';
 import { BrandMark } from '@/components/brand-mark';
 import { CONTACT, CONTENT_BN, SITE, SOCIAL } from './content';
 import { CONTENT_EN } from './content.en';
@@ -27,10 +26,16 @@ export function MarketingHeader() {
   const [open, setOpen] = React.useState(false);
 
   return (
-    <header className="border-rule bg-paper/85 sticky top-0 z-40 border-b backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+    <header className="border-rule/70 bg-surface/85 sticky top-0 z-40 border-b backdrop-blur-md">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
         <Link href="/" className="press flex min-h-11 items-center" onClick={() => setOpen(false)}>
-          <BrandMark />
+          {/* The mark alone below 420px: a 390px phone has room for the mark,
+              the language switch, the call to action and the menu, and the
+              wordmark beside them wrapped onto two lines. */}
+          <BrandMark size="sm" wordmark={false} className="min-[420px]:hidden" />
+          <BrandMark size="sm" className="hidden min-[420px]:flex sm:hidden" />
+          <BrandMark size="md" className="hidden sm:flex" />
+          <span className="sr-only min-[420px]:hidden">{SITE.name}</span>
         </Link>
 
         {/* `lg`, not `md`. Seven links, the language toggle, a sign-in link and
@@ -38,12 +43,12 @@ export function MarketingHeader() {
             header 53px past the viewport and took the whole page sideways with
             it. Below `lg` the same links live in the ⋮ menu, which is where a
             reader on a narrow screen looks for them anyway. */}
-        <nav aria-label="প্রধান" className="ml-4 hidden items-center gap-1 lg:flex">
+        <nav aria-label="প্রধান" className="ml-5 hidden items-center gap-0.5 lg:flex">
           {NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="press text-ink-muted hover:text-ink hover:bg-brand-tint inline-flex min-h-11 items-center rounded-md px-3 text-sm"
+              className="press text-ink-muted hover:text-ink decoration-expense inline-flex min-h-11 items-center rounded-lg px-2.5 text-[15px] font-medium underline-offset-[10px] hover:underline hover:decoration-2"
             >
               {item.label}
             </Link>
@@ -59,7 +64,7 @@ export function MarketingHeader() {
             href={ui.otherLocaleHref}
             hrefLang={ui.otherLocaleHref === '/en' ? 'en' : 'bn'}
             aria-label={ui.otherLocaleLabel}
-            className="press text-ink-muted hover:text-ink hover:bg-brand-tint inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm"
+            className="press text-ink-muted hover:text-ink bg-greenbar hover:bg-brand-tint inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium"
           >
             <Languages className="h-4 w-4" aria-hidden />
             {/* The label is hidden below 400px and the icon carries it there.
@@ -70,13 +75,13 @@ export function MarketingHeader() {
           </Link>
           <Link
             href="/login"
-            className="press text-ink hover:bg-brand-tint hidden min-h-11 items-center rounded-md px-3 text-sm font-medium sm:inline-flex"
+            className="press text-ink hover:bg-greenbar hidden min-h-11 items-center rounded-xl px-3 text-[15px] font-semibold sm:inline-flex"
           >
             {ui.login}
           </Link>
           <Link
             href="/signup"
-            className="press bg-brand text-brand-contrast inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium hover:opacity-90"
+            className="press bg-brand text-brand-contrast hover:bg-brand-soft inline-flex min-h-11 items-center whitespace-nowrap rounded-[14px] px-3.5 text-sm font-semibold shadow-[0_3px_0_var(--hishab-brand-strong)] sm:px-5 sm:text-[15px]"
           >
             {ui.startFree}
           </Link>
@@ -86,7 +91,7 @@ export function MarketingHeader() {
             aria-expanded={open}
             aria-controls="marketing-menu"
             aria-label={open ? 'মেনু বন্ধ করুন' : 'মেনু খুলুন'}
-            className="press text-ink hover:bg-brand-tint -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-md lg:hidden"
+            className="press text-ink bg-greenbar hover:bg-brand-tint -mr-1 inline-flex h-11 w-11 items-center justify-center rounded-xl lg:hidden"
           >
             {open ? (
               <X className="h-5 w-5" aria-hidden />
@@ -101,14 +106,14 @@ export function MarketingHeader() {
         <nav
           id="marketing-menu"
           aria-label="মোবাইল"
-          className="border-rule bg-paper border-t px-4 pb-3 lg:hidden"
+          className="border-rule bg-surface menu-drop border-t px-4 pb-4 lg:hidden"
         >
           {[...NAV, { href: '/login', label: ui.login }].map((item) => (
             <Link
               key={item.href}
               href={item.href}
               onClick={() => setOpen(false)}
-              className="press text-ink border-rule flex min-h-12 items-center border-b text-sm last:border-b-0"
+              className="press text-ink border-rule min-h-13 flex items-center border-b text-base font-medium last:border-b-0"
             >
               {item.label}
             </Link>
@@ -123,32 +128,28 @@ export function MarketingFooter() {
   const pathname = usePathname();
   const { nav: NAV, doors } = contentFor(pathname);
   return (
-    <footer className="border-rule bg-brand-tint mt-16 border-t">
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
+    <footer className="border-rule bg-surface mt-24 border-t">
+      <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:grid-cols-2 sm:px-6 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
-          <p className="text-ink flex items-center gap-2 font-semibold">
-            <span
-              aria-hidden
-              className="bg-brand text-brand-contrast flex h-6 w-6 items-center justify-center rounded text-xs font-bold"
-            >
-              ৳
-            </span>
-            {SITE.name}
+          <p className="flex items-center">
+            <BrandMark size="md" />
+            <span className="sr-only">{SITE.name}</span>
           </p>
-          <p className="text-ink-muted mt-2 max-w-xs text-sm">{SITE.tagline}</p>
+          <span aria-hidden className="bg-gold mt-4 block h-1.5 w-12 rounded-full" />
+          <p className="text-ink-muted mt-4 max-w-xs text-[15px] leading-relaxed">{SITE.tagline}</p>
           <p className="text-ink-muted mt-2 text-xs">
             Hishab — a double-entry personal finance app for Bangladesh.
           </p>
         </div>
 
         <nav aria-label="ফুটার">
-          <h2 className="text-ink text-sm font-medium">পণ্য</h2>
+          <h2 className="text-ink text-sm font-bold">পণ্য</h2>
           <ul className="mt-1">
             {NAV.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                  className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
                 >
                   {item.label}
                 </Link>
@@ -160,7 +161,7 @@ export function MarketingFooter() {
             <li>
               <a
                 href={doors.business.href}
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
               >
                 {doors.business.footerLabel}
               </a>
@@ -169,13 +170,14 @@ export function MarketingFooter() {
         </nav>
 
         <nav aria-label="যোগাযোগ">
-          <h2 className="text-ink text-sm font-medium">যোগাযোগ</h2>
+          <h2 className="text-ink text-sm font-bold">যোগাযোগ</h2>
           <ul className="mt-1">
             <li>
               <a
                 href={CONTACT.hotlineHref}
-                className="press text-ink hover:text-brand inline-flex min-h-11 items-center text-sm font-medium"
+                className="press text-ink hover:text-brand inline-flex min-h-11 items-center gap-2 text-[15px] font-bold"
               >
+                <Phone className="text-brand h-[18px] w-[18px]" aria-hidden />
                 হটলাইন {CONTACT.hotline}
               </a>
             </li>
@@ -184,7 +186,7 @@ export function MarketingFooter() {
                 href={CONTACT.telegram}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
               >
                 টেলিগ্রাম চ্যানেল
               </a>
@@ -194,7 +196,7 @@ export function MarketingFooter() {
                 href={CONTACT.whatsapp}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
               >
                 হোয়াটসঅ্যাপ চ্যানেল
               </a>
@@ -203,12 +205,12 @@ export function MarketingFooter() {
         </nav>
 
         <nav aria-label="অ্যাকাউন্ট">
-          <h2 className="text-ink text-sm font-medium">অ্যাকাউন্ট</h2>
+          <h2 className="text-ink text-sm font-bold">অ্যাকাউন্ট</h2>
           <ul className="mt-1">
             <li>
               <Link
                 href="/signup"
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
               >
                 ফ্রি অ্যাকাউন্ট খুলুন
               </Link>
@@ -216,7 +218,7 @@ export function MarketingFooter() {
             <li>
               <Link
                 href="/login"
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
               >
                 লগইন
               </Link>
@@ -224,7 +226,7 @@ export function MarketingFooter() {
             <li>
               <Link
                 href="/forgot"
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-sm"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-10 items-center text-[15px]"
               >
                 পাসওয়ার্ড ভুলে গেছেন
               </Link>
@@ -235,7 +237,7 @@ export function MarketingFooter() {
 
       <div className="border-rule border-t">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
-          <p className="text-ink-muted text-xs">
+          <p className="text-ink-muted text-sm">
             © {SITE.name} · takatracker.com ·{' '}
             <Link href="/privacy" className="hover:text-ink underline">
               গোপনীয়তা
@@ -255,7 +257,7 @@ export function MarketingFooter() {
                    page a live `window.opener` back into this one. */
                 target="_blank"
                 rel="noopener noreferrer"
-                className="press text-ink-muted hover:text-ink inline-flex min-h-11 items-center text-xs"
+                className="press text-ink-muted hover:text-brand inline-flex min-h-11 items-center text-sm"
               >
                 {item.label}
               </a>

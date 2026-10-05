@@ -60,7 +60,9 @@ export default function GuidePage() {
 
       <section className="border-rule border-b">
         <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-          <h1 className="text-ink text-3xl font-semibold sm:text-4xl">ফোনে বসাবেন যেভাবে</h1>
+          <h1 className="text-ink text-[38px] font-extrabold leading-[1.12] tracking-[-0.015em] sm:text-[52px]">
+            ফোনে বসাবেন যেভাবে
+          </h1>
           <p className="text-ink-muted mt-3">
             Taka Tracker স্টোর থেকে নামাতে হয় না। ব্রাউজার থেকেই হোম স্ক্রিনে বসিয়ে নিলে অ্যাপের
             মতোই খোলে — এক মিনিটের কাজ, আর নেট না থাকলেও চলে।

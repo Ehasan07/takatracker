@@ -430,3 +430,79 @@
     content: '' !important;
   }
 }
+
+/* ---- the redesign's motion --------------------------------------------------
+ *
+ * One orchestrated moment on the landing page — the card rises, the notes fan
+ * out, the coins drop, the gold rule draws under the balance — and small,
+ * answering motion everywhere else (a panel or an answer settling in when it is
+ * opened). Nothing loops and nothing moves on scroll. `prefers-reduced-motion`
+ * is handled once, in the base layer above, which collapses every duration. */
+.tt-rise {
+  animation: tt-rise 0.8s 0.05s both cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tt-rise {
+  from {
+    transform: translateY(48px);
+  }
+  to {
+    transform: none;
+  }
+}
+.tt-fan {
+  transform-box: fill-box;
+  transform-origin: 20% 100%;
+  animation: tt-fan 0.9s both cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+@keyframes tt-fan {
+  from {
+    opacity: 0;
+    transform: translateY(70px) rotate(-14deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.tt-coin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tt-coin 0.7s both cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+@keyframes tt-coin {
+  from {
+    opacity: 0;
+    transform: translateY(-90px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.tt-goldbar {
+  transform-origin: left center;
+  animation: tt-goldbar 0.6s 1.75s both cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tt-goldbar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.tt-panel:not([hidden]),
+details[open] > .tt-answer,
+.menu-drop {
+  animation: tt-settle 0.3s both cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tt-settle {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

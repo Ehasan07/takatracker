@@ -40,7 +40,7 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
       <section className="border-rule border-b">
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
           <p className="text-brand text-xs font-medium sm:text-sm">{content.eyebrow}</p>
-          <h1 className="text-ink mt-3 max-w-3xl text-3xl font-semibold leading-tight sm:text-4xl md:text-5xl">
+          <h1 className="text-ink mt-3 max-w-3xl text-[38px] font-extrabold leading-[1.12] tracking-[-0.015em] sm:text-[52px]">
             {content.title}
           </h1>
           <p className="text-ink-muted mt-4 max-w-3xl text-base sm:text-lg">{content.subtitle}</p>
@@ -48,14 +48,16 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.rulesHeading}</h2>
+        <h2 className="text-ink text-[28px] font-extrabold leading-tight sm:text-[38px]">
+          {content.rulesHeading}
+        </h2>
         <p className="text-ink-muted mt-2 max-w-3xl">{content.rulesBlurb}</p>
         <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {content.rules.map((rule, index) => (
-            <li key={rule.title} className="rounded-card border-rule bg-surface border p-5">
+            <li key={rule.title} className="rounded-card border-rule bg-surface border-[1.5px] p-5">
               <span
                 aria-hidden
-                className="bg-brand-tint text-brand flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold"
+                className="bg-brand text-brand-contrast flex h-9 w-9 items-center justify-center rounded-[11px] text-base font-extrabold"
               >
                 {isBn ? '১২৩৪৫৬'[index] : index + 1}
               </span>
@@ -74,14 +76,16 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
           comparison, so it survives the stack. */}
       <section id="mistakes" className="border-rule scroll-mt-16 border-y">
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.mistakesHeading}</h2>
+          <h2 className="text-ink text-[28px] font-extrabold leading-tight sm:text-[38px]">
+            {content.mistakesHeading}
+          </h2>
           <p className="text-ink-muted mt-2 max-w-3xl">{content.mistakesBlurb}</p>
 
           <ul className="mt-8 grid gap-4 lg:grid-cols-2">
             {content.mistakes.map((mistake) => (
               <li
                 key={mistake.wrong}
-                className="rounded-card border-rule bg-surface border p-4 sm:p-5"
+                className="rounded-card border-rule bg-surface border-[1.5px] p-4 sm:p-5"
               >
                 <p className="text-ink-muted flex items-start gap-2 text-sm">
                   <X className="text-expense mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -123,13 +127,18 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
         id="sms"
         className="mx-auto w-full max-w-6xl scroll-mt-16 px-4 py-12 sm:px-6 sm:py-16"
       >
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.smsHeading}</h2>
+        <h2 className="text-ink text-[28px] font-extrabold leading-tight sm:text-[38px]">
+          {content.smsHeading}
+        </h2>
         <p className="text-ink-muted mt-2 max-w-3xl">{content.smsBlurb}</p>
 
         <ul className="mt-8 grid gap-4 lg:grid-cols-2">
           {content.smsExamples.map((example) => (
-            <li key={example.sms} className="rounded-card border-rule bg-surface border p-4 sm:p-5">
-              <p className="bg-greenbar text-ink-muted rounded-md p-3 font-mono text-xs leading-relaxed">
+            <li
+              key={example.sms}
+              className="rounded-card border-rule bg-surface border-[1.5px] p-4 sm:p-5"
+            >
+              <p className="bg-greenbar text-ink-muted rounded-xl p-3 font-mono text-xs leading-relaxed">
                 {example.sms}
               </p>
 
@@ -173,13 +182,15 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
         id="features"
         className="border-rule mx-auto w-full max-w-6xl scroll-mt-16 border-t px-4 py-12 sm:px-6 sm:py-16"
       >
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.featuresHeading}</h2>
+        <h2 className="text-ink text-[28px] font-extrabold leading-tight sm:text-[38px]">
+          {content.featuresHeading}
+        </h2>
         <p className="text-ink-muted mt-2 max-w-3xl">{content.featuresBlurb}</p>
 
         <div className="mt-8 space-y-10">
           {GUIDE.map((group) => (
             <div key={group.key}>
-              <h3 className="text-ink text-lg font-semibold sm:text-xl">
+              <h3 className="text-ink text-lg font-extrabold sm:text-xl">
                 {say(`${group.key}.h`, group.heading)}
               </h3>
               {group.blurb ? (
@@ -188,7 +199,10 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
 
               <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {group.entries.map((entry) => (
-                  <li key={entry.key} className="rounded-card border-rule bg-surface border p-4">
+                  <li
+                    key={entry.key}
+                    className="rounded-card border-rule bg-surface border-[1.5px] p-4"
+                  >
                     <h4 className="text-ink flex items-start gap-2 text-sm font-medium">
                       <Check className="text-brand mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                       <span>{say(`${entry.key}.t`, entry.title)}</span>
@@ -215,10 +229,12 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
 
       <section id="limits" className="border-rule scroll-mt-16 border-y">
         <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-          <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.getsHeading}</h2>
+          <h2 className="text-ink text-[28px] font-extrabold leading-tight sm:text-[38px]">
+            {content.getsHeading}
+          </h2>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-card border-rule bg-surface border p-5">
+            <div className="rounded-card border-rule bg-surface border-[1.5px] p-5">
               <h3 className="text-ink font-medium">{content.freeLabel}</h3>
               <ul className="mt-3 space-y-2">
                 {content.free.map((item) => (
@@ -230,7 +246,7 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
               </ul>
             </div>
 
-            <div className="rounded-card border-brand/40 bg-brand-tint border p-5">
+            <div className="rounded-card border-brand/40 bg-brand-tint border-[1.5px] p-5">
               <h3 className="text-ink font-medium">{content.premiumLabel}</h3>
               <ul className="mt-3 space-y-2">
                 {content.premium.map((item) => (
@@ -243,7 +259,7 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
             </div>
           </div>
 
-          <h2 className="text-ink mt-12 text-2xl font-semibold sm:text-3xl">
+          <h2 className="text-ink mt-12 text-[28px] font-extrabold leading-tight sm:text-[38px]">
             {content.notHeading}
           </h2>
           <p className="text-ink-muted mt-2 max-w-3xl">{content.notBlurb}</p>
@@ -251,7 +267,7 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
             {content.not.map((item) => (
               <li
                 key={item}
-                className="rounded-card border-rule bg-surface text-ink-muted flex items-start gap-2 border p-4 text-sm"
+                className="rounded-card border-rule bg-surface text-ink-muted flex items-start gap-2 border-[1.5px] p-4 text-sm"
               >
                 <Minus className="text-ink-muted mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 <span>{item}</span>
@@ -262,19 +278,21 @@ export function Tutorial({ content, locale }: { content: TutorialContent; locale
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
-        <h2 className="text-ink text-2xl font-semibold sm:text-3xl">{content.ctaHeading}</h2>
+        <h2 className="text-ink text-[28px] font-extrabold leading-tight sm:text-[38px]">
+          {content.ctaHeading}
+        </h2>
         <p className="text-ink-muted mt-2 max-w-2xl">{content.ctaBody}</p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Link
             href="/signup"
-            className="press bg-brand text-brand-contrast inline-flex min-h-12 items-center gap-2 rounded-md px-6 text-base font-medium hover:opacity-90"
+            className="press bg-brand text-brand-contrast hover:bg-brand-soft inline-flex min-h-12 items-center gap-2 rounded-xl px-6 text-base font-medium shadow-[0_3px_0_var(--hishab-brand-strong)]"
           >
             {content.ctaPrimary}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <Link
             href={isBn ? '/pricing' : '/en/pricing'}
-            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-12 items-center rounded-2xl border-[1.5px] px-6 text-base font-semibold"
           >
             {content.ctaSecondary}
           </Link>

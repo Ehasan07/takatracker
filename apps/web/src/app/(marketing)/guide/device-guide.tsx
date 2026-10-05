@@ -47,7 +47,7 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
             role="tab"
             aria-selected={g.kind === kind}
             onClick={() => setKind(g.kind)}
-            className={`press inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium ${
+            className={`press inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium ${
               g.kind === kind
                 ? 'border-brand bg-brand text-brand-contrast'
                 : 'border-rule bg-surface text-ink hover:bg-brand-tint'
@@ -67,11 +67,11 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
         {guide.steps.map((step, index) => (
           <li
             key={step.title}
-            className="rounded-card border-rule bg-surface flex items-start gap-4 border p-4"
+            className="rounded-card border-rule bg-surface flex items-start gap-4 border-[1.5px] p-4"
           >
             <span
               aria-hidden
-              className="bg-brand-tint text-brand flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+              className="bg-brand text-brand-contrast flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-base font-extrabold"
             >
               {['১', '২', '৩', '৪', '৫'][index]}
             </span>
@@ -84,7 +84,7 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
         ))}
       </ol>
 
-      <div className="rounded-card border-rule bg-brand-tint mt-6 border p-5">
+      <div className="rounded-card border-rule bg-brand-tint mt-6 border-[1.5px] p-5">
         <h3 className="text-ink text-sm font-medium">বসানোর পর কী বদলায়</h3>
         <ul className="mt-2 space-y-1">
           {[
@@ -99,7 +99,7 @@ export function DeviceGuidePanel({ initial }: { initial?: DeviceKind }) {
         </ul>
         <Link
           href="/signup"
-          className="press bg-brand text-brand-contrast mt-4 inline-flex min-h-11 items-center rounded-md px-5 text-sm font-medium hover:opacity-90"
+          className="press bg-brand text-brand-contrast hover:bg-brand-soft mt-4 inline-flex min-h-11 items-center rounded-xl px-5 text-sm font-medium shadow-[0_3px_0_var(--hishab-brand-strong)]"
         >
           ফ্রি অ্যাকাউন্ট খুলুন
         </Link>

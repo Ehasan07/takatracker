@@ -931,6 +931,138 @@ export const Settings = icon(
   </>,
 );
 
+export const Phone = icon(
+  'Phone',
+  <>
+    <path d="M6.6 3.8h2.6l1.4 4-1.9 1.3a10.6 10.6 0 0 0 6.2 6.2l1.3-1.9 4 1.4v2.6a2 2 0 0 1-2.2 2A15.8 15.8 0 0 1 4.6 6a2 2 0 0 1 2-2.2Z" />
+    <circle cx="17" cy="7" r="1.6" {...gd} />
+  </>,
+);
+export const Store = icon(
+  'Store',
+  <>
+    <path d="M4 9.5 5.5 4.5h13L20 9.5M4 9.5h16v1a2.7 2.7 0 0 1-5.3 0 2.7 2.7 0 0 1-5.4 0A2.7 2.7 0 0 1 4 10.5Z" />
+    <path d="M5.5 13v7h13v-7" />
+    <rect x="10" y="15.5" width="4" height="4.5" rx=".8" {...gd} />
+  </>,
+);
+/* ---- the product's own subjects (no stock equivalent) ---------------------- */
+
+/** An open খাতা: two columns, with the gold rule of a total under them. */
+export const Ledger = icon(
+  'Ledger',
+  <>
+    <path d="M5 4h12.5A1.5 1.5 0 0 1 19 5.5v15H6.5A1.5 1.5 0 0 1 5 19Z" />
+    <path d="M12 4v16.5M7.5 8h2.5M14 8h2.5M7.5 11.5h2.5M14 11.5h2.5" />
+    <rect x="7" y="15.4" width="10" height="2" rx="1" {...gd} />
+  </>,
+);
+/** Money going one way and coming back the other — ধার-দেনা. */
+export const Exchange = icon(
+  'Exchange',
+  <>
+    <path d="M4 8.5h13M14 5.5l3 3-3 3M20 15.5H7M10 18.5l-3-3 3-3" />
+    <circle cx="20.2" cy="8.5" r="1.5" {...gd} />
+    <circle cx="3.8" cy="15.5" r="1.5" {...gd} />
+  </>,
+);
+/** A savings jar with a coin in it. */
+export const Jar = icon(
+  'Jar',
+  <>
+    <path d="M8 6.5h8V8c2.2 1 3.5 2.9 3.5 5.2v4.3a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-4.3C4.5 10.9 5.8 9 8 8Z" />
+    <rect x="7" y="3.3" width="10" height="3.2" rx="1.2" />
+    <circle cx="12" cy="15" r="2.6" {...gd} />
+  </>,
+);
+/** The letter অ on a tile — the interface is in Bangla. */
+export const BanglaLetter = icon(
+  'BanglaLetter',
+  <>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+    <text
+      x="12"
+      y="16.2"
+      textAnchor="middle"
+      fontSize="11"
+      fontWeight="700"
+      fill="currentColor"
+      stroke="none"
+    >
+      অ
+    </text>
+    <path d="M8 18.4h8" {...g} />
+  </>,
+);
+/** A phone still working without a signal. */
+export const PhoneOffline = icon(
+  'PhoneOffline',
+  <>
+    <rect x="6.5" y="2.8" width="11" height="18.4" rx="2.6" />
+    <path d="M9.5 9.5c1.6-1.3 3.4-1.3 5 0M10.8 12c.8-.6 1.6-.6 2.4 0" />
+    <path d="M10 18.1h4" {...g} />
+  </>,
+);
+
+/* ---- everyday spending ---------------------------------------------------- */
+
+export const House = icon(
+  'House',
+  <>
+    <path d="M4 11 12 4.6 20 11v8a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 19Z" />
+    <path d="M10 20.6v-5h4v5" />
+    <circle cx="12" cy="11" r="1.4" {...gd} />
+  </>,
+);
+/** A pay envelope with a coin — salary, income. */
+export const Payslip = icon(
+  'Payslip',
+  <>
+    <rect x="3.5" y="6" width="17" height="12.5" rx="2" />
+    <path d="m4 7 8 6 8-6" />
+    <circle
+      cx="18.6"
+      cy="17.6"
+      r="3.2"
+      fill={GOLD}
+      stroke="var(--hishab-surface)"
+      strokeWidth={1.2}
+    />
+  </>,
+);
+export const ShoppingBag = icon(
+  'ShoppingBag',
+  <>
+    <path d="M5.2 8.5h13.6l-1 10.4a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8Z" />
+    <path d="M9 8.5V7a3 3 0 0 1 6 0v1.5" />
+    <path d="M9 13.2h6" {...g} />
+  </>,
+);
+export const Rickshaw = icon(
+  'Rickshaw',
+  <>
+    <circle cx="6.5" cy="17" r="3" />
+    <circle cx="17.5" cy="17" r="3" />
+    <path d="M6.5 17 10 10.5h5.5M9.6 17h4.9M15.5 10.5c0-3.1 1.7-5.2 4.6-5.7v5.7Z" />
+    <circle cx="6.5" cy="17" r="1" {...gd} />
+    <circle cx="17.5" cy="17" r="1" {...gd} />
+  </>,
+);
+export const Bulb = icon(
+  'Bulb',
+  <>
+    <path d="M9 17h6M10 20h4M12 3.5a5.5 5.5 0 0 0-3.3 9.9c.8.6 1.3 1.5 1.3 2.6h4c0-1.1.5-2 1.3-2.6A5.5 5.5 0 0 0 12 3.5Z" />
+    <circle cx="12" cy="9" r="1.4" {...gd} />
+  </>,
+);
+export const Heart = icon(
+  'Heart',
+  <>
+    <path d="M12 19.5s-7-4.3-7-9.3A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.2c0 5-7 9.3-7 9.3Z" />
+    <circle cx="12" cy="12.5" r="1.4" {...gd} />
+  </>,
+);
+
 /* Exported under the stock set's name. Declared as `InfinityIcon` because a
    module-level binding called `Infinity` would shadow the global. */
 export { InfinityIcon as Infinity };

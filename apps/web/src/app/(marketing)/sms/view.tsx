@@ -24,7 +24,7 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
     <>
       <section className="border-rule border-b">
         <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-          <h1 className="text-ink text-balance text-3xl font-semibold sm:text-4xl">
+          <h1 className="text-ink text-balance text-[38px] font-extrabold leading-[1.12] tracking-[-0.015em] sm:text-[52px]">
             {content.title}
           </h1>
           <p className="text-ink-muted mt-4 text-base sm:text-lg">{content.intro}</p>
@@ -34,7 +34,7 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
       {/* Before the steps, because somebody deciding whether to do this at all
           is asking whether it is safe long before they ask how it works. */}
       <section className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-        <h2 className="text-ink text-xl font-semibold sm:text-2xl">{content.safetyHeading}</h2>
+        <h2 className="text-ink text-xl font-extrabold sm:text-2xl">{content.safetyHeading}</h2>
         <ul className="mt-4 flex flex-col gap-3">
           {content.safety.map((line) => (
             <li key={line} className="text-ink-muted flex min-w-0 gap-3 text-sm sm:text-base">
@@ -57,7 +57,7 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
           <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
             <h2
               id={`${guide.kind.toLowerCase()}-heading`}
-              className="text-ink text-xl font-semibold sm:text-2xl"
+              className="text-ink text-xl font-extrabold sm:text-2xl"
             >
               {guide.label}
             </h2>
@@ -81,7 +81,7 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
               ))}
             </ol>
 
-            <p className="border-rule bg-greenbar text-ink-muted mt-6 rounded-md border p-3 text-sm">
+            <p className="border-rule bg-greenbar text-ink-muted mt-6 rounded-xl border p-3 text-sm">
               {guide.caveat}
             </p>
           </div>
@@ -90,7 +90,7 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
 
       <section className="border-rule border-t">
         <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-          <h2 className="text-ink text-xl font-semibold sm:text-2xl">{content.reviewHeading}</h2>
+          <h2 className="text-ink text-xl font-extrabold sm:text-2xl">{content.reviewHeading}</h2>
           <ul className="mt-4 flex flex-col gap-3">
             {content.review.map((line) => (
               <li key={line} className="text-ink-muted flex min-w-0 gap-3 text-sm sm:text-base">
@@ -113,10 +113,10 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
 
       <section className="border-rule border-t">
         <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-          <h2 className="text-ink text-xl font-semibold sm:text-2xl">{content.troubleHeading}</h2>
+          <h2 className="text-ink text-xl font-extrabold sm:text-2xl">{content.troubleHeading}</h2>
           <dl className="mt-4 flex flex-col gap-4">
             {content.trouble.map((item) => (
-              <div key={item.q} className="border-rule min-w-0 rounded-md border p-3">
+              <div key={item.q} className="border-rule min-w-0 rounded-xl border p-3">
                 <dt className="text-ink text-sm font-medium">{item.q}</dt>
                 <dd className="text-ink-muted mt-1 break-words text-sm">{item.a}</dd>
               </div>
@@ -127,11 +127,11 @@ export function SmsGuideView({ content, lang }: { content: SmsContent; lang: 'bn
 
       <section className="border-rule border-t">
         <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
-          <h2 className="text-ink text-xl font-semibold sm:text-2xl">{content.ctaHeading}</h2>
+          <h2 className="text-ink text-xl font-extrabold sm:text-2xl">{content.ctaHeading}</h2>
           <p className="text-ink-muted mt-2 text-sm sm:text-base">{content.cta}</p>
           <Link
             href={signupHref}
-            className="bg-brand text-brand-contrast press mt-5 inline-flex min-h-11 items-center justify-center rounded-md px-5 text-sm font-semibold"
+            className="bg-brand text-brand-contrast press mt-5 inline-flex min-h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold"
           >
             {content.ctaButton}
           </Link>

@@ -17,6 +17,8 @@
  * would be dead weight three times over.
  */
 
+import { cn } from '@/lib/utils';
+
 const SIZES = {
   sm: { box: 'h-8 w-8', word: 'text-base' },
   md: { box: 'h-10 w-10', word: 'text-lg' },
@@ -58,10 +60,12 @@ export function BrandMark({
 }) {
   const s = SIZES[size];
   return (
-    <span className={`flex items-center gap-2.5 ${className}`}>
+    <span className={cn('flex items-center gap-2.5', className)}>
       <LogoGlyph className={`shrink-0 ${s.box}`} />
       {wordmark ? (
-        <span className={`text-ink font-wordmark font-bold tracking-[0.01em] ${s.word}`}>
+        <span
+          className={`text-ink font-wordmark whitespace-nowrap font-bold tracking-[0.01em] ${s.word}`}
+        >
           Taka Tracker
         </span>
       ) : null}

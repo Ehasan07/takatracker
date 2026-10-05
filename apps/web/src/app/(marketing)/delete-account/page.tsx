@@ -95,7 +95,7 @@ export default function DeleteAccountPage() {
             <li key={String(title)} className="flex min-w-0 gap-3">
               <span
                 aria-hidden
-                className="bg-brand-tint text-brand flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                className="bg-brand text-brand-contrast flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-base font-extrabold"
               >
                 {'১২৩৪'[index]}
               </span>
@@ -114,7 +114,10 @@ export default function DeleteAccountPage() {
           <p className="text-ink-muted mt-2">সবকিছু। নিচের প্রতিটি জিনিস, স্থায়ীভাবে।</p>
           <ul className="text-ink-muted mt-6 grid gap-2 sm:grid-cols-2">
             {GONE.map((item) => (
-              <li key={item} className="rounded-card border-rule bg-surface border p-3 text-sm">
+              <li
+                key={item}
+                className="rounded-card border-rule bg-surface border-[1.5px] p-3 text-sm"
+              >
                 {item}
               </li>
             ))}
@@ -143,13 +146,13 @@ export default function DeleteAccountPage() {
         <div className="mt-5 flex flex-wrap gap-3">
           <a
             href={CONTACT.hotlineHref}
-            className="press bg-brand text-brand-contrast inline-flex min-h-12 items-center rounded-md px-6 text-base font-medium hover:opacity-90"
+            className="press bg-brand text-brand-contrast hover:bg-brand-soft inline-flex min-h-12 items-center rounded-xl px-6 text-base font-medium shadow-[0_3px_0_var(--hishab-brand-strong)]"
           >
             {CONTACT.hotline}
           </a>
           <a
             href={CONTACT.whatsapp}
-            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-12 items-center rounded-md border px-6 text-base font-medium"
+            className="press border-rule bg-surface text-ink hover:bg-brand-tint inline-flex min-h-12 items-center rounded-2xl border-[1.5px] px-6 text-base font-semibold"
             rel="noopener noreferrer"
             target="_blank"
           >

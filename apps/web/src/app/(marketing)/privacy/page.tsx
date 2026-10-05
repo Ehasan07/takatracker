@@ -48,8 +48,10 @@ export default function PrivacyPage() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
       <header>
-        <p className="text-ink-muted text-xs uppercase tracking-wide">Taka Tracker</p>
-        <h1 className="text-ink mt-1 text-2xl font-semibold sm:text-3xl">গোপনীয়তা</h1>
+        <p className="text-ink-muted text-xs font-semibold">Taka Tracker</p>
+        <h1 className="text-ink mt-1 text-[28px] font-extrabold leading-tight sm:text-[38px]">
+          গোপনীয়তা
+        </h1>
         <p className="text-ink-muted mt-2 text-sm">
           সর্বশেষ হালনাগাদ: {UPDATED}. এই পাতাটা আইনজীবীর জন্য নয়, আপনার জন্য লেখা।
         </p>
