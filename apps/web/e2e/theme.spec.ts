@@ -144,27 +144,32 @@ test.describe('themes', () => {
     expect(early.mode).toBe('dark');
   });
 
-  test('the system decides only until somebody else does', async ({ browser }) => {
-    /* Rule two, both halves. A reader who has expressed no preference gets the
-       OS one; a reader who has chosen keeps their choice when the OS disagrees
-       with it. */
+  test('light until somebody chooses otherwise, and the system only when asked', async ({
+    browser,
+  }) => {
+    /* A reader who has expressed no preference gets the light face even on a
+       dark-mode phone; `dark` is their choice to make, and `system` hands it
+       to the OS — the phone flipping to dark at sunset still works for anybody
+       who asks for that. */
     const context = await browser.newContext({ colorScheme: 'dark' });
     const page = await context.newPage();
     await signup(page);
 
+    expect((await paint(page)).mode).toBe('light');
+
+    await page.goto('/settings');
+    await choose(page, 'mode-dark');
+    expect((await paint(page)).mode).toBe('dark');
+    await page.goto('/');
+    expect((await paint(page)).mode).toBe('dark');
+
+    await page.goto('/settings');
+    await choose(page, 'mode-system');
     expect((await paint(page)).mode).toBe('dark');
 
     await page.goto('/settings');
     await choose(page, 'mode-light');
     expect((await paint(page)).mode).toBe('light');
-    await page.goto('/');
-    expect((await paint(page)).mode).toBe('light');
-
-    /* Back to `system` and the OS gets it back — the phone flipping to dark at
-       sunset has to still work for everyone who never touched this. */
-    await page.goto('/settings');
-    await choose(page, 'mode-system');
-    expect((await paint(page)).mode).toBe('dark');
 
     await context.close();
   });

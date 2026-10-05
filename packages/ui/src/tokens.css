@@ -15,7 +15,8 @@
  *   writing each of the eight twice — once for the attribute, once for the
  *   media query — is eight chances for the two to disagree.
  *
- * The one exception is the block at the end, which is the no-JavaScript floor.
+ * Without JavaScript the page stays on the light face, which is also what a
+ * reader who has chosen nothing gets.
  *
  * ## Every block sets every colour
  *
@@ -281,34 +282,6 @@
   --hishab-expense: #e0a099;
   --hishab-brass: #cfa95f;
   --hishab-gold: #cfa95f;
-}
-
-/* The floor for a reader whose JavaScript never ran, and the only place in this
- * file that asks the OS directly.
- *
- * `data-mode` is missing exactly twice: before the boot script executes, and
- * forever if it could not. Only the default palette needs covering, because
- * every other one is reached by tapping a button — which needs the script that
- * would have set the attribute. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-mode]) {
-    --hishab-ink: #e6efe8;
-    --hishab-ink-muted: #a1b3a7;
-    --hishab-paper: #0e1612;
-    --hishab-surface: #15201a;
-    --hishab-greenbar: #1a2820;
-    --hishab-rule: #2a3b31;
-    --hishab-brand: #5bc08c;
-    --hishab-brand-strong: #8fd8b0;
-    --hishab-brand-soft: #5bc08c;
-    --hishab-brand-tint: #133022;
-    --hishab-brand-contrast: #08170f;
-
-    --hishab-income: #63c295;
-    --hishab-expense: #f0827d;
-    --hishab-brass: #e3b35c;
-    --hishab-gold: #d9a44a;
-  }
 }
 
 /* Money never reflows: tabular figures, fixed column, right aligned. Set in

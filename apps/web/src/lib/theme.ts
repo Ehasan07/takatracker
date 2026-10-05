@@ -71,9 +71,11 @@ export const MODE_KEY = 'hishab.mode';
  *
  * `prefers-color-scheme` is asked exactly once, right here, and the answer is
  * written out as a plain `light` or `dark`. The stylesheet therefore needs no
- * media queries at all: an explicit choice beats the system because it is
- * checked first, and the system still decides for everyone who has not chosen —
- * which is the great majority. The alternative, every palette written twice
+ * media queries at all. A reader who has chosen nothing gets the light face
+ * whatever their phone is set to — the owner's call: the product is meant to be
+ * seen on paper-white, and a dark-mode phone was turning it dark for everyone.
+ * Choosing `system` hands the decision to the OS, and `dark` is one tap away.
+ * The alternative, every palette written twice
  * (once behind an attribute, once behind a media query), is eight faces of
  * duplication and eight chances for the two copies to disagree.
  */
@@ -94,7 +96,7 @@ function applyStoredAppearance(): void {
     if (theme !== 'mono' && theme !== 'contrast' && theme !== 'calm') theme = 'default';
     const dark =
       mode === 'dark' ||
-      (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
@@ -102,8 +104,7 @@ function applyStoredAppearance(): void {
   } catch {
     /* A locked-down cookie jar, private browsing on an old Safari, a webview
        with storage disabled. The page then renders in the default light
-       palette, which is a theme rather than a failure — and the stylesheet's
-       one media query catches the OS preference even here. */
+       palette, which is a theme rather than a failure. */
   }
 }
 
@@ -144,9 +145,9 @@ function storedTheme(): Theme {
 function storedMode(): Mode {
   try {
     const value = localStorage.getItem(MODE_KEY) ?? localStorage.getItem(THEME_KEY);
-    return (MODES as readonly string[]).includes(value ?? '') ? (value as Mode) : 'system';
+    return (MODES as readonly string[]).includes(value ?? '') ? (value as Mode) : 'light';
   } catch {
-    return 'system';
+    return 'light';
   }
 }
 
@@ -160,7 +161,7 @@ export function useAppearance(): {
   setMode: (next: Mode) => void;
 } {
   const [theme, setThemeState] = React.useState<Theme>('default');
-  const [mode, setModeState] = React.useState<Mode>('system');
+  const [mode, setModeState] = React.useState<Mode>('light');
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {

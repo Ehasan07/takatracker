@@ -125,10 +125,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#FAFBF7' },
-    { media: '(prefers-color-scheme: dark)', color: '#101614' },
-  ],
+  /* One colour: the app opens light whatever the phone is set to, so a dark
+     address bar above a light page would be the only dark thing on screen. */
+  themeColor: '#F5F8F6',
   width: 'device-width',
   initialScale: 1,
   // Content must reach behind the notch; the shell adds safe-area padding.
