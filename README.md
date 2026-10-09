@@ -1,3 +1,14 @@
+<!-- banner -->
+<p align="center"><img src=".github/assets/banner.png" alt="Taka Tracker" width="100%"></p>
+
+<p align="center"><a href="https://takatracker.com"><b>Live: takatracker.com</b></a> · <a href="#status">Status</a> · <a href="#getting-started">Run it</a></p>
+
+
+<p align="center">
+<img src="https://img.shields.io/badge/Next.js-15-000000-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js-15-000000"> <img src="https://img.shields.io/badge/NestJS-10-E0234E-E0234E?style=flat-square&logo=nestjs&logoColor=white" alt="NestJS-10-E0234E"> <img src="https://img.shields.io/badge/Prisma-ORM-2D3748-2D3748?style=flat-square&logo=prisma&logoColor=white" alt="Prisma-ORM-2D3748"> <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL-16-4169E1"> <img src="https://img.shields.io/badge/PWA-installable-5A0FC8-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA-installable-5A0FC8">
+</p>
+<!-- /banner -->
+
 # Taka Tracker
 
 **হিসাব** — a private, offline-first personal accounting app for Bangladesh.
